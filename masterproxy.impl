@@ -1,0 +1,108 @@
+/*
+    Copyright (c) 2013, Ales Stibal <email>
+    All rights reserved.
+
+    Redistribution and use in source and binary forms, with or without
+    modification, are permitted provided that the following conditions are met:
+        * Redistributions of source code must retain the above copyright
+        notice, this list of conditions and the following disclaimer.
+        * Redistributions in binary form must reproduce the above copyright
+        notice, this list of conditions and the following disclaimer in the
+        documentation and/or other materials provided with the distribution.
+        * Neither the name of the <organization> nor the
+        names of its contributors may be used to endorse or promote products
+        derived from this software without specific prior written permission.
+
+    THIS SOFTWARE IS PROVIDED BY Ales Stibal <email> ''AS IS'' AND ANY
+    EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+    WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+    DISCLAIMED. IN NO EVENT SHALL Ales Stibal <email> BE LIABLE FOR ANY
+    DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+    (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+    LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+    ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+    (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+    SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
+#include <vector>
+
+#include "masterproxy.hpp"
+#include "baseproxy.hpp"
+#include "baseproxy.hpp"
+#include "logger.hpp"
+
+template <class Com>
+int MasterProxy<Com>::run_once(void) {
+	
+    int r = baseProxy<Com>::run_once();
+	
+	for(typename std::vector<baseProxy<Com>*>::iterator ii = proxies().begin(); ii != proxies().end(); ii++) {
+		
+		baseProxy<Com> *p = (*ii); 
+		
+		if (p->dead()) { 
+			p->shutdown();
+		} else {
+			r += p->run_once();
+		}
+	}
+	
+	for(typename std::vector<baseProxy<Com>*>::iterator ii = proxies().begin(); ii != proxies().end(); ii++) {
+		
+		baseProxy<Com> *p = (*ii); 
+		
+		if (p->dead()) { 
+			delete(p);
+			proxies().erase(ii);			
+			break;
+		}
+	}
+	
+	DUM_("MasterProxy::run_once: returning %d",r);
+	return r;
+}
+
+template <class Com>
+void MasterProxy<Com>::shutdown() {
+	
+	INFS_("MasterProxy::shutdown");
+	baseProxy<Com>::shutdown();
+	
+	int i = 0;
+	for(typename std::vector<baseProxy<Com>*>::iterator ii = proxies().begin(); ii != proxies().end(); ii++) {
+		INF_("MasterProxy::shutdown: slave[%d]",i);
+		(*ii)->shutdown();
+		i++;
+		delete (*ii);
+	}
+	proxies().clear();
+}
+
+template <class Com>
+std::string MasterProxy<Com>::hr() {
+
+	std::string ret;
+	
+	ret += "Masterproxy:\n";
+	ret += baseProxy<Com>::hr();
+
+	if(proxies().size() > 0) {
+		ret += "Slaves:\n";
+		
+		int i = 0;
+		for(typename std::vector<baseProxy<Com>*>::iterator ii = proxies().begin(); ii != proxies().end(); ii++,i++) {
+			
+			baseProxy<Com> *p = (*ii); 
+			
+			ret+= "slave-" + std::to_string(i) + ":\n";
+			ret+= p->hr();
+			ret+= "\n";
+		}
+	}
+	else {
+		ret += "Slaves: <empty>";
+	}
+	
+	return ret;
+}

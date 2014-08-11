@@ -1,0 +1,324 @@
+/*
+    Copyright (c) 2013, Ales Stibal <astibal@gmail.com>
+    All rights reserved.
+
+    Redistribution and use in source and binary forms, with or without
+    modification, are permitted provided that the following conditions are met:
+        * Redistributions of source code must retain the above copyright
+        notice, this list of conditions and the following disclaimer.
+        * Redistributions in binary form must reproduce the above copyright
+        notice, this list of conditions and the following disclaimer in the
+        documentation and/or other materials provided with the distribution.
+        * Neither the name of the Fortinet  nor the
+        names of its contributors may be used to endorse or promote products
+        derived from this software without specific prior written permission.
+
+    THIS SOFTWARE IS PROVIDED BY Ales Stibal <astibal@gmail.com> ''AS IS'' AND ANY
+    EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+    WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+    DISCLAIMED. IN NO EVENT SHALL Ales Stibal <astibal@gmail.com> BE LIABLE FOR ANY
+    DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+    (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+    LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+    ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+    (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+    SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
+#ifndef __HOSTCX_CPP__
+#define __HOSTCX_CPP__
+
+#include "hostcx.hpp"
+#include "logger.hpp"
+#include "display.hpp"
+
+extern logger lout;
+
+template <class Com>
+int baseHostCX<Com>::connect(bool blocking) {
+	
+	opening(true);
+	
+	DEB_("HostCX::connect[%s]: blocking=%d",c_name(),blocking);
+	fds_ = Com::connect(host_.c_str(),port_.c_str(),blocking);
+	error_ = false;
+	
+	if (fds_ > 0 && blocking) {
+		DEB_("HostCX::connect[%s]: blocking, connected successfully, socket %d",c_name(),fds_);
+		opening(false);
+	}
+	else if (blocking) {
+		DEB_("HostCX::connect[%s]: blocking, failed!",c_name());
+		opening(false);
+	}
+	
+	return fds_;
+}
+
+template <class Com>
+bool baseHostCX<Com>::is_connected() {
+    bool status = Com::is_connected(socket());
+    DIA_("Com::is_connected[%s]: getsockopt(%d,SOL_SOCKET,SO_ERROR,..,..) reply %d",c_name(),socket(),status);
+    
+    return status;
+}
+
+template <class Com>
+void baseHostCX<Com>::close() {
+	
+ if(fds_ > 0) {
+	::close(fds_); 
+	DEB_("HostCX::close[%s]: socket closed",c_name());
+	fds_ = -1; 
+ } else {
+	 DEB_("HostCX::close[%s]: no-op, cannot be closed",c_name());
+ }
+}
+
+template <class Com>
+std::string baseHostCX<Com>::name() {
+
+	if (reduced()) {
+		if (valid()) {
+            Com::resolve_socket_src(fds_, &host_,&port_);
+            name__ = string_format("%d::%s:%s",socket(),host().c_str(),port().c_str());
+            
+			//name__ = string_format("%d:<reduced>",socket());
+		}
+		else {
+			name__ = std::string("?:<reduced>");
+        }
+		
+	} else {
+		name__ = string_format("%d::%s:%s",socket(),host().c_str(),port().c_str());
+		
+	}
+
+	return name__;
+}
+
+template <class Com>
+const char* baseHostCX<Com>::c_name() {
+	name();
+	return name__.c_str();
+}
+
+template <class Com>
+bool baseHostCX<Com>::reconnect(int delay) {
+
+	if (should_reconnect_now() and permanent()) {
+		close();
+		connect();
+		
+		DEB_("HostCX::reconnect[%s]: reconnect attempt (previous at %u)",c_name(),last_reconnect_);
+		last_reconnect_ = time(NULL);
+		
+		return true;
+	} 
+	else
+	if (!permanent()) {
+		NOT_("Attempted to reconnect non-permanent CX: %s",c_name());
+		return false;
+	} 
+	else
+	if (reduced() ) {
+		ERR_("HostCX::reconnect[%s]: reconnecting reduced CX is not possible",c_name());
+		last_reconnect_ = time(NULL);
+		return false;
+	}
+	
+	
+	return false;
+}
+	
+template <class Com>	
+int baseHostCX<Com>::read() {
+	
+	if(paused()) {
+		DEB_("HostCX::read[%s]: paused, returning -1",c_name());
+		return -1;
+	}
+	
+	DUM_("HostCX::read[%s]: calling pre_read",c_name());
+	pre_read();
+	
+	DUM_("HostCX::read[%s]: readbuf_ size=%d, capacity=%d, previously processed=%d finished",c_name(),readbuf_.size(),readbuf_.capacity(),processed_bytes_);
+	
+	if (auto_finish()) {
+		finish();
+	}
+	
+	// append-like behavior: append to the end of the buffer, don't exceed max. capacity!
+	void *ptr = &(readbuf_.data()[readbuf_.size()]);
+	size_t max_len = readbuf_.capacity()-readbuf_.size();
+	
+	DUM_("HostCX::read[%s]: readbuf_ base=%x, wr at=%x, maximum to write=%d",c_name(),readbuf_.data(),ptr,max_len);
+	
+	ssize_t l = Com::read(socket(), ptr, max_len, 0);
+	//int l = recv(socket(), ptr, max_len, MSG_PEEK);
+
+	
+	if (l > 0) {
+	
+		meter_read_bytes += l;
+		meter_read_count++;
+	
+		// claim opening socket already opened
+		if (opening()) {
+			DIA_("HostCX::read[%s]: connection established",c_name());
+			opening(false);
+		}
+		
+		// change size of the buffer accordingly
+		readbuf_.size(readbuf_.size()+l);
+		
+		// DEB_("HostCX::read[%s]: readbuf_ read %d bytes",c_name(),l);
+		
+		processed_bytes_ = process_();
+		DEB_("HostCX::read[%s]: readbuf_ read %d bytes, process()-ed %d bytes, incomplete readbuf_ %d bytes",c_name(),l, processed_bytes_,l-processed_bytes_);
+		
+		
+		// data are already processed
+		DEB_("HostCX::read[%s]: calling post_read",c_name());
+		post_read();
+	} else if (l == 0) {
+		DIA_("HostCX::read[%s]: error while reading",c_name());
+		error_ = true;
+	} else {
+		processed_bytes_ = 0;
+	}
+	
+	return l;
+}
+
+template <class Com>
+void baseHostCX<Com>::pre_read() {
+}
+
+template <class Com>
+void baseHostCX<Com>::post_read() {
+}
+
+template <class Com>
+int baseHostCX<Com>::write() {
+	
+	if(paused()) {
+		DEB_("HostCX::write[%s]: paused, returning 0",c_name());	
+		return 0;
+	}
+	
+	int tx_size_orig = writebuf_.size();	
+	pre_write();
+	
+	int tx_size = writebuf_.size();	
+	
+	if (tx_size != tx_size_orig) {
+		DEB_("HostCX::write[%s]: calling pre_write modified data, size %d -> %d",c_name(),tx_size_orig,tx_size);
+	}
+	
+	if (tx_size <= 0) {
+        DUM_("HostCX::write[%s]: writebuf_ %d bytes pending",c_name(),tx_size);
+		return 0;
+	}
+	else {
+        DEB_("HostCX::write[%s]: writebuf_ %d bytes pending",c_name(),tx_size);
+	}
+
+	int l = Com::write(socket(), writebuf_.data(), tx_size, MSG_NOSIGNAL);
+	
+	if (l > 0) {
+		meter_write_bytes += l;
+		meter_write_count++;
+	
+		writebuf_.flush(l);
+		if (opening()) {
+			DEB_("HostCX::write[%s]: connection established",c_name());
+			opening(false);
+		}		
+		DEB_("HostCX::write[%s]: %d from %d bytes sent from tx buffer at %x",c_name(),l,tx_size,writebuf_.data());
+		if (l < tx_size) {
+			// rather log this: not a big deal, but we couldn't have sent all data!
+			WAR_("HostCX::write[%s]: only %d from %d bytes sent from tx buffer!",c_name(),l,tx_size);
+		}
+		
+		DUM_("HostCX::write[%s]: calling post_write",c_name());
+		post_write();
+	}
+	
+	return l;
+}
+
+template <class Com>
+void baseHostCX<Com>::pre_write() {
+}
+
+template <class Com>
+void baseHostCX<Com>::post_write() {
+}
+
+template <class Com>
+int baseHostCX<Com>::process() {
+	return readbuf()->size();
+}
+
+
+template <class Com>
+ssize_t baseHostCX<Com>::finish() { 
+	if( readbuf()->size() >= (unsigned int)processed_bytes_ && processed_bytes_ > 0) {
+		DEB_("HostCX::finish[%s]: flushing %d bytes in readbuf_ size %d",c_name(),processed_bytes_,readbuf()->size());
+		readbuf()->flush(processed_bytes_); 
+		return processed_bytes_;
+	} else if (readbuf()->size() == 0) {
+		DUM_("HostCX::finish[%s]: already flushed",c_name());
+		return 0;
+	} else {
+		WAR_("HostCX::finish[%s]: attempt to flush more data than in buffer",c_name());
+		WAR_("HostCX::finish[%s]: best-effort recovery: flushing all",c_name());
+		auto s = readbuf()->size();
+		readbuf()->flush(s);
+		return s;
+	}
+}
+
+template <class Com>
+buffer baseHostCX<Com>::to_read() { 
+	DEB_("HostCX::to_read[%s]: returning buffer::view for %d bytes",c_name(),processed_bytes_);
+	return readbuf()->view(0,processed_bytes_); 
+}
+
+template <class Com>
+void baseHostCX<Com>::to_write(buffer b) {
+    DEB_("HostCX::to_write[%s]: appending to write %d bytes, from buffer struct",c_name(),b.size());
+    writebuf_.append(b); 
+    DEB_("HostCX::to_write[%s]: write buffer size %d bytes",c_name(),writebuf_.size());
+}
+
+template <class Com>
+void baseHostCX<Com>::to_write(unsigned char* c, unsigned int l) {
+	DEB_("HostCX::to_write[%s]: appending to write %d bytes from pointer",c_name(),l);
+	writebuf_.append(c,l);
+	DEB_("HostCX::to_write[%s]: write buffer size %d bytes",c_name(),writebuf_.size());
+}
+
+template <class Com>
+void baseHostCX<Com>::accept_socket(int fd) { 
+	Com::accept_socket(fd); 
+	
+	if(reduced()) {
+        Com::resolve_socket_src(fd, &host_,&port_);
+	}
+}
+
+template <class Com>
+std::string baseHostCX<Com>::hr() {
+	std::string r;
+	r+= this->name() + " " + string_format("R:%d/%d W:%d/%d",meter_read_count,meter_read_bytes,
+								meter_write_count,meter_write_bytes) + " " 
+					 + string_format("Rb:%d Wb:%d",readbuf()->size(),writebuf()->size())
+					 + string_format(" %p",this);
+					 
+	return r;
+}
+
+
+#endif //__HOSTCX_CPP__

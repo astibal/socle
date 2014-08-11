@@ -1,0 +1,165 @@
+/*
+    Copyright (c) 2013, Ales Stibal <astibal@gmail.com>
+    All rights reserved.
+
+    Redistribution and use in source and binary forms, with or without
+    modification, are permitted provided that the following conditions are met:
+        * Redistributions of source code must retain the above copyright
+        notice, this list of conditions and the following disclaimer.
+        * Redistributions in binary form must reproduce the above copyright
+        notice, this list of conditions and the following disclaimer in the
+        documentation and/or other materials provided with the distribution.
+        * Neither the name of the <organization> nor the
+        names of its contributors may be used to endorse or promote products
+        derived from this software without specific prior written permission.
+
+    THIS SOFTWARE IS PROVIDED BY Ales Stibal <astibal@gmail.com> ''AS IS'' AND ANY
+    EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+    WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+    DISCLAIMED. IN NO EVENT SHALL Ales Stibal <astibal@gmail.com> BE LIABLE FOR ANY
+    DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+    (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+    LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+    ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+    (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+    SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+*/
+
+
+#include <vector>
+#include <thread>
+
+#include <threadedproxy.hpp>
+#include <logger.hpp>
+
+template<class Com, class Worker, class SubWorker>
+ThreadedAcceptor<Com,Worker,SubWorker>::ThreadedAcceptor():
+threads_(NULL) {
+	baseProxy<Com>::new_raw(true);
+}
+
+template<class Com, class Worker, class SubWorker>
+ThreadedAcceptor<Com,Worker,SubWorker>::~ThreadedAcceptor() { 
+	if(threads_)  {
+
+		for(int i = 0; i <= nthreads; i++) {
+			Worker* ptr =  workers_[i];
+			ptr->dead(true);
+		}
+		
+		for(int i = 0; i <= nthreads; i++) {
+			std::thread* ptr =  threads_[i];
+			ptr->join();
+			delete ptr;
+			threads_[i] = NULL;
+		}
+		delete[] threads_; 
+	}
+};
+
+
+template<class Com, class Worker, class SubWorker>
+void ThreadedAcceptor<Com,Worker,SubWorker>::on_left_new_raw(int s) {
+	DIA_("ThreadedAcceptor::on_left_new: connection [%d] pushed to the queue",s);
+	push(s);
+}
+
+template<class Com, class Worker, class SubWorker>
+void ThreadedAcceptor<Com,Worker,SubWorker>::on_right_new_raw(int s) {
+	DIA_("ThreadedAcceptor::on_right_new: connection [%d] pushed to the queue",s);
+	push(s);
+
+}
+
+
+template<class Com, class Worker, class SubWorker>
+int ThreadedAcceptor<Com,Worker,SubWorker>::create_workers(void) {	
+	nthreads = std::thread::hardware_concurrency();
+	
+	INF_("Detected %d cores to use.", nthreads);
+	
+	threads_ = new std::thread*[nthreads];
+	workers_ = new Worker*[nthreads];
+	
+	for( int i = 0; i < nthreads; i++) {
+		Worker *w = new Worker();
+		w->nonlocal(this->nonlocal());
+		w->parent((baseProxy<Com>*)this);
+		
+		DIA_("Created ThreadedWorkerProxy %x",w);
+		workers_[i] = w;
+		
+		// also init threads pool
+		threads_[i] = NULL;
+	}
+	
+	return nthreads;
+}
+
+
+template<class Com, class Worker, class SubWorker>
+int ThreadedAcceptor<Com,Worker,SubWorker>::run(void) {
+	
+	create_workers();
+	
+	for( int i = 0; i < nthreads; i++) {
+		auto w = workers_[i];
+		std::thread* ptr = new std::thread(&Worker::run,w);
+		INF_("ThreadedAcceptor::run: started new thread[%d]: ptr=%x, thread_id=%d",i,ptr,ptr->get_id())
+		threads_[i] = ptr;
+	}
+	
+	baseProxy<Com>::run();
+	
+	return nthreads;
+}
+
+
+template<class Com, class Worker, class SubWorker>
+int ThreadedAcceptor<Com,Worker,SubWorker>::push(int s) { 
+	std::lock_guard<std::mutex> lck(sq_lock_);
+	sq_.push_front(s);
+	
+	return sq_.size();
+};
+
+template<class Com, class Worker, class SubWorker>
+int ThreadedAcceptor<Com,Worker,SubWorker>::pop() {
+	std::lock_guard<std::mutex> lck(sq_lock_);
+	
+	if(sq_.size() == 0) {
+		return 0;
+	}
+	
+	int s = sq_.back();
+	sq_.pop_back();
+	
+	return s;
+}
+
+
+
+template<class Com,class SubWorker>
+int ThreadedWorkerProxy<Com,SubWorker>::run_once() {
+	
+	ThreadedAcceptor<Com,ThreadedWorkerProxy<Com,SubWorker>,SubWorker> *p = (ThreadedAcceptor<Com,ThreadedWorkerProxy<Com,SubWorker>,SubWorker> *)MasterProxy<Com>::parent();
+	if(p == NULL) {
+		FATS_("PARENT is NULL");
+	}
+	
+	int s = p->pop();
+	if(s > 0) {
+		DIA_("ThreadedWorkerProxy::run: removed from queue: %d",s);
+
+		auto cx = this->new_cx(s);
+		if(!cx->paused()) {
+            cx->accept_socket(s);
+        }
+		cx->nonlocal(this->nonlocal());
+		cx->resolve_nonlocal_socket(s);
+		this->on_left_new(cx);
+
+	}
+	
+	return MasterProxy<Com>::run_once();
+}
