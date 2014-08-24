@@ -1,3 +1,21 @@
+/*
+    Socle - Socket Library Ecosystem
+    Copyright (c) 2014, Ales Stibal <astib@mag0.net>, All rights reserved.
+
+    This library  is free  software;  you can redistribute  it and/or
+    modify  it  under   the  terms of the  GNU Lesser  General Public
+    License  as published by  the   Free Software Foundation;  either
+    version 3.0 of the License, or (at your option) any later version.
+    This library is  distributed  in the hope that  it will be useful,
+    but WITHOUT ANY WARRANTY;  without  even  the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+    
+    See the GNU Lesser General Public License for more details.
+    
+    You  should have received a copy of the GNU Lesser General Public
+    License along with this library.
+*/
+
 #ifndef SSHCOM_HPP
 #define SSHCOM_HPP
 
@@ -118,11 +136,20 @@ public:
     virtual bool com_status() {
         if(TCPCom::com_status()) {
             bool r = sslcom_status();
-            T_DIA_("sslcom_status_ok",1,"SSLCom::com_status: returning %d",r);
+//          T_DIA_("sslcom_status_ok",1,"SSLCom::com_status: returning %d",r);
+            
+            if(r) {
+                DIAS_("SSLCom::com_status: transport layer OK")
+            } else {
+                DIAS_("SSLCom::com_status: SSL layer not ready.")
+            }
+            
+            DIA_("SSLCom::com_status: returning %d",r);
             return r;
         }
      
-        T_DIAS_("sslcom_status_nok",1,"SSLCom::com_status: returning 0");
+//      T_DIAS_("sslcom_status_nok",1,"SSLCom::com_status: returning 0");
+        DIAS_("SSLCom::com_status: transport layer not ready, returning 0");
         return false;
     }
 };

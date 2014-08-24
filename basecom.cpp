@@ -1,3 +1,21 @@
+/*
+    Socle - Socket Library Ecosystem
+    Copyright (c) 2014, Ales Stibal <astib@mag0.net>, All rights reserved.
+
+    This library  is free  software;  you can redistribute  it and/or
+    modify  it  under   the  terms of the  GNU Lesser  General Public
+    License  as published by  the   Free Software Foundation;  either
+    version 3.0 of the License, or (at your option) any later version.
+    This library is  distributed  in the hope that  it will be useful,
+    but WITHOUT ANY WARRANTY;  without  even  the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+    
+    See the GNU Lesser General Public License for more details.
+    
+    You  should have received a copy of the GNU Lesser General Public
+    License along with this library.
+*/
+
 #include <basecom.hpp>
 
 void baseCom::init() {
@@ -145,15 +163,12 @@ int TCPCom::bind(unsigned short port) {
 
 int TCPCom::namesocket(int sockfd, std::string& addr, unsigned short port) {
     sockaddr_in sockName;
-    int optval = 1;    
     
     sockName.sin_family = AF_INET;
     sockName.sin_port = htons(port);
-//        sockName.sin_port = 0;
-//     sockName.sin_addr = (inet_addr)inet_addr(addr.c_str());
+
     inet_aton(addr.c_str(),&sockName.sin_addr);
     
-//     setsockopt(sockfd, SOL_IP, IP_TRANSPARENT, &optval, sizeof(optval));
     if (::bind(sockfd, (sockaddr *)&sockName, sizeof(sockName)) == 0) {
         return 0;
     }

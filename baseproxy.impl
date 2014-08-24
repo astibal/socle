@@ -1,28 +1,19 @@
 /*
-    Copyright (c) 2013, Ales Stibal <astibal@gmail.com>
-    All rights reserved.
+    Socle Library Ecosystem
+    Copyright (c) 2014, Ales Stibal <astib@mag0.net>, All rights reserved.
 
-    Redistribution and use in source and binary forms, with or without
-    modification, are permitted provided that the following conditions are met:
-        * Redistributions of source code must retain the above copyright
-        notice, this list of conditions and the following disclaimer.
-        * Redistributions in binary form must reproduce the above copyright
-        notice, this list of conditions and the following disclaimer in the
-        documentation and/or other materials provided with the distribution.
-        * Neither the name of the Fortinet  nor the
-        names of its contributors may be used to endorse or promote products
-        derived from this software without specific prior written permission.
-
-    THIS SOFTWARE IS PROVIDED BY Ales Stibal <astibal@gmail.com> ''AS IS'' AND ANY
-    EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
-    WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-    DISCLAIMED. IN NO EVENT SHALL Ales Stibal <astibal@gmail.com> BE LIABLE FOR ANY
-    DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-    (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-    LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
-    ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-    (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-    SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+    This library  is free  software;  you can redistribute  it and/or
+    modify  it  under   the  terms of the  GNU Lesser  General Public
+    License  as published by  the   Free Software Foundation;  either
+    version 3.0 of the License, or (at your option) any later version.
+    This library is  distributed  in the hope that  it will be useful,
+    but WITHOUT ANY WARRANTY;  without  even  the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+    
+    See the GNU Lesser General Public License for more details.
+    
+    You  should have received a copy of the GNU Lesser General Public
+    License along with this library.
 */
 
 #include <iostream>
@@ -63,8 +54,8 @@ meter_last_read(0),
 meter_last_write(0),
 handle_last_status(0)
 {
-	set_polltime(0,1000);
-	set_sleeptime(3000);
+	set_polltime(0,10000);
+	set_sleeptime(30000);
 	time(&last_tick_);
 };
 
@@ -351,7 +342,13 @@ int baseProxy<Com>::handle_sockets_once() {
 	error_on_read = false;
 	error_on_write = false;
 	
-    if (select(m + 1, &(Com::read_socketSet), &(Com::write_socketSet), NULL, &tv) > 0) {
+	auto n_tv = tv;
+	
+	int ret_sel = select(m + 1, &(Com::read_socketSet), &(Com::write_socketSet), NULL, &n_tv);
+	
+    if ( ret_sel >= 0) {
+        
+//         DIAS_(".");
 		
 		for(typename std::vector<baseHostCX<Com>*>::iterator i = left_sockets.begin(); i != left_sockets.end(); i++) {
 			
@@ -453,256 +450,271 @@ int baseProxy<Com>::handle_sockets_once() {
 			}			
 		}
 
-		// now operate bound sockets to create accepted sockets
-		for(typename std::vector<baseHostCX<Com>*>::iterator ii = left_bind_sockets.begin(); ii != left_bind_sockets.end(); ii++) {
-			int s = (*ii)->socket();
-			if (Com::readable(s)) {
-				sockaddr_in clientInfo;
-				socklen_t addrlen = sizeof(clientInfo);
 
-				int client = Com::accept(s, (sockaddr*)&clientInfo, &addrlen);
-				
-				if(new_raw()) {
-					on_left_new_raw(client);
-				}
-				else {
-					baseHostCX<Com>* cx = new_cx(client);
-					
-					// propagate nonlocal setting
-					cx->nonlocal((*ii)->nonlocal());
-					
-					if(!cx->paused()) {
-                        cx->accept_socket(client);
-                    } else {
-                        DEB_("baseProxy::handle_sockets_once[%d]: adding to delayed sockets",client);
-                        // dealayed accept in effect -- carrier is accepted, but we will postpone higher level accept_socket
-                        ldaadd(cx);
-                        
+        // now operate permanent-connect sockets to create accepted sockets
+        for(typename std::vector<baseHostCX<Com>*>::iterator k = left_pc_cx.begin(); k != left_pc_cx.end(); k++) {
+
+            bool opening_status = (*k)->opening();
+            
+            // treat non-blocking still opening sockets 
+            if( (*k)->opening_timeout() ) {
+                (*k)->close();
+                on_left_pc_error(*k);
+                break;
+            }           
+
+            // paused cx is subject to timeout only, no r/w is done on it ( it would return -1/0 anyway, so spare some cycles)
+            if((*k)->paused()) {
+                continue;
+            }
+            
+            
+            int k_s = (*k)->socket();
+            
+            // if socket is already in error, don't read, instead just raise again error, if we should reconnect
+            if ((*k)->error() and (*k)->should_reconnect_now()) {
+                on_left_pc_error(*k);
+                break;
+            } else if ((*k)->error()) {
+                break;
+            }
+            
+            if (Com::readable(k_s)) {
+                int red = (*k)->read();
+                if (red == 0) {
+                    //(*k)->close();
+                    //left_pc_cx.erase(k);
+                    handle_last_status |= HANDLE_LEFT_PC_ERROR;
+                    
+                    error_on_read = true;
+                    on_left_pc_error(*k);
+                    break;
+                } else {
+                    if (opening_status) {
+                        on_left_pc_restore(*k);
                     }
-					on_left_new(cx);
-				}
-				
-				handle_last_status |= HANDLE_LEFT_NEW;
-			}
-		}
-		
-		
-		// iterate and if unpaused, run the accept_socket and release (add them to regular socket list)
-		// we will try to remove them all to not have delays
-		
-		while(1) {
-            bool no_suc = true;
-            
-            if(left_delayed_accepts.size())
-            for(typename std::vector<baseHostCX<Com>*>::iterator k = left_delayed_accepts.begin(); k != left_delayed_accepts.end(); k++) {
-                
-                baseHostCX<Com> *p = *k;
-                if(!(*k)->paused()) {
-                    p->accept_socket(p->socket());
-                    ladd(p);
-                    left_delayed_accepts.erase(k);
-                    
-                    // restart iterator
-                    no_suc = false;
-                    break;
+                    if (red > 0) {
+                        meter_last_read += red;
+                        on_left_bytes(*k);
+                    }
                 }
             }
-            
-            if(no_suc) break;
-		}
-		
-		for(typename std::vector<baseHostCX<Com>*>::iterator jj = right_bind_sockets.begin(); jj != right_bind_sockets.end(); jj++) {
-			int s = (*jj)->socket();
-			if (Com::readable(s)) {
-				sockaddr_in clientInfo;
-				socklen_t addrlen = sizeof(clientInfo);
-
-				int client = Com::accept(s, (sockaddr*)&clientInfo, &addrlen);
-				
-				if(new_raw()) {
-					on_right_new_raw(client);
-				} 
-				else {
-					baseHostCX<Com>* cx = new_cx(client);
-
-					// propagate nonlocal setting
-					cx->nonlocal((*jj)->nonlocal());
-
-					if(!cx->paused()) {
-                        cx->accept_socket(client);
-                    } else {
-                        // dealayed accept in effect -- carrier is accepted, but we will postpone higher level accept_socket
-                        rdaadd(cx);
-                    } 
-					on_right_new(cx);
-				}
-				
-				handle_last_status |= HANDLE_RIGHT_NEW;
-			}
-		}
-
-        // iterate and if unpaused, run the accept_socket and release (add them to regular socket list)
-        // we will try to remove them all to not have delays
-        
-        while(1) {
-            bool no_suc = true;
-            
-            if(right_delayed_accepts.size())
-            for(typename std::vector<baseHostCX<Com>*>::iterator k = right_delayed_accepts.begin(); k != right_delayed_accepts.end(); k++) {
-                
-                baseHostCX<Com> *p = *k;
-                if(!(*k)->paused()) {
-                    p->accept_socket(p->socket());
-                    radd(p);
-                    right_delayed_accepts.erase(k);
+            if (Com::writable(k_s)) {
+                int wrt = (*k)->write();
+                if (wrt < 0) {
+//                  (*k)->close();
+//                  left_pc_cx.erase(k);
+                    handle_last_status |= HANDLE_LEFT_PC_ERROR;
                     
-                    // restart iterator
-                    no_suc = false;
+                    error_on_write = true;
+                    on_left_pc_error(*k);
                     break;
-                }
-            }
-            
-            if(no_suc) break;
-        }		
-		
-		// now operate permanent-connect sockets to create accepted sockets
-		for(typename std::vector<baseHostCX<Com>*>::iterator k = left_pc_cx.begin(); k != left_pc_cx.end(); k++) {
-
-			bool opening_status = (*k)->opening();
-			
-			// treat non-blocking still opening sockets 
-			if( (*k)->opening_timeout() ) {
-				(*k)->close();
-				on_left_pc_error(*k);
-				break;
-			}			
-
-			// paused cx is subject to timeout only, no r/w is done on it ( it would return -1/0 anyway, so spare some cycles)
-			if((*k)->paused()) {
-				continue;
-			}
-			
-			
-			int k_s = (*k)->socket();
-			
-			// if socket is already in error, don't read, instead just raise again error, if we should reconnect
-			if ((*k)->error() and (*k)->should_reconnect_now()) {
-				on_left_pc_error(*k);
-				break;
-			} else if ((*k)->error()) {
-				break;
-			}
-			
-			if (Com::readable(k_s)) {
-				int red = (*k)->read();
-				if (red == 0) {
-					//(*k)->close();
-					//left_pc_cx.erase(k);
-					handle_last_status |= HANDLE_LEFT_PC_ERROR;
-					
-					error_on_read = true;
-					on_left_pc_error(*k);
-					break;
-				} else {
-					if (opening_status) {
-						on_left_pc_restore(*k);
-					}
-					if (red > 0) {
-						meter_last_read += red;
-						on_left_bytes(*k);
-					}
-				}
-			}
-			if (Com::writable(k_s)) {
-				int wrt = (*k)->write();
-				if (wrt < 0) {
-// 					(*k)->close();
-// 					left_pc_cx.erase(k);
-					handle_last_status |= HANDLE_LEFT_PC_ERROR;
-					
-					error_on_write = true;
-					on_left_pc_error(*k);
-					break;
-				} 
-				else {
-					
-					meter_last_write += wrt;
-					
-					if (opening_status) {
-						on_left_pc_restore(*k);
-					}
-				}		
-			}				
-		}
-		for(typename std::vector<baseHostCX<Com>*>::iterator l = right_pc_cx.begin(); l != right_pc_cx.end(); l++) {
+                } 
+                else {
+                    
+                    meter_last_write += wrt;
+                    
+                    if (opening_status) {
+                        on_left_pc_restore(*k);
+                    }
+                }       
+            }               
+        }
+        for(typename std::vector<baseHostCX<Com>*>::iterator l = right_pc_cx.begin(); l != right_pc_cx.end(); l++) {
  
-			bool opening_status = (*l)->opening();			
-			
-			// treat non-blocking still opening sockets 
-			if( (*l)->opening_timeout() ) {
-				(*l)->close();
-				on_right_pc_error(*l);
-				break;
-			}			
+            bool opening_status = (*l)->opening();          
+            
+            // treat non-blocking still opening sockets 
+            if( (*l)->opening_timeout() ) {
+                (*l)->close();
+                on_right_pc_error(*l);
+                break;
+            }           
 
-			// paused cx is subject to timeout only, no r/w is done on it ( it would return -1/0 anyway, so spare some cycles)
-			if((*l)->paused()) {
-				continue;
-			}
-			
-			int l_s = (*l)->socket();
+            // paused cx is subject to timeout only, no r/w is done on it ( it would return -1/0 anyway, so spare some cycles)
+            if((*l)->paused()) {
+                continue;
+            }
+            
+            int l_s = (*l)->socket();
 
-			// if socket is already in error, don't read, instead just raise again error, if we should reconnect
-			if ((*l)->error() and (*l)->should_reconnect_now()) {
-				on_right_pc_error(*l);
-				break;
-			} else if ((*l)->error()) {
-				break;
-			}
-			
-			if (Com::readable(l_s)) {
-				int red = (*l)->read();
-				if (red == 0) {
-					//(*l)->close();
-					//right_pc_cx.erase(l);
-					handle_last_status |= HANDLE_RIGHT_PC_ERROR;
-					
-					error_on_read = true;
-					on_right_pc_error(*l);
-					break;
-				} else {
-					if (opening_status && red > 0) {
-						on_right_pc_restore(*l);
-					}
-					if (red > 0) {
-						meter_last_read += red;
-						on_right_bytes(*l);
-					}
-				}
-			}
-			if (Com::writable(l_s)) {
-				int wrt = (*l)->write();
-				if (wrt < 0) {
-// 					(*l)->close();
-// 					right_pc_cx.erase(l);
-					handle_last_status |= HANDLE_RIGHT_PC_ERROR;
-					
-					error_on_write = true;
-					on_right_pc_error(*l);
-					break;
-				} 
-				else {
-					
-					meter_last_write += wrt;
-					
-					if (opening_status && wrt > 0) {
-						on_right_pc_restore(*l);
-					}
-				}		
-			}				
-		}		
+            // if socket is already in error, don't read, instead just raise again error, if we should reconnect
+            if ((*l)->error() and (*l)->should_reconnect_now()) {
+                on_right_pc_error(*l);
+                break;
+            } else if ((*l)->error()) {
+                break;
+            }
+            
+            if (Com::readable(l_s)) {
+                int red = (*l)->read();
+                if (red == 0) {
+                    //(*l)->close();
+                    //right_pc_cx.erase(l);
+                    handle_last_status |= HANDLE_RIGHT_PC_ERROR;
+                    
+                    error_on_read = true;
+                    on_right_pc_error(*l);
+                    break;
+                } else {
+                    if (opening_status && red > 0) {
+                        on_right_pc_restore(*l);
+                    }
+                    if (red > 0) {
+                        meter_last_read += red;
+                        on_right_bytes(*l);
+                    }
+                }
+            }
+            if (Com::writable(l_s)) {
+                int wrt = (*l)->write();
+                if (wrt < 0) {
+//                  (*l)->close();
+//                  right_pc_cx.erase(l);
+                    handle_last_status |= HANDLE_RIGHT_PC_ERROR;
+                    
+                    error_on_write = true;
+                    on_right_pc_error(*l);
+                    break;
+                } 
+                else {
+                    
+                    meter_last_write += wrt;
+                    
+                    if (opening_status && wrt > 0) {
+                        on_right_pc_restore(*l);
+                    }
+                }       
+            }               
+        } 
+        
+        
+		// no socket is really ready to be processed; while it make sense to check 'connecting' sockets, it makes
+		// no sense to loop through bound sockets.
 		
-		return handle_last_status + meter_last_read + meter_last_write;
+		if (ret_sel > 0) {
+            // now operate bound sockets to create accepted sockets
+            for(typename std::vector<baseHostCX<Com>*>::iterator ii = left_bind_sockets.begin(); ii != left_bind_sockets.end(); ii++) {
+                int s = (*ii)->socket();
+                if (Com::readable(s)) {
+                    sockaddr_in clientInfo;
+                    socklen_t addrlen = sizeof(clientInfo);
+
+                    int client = Com::accept(s, (sockaddr*)&clientInfo, &addrlen);
+                    
+                    if(new_raw()) {
+                        on_left_new_raw(client);
+                    }
+                    else {
+                        baseHostCX<Com>* cx = new_cx(client);
+                        
+                        // propagate nonlocal setting
+                        cx->nonlocal((*ii)->nonlocal());
+                        
+                        if(!cx->paused()) {
+                            cx->accept_socket(client);
+                        } else {
+                            DEB_("baseProxy::handle_sockets_once[%d]: adding to delayed sockets",client);
+                            // dealayed accept in effect -- carrier is accepted, but we will postpone higher level accept_socket
+                            ldaadd(cx);
+                            
+                        }
+                        on_left_new(cx);
+                    }
+                    
+                    handle_last_status |= HANDLE_LEFT_NEW;
+                }
+            }
+            
+            
+            // iterate and if unpaused, run the accept_socket and release (add them to regular socket list)
+            // we will try to remove them all to not have delays
+            
+            while(1) {
+                bool no_suc = true;
+                
+                if(left_delayed_accepts.size())
+                for(typename std::vector<baseHostCX<Com>*>::iterator k = left_delayed_accepts.begin(); k != left_delayed_accepts.end(); k++) {
+                    
+                    baseHostCX<Com> *p = *k;
+                    if(!(*k)->paused()) {
+                        p->accept_socket(p->socket());
+                        ladd(p);
+                        left_delayed_accepts.erase(k);
+                        
+                        // restart iterator
+                        no_suc = false;
+                        break;
+                    }
+                }
+                
+                if(no_suc) break;
+            }
+            
+            for(typename std::vector<baseHostCX<Com>*>::iterator jj = right_bind_sockets.begin(); jj != right_bind_sockets.end(); jj++) {
+                int s = (*jj)->socket();
+                if (Com::readable(s)) {
+                    sockaddr_in clientInfo;
+                    socklen_t addrlen = sizeof(clientInfo);
+
+                    int client = Com::accept(s, (sockaddr*)&clientInfo, &addrlen);
+                    
+                    if(new_raw()) {
+                        on_right_new_raw(client);
+                    } 
+                    else {
+                        baseHostCX<Com>* cx = new_cx(client);
+
+                        // propagate nonlocal setting
+                        cx->nonlocal((*jj)->nonlocal());
+
+                        if(!cx->paused()) {
+                            cx->accept_socket(client);
+                        } else {
+                            // dealayed accept in effect -- carrier is accepted, but we will postpone higher level accept_socket
+                            rdaadd(cx);
+                        } 
+                        on_right_new(cx);
+                    }
+                    
+                    handle_last_status |= HANDLE_RIGHT_NEW;
+                }
+            }
+
+            // iterate and if unpaused, run the accept_socket and release (add them to regular socket list)
+            // we will try to remove them all to not have delays
+            
+            while(1) {
+                bool no_suc = true;
+                
+                if(right_delayed_accepts.size())
+                for(typename std::vector<baseHostCX<Com>*>::iterator k = right_delayed_accepts.begin(); k != right_delayed_accepts.end(); k++) {
+                    
+                    baseHostCX<Com> *p = *k;
+                    if(!(*k)->paused()) {
+                        p->accept_socket(p->socket());
+                        radd(p);
+                        right_delayed_accepts.erase(k);
+                        
+                        // restart iterator
+                        no_suc = false;
+                        break;
+                    }
+                }
+                
+                if(no_suc) break;
+            }		
+        }
+
+		
+// 		DIAS_("_");
+
+        // handle the case when we are running this cycle due to n_tv timeout. In such a case return 0 to sleep accordingly.
+        if (ret_sel ==  0) {
+            return 0;
+        } else {
+            return handle_last_status + meter_last_read + meter_last_write;
+        }
     }
     return 0;
 };
@@ -792,11 +804,14 @@ void baseProxy<Com>::on_right_new(baseHostCX<Com>* cx) {
 template <class Com>
 int baseProxy<Com>::run(void) {
 	
+	timespec sl;
+	sl.tv_sec = 0;
+	sl.tv_nsec = get_sleeptime();
+	
 	while(! dead() ) {
 		if (run_once() == 0) {
-			int s = get_sleeptime();
-			DUM_("Usleeping for %dus",s);
-			usleep(s);
+			DUM_("Nanosleeping for %dus",sl.tv_nsec );
+			nanosleep(&sl, NULL);
 		}
 	}
 

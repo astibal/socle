@@ -1,3 +1,21 @@
+/*
+    Socle - Socket Library Ecosystem
+    Copyright (c) 2014, Ales Stibal <astib@mag0.net>, All rights reserved.
+
+    This library  is free  software;  you can redistribute  it and/or
+    modify  it  under   the  terms of the  GNU Lesser  General Public
+    License  as published by  the   Free Software Foundation;  either
+    version 3.0 of the License, or (at your option) any later version.
+    This library is  distributed  in the hope that  it will be useful,
+    but WITHOUT ANY WARRANTY;  without  even  the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+    
+    See the GNU Lesser General Public License for more details.
+    
+    You  should have received a copy of the GNU Lesser General Public
+    License along with this library.
+*/
+
 #include <openssl/rsa.h>
 #include <openssl/crypto.h>
 #include <openssl/x509.h>
@@ -179,11 +197,8 @@ bool SSLCom::check_cert (const char* host) {
     X509 *peer;
     char peer_CN[256];
 
-	bool ret = true;
-	
     if ( SSL_get_verify_result ( sslcom_ssl ) !=X509_V_OK ) {
         DIAS_( "check_cert: certificate doesn't verify" );
-		ret = false;
     }
 
     /*Check the cert chain. The chain length
@@ -210,7 +225,6 @@ bool SSLCom::check_cert (const char* host) {
 		
 		if ( strcasecmp ( peer_CN,host ) ) {
 		DIAS_( "Common name doesn't match host name" );
-		ret = false;
 		}
 	}
 	
@@ -358,6 +372,10 @@ int SSLCom::ssl_waiting() {
 	return r;
 	
 }
+
+
+#pragma GCC diagnostic ignored "-Wpointer-arith"
+#pragma GCC diagnostic push
 
 int SSLCom::read ( int __fd, void* __buf, size_t __n, int __flags )  {
 	
@@ -568,6 +586,8 @@ int SSLCom::write ( int __fd, const void* __buf, size_t __n, int __flags )  {
 	
 	return r;
 };
+
+#pragma GCC diagnostic pop
 
 void SSLCom::cleanup()  {
 

@@ -1,3 +1,21 @@
+/*
+    Socle - Socket Library Ecosystem
+    Copyright (c) 2014, Ales Stibal <astib@mag0.net>, All rights reserved.
+
+    This library  is free  software;  you can redistribute  it and/or
+    modify  it  under   the  terms of the  GNU Lesser  General Public
+    License  as published by  the   Free Software Foundation;  either
+    version 3.0 of the License, or (at your option) any later version.
+    This library is  distributed  in the hope that  it will be useful,
+    but WITHOUT ANY WARRANTY;  without  even  the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+    
+    See the GNU Lesser General Public License for more details.
+    
+    You  should have received a copy of the GNU Lesser General Public
+    License along with this library.
+*/
+
 #include <cstdio>
 #include <ctime>
 
@@ -529,11 +547,15 @@ std::string SSLCertStore::print_cert(X509* x) {
                 M_ASN1_OCTET_STRING_print(ext_bio, ex->value);
             }
         
-    
+#pragma GCC diagnostic ignored "-Wunused-value"
+#pragma GCC diagnostic push
+
             BUF_MEM *bptr;
             BIO_get_mem_ptr(ext_bio, &bptr);
             BIO_set_close(ext_bio, BIO_NOCLOSE);
         
+#pragma GCC diagnostic pop
+            
             // remove newlines
             int lastchar = bptr->length;
             if (lastchar > 1 && (bptr->data[lastchar-1] == '\n' || bptr->data[lastchar-1] == '\r')) {

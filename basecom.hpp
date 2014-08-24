@@ -1,3 +1,21 @@
+/*
+    Socle - Socket Library Ecosystem
+    Copyright (c) 2014, Ales Stibal <astib@mag0.net>, All rights reserved.
+
+    This library  is free  software;  you can redistribute  it and/or
+    modify  it  under   the  terms of the  GNU Lesser  General Public
+    License  as published by  the   Free Software Foundation;  either
+    version 3.0 of the License, or (at your option) any later version.
+    This library is  distributed  in the hope that  it will be useful,
+    but WITHOUT ANY WARRANTY;  without  even  the implied warranty of
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
+    
+    See the GNU Lesser General Public License for more details.
+    
+    You  should have received a copy of the GNU Lesser General Public
+    License along with this library.
+*/
+
 #ifndef BASECOM_HPP
 #define BASECOM_HPP
 
@@ -308,32 +326,46 @@ public:
     virtual bool is_connected(int s) {
         
         if(tcpcom_fd == 0) {
-            DIAS_("TCPCom::is_connected: called for socket #0");
-            return false;
+            DEBS_("TCPCom::is_connected: called for non-connecting socket");
+            return true;
         }
         
         unsigned int error_code;
         socklen_t l = sizeof(error_code);
-        getsockopt(s, SOL_SOCKET, SO_ERROR, &error_code, &l );
+        char str_err[256];
         
-	if(error_code != 0) {
-	        DEB_("TCPCom::is_connected: getsockopt(%d,SOL_SOCKET,SO_ERROR,..,..) reply %d",s,error_code);
-	}
-	else {
-	        DUM_("TCPCom::is_connected: getsockopt(%d,SOL_SOCKET,SO_ERROR,..,..) reply %d",s,error_code);
-	}
+        int r_getsockopt = getsockopt(s, SOL_SOCKET, SO_ERROR, &error_code, &l);
+        error_code = errno;
         
-        return (error_code == 0);
+        if ( r_getsockopt == 0 ) {
+                                    
+            if(error_code != 0) {
+                    DIA_("TCPCom::is_connected[%d]: getsockopt errno %d = %s",s,error_code,strerror_r(error_code,str_err,256));
+            }
+            else {
+                    DIA_("TCPCom::is_connected[%d]: getsockopt errno %d = %s",s,error_code,strerror_r(error_code,str_err,256));
+            }
+            
+            return (error_code != EINPROGRESS);
+    //      return true;
+    //      return (error_code == 0);
+    
+        } else {
+            DIAS_("TCPCom::is_connected[%d]: getsockopt failed, returned %d = %s",s,r_getsockopt,strerror_r(r_getsockopt,str_err,256));
+            return false;
+        } 
     }
     
     virtual bool com_status() {
         if(baseCom::com_status()) {
             bool r = is_connected(tcpcom_fd);
-            T_DIA_("tcpcom_status_ok",1,"TCPCom::com_status: returning %d",r);
+            //T_DIA_("tcpcom_status_ok",1,"TCPCom::com_status: returning %d",r);
+            DIA_("TCPCom::com_status: returning %d",r);
             return r;
         }
         
-        T_DIAS_("tcpcom_status_nok",1,"TCPCom::com_status: returning 0");
+        // T_DUMS_("tcpcom_status_nok",1,"TCPCom::com_status: returning 0");
+        DIAS_("TCPCom::com_status: returning 0");
         return false;
     }
 protected:
