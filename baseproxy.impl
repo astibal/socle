@@ -256,6 +256,7 @@ int baseProxy<Com>::prepare_sockets(void) {
 	Com::zeroize_write_fdset();
 	Com::zeroize_read_fdset();
 
+    if(left_sockets.size() > 0)
 	for(typename std::vector<baseHostCX<Com>*>::iterator i = left_sockets.begin(); i != left_sockets.end(); i++) {
 		int s = (*i)->socket();
         Com::set_read_fdset(s);
@@ -266,6 +267,8 @@ int baseProxy<Com>::prepare_sockets(void) {
             max = s;
         }
     }
+    
+    if (left_bind_sockets.size() > 0)
 	for(typename std::vector<baseHostCX<Com>*>::iterator ii = left_bind_sockets.begin(); ii != left_bind_sockets.end(); ii++) {
 		int s = (*ii)->socket();
         Com::set_read_fdset(s);
@@ -277,6 +280,7 @@ int baseProxy<Com>::prepare_sockets(void) {
         }
     }
 
+    if(right_sockets.size() > 0)
     for(typename std::vector<baseHostCX<Com>*>::iterator j = right_sockets.begin(); j != right_sockets.end(); j++) {
 		int s = (*j)->socket();
         Com::set_read_fdset(s);
@@ -287,6 +291,8 @@ int baseProxy<Com>::prepare_sockets(void) {
             max = s;
         }
     }
+    
+    if(right_bind_sockets.size() > 0)
 	for(typename std::vector<baseHostCX<Com>*>::iterator jj = right_bind_sockets.begin(); jj != right_bind_sockets.end(); jj++) {
 		int s = (*jj)->socket();
         Com::set_read_fdset(s);
@@ -298,7 +304,7 @@ int baseProxy<Com>::prepare_sockets(void) {
         }
     }
     
-    
+    if(left_pc_cx.size() > 0)
 	for(typename std::vector<baseHostCX<Com>*>::iterator k = left_pc_cx.begin(); k != left_pc_cx.end(); k++) {
 		int k_s = (*k)->socket();
 		if (k_s <= 0) { continue; };
@@ -311,6 +317,7 @@ int baseProxy<Com>::prepare_sockets(void) {
         }
 	}
 	
+	if(right_pc_cx.size() > 0)
 	for(typename std::vector<baseHostCX<Com>*>::iterator l = right_pc_cx.begin(); l != right_pc_cx.end(); l++) {    
 		int l_s = (*l)->socket();
 		if (l_s <= 0) { continue; };
@@ -350,6 +357,7 @@ int baseProxy<Com>::handle_sockets_once() {
         
 //         DIAS_(".");
 		
+		if(left_sockets.size() > 0)
 		for(typename std::vector<baseHostCX<Com>*>::iterator i = left_sockets.begin(); i != left_sockets.end(); i++) {
 			
 			// treat non-blocking still opening sockets 
@@ -401,6 +409,7 @@ int baseProxy<Com>::handle_sockets_once() {
 			}
 		}
 		
+		if(right_sockets.size() > 0)
 		for(typename std::vector<baseHostCX<Com>*>::iterator j = right_sockets.begin(); j != right_sockets.end(); j++) {
 
 			// treat non-blocking still opening sockets 
@@ -452,6 +461,8 @@ int baseProxy<Com>::handle_sockets_once() {
 
 
         // now operate permanent-connect sockets to create accepted sockets
+        
+        if(left_pc_cx.size() > 0)
         for(typename std::vector<baseHostCX<Com>*>::iterator k = left_pc_cx.begin(); k != left_pc_cx.end(); k++) {
 
             bool opening_status = (*k)->opening();
@@ -520,6 +531,8 @@ int baseProxy<Com>::handle_sockets_once() {
                 }       
             }               
         }
+        
+        if(right_pc_cx.size() > 0)
         for(typename std::vector<baseHostCX<Com>*>::iterator l = right_pc_cx.begin(); l != right_pc_cx.end(); l++) {
  
             bool opening_status = (*l)->opening();          
@@ -594,6 +607,8 @@ int baseProxy<Com>::handle_sockets_once() {
 		
 		if (ret_sel > 0) {
             // now operate bound sockets to create accepted sockets
+            
+            if(left_bind_sockets.size() > 0)
             for(typename std::vector<baseHostCX<Com>*>::iterator ii = left_bind_sockets.begin(); ii != left_bind_sockets.end(); ii++) {
                 int s = (*ii)->socket();
                 if (Com::readable(s)) {
@@ -651,6 +666,7 @@ int baseProxy<Com>::handle_sockets_once() {
                 if(no_suc) break;
             }
             
+            if(right_bind_sockets.size() > 0)
             for(typename std::vector<baseHostCX<Com>*>::iterator jj = right_bind_sockets.begin(); jj != right_bind_sockets.end(); jj++) {
                 int s = (*jj)->socket();
                 if (Com::readable(s)) {
