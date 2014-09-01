@@ -143,6 +143,11 @@ int baseHostCX<Com>::read() {
 	void *ptr = &(readbuf_.data()[readbuf_.size()]);
 	size_t max_len = readbuf_.capacity()-readbuf_.size();
 	
+	if (max_len > next_read_limit_ && next_read_limit_ > 0) {
+        DUM_("HostCX::read[%s]: read buffer limiter: %d",c_name(), next_read_limit_);
+        max_len = next_read_limit_;
+	}
+	
 	DUM_("HostCX::read[%s]: readbuf_ base=%x, wr at=%x, maximum to write=%d",c_name(),readbuf_.data(),ptr,max_len);
 	
 	ssize_t l = Com::read(socket(), ptr, max_len, 0);
@@ -178,6 +183,9 @@ int baseHostCX<Com>::read() {
 	} else {
 		processed_bytes_ = 0;
 	}
+	
+	// before return, don't forget to reset read limiter
+	next_read_limit_ = 0;
 	
 	return l;
 }
@@ -221,7 +229,6 @@ int baseHostCX<Com>::write() {
 		meter_write_bytes += l;
 		meter_write_count++;
 	
-		writebuf_.flush(l);
 		if (opening()) {
 			DEB_("HostCX::write[%s]: connection established",c_name());
 			opening(false);
@@ -234,6 +241,8 @@ int baseHostCX<Com>::write() {
 		
 		DUM_("HostCX::write[%s]: calling post_write",c_name());
 		post_write();
+		
+        writebuf_.flush(l);		
 	}
 	
 	return l;

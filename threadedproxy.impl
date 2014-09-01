@@ -32,12 +32,12 @@ template<class Com, class Worker, class SubWorker>
 ThreadedAcceptor<Com,Worker,SubWorker>::~ThreadedAcceptor() { 
 	if(threads_)  {
 
-		for(int i = 0; i <= nthreads; i++) {
+		for(unsigned int i = 0; i <= nthreads; i++) {
 			Worker* ptr =  workers_[i];
 			ptr->dead(true);
 		}
 		
-		for(int i = 0; i <= nthreads; i++) {
+		for(unsigned int i = 0; i <= nthreads; i++) {
 			std::thread* ptr =  threads_[i];
 			ptr->join();
 			delete ptr;
@@ -71,7 +71,7 @@ int ThreadedAcceptor<Com,Worker,SubWorker>::create_workers(void) {
 	threads_ = new std::thread*[nthreads];
 	workers_ = new Worker*[nthreads];
 	
-	for( int i = 0; i < nthreads; i++) {
+	for( unsigned int i = 0; i < nthreads; i++) {
 		Worker *w = new Worker();
 		w->nonlocal(this->nonlocal());
 		w->parent((baseProxy<Com>*)this);
@@ -92,7 +92,7 @@ int ThreadedAcceptor<Com,Worker,SubWorker>::run(void) {
 	
 	create_workers();
 	
-	for( int i = 0; i < nthreads; i++) {
+	for( unsigned int i = 0; i < nthreads; i++) {
 		auto w = workers_[i];
 		std::thread* ptr = new std::thread(&Worker::run,w);
 		INF_("ThreadedAcceptor::run: started new thread[%d]: ptr=%x, thread_id=%d",i,ptr,ptr->get_id())

@@ -133,6 +133,7 @@ class baseHostCX : public Host, public Com
 	
 	
 	ssize_t processed_bytes_; //!< number of bytes processed by last process()
+	unsigned int next_read_limit_;  // limit next read() operation to this number. Zero means no restrictions.
 	
 	/*! 
 	 ! If you are not attempting to do something really special, you want it to keep it as true (default). See [HostCX::auto_finish()](@ref HostCX::auto_finish) */
@@ -177,6 +178,7 @@ public:
 		readbuf_ = buffer(HOSTCX_BUFFSIZE);
 		readbuf_.clear();
 		processed_bytes_ = 0;
+        next_read_limit_ = 0;
 		auto_finish_ = true;
 		adm_status_ = true;
 		paused_ = false;
@@ -202,6 +204,7 @@ public:
 		readbuf_ = buffer(HOSTCX_BUFFSIZE);		
 		readbuf_.clear();
 		processed_bytes_ = 0;
+        next_read_limit_ = 0;
 		auto_finish_ = true;
 		adm_status_ = true;
 		paused_ = false;
@@ -224,6 +227,8 @@ public:
 	std::string name();
 	const char* c_name();
 	
+    ssize_t processed_bytes() { return processed_bytes_; };
+    
 	// larval connection facility
 	bool opening_ = false;
 	inline bool opening() { return opening_; }
@@ -307,6 +312,8 @@ public:
 	
 	inline void send(buffer& b) { writebuf_.append(b); }
 	
+	inline ssize_t next_read_limit() { return next_read_limit_; }
+	inline void next_read_limit(ssize_t s) { next_read_limit_ = s; }
 	
 	int read();
 	int process_() { return process(); };
@@ -329,7 +336,7 @@ public:
 	
 	// pre- and post- functions/hooks called as the very first or last command in the write() function
 	virtual void pre_write();
-	virtual void post_write();
+	virtual void post_write(); //note: write buffer is emptied AFTER this call, but data are already sent.
 	
 	virtual void on_timer() {};
 	
