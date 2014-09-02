@@ -19,8 +19,12 @@
 #ifndef LRPROXY_HPP
 #define LRPROXY_HPP
 
+#include <hostcx.hpp>
+#include <basecom.hpp>
 #include <baseproxy.hpp>
 #include <buffer.hpp>
+
+typedef baseProxy<TCPCom> TCPProxy;
 
 class LRProxy: public TCPProxy {
 	protected:

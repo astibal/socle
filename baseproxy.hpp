@@ -228,8 +228,6 @@ protected:
 	
 };
 
-// typedef baseProxy<TCPCom,HostCX> TCPProxy;
-
 #include <baseproxy.impl>
 
 #endif

@@ -23,7 +23,7 @@
 #include "stdarg.h"
 #include "stdio.h"
 
-std::string string_format(const std::string fmt, ...) {
+std::string string_format(const std::string& fmt, ...) {
     int size = 256;
     std::string str;
     va_list ap;
@@ -54,7 +54,7 @@ std::string hex_dump(unsigned char *data, int size,unsigned int ltrim, unsigned 
      */
 
     unsigned char *p = data;
-    unsigned char c;
+
     int n;
     char bytestr[4] = {0};
     char addrstr[10] = {0};
@@ -86,8 +86,8 @@ std::string hex_dump(unsigned char *data, int size,unsigned int ltrim, unsigned 
             snprintf(addrstr, sizeof(addrstr), "%.4x",
                (unsigned int)(p-data) );
         }
-            
-        c = *p;
+
+        unsigned char c = *p;
 //         if (isalnum(c) == 0) {
 //             c = '.';
 //         }

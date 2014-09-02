@@ -50,8 +50,10 @@ bool SSLMitmCom::spoof_cert(X509* cert_orig) {
     
     
     // get info from the peer certificate
-    X509_NAME_get_text_by_NID(X509_get_subject_name(cert_orig),NID_commonName, tmp,512);
-    std::string cn(tmp);
+    //
+    // not used at this time
+    // X509_NAME_get_text_by_NID(X509_get_subject_name(cert_orig),NID_commonName, tmp,512);
+    // std::string cn(tmp);
     
     X509_NAME_oneline(X509_get_subject_name(cert_orig), tmp, 512);
     std::string subject(tmp);

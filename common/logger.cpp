@@ -62,7 +62,7 @@ bool logger::periodic_end() {
 }
 
 
-void logger::log(unsigned int l, const std::string fmt, ...) {
+void logger::log(unsigned int l, const std::string& fmt, ...) {
 
 	if (l > level()) return;
 	

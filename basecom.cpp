@@ -38,7 +38,7 @@ int baseCom::nonlocal_bind (unsigned short port) {
 	nonlocal(true);
 	
 	int r = bind(port);
-	if (port < 0) {
+	if (r < 0) {
 		nonlocal(false);
 	}
 	

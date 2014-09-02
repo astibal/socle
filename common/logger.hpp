@@ -168,8 +168,8 @@ public:
  	std::ostream* target() { return target_; }
  	void target(std::ostream* o) { target_ = o; }
 	
-	std::string format(const std::string, ...);
-	void log(unsigned int, const std::string, ...);
+// 	std::string format(const std::string&, ...);
+	void log(unsigned int, const std::string&, ...);
 	
 	inline unsigned int period() { return period_; }
 	inline void period(unsigned int p) { period_ = p; }

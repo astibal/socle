@@ -53,10 +53,9 @@ public:
 	 *  \param h - hostname string
 	 *  \param p - port number (as the string
 	 */
-	Host(const char* h, const char* p) {
-		host_ = std::string(h);
-		port_ = std::string(p);
-	}
+	Host(const char* h, const char* p) :
+	host_(h),
+	port_(p) {}
 	
 	//! returns host part of the structure
 	std::string& host() { return host_; }

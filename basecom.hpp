@@ -225,7 +225,6 @@ public:
 	bool resolve_socket_(bool source,int s, std::string *target_host, std::string *target_port, struct sockaddr_storage *target_storage = NULL ) {
 
 		char orig_host[INET6_ADDRSTRLEN];
-		unsigned short orig_port = 0;
 		struct sockaddr_storage peer_info_;
 		struct sockaddr_storage *ptr_peer_info = &peer_info_;
 
@@ -255,6 +254,8 @@ public:
 			return -1;
 		} 
 		else {
+            unsigned short orig_port = 0;
+
 			if(ptr_peer_info->ss_family == AF_INET){
 				inet_ntop(AF_INET, &(((struct sockaddr_in*) ptr_peer_info)->sin_addr),orig_host, INET_ADDRSTRLEN);
 				orig_port = ntohs(((struct sockaddr_in*) ptr_peer_info)->sin_port);
@@ -343,7 +344,7 @@ public:
                     DIA_("TCPCom::is_connected[%d]: getsockopt errno %d = %s",s,error_code,strerror_r(error_code,str_err,256));
             }
             else {
-                    DIA_("TCPCom::is_connected[%d]: getsockopt errno %d = %s",s,error_code,strerror_r(error_code,str_err,256));
+                    DUM_("TCPCom::is_connected[%d]: getsockopt errno %d = %s",s,error_code,strerror_r(error_code,str_err,256));
             }
             
             return (error_code != EINPROGRESS);

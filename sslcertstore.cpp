@@ -59,14 +59,18 @@ int SSLCertStore::password_callback(char* buf, int size, int rwflag, void* u) {
 
 bool SSLCertStore::load_ca_cert() {
     FILE *fp_crt = fopen(CA_CERTF, "r");
-    FILE *fp_key = fopen(CA_KEYF, "r");
+    FILE *fp_key = nullptr;
     
     if (!fp_crt) {
         FAT_("SSLCertStore::load_ca_cert: unable to open: %s\n",CA_CERTF);
         return false;
     }
+    
+    fp_key = fopen(CA_KEYF, "r");
+    
     if (!fp_key) {
         FAT_("SSLCertStore::load_ca_cert: unable to open: %s\n",CA_KEYF);
+
         fclose(fp_crt);
         return false;
     }
@@ -83,12 +87,15 @@ bool SSLCertStore::load_ca_cert() {
 
 bool SSLCertStore::load_def_cl_cert() {
     FILE *fp_crt = fopen(CL_CERTF, "r");
-    FILE *fp_key = fopen(CL_KEYF, "r");
+    FILE *fp_key = nullptr;
     
     if (!fp_crt) {
         FAT_("SSLCertStore::load_def_cl_cert: unable to open: %s\n",CL_CERTF);
         return false;
     }
+    
+    fp_key = fopen(CL_KEYF, "r");
+    
     if (!fp_key) {
         FAT_("SSLCertStore::load_def_cl_cert: unable to open: %s\n",CL_KEYF);
         fclose(fp_crt);
@@ -107,12 +114,15 @@ bool SSLCertStore::load_def_cl_cert() {
 
 bool SSLCertStore::load_def_sr_cert() {
     FILE *fp_crt = fopen(SR_CERTF, "r");
-    FILE *fp_key = fopen(SR_KEYF, "r");
+    FILE *fp_key = nullptr;
     
     if (!fp_crt) {
         FAT_("SSLCertStore::load_def_sr_cert: unable to open: %s\n",SR_CERTF);
         return false;
     }
+    
+    fp_key = fopen(SR_KEYF, "r");
+    
     if (!fp_key) {
         FAT_("SSLCertStore::load_def_sr_cert: unable to open: %s\n",SR_KEYF);
         fclose(fp_crt);

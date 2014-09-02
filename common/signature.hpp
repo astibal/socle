@@ -90,6 +90,7 @@ class baseMatch {
 protected:
     std::string expr_;
 public:
+    virtual ~baseMatch() {}
     virtual range match(const char* str, unsigned int max_len = 0) { return NULLRANGE; };
     virtual range match(buffer& b) {
         return match((const char*)b.data(),b.size());
@@ -101,7 +102,8 @@ public:
 class simpleMatch : public baseMatch {
     range last_result_;
     std::string last_query_;
-public:    
+public:   
+    virtual ~simpleMatch() {}
     simpleMatch(const char* e) : last_result_(NULLRANGE) { expr() = e; }
     simpleMatch(std::string& e) : last_result_(NULLRANGE) { expr() = e; }
     
@@ -189,6 +191,16 @@ class flowMatch {
     std::vector<std::pair<SourceType,baseMatch*>>  signature_;                // series of L/R/X matches to be satisfied
 
 public:    
+    
+    ~flowMatch() {
+        for( typename std::vector<std::pair<SourceType,baseMatch*>>::iterator i = signature_.begin(); i != signature_.end(); i++ ) {
+            auto match = (*i).second;
+            
+            DEB_("flowmatch::destructor: deleting signature %p",match);
+//             delete match;
+        }
+    }
+    
     void add(SourceType s, baseMatch* m) { 
             signature_.push_back(std::pair<SourceType,baseMatch*>(s,m));             
     };
