@@ -298,7 +298,7 @@ public:
         auto e = std::regex(expr);
         auto r = std::regex_search ( str , m, e );
         
-        DIA_("regexMatch::search_function: %s, %d matches.", r,m.size());
+        DIA_("regexMatch::search_function: matches %d times.", m.size());
         
         for (unsigned i=0; i<m.size(); ++i) {
             // we need just single(first) result 

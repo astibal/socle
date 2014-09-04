@@ -32,6 +32,7 @@
 
 #include <logger.hpp>
 #include <buffer.hpp>
+#include <display.hpp>
 
 #define HOSTCX_BUFFSIZE 2048
 
@@ -344,12 +345,14 @@ public:
 	
     // return human readable details of this object
 	std::string hr();
+    std::string full_name(unsigned char);
 };
 
 #include <basecom.hpp>
 typedef baseHostCX<TCPCom> tcpHostCX;
 #include <sslcom.hpp>
 typedef baseHostCX<SSLCom> sslHostCX;
+
 
 #include <hostcx.impl>
 

@@ -320,5 +320,27 @@ std::string baseHostCX<Com>::hr() {
 	return r;
 }
 
+template <class Com>
+std::string baseHostCX<Com>::full_name(unsigned char side) {
+    const char* t = host().c_str();
+    const char* t_p = port().c_str();
+    const char* p = "";
+    const char*  p_p = "";
+
+    if (Com::peer() != nullptr) {
+        p =  ((baseHostCX<Com>*)this->peer())->host().c_str();
+        p_p =  ((baseHostCX<Com>*)this->peer())->port().c_str();
+    } else {
+        return string_format("%s:%s",t,t_p);
+    }
+
+    if ( (side == 'l') || ( side == 'L') ) {
+        return string_format("%s:%s to %s:%s",t,t_p,p,p_p);
+    } 
+
+    //else
+    return string_format("%s:%s to %s:%s",p,p_p,t,t_p);
+
+}
 
 #endif //__HOSTCX_CPP__
