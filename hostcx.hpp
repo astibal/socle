@@ -158,10 +158,10 @@ public:
     inline std::string& log() { return Com::log_buffer_; };    
 public:
 	/* meters */
-	int meter_read_count;
-	int meter_write_count;
-	int meter_read_bytes;
-	int meter_write_bytes;
+	unsigned int meter_read_count;
+	unsigned int meter_write_count;
+	unsigned int meter_read_bytes;
+	unsigned int meter_write_bytes;
 	
 public:
 	
@@ -311,6 +311,7 @@ public:
 	inline buffer* writebuf() { return &writebuf_; } 
 	
 	inline void send(buffer& b) { writebuf_.append(b); }
+	inline int  peek(buffer& b) { int r = Com::peek(this->socket(),b.data(),b.capacity(),0); if (r > 0) { b.size(r); } return r; }
 	
 	inline ssize_t next_read_limit() { return next_read_limit_; }
 	inline void next_read_limit(ssize_t s) { next_read_limit_ = s; }

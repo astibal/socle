@@ -89,7 +89,15 @@ std::string vrangetos(vector_range r) {
 class baseMatch {
 protected:
     std::string expr_;
+    baseMatch(const char* e): expr_(e) {};
+    baseMatch(std::string& e): expr_(e) {};
+    baseMatch(const char* e, unsigned int o, unsigned int b) : expr_(e), match_limits_offset(o), match_limits_bytes(b) { expr() = e; }
+    baseMatch(std::string& e, unsigned int o, unsigned int b) : expr_(e), match_limits_offset(o), match_limits_bytes(b) { expr() = e; }  
 public:
+    // directly accessible match constrains
+    unsigned int match_limits_offset = 0;
+    unsigned int match_limits_bytes = 0;
+    
     virtual ~baseMatch() {}
     virtual range match(const char* str, unsigned int max_len = 0) { return NULLRANGE; };
     virtual range match(buffer& b) {
@@ -104,9 +112,10 @@ class simpleMatch : public baseMatch {
     std::string last_query_;
 public:   
     virtual ~simpleMatch() {}
-    simpleMatch(const char* e) : last_result_(NULLRANGE) { expr() = e; }
-    simpleMatch(std::string& e) : last_result_(NULLRANGE) { expr() = e; }
-    
+    simpleMatch(const char* e) : baseMatch(e), last_result_(NULLRANGE) { }
+    simpleMatch(std::string& e) : baseMatch(e), last_result_(NULLRANGE) { }
+    simpleMatch(const char* e, unsigned int o, unsigned int b) : baseMatch(e,o,b),  last_result_(NULLRANGE) {}
+    simpleMatch(std::string& e, unsigned int o, unsigned int b) : baseMatch(e,o,b),  last_result_(NULLRANGE) {}
     
     virtual range match(const char* str, unsigned int max_len = 0);
     virtual range search_function(std::string &expr, std::string &str) { 
@@ -121,73 +130,35 @@ public:
     
     virtual range operator() () { return last_result_; }
     virtual range operator() (const char* str, unsigned int max_len = 0) { return match(str,max_len); };
-    
-    virtual range next(int max_len = 0) {
-        
-        if (last_result_ == NULLRANGE) {
-            return NULLRANGE;
-        }
-        
-        int scope = last_query_.size() - last_result_.second;
-        if(max_len != 0) {
-            scope = max_len;
-        }
-        int from = last_result_.second+1;
-        
-        //DIAS_("Looking in " + last_query_ + "' for '"  + expr_  + "' from " + std::to_string(from) + " size " + std::to_string(scope) + "\n");
-        
-        std::string tmp = last_query_.substr(from,scope);
-//         int pos = tmp.find(expr_.c_str());
-
-        range loc = search_function(expr(),tmp);
-        
-        //std::cout << "Found at " << pos << "\n";
-        
-        if(loc != NULLRANGE) {
-            int pos = loc.first;
-            int len = loc.second;
-            
-            last_result_ = range(from+pos,from+pos+len-1);
-        } else {
-            last_result_ = NULLRANGE;
-        }
-        
-        return last_result_;
-    };
 };
 
-range simpleMatch::match(const char* str, unsigned int max_len) { 
+range simpleMatch::match(const char* str, unsigned int len) { 
     
-    last_query_ = "";
-    last_result_ = NULLRANGE;
+    range result;
     
-    if(max_len == 0) {
-        last_query_.append(str);
-    } else {
-        last_query_.append(str,max_len); 
-    }
+    auto s = std::string(str,len);
+    EXT_("simpleMatch::match: '%s', len='%d' ",hex_dump((unsigned char*)s.c_str(),len).c_str(),len);
     
-    range loc = search_function(expr(),last_query_);
+    range loc = search_function(expr(),s);
     
 
     if(loc == NULLRANGE) {
         DEBS_("simpleMatch::match: <0,-1>");
-        last_result_ = NULLRANGE;
+        result = NULLRANGE;
         
     } else {
         int pos = loc.first;
         int len = loc.second;
         
         DEB_("simpleMatch::match: <%d,%d>",pos,len);
-        last_result_ = range(pos,pos+len-1);
+        result = range(pos,pos+len-1);
     }
     
-    return last_result_;
+    return result;
 };
 
 template <class SourceType>
 class flowMatch {
-    unsigned int level;                                                        // add layer of dependency
     std::vector<std::pair<SourceType,baseMatch*>>  signature_;                // series of L/R/X matches to be satisfied
 
 public:    
@@ -205,82 +176,129 @@ public:
             signature_.push_back(std::pair<SourceType,baseMatch*>(s,m));             
     };
     
-    virtual std::vector<range> match(Flow<SourceType>* f) {
+    
+    virtual vector_range match(Flow<SourceType>* f) {
+        vector_range v;
+        unsigned int p;
         
-        std::vector<range> ret;
-        ret.push_back(NULLRANGE);   // prepare for only partial match
+        bool b = match(f,v,p);
+        if(b) {
+            return v;
+        }
         
-        int flow_match_skipped = 0;
+        vector_range ff; 
+        ff.push_back(NULLRANGE);
+        return ff;
+    }
+    
+    // state-aware match function - state is hold in 
+    virtual bool match(Flow<SourceType>* f, vector_range& ret, unsigned int& sig_pos) {
         
-        int signature_last_match = -1;
-        unsigned int cur_flow = 0;
         
-        for( ; cur_flow < f->flow().size(); cur_flow++) {
+        int flow_step = 0;
+        
+        // sanititze step if we have some result aready.  Step always starts at LAST already examined
+        // flow, NOT NEXT. We need to check if there are new data in the last flow.
+        if (ret.size() > 0) {
+            flow_step = ret.size() -1;
+        }
+        
+        unsigned int cur_flow = flow_step;
+        
+
+        DEB_("flowMatch::match: search flow from #%d/%d: %s :sig pos = %d/%d",flow_step,f->flow().size(),vrangetos(ret).c_str(),sig_pos,signature_.size());
+        
+        bool first_iter = true;
+        SourceType last_src;
+        for( ; cur_flow < f->flow().size() && sig_pos < signature_.size(); cur_flow++) {
             auto ff = f->flow().at(cur_flow);
             
             SourceType ff_src = ff.first;
             buffer*    ff_buf = ff.second; 
-            
-            unsigned int sig_test = signature_last_match + 1;
-            
-            if(sig_test >= signature_.size()) {
-                // we hit the end of  the signature!
-                break;
+
+            // init unknown type of source
+            if(first_iter) {
+                first_iter = false;
+                last_src = ff_src;
             }
-
-          
+            
+            bool direction_change = false;
+            if(last_src != ff_src) {
+                direction_change = true;
+                last_src = ff_src;
+            }
+         
             // FIXME: check size and boundaries
-            SourceType   sig_src = signature_.at(sig_test).first;
-            baseMatch* sig_match = signature_.at(sig_test).second;
-
-            DEB_("flowMatch::match: flow %d/%d",cur_flow,f->flow().size());
-            DEB_("flowMatch::match: signature[%s]: %s", std::to_string(sig_src).c_str(), sig_match->expr().c_str());
-//             DIA_("flowMatch::match: pattern[%s]: %s",std::to_string(ff_src).c_str(), hex_dump(ff_buf->data(),ff_buf->size()).c_str());
-            auto xxx = ff_buf->size() < 16 ? ff_buf->size() : 16;
-            DEB_("flowMatch::match: pattern[%s]: %s",std::to_string(ff_src).c_str(), hex_dump(ff_buf->data(),xxx).c_str());            
+            SourceType   sig_src = signature_.at(sig_pos).first;
+            baseMatch* sig_match = signature_.at(sig_pos).second;
+            unsigned int sig_match_limit_offset = sig_match->match_limits_offset;
+            unsigned int sig_match_limit_bytes = sig_match->match_limits_bytes;
             
             if ( ff_src == sig_src ) {
-                range r = sig_match->match((const char*)ff_buf->data(),(unsigned int)ff_buf->size());
+                
+                // create view which will reflect signature limits
+                buffer ff_view = ff_buf->view();
+                
+                if(sig_match_limit_bytes > 0 || sig_match_limit_offset > 0) {
+                    ff_view = ff_buf->view(
+                            sig_match_limit_offset < ff_buf->size() ? sig_match_limit_offset : ff_buf->size() - 1,
+                            sig_match_limit_bytes + sig_match_limit_offset < ff_buf->size() ? sig_match_limit_bytes : ff_buf->size()
+                                        );
+                }
+                // DEBUGS
+                DEB_("flowMatch::match: flow %d/%d",cur_flow,f->flow().size());
+                DEB_("flowMatch::match: signature[%s]: %s", std::to_string(sig_src).c_str(), sig_match->expr().c_str());
+    //             DIA_("flowMatch::match: pattern[%s]: %s",std::to_string(ff_src).c_str(), hex_dump(ff_view.data(),ff_view.size()).c_str());
+                auto xxx = ff_view.size() < 16 ? ff_view.size() : 16;
+//                 INF_("flowMatch::match: pattern[%s] view-size=%d: %s",std::to_string(ff_src).c_str(), ff_view.size(),hex_dump(ff_view.data(),ff_buf->size()).c_str());                     
+                DEB_("flowMatch::match: pattern[%s] view-size=%d",std::to_string(ff_src).c_str(), ff_view.size());                     
+                
+                
+                range r = sig_match->match((const char*)ff_view.data(),(unsigned int)ff_view.size());
                 DEB_("flowMatch::match: result: %s",rangetos(r).c_str());
                 
                 if( r != NULLRANGE) {
-                    // yes! we have a (at least partial) hit
-                    signature_last_match++;
-                    ret.push_back(r);
+
+                    if(cur_flow == (ret.size() - 1)) {
+                        // if previous result was NULLRANGE, remove
+                        ret.erase(ret.end());
+                    }
                     
-                    DEBS_("flowMatch::match: OK")
+                    ret.push_back(r);
+                    ++sig_pos;
+                    DEBS_("flowMatch::match: interim OK")
                 }
                 else {
-
-                    DEBS_("flowMatch::match: -")
-                    
-                    // no this is not a hit
-                    if(signature_last_match >= 0) {
-                        // if we already matched, increase skipped counter
-                        flow_match_skipped++;
-
-                        DEB_("flowMatch::match: matches: %d skip counter %d",signature_last_match,flow_match_skipped)
+                    // don't add another NULLRANGES if we are at last position which is NULLRANGE already
+                    if(cur_flow != (ret.size() - 1)) {
+                            ret.push_back(NULLRANGE);
                     }
+                    DEBS_("flowMatch::match: interim nok");
                 }
             }
             else {
                 DEBS_("flowMatch::match: different direction, skipping.");
-                DEBS_("flowMatch::match: different direction, skipping.");
-                // this flow entry is not for us
-                continue;
+                if(cur_flow != (ret.size() - 1)) {
+                        ret.push_back(NULLRANGE);
+                }
             }
         }
         
-        if( signature_last_match == (signed int)( signature_.size() - 1 ) ) {
+        if(sig_pos >= signature_.size()) {
             
-            DEBS_("flowMatch::match: fully matched!")            
+            DIAS_("flowMatch::match: fully matched!")            
             
-            ret.erase(ret.begin());
-            return ret;
+//             ret.erase(ret.begin());
+            return true;
         }
         
-        DEB_("flowMatch::matched only %d/%d",signature_last_match,signature_.size())        
-        return ret;
+        if(sig_pos > 0) {
+            DIA_("flowMatch::match: partial result %d/%d",sig_pos,signature_.size())        
+        } else {
+            DEBS_("flowMatch::match: nok");
+        }
+        
+        return false;
     }
 };
 
@@ -292,13 +310,16 @@ public:
     
     regexMatch(const char* e) : simpleMatch(e), expr_comp_(e) {}
     regexMatch(std::string& e) : simpleMatch(e), expr_comp_(e) {}
+    regexMatch(const char* e, unsigned int o, unsigned int b) : simpleMatch(e,o,b), expr_comp_(e) {}
+    regexMatch(std::string& e, unsigned int o, unsigned int b) : simpleMatch(e,o,b), expr_comp_(e) {}
+
     
+    // expr is ignored, regex is already compiled
     virtual range search_function(std::string &expr, std::string &str) { 
         std::smatch m;
-        auto e = std::regex(expr);
-        auto r = std::regex_search ( str , m, e );
+        std::regex_search ( str , m, expr_comp_ );
         
-        DIA_("regexMatch::search_function: matches %d times.", m.size());
+        DEB_("regexMatch::search_function: matches %d times.", m.size());
         
         for (unsigned i=0; i<m.size(); ++i) {
             // we need just single(first) result 
@@ -311,13 +332,26 @@ public:
 
 
 template <class matchType>
-class SignatureType : public matchType {
+class SignatureType {
 public:
+    matchType*  signature;
     std::string name;
     std::string category;
-    
-    unsigned int bytes_limit;
 };
 
 typedef SignatureType<flowMatch<unsigned char>> duplexSignature;
 typedef Flow<unsigned char> duplexFlow;
+typedef flowMatch<unsigned char> duplexFlowMatch;
+
+
+class duplexStateSignature : public duplexSignature {
+public:
+    vector_range ranges;
+    unsigned int sig_pos = 0;
+    
+    bool match(duplexFlow* f) {
+        return signature->match(f,ranges,sig_pos);
+    }
+    
+    vector_range& result() { return ranges; };
+};

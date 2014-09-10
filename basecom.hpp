@@ -81,6 +81,7 @@ public:
 	
     virtual int connect(const char* , const char* , bool = false) = 0;
     virtual int read(int __fd, void* __buf, size_t __n, int __flags) = 0;
+    virtual int peek(int __fd, void* __buf, size_t __n, int __flags) = 0;
 	virtual int write(int __fd, const void* __buf, size_t __n, int __flags) = 0;
 	virtual void close(int __fd) = 0;
 	virtual int bind(unsigned short __port) = 0;
@@ -319,6 +320,7 @@ public:
     virtual int accept ( int sockfd, sockaddr* addr, socklen_t* addrlen_ );
 	
     virtual int read(int __fd, void* __buf, size_t __n, int __flags) { return ::recv(__fd,__buf,__n,__flags); };
+    virtual int peek(int __fd, void* __buf, size_t __n, int __flags) { return read(__fd,__buf,__n, __flags | MSG_PEEK );};
 	virtual int write(int __fd, const void* __buf, size_t __n, int __flags)  { return ::send(__fd,__buf,__n,__flags); };
 	virtual void close(int __fd) { ::close(__fd); };
 	

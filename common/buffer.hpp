@@ -4,7 +4,7 @@
 //
 //  buffer.hpp
 //
-//  Copyright (c) 2011 Boris Kolpackov
+//  Copyright (c) 2011 Boris Kolpackov, (c) 2014 Ales Stibal
 //
 //  Distributed under the Boost Software License, Version 1.0. (See
 //  accompanying file LICENSE_1_0.txt or copy at
@@ -430,7 +430,8 @@ inline buffer buffer::view(unsigned int pos, buffer::size_type len) {
 	if (pos+len <= size_) {
 		return buffer(data_	+pos,len,len,false);
 	} else {
-		throw std::out_of_range ("index out of range: too few bytes to create a view");		
+// 		throw std::out_of_range ("index out of range: too few bytes to create a view");		
+        return buffer(data_+pos,size_- pos,size_ - pos,false);
 	}
 }
 

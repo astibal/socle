@@ -26,7 +26,10 @@
 #include <hostcx.hpp>
 #include <signature.hpp>
 
-typedef typename std::vector<std::pair<duplexSignature,bool>> sensorType;
+typedef typename std::vector<std::pair<duplexStateSignature,bool>> sensorType;
+
+
+
 
 template <class Com>
 class AppHostCX: public baseHostCX<Com> {
@@ -35,13 +38,24 @@ public:
     AppHostCX(const char* h, const char* p);
     
     static const int DETECT_MAX_BYTES = 20000;
+
+    static const int MODE_NONE = 0;
+    static const int MODE_PRE = 1;
+    static const int MODE_POST = 2;
+    int mode_ = MODE_POST;
+    int mode() { return mode_; }
+    void mode(int m) { mode_ = m; }
+    
+    sensorType& starttls_sensor() { return starttls_sensor_; };
     sensorType& sensor() { return sensor_; };
     
 protected:
+    unsigned int peek_counter = 0;
     duplexFlow appflow_;
     
     //FIXME: select more appropriate storage than vector. Pair will contain some "result-struct" instad of bool
     sensorType sensor_;
+    sensorType starttls_sensor_;
     
     inline duplexFlow& flow() { return this->appflow_; }
     inline duplexFlow* flowptr() { return &this->appflow_; }
@@ -49,9 +63,14 @@ protected:
     // detection mode is done in "post" phase
     virtual void post_read();
     virtual void post_write();
-    bool detect();
+    
+    virtual void pre_read();
+    virtual void pre_write();
+    
+    bool detect(sensorType&);
     
     virtual void on_detect(duplexSignature&, vector_range&);
+    virtual void on_starttls() {};
 
 };
 
@@ -64,27 +83,33 @@ AppHostCX<Com>::AppHostCX(unsigned int s) :
 baseHostCX<Com>::baseHostCX(s) {}
 
 template <class Com>
-bool AppHostCX<Com>::detect() {
-    
-    for (sensorType::iterator i = sensor().begin(); i != sensor().end(); i++ ) {
-    
-        std::pair<duplexSignature,bool>& sig = (*i);
+bool AppHostCX<Com>::detect(sensorType& cur_sensor) {
 
-        duplexSignature& sig_sig = std::get<0>(sig);
+    for (sensorType::iterator i = cur_sensor.begin(); i != cur_sensor.end(); ++i ) {
+    
+        std::pair<duplexStateSignature,bool>& sig = (*i);
+
+        duplexStateSignature& sig_sig = std::get<0>(sig);
         bool& sig_res = std::get<1>(sig);
         
         if (sig_res == false) {
-            vector_range r = sig_sig.match(this->flowptr());
+            DEB_("Signature %s", sig_sig.name.c_str());
+            bool r = sig_sig.match(this->flowptr());
             
-            if (r.at(0) != NULLRANGE) {
-                std::get<1>(sig) = true;
-                on_detect(sig_sig,r);
+            vector_range& ret = sig_sig.result();
+            
+            if (r) {
+                sig_res = true;
+                on_detect(sig_sig,ret);
                 
+                DIA_("Signature matched: %s", vrangetos(ret).c_str());
                 return true;
                 
             } else {
-                DEB_("Signature not matched: %s", vrangetos(r).c_str());
+                DEB_("Signature didn't match: %s", vrangetos(ret).c_str());
             } 
+        } else {
+            DEB_("Signature %s already matched", sig_sig.name.c_str());
         }
     }
     
@@ -96,23 +121,114 @@ bool AppHostCX<Com>::detect() {
 
 template <class Com>
 void AppHostCX<Com>::post_read() {
-    if(this->meter_read_bytes <= DETECT_MAX_BYTES) {
-        auto b = this->to_read();
-        this->flow().append('r',b);
+    
+    if ( mode() == MODE_POST) {
+        if(this->meter_read_bytes <= DETECT_MAX_BYTES) {
+            auto b = this->to_read();
+            this->flow().append('r',b);
+        }
+        
+        // we can't detect starttls in POST mode
+        detect(sensor());
     }
     
-    detect();
+    if (mode() == MODE_PRE) {
+        // check if we need to upgrade this CX
+    }
 }
 
 template <class Com>
 void AppHostCX<Com>::post_write() {
-    if(this->meter_write_bytes <= DETECT_MAX_BYTES) {
-        auto b = this->writebuf();
-        this->flow().append('w',b);
-    }
     
-    detect();
+    if ( mode() == MODE_POST ) {
+        
+        if(this->meter_write_bytes <= DETECT_MAX_BYTES) {
+            auto b = this->writebuf();
+            this->flow().append('w',b);
+        }
+       
+        // we can't detect starttls in POST mode
+        detect(sensor());
+    }
 }
+
+template <class Com>
+void AppHostCX<Com>::pre_read() {
+    
+    bool updated = false;
+    
+    if ( mode() == MODE_PRE) {
+        if(this->meter_read_bytes <= DETECT_MAX_BYTES && peek_counter <= this->meter_read_bytes  ) {
+            
+            if(peek_counter < this->meter_read_bytes) {
+
+                WAR_("More data read than seen by peek: %d vs. %d",this->meter_read_bytes, peek_counter);
+                unsigned int delta = this->meter_read_bytes - peek_counter;
+                unsigned int w = this->readbuf()->size() - delta + 1;
+                DEB_("Creating readbuf view at <%d,%d>",w,delta);
+                buffer v = this->readbuf()->view(w,delta);
+                DEB_(" = Readbuf: %d bytes (allocated buffer size %d): %s",this->readbuf()->size(),this->readbuf()->capacity(),hex_dump(this->readbuf()->data(),this->readbuf()->size()).c_str());
+                DEB_(" = view of %d bytes (allocated buffer size %d): %s",v.size(),v.capacity(),hex_dump(v.data(),v.size()).c_str());
+                
+                
+                if(v.size() > 0) {
+                    this->flow().append('r',v);
+                    DIA_("detection pre-mode: salvaged %d bytes from readbuf",v.size(0));
+                    DEB_("Appended from readbuf to flow %d bytes (allocated buffer size %d): %s",v.size(),v.capacity(),hex_dump(v.data(),v.size()).c_str());
+                    
+                    updated = true;
+                    
+                } else {
+                    DEB_("FIXME: Attempt to append readbuf to flow %d bytes (allocated buffer size %d): %s",v.size(),v.capacity(),hex_dump(v.data(),v.size()).c_str());
+                }
+                
+                
+            }
+
+            buffer b(1500);
+            b.size(0);
+            int l = this->peek(b);
+            
+            DUM_("AppHostCX::pre_read: peek returns %d bytes",l);
+            
+            if(l > 0) {
+                peek_counter += l;
+                this->flow().append('r',b);
+                DEB_("Appended to flow %d bytes (allocated buffer size %d): %s",b.size(),b.capacity(),hex_dump(b.data(),b.size()).c_str());
+                this->next_read_limit(l); 
+                
+                updated = true;
+            }
+        }
+        
+        if(updated == true) {
+            if (detect(starttls_sensor())) {
+                on_starttls();
+            }
+            detect(sensor());
+        }
+    }
+}
+
+template <class Com>
+void AppHostCX<Com>::pre_write() {
+    
+    if ( mode() == MODE_PRE ) {
+        auto b = this->writebuf();
+        
+        if(this->meter_write_bytes <= DETECT_MAX_BYTES && b->size() > 0) {
+            
+            this->flow().append('w',b);
+            DEB_("AppHostCX::pre_write: write buffer size %d",b->size());
+        
+            if(detect(starttls_sensor())) {
+                on_starttls();
+            }
+            detect(sensor());
+        }
+    }
+}
+
 
 template <class Com>
 void AppHostCX<Com>::on_detect(duplexSignature& sig_sig, vector_range& r) {}

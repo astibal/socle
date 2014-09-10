@@ -392,6 +392,18 @@ int SSLCom::read ( int __fd, void* __buf, size_t __n, int __flags )  {
 		if (c <= 0) return c;
 	}
 	
+	// if we are peeking, just do it and return, no magic done is here
+	if ((__flags & MSG_PEEK) != 0) {
+        int peek_r = SSL_peek(sslcom_ssl,__buf,__n);
+        if(peek_r > 0) {
+            DEB_("SSLCom::read[%d]: peek returned %d",__fd, peek_r);
+        } else {
+            EXT_("SSLCom::read[%d]: peek returned  %d",__fd, peek_r);
+        } 
+        
+        return peek_r;
+    }
+	
     do {
 		
 		if(total_r >= (int)__n) {
