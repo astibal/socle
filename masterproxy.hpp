@@ -22,21 +22,20 @@
 
 #include <baseproxy.hpp>
 
-
-template <class Com>
-class MasterProxy : public baseProxy<Com> {
+class MasterProxy : public baseProxy {
 
 protected:
-	std::vector<baseProxy<Com>*> proxies_;
+	std::vector<baseProxy*> proxies_;
 public:
-	std::vector<baseProxy<Com>*>& proxies() { return proxies_; };
+    
+    MasterProxy(baseCom* c): baseProxy(c) {}
+    
+    std::vector<baseProxy*>& proxies() { return proxies_; };
 	
 	virtual int run_once(void);	
 	virtual void shutdown();
 	
 	std::string hr();
 };
-
-#include <masterproxy.impl>
 
 #endif // MASTERPROXY_H

@@ -55,35 +55,34 @@ public:
 };
 
 
-template <class Com>
-class baseProxy : public Com
+class baseProxy
 {
 protected:
 	
 	bool dead_;
 	bool new_raw_;
-	baseProxy<Com>* parent_;
+	baseProxy* parent_;
     
 	bool error_on_read;
 	bool error_on_write;
 	
-	std::vector<baseHostCX<Com>*> left_sockets;
-    std::vector<baseHostCX<Com>*> right_sockets;
+	std::vector<baseHostCX*> left_sockets;
+    std::vector<baseHostCX*> right_sockets;
     
-	std::vector<baseHostCX<Com>*> left_bind_sockets;
-    std::vector<baseHostCX<Com>*> right_bind_sockets;
+	std::vector<baseHostCX*> left_bind_sockets;
+    std::vector<baseHostCX*> right_bind_sockets;
 	
 	// permantenty maintained connections (if the socket is closed, it will be reconnected) PC => Permanent Connection
-	std::vector<baseHostCX<Com>*> left_pc_cx;
-	std::vector<baseHostCX<Com>*> right_pc_cx;
+	std::vector<baseHostCX*> left_pc_cx;
+	std::vector<baseHostCX*> right_pc_cx;
 
     // NEW feature: don't accept those sockets fully, just on "carrier" level to avoid e.g. SSL handshake prior target SSL socket 
     // is really opened and SSL is fully established
     //     >>> enabled when HostCX is *paused* in the time being accepted <<<
     //  -- this is important for some features like SSL MiTM, and it also preserves resources 
     //        => it's useful for session *original* direction side (usually and by convention it's the left side)
-    std::vector<baseHostCX<Com>*> left_delayed_accepts;
-    std::vector<baseHostCX<Com>*> right_delayed_accepts;   
+    std::vector<baseHostCX*> left_delayed_accepts;
+    std::vector<baseHostCX*> right_delayed_accepts;   
     
 	timeval tv;
 	
@@ -115,42 +114,43 @@ public:
 	static const unsigned int DIE_LEFT_EMPTY = 2;
 	static const unsigned int DIE_RIGHT_EMPTY = 1;
 	
-	
-    baseProxy();
-    baseProxy(int left_socket);
+	baseCom* com_;
+    baseCom* com() { return com_; };
+    baseProxy(baseCom* c);
+    baseProxy(baseCom* c, int left_socket);
 	virtual ~baseProxy();
 	
-	void parent(baseProxy<Com> *p) { parent_ = p; }
-	baseProxy<Com>* parent(void) { return parent_; }
+	void parent(baseProxy *p) { parent_ = p; }
+	baseProxy* parent(void) { return parent_; }
     
 	// add client sockets (left and right ones)
-    void ladd(baseHostCX<Com>*);
-    void radd(baseHostCX<Com>*);
+    void ladd(baseHostCX*);
+    void radd(baseHostCX*);
 	
 	// add listen(bind) sockets (generating left and right sockets)
-    void lbadd(baseHostCX<Com>*);
-	void rbadd(baseHostCX<Com>*);
+    void lbadd(baseHostCX*);
+	void rbadd(baseHostCX*);
 	
 	// add context for pormanent connections
-	void lpcadd(baseHostCX<Com>*);
-	void rpcadd(baseHostCX<Com>*);
+	void lpcadd(baseHostCX*);
+	void rpcadd(baseHostCX*);
 
     // add client sockets (left and right ones) to delayed accept list
-    void ldaadd(baseHostCX<Com>*);
-    void rdaadd(baseHostCX<Com>*);    
+    void ldaadd(baseHostCX*);
+    void rdaadd(baseHostCX*);    
     
 	int lsize();
 	int rsize();
 	
  
-	std::vector<baseHostCX<Com>*>& ls() { return left_sockets; }
-	std::vector<baseHostCX<Com>*>& rs() { return right_sockets; }
-	std::vector<baseHostCX<Com>*>& lbs() { return left_bind_sockets; }
-	std::vector<baseHostCX<Com>*>& rbs() { return right_bind_sockets; }
-	std::vector<baseHostCX<Com>*>& lpc() { return left_pc_cx; }
-	std::vector<baseHostCX<Com>*>& rpc() { return right_pc_cx; }
-    std::vector<baseHostCX<Com>*>& lda() { return left_delayed_accepts; }
-    std::vector<baseHostCX<Com>*>& rda() { return right_delayed_accepts; }
+	std::vector<baseHostCX*>& ls() { return left_sockets; }
+	std::vector<baseHostCX*>& rs() { return right_sockets; }
+	std::vector<baseHostCX*>& lbs() { return left_bind_sockets; }
+	std::vector<baseHostCX*>& rbs() { return right_bind_sockets; }
+	std::vector<baseHostCX*>& lpc() { return left_pc_cx; }
+	std::vector<baseHostCX*>& rpc() { return right_pc_cx; }
+    std::vector<baseHostCX*>& lda() { return left_delayed_accepts; }
+    std::vector<baseHostCX*>& rda() { return right_delayed_accepts; }
 
 
 	inline bool dead() const { return dead_; }
@@ -187,23 +187,23 @@ public:
 	virtual int run_once(void);
 	
 	// overide to create custom context objects
-	virtual baseHostCX<Com>* new_cx(int);
-	virtual baseHostCX<Com>* new_cx(const char*, const char*);
+	virtual baseHostCX* new_cx(int);
+	virtual baseHostCX* new_cx(const char*, const char*);
 	
 	// on_* event functions
-    virtual void on_left_bytes(baseHostCX<Com>*);
-    virtual void on_right_bytes(baseHostCX<Com>*);
-	virtual void on_left_error(baseHostCX<Com>*);
-	virtual void on_right_error(baseHostCX<Com>*);
+    virtual void on_left_bytes(baseHostCX*);
+    virtual void on_right_bytes(baseHostCX*);
+	virtual void on_left_error(baseHostCX*);
+	virtual void on_right_error(baseHostCX*);
 	
-	virtual void on_left_pc_error(baseHostCX<Com>*);
-	virtual void on_right_pc_error(baseHostCX<Com>*);
-	virtual void on_left_pc_restore(baseHostCX<Com>*);
-	virtual void on_right_pc_restore(baseHostCX<Com>*);
+	virtual void on_left_pc_error(baseHostCX*);
+	virtual void on_right_pc_error(baseHostCX*);
+	virtual void on_left_pc_restore(baseHostCX*);
+	virtual void on_right_pc_restore(baseHostCX*);
 	
 	// on_*_new events are run only on client sockets!
-	virtual void on_left_new(baseHostCX<Com>*);
-	virtual void on_right_new(baseHostCX<Com>*);
+	virtual void on_left_new(baseHostCX*);
+	virtual void on_right_new(baseHostCX*);
 
 	virtual void on_left_new_raw(int sock) {};
 	virtual void on_right_new_raw(int sock) {};
@@ -223,11 +223,9 @@ protected:
 	time_t clock_;
 	
 	void set_clock();
-	bool run_timer(baseHostCX<Com>*);
+	bool run_timer(baseHostCX*);
 	void reset_timer();
 	
 };
-
-#include <baseproxy.impl>
 
 #endif

@@ -23,14 +23,14 @@
 #include "baseproxy.hpp"
 #include "logger.hpp"
 
-template <class Com>
-int MasterProxy<Com>::run_once(void) {
+
+int MasterProxy::run_once(void) {
 	
-    int r = baseProxy<Com>::run_once();
+    int r = baseProxy::run_once();
 	
-	for(typename std::vector<baseProxy<Com>*>::iterator ii = proxies().begin(); ii != proxies().end(); ii++) {
+	for(typename std::vector<baseProxy*>::iterator ii = proxies().begin(); ii != proxies().end(); ii++) {
 		
-		baseProxy<Com> *p = (*ii); 
+		baseProxy *p = (*ii); 
 		
 		if (p->dead()) { 
 			p->shutdown();
@@ -39,9 +39,9 @@ int MasterProxy<Com>::run_once(void) {
 		}
 	}
 	
-	for(typename std::vector<baseProxy<Com>*>::iterator ii = proxies().begin(); ii != proxies().end(); ii++) {
+	for(typename std::vector<baseProxy*>::iterator ii = proxies().begin(); ii != proxies().end(); ii++) {
 		
-		baseProxy<Com> *p = (*ii); 
+		baseProxy *p = (*ii); 
 		
 		if (p->dead()) { 
 			delete(p);
@@ -54,14 +54,14 @@ int MasterProxy<Com>::run_once(void) {
 	return r;
 }
 
-template <class Com>
-void MasterProxy<Com>::shutdown() {
+
+void MasterProxy::shutdown() {
 	
 	INFS_("MasterProxy::shutdown");
-	baseProxy<Com>::shutdown();
+	baseProxy::shutdown();
 	
 	int i = 0;
-	for(typename std::vector<baseProxy<Com>*>::iterator ii = proxies().begin(); ii != proxies().end(); ii++) {
+	for(typename std::vector<baseProxy*>::iterator ii = proxies().begin(); ii != proxies().end(); ii++) {
 		INF_("MasterProxy::shutdown: slave[%d]",i);
 		(*ii)->shutdown();
 		i++;
@@ -70,21 +70,21 @@ void MasterProxy<Com>::shutdown() {
 	proxies().clear();
 }
 
-template <class Com>
-std::string MasterProxy<Com>::hr() {
+
+std::string MasterProxy::hr() {
 
 	std::string ret;
 	
 	ret += "Masterproxy:\n";
-	ret += baseProxy<Com>::hr();
+	ret += baseProxy::hr();
 
 	if(proxies().size() > 0) {
 		ret += "Slaves:\n";
 		
 		int i = 0;
-		for(typename std::vector<baseProxy<Com>*>::iterator ii = proxies().begin(); ii != proxies().end(); ii++,i++) {
+		for(typename std::vector<baseProxy*>::iterator ii = proxies().begin(); ii != proxies().end(); ii++,i++) {
 			
-			baseProxy<Com> *p = (*ii); 
+			baseProxy *p = (*ii); 
 			
 			ret+= "slave-" + std::to_string(i) + ":\n";
 			ret+= p->hr();

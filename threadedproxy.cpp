@@ -22,14 +22,14 @@
 #include <threadedproxy.hpp>
 #include <logger.hpp>
 
-template<class Com, class Worker, class SubWorker>
-ThreadedAcceptor<Com,Worker,SubWorker>::ThreadedAcceptor():
+template<class Worker, class SubWorker>
+ThreadedAcceptor<Worker,SubWorker>::ThreadedAcceptor(baseCom* c): baseProxy(c),
 threads_(NULL) {
-	baseProxy<Com>::new_raw(true);
+	baseProxy::new_raw(true);
 }
 
-template<class Com, class Worker, class SubWorker>
-ThreadedAcceptor<Com,Worker,SubWorker>::~ThreadedAcceptor() { 
+template<class Worker, class SubWorker>
+ThreadedAcceptor<Worker,SubWorker>::~ThreadedAcceptor() { 
 	if(threads_)  {
 
 		for(unsigned int i = 0; i <= nthreads; i++) {
@@ -48,22 +48,22 @@ ThreadedAcceptor<Com,Worker,SubWorker>::~ThreadedAcceptor() {
 };
 
 
-template<class Com, class Worker, class SubWorker>
-void ThreadedAcceptor<Com,Worker,SubWorker>::on_left_new_raw(int s) {
+template<class Worker, class SubWorker>
+void ThreadedAcceptor<Worker,SubWorker>::on_left_new_raw(int s) {
 	DIA_("ThreadedAcceptor::on_left_new: connection [%d] pushed to the queue",s);
 	push(s);
 }
 
-template<class Com, class Worker, class SubWorker>
-void ThreadedAcceptor<Com,Worker,SubWorker>::on_right_new_raw(int s) {
+template<class Worker, class SubWorker>
+void ThreadedAcceptor<Worker,SubWorker>::on_right_new_raw(int s) {
 	DIA_("ThreadedAcceptor::on_right_new: connection [%d] pushed to the queue",s);
 	push(s);
 
 }
 
 
-template<class Com, class Worker, class SubWorker>
-int ThreadedAcceptor<Com,Worker,SubWorker>::create_workers(void) {	
+template<class Worker, class SubWorker>
+int ThreadedAcceptor<Worker,SubWorker>::create_workers(void) {	
 	nthreads = std::thread::hardware_concurrency();
 	
 	INF_("Detected %d cores to use.", nthreads);
@@ -72,9 +72,9 @@ int ThreadedAcceptor<Com,Worker,SubWorker>::create_workers(void) {
 	workers_ = new Worker*[nthreads];
 	
 	for( unsigned int i = 0; i < nthreads; i++) {
-		Worker *w = new Worker();
-		w->nonlocal(this->nonlocal());
-		w->parent((baseProxy<Com>*)this);
+		Worker *w = new Worker(this->com()->replicate());
+		w->com()->nonlocal(this->com()->nonlocal());
+		w->parent((baseProxy*)this);
 		
 		DIA_("Created ThreadedWorkerProxy %x",w);
 		workers_[i] = w;
@@ -87,8 +87,8 @@ int ThreadedAcceptor<Com,Worker,SubWorker>::create_workers(void) {
 }
 
 
-template<class Com, class Worker, class SubWorker>
-int ThreadedAcceptor<Com,Worker,SubWorker>::run(void) {
+template<class Worker, class SubWorker>
+int ThreadedAcceptor<Worker,SubWorker>::run(void) {
 	
 	create_workers();
 	
@@ -99,22 +99,22 @@ int ThreadedAcceptor<Com,Worker,SubWorker>::run(void) {
 		threads_[i] = ptr;
 	}
 	
-	baseProxy<Com>::run();
+	baseProxy::run();
 	
 	return nthreads;
 }
 
 
-template<class Com, class Worker, class SubWorker>
-int ThreadedAcceptor<Com,Worker,SubWorker>::push(int s) { 
+template<class Worker, class SubWorker>
+int ThreadedAcceptor<Worker,SubWorker>::push(int s) { 
 	std::lock_guard<std::mutex> lck(sq_lock_);
 	sq_.push_front(s);
 	
 	return sq_.size();
 };
 
-template<class Com, class Worker, class SubWorker>
-int ThreadedAcceptor<Com,Worker,SubWorker>::pop() {
+template<class Worker, class SubWorker>
+int ThreadedAcceptor<Worker,SubWorker>::pop() {
 	std::lock_guard<std::mutex> lck(sq_lock_);
 	
 	if(sq_.size() == 0) {
@@ -129,10 +129,10 @@ int ThreadedAcceptor<Com,Worker,SubWorker>::pop() {
 
 
 
-template<class Com,class SubWorker>
-int ThreadedWorkerProxy<Com,SubWorker>::run_once() {
+template<class SubWorker>
+int ThreadedWorkerProxy<SubWorker>::run_once() {
 	
-	ThreadedAcceptor<Com,ThreadedWorkerProxy<Com,SubWorker>,SubWorker> *p = (ThreadedAcceptor<Com,ThreadedWorkerProxy<Com,SubWorker>,SubWorker> *)MasterProxy<Com>::parent();
+	ThreadedAcceptor<ThreadedWorkerProxy<SubWorker>,SubWorker> *p = (ThreadedAcceptor<ThreadedWorkerProxy<SubWorker>,SubWorker> *)MasterProxy::parent();
 	if(p == NULL) {
 		FATS_("PARENT is NULL");
 	}
@@ -150,11 +150,11 @@ int ThreadedWorkerProxy<Com,SubWorker>::run_once() {
 		if(!cx->paused()) {
             cx->accept_socket(s);
         }
-		cx->nonlocal(this->nonlocal());
-		cx->resolve_nonlocal_socket(s);
+		cx->com()->nonlocal(this->com()->nonlocal());
+		cx->com()->resolve_nonlocal_socket(s);
 		this->on_left_new(cx);
 
 	}
 	
-	return MasterProxy<Com>::run_once();
+	return MasterProxy::run_once();
 }

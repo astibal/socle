@@ -45,27 +45,43 @@ int baseCom::nonlocal_bind (unsigned short port) {
 	return r;
 }
 
+int baseCom::unblock(int s) {
+    int client_oldFlag = fcntl(s, F_GETFL, 0);
+
+    if (! (client_oldFlag & O_NONBLOCK)) {
+        if (fcntl(s, F_SETFL, client_oldFlag | O_NONBLOCK) < 0) {
+            ERR_("Error setting socket %d as non-blocking",s);
+            
+            return -1;
+        } else {
+            DEB_("Setting socket %d as non-blocking",s);
+        }
+    }
+    
+    return 0;
+}
+
+int baseCom::namesocket(int sockfd, std::string& addr, unsigned short port) {
+    sockaddr_in sockName;
+    
+    sockName.sin_family = AF_INET;
+    sockName.sin_port = htons(port);
+
+    inet_aton(addr.c_str(),&sockName.sin_addr);
+    
+    if (::bind(sockfd, (sockaddr *)&sockName, sizeof(sockName)) == 0) {
+        return 0;
+    }
+    
+    return errno;
+}
+
 
 void TCPCom::init() { 
 	
 	baseCom::init(); 
 };
 
-int TCPCom::unblock(int s) {
-	int client_oldFlag = fcntl(s, F_GETFL, 0);
-
-	if (! (client_oldFlag & O_NONBLOCK)) {
-		if (fcntl(s, F_SETFL, client_oldFlag | O_NONBLOCK) < 0) {
-			ERR_("Error setting socket %d as non-blocking",s);
-			
-			return -1;
-		} else {
-			DEB_("Setting socket %d as non-blocking",s);
-		}
-	}
-	
-	return 0;
-}
 	
 int TCPCom::connect(const char* host, const char* port, bool blocking) { 
 	struct addrinfo hints;
@@ -161,20 +177,6 @@ int TCPCom::bind(unsigned short port) {
 	return s;
 };	
 
-int TCPCom::namesocket(int sockfd, std::string& addr, unsigned short port) {
-    sockaddr_in sockName;
-    
-    sockName.sin_family = AF_INET;
-    sockName.sin_port = htons(port);
-
-    inet_aton(addr.c_str(),&sockName.sin_addr);
-    
-    if (::bind(sockfd, (sockaddr *)&sockName, sizeof(sockName)) == 0) {
-        return 0;
-    }
-    
-    return errno;
-}
 
 int TCPCom::accept ( int sockfd, sockaddr* addr, socklen_t* addrlen_ ) {
 	return ::accept(sockfd,addr,addrlen_);

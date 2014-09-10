@@ -29,13 +29,10 @@
 typedef typename std::vector<std::pair<duplexStateSignature,bool>> sensorType;
 
 
-
-
-template <class Com>
-class AppHostCX: public baseHostCX<Com> {
+class AppHostCX: public baseHostCX {
 public:
-    AppHostCX(unsigned int s);
-    AppHostCX(const char* h, const char* p);
+    AppHostCX(baseCom* c, unsigned int s);
+    AppHostCX(baseCom* c, const char* h, const char* p);
     
     static const int DETECT_MAX_BYTES = 20000;
 
@@ -74,16 +71,11 @@ protected:
 
 };
 
-template <class Com>
-AppHostCX<Com>::AppHostCX(const char* h, const char* p) :
-baseHostCX<Com>::baseHostCX(h,p) {}
+AppHostCX::AppHostCX(baseCom* c, const char* h, const char* p) :baseHostCX(c,h,p) {}
+AppHostCX::AppHostCX(baseCom* c, unsigned int s) :baseHostCX(c,s) {}
 
-template <class Com>
-AppHostCX<Com>::AppHostCX(unsigned int s) :
-baseHostCX<Com>::baseHostCX(s) {}
 
-template <class Com>
-bool AppHostCX<Com>::detect(sensorType& cur_sensor) {
+bool AppHostCX::detect(sensorType& cur_sensor) {
 
     for (sensorType::iterator i = cur_sensor.begin(); i != cur_sensor.end(); ++i ) {
     
@@ -118,9 +110,7 @@ bool AppHostCX<Com>::detect(sensorType& cur_sensor) {
 }
 
 
-
-template <class Com>
-void AppHostCX<Com>::post_read() {
+void AppHostCX::post_read() {
     
     if ( mode() == MODE_POST) {
         if(this->meter_read_bytes <= DETECT_MAX_BYTES) {
@@ -137,8 +127,7 @@ void AppHostCX<Com>::post_read() {
     }
 }
 
-template <class Com>
-void AppHostCX<Com>::post_write() {
+void AppHostCX::post_write() {
     
     if ( mode() == MODE_POST ) {
         
@@ -152,8 +141,7 @@ void AppHostCX<Com>::post_write() {
     }
 }
 
-template <class Com>
-void AppHostCX<Com>::pre_read() {
+void AppHostCX::pre_read() {
     
     bool updated = false;
     
@@ -210,8 +198,7 @@ void AppHostCX<Com>::pre_read() {
     }
 }
 
-template <class Com>
-void AppHostCX<Com>::pre_write() {
+void AppHostCX::pre_write() {
     
     if ( mode() == MODE_PRE ) {
         auto b = this->writebuf();
@@ -230,8 +217,7 @@ void AppHostCX<Com>::pre_write() {
 }
 
 
-template <class Com>
-void AppHostCX<Com>::on_detect(duplexSignature& sig_sig, vector_range& r) {}
+void AppHostCX::on_detect(duplexSignature& sig_sig, vector_range& r) {}
 
 
 

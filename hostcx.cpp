@@ -16,22 +16,18 @@
     License along with this library.
 */
 
-#ifndef __HOSTCX_CPP__
-#define __HOSTCX_CPP__
-
 #include "hostcx.hpp"
 #include "logger.hpp"
 #include "display.hpp"
 
 extern logger lout;
 
-template <class Com>
-int baseHostCX<Com>::connect(bool blocking) {
+int baseHostCX::connect(bool blocking) {
 	
 	opening(true);
 	
 	DEB_("HostCX::connect[%s]: blocking=%d",c_name(),blocking);
-	fds_ = Com::connect(host_.c_str(),port_.c_str(),blocking);
+	fds_ = com()->connect(host_.c_str(),port_.c_str(),blocking);
 	error_ = false;
 	
 	if (fds_ > 0 && blocking) {
@@ -46,16 +42,14 @@ int baseHostCX<Com>::connect(bool blocking) {
 	return fds_;
 }
 
-template <class Com>
-bool baseHostCX<Com>::is_connected() {
-    bool status = Com::is_connected(socket());
-    DIA_("Com::is_connected[%s]: getsockopt(%d,SOL_SOCKET,SO_ERROR,..,..) reply %d",c_name(),socket(),status);
+bool baseHostCX::is_connected() {
+    bool status = com()->is_connected(socket());
+    DIA_("com()->is_connected[%s]: getsockopt(%d,SOL_SOCKET,SO_ERROR,..,..) reply %d",c_name(),socket(),status);
     
     return status;
 }
 
-template <class Com>
-void baseHostCX<Com>::close() {
+void baseHostCX::close() {
 	
  if(fds_ > 0) {
 	::close(fds_); 
@@ -66,12 +60,11 @@ void baseHostCX<Com>::close() {
  }
 }
 
-template <class Com>
-std::string baseHostCX<Com>::name() {
+std::string baseHostCX::name() {
 
 	if (reduced()) {
 		if (valid()) {
-            Com::resolve_socket_src(fds_, &host_,&port_);
+            com()->resolve_socket_src(fds_, &host_,&port_);
             name__ = string_format("%d::%s:%s",socket(),host().c_str(),port().c_str());
             
 			//name__ = string_format("%d:<reduced>",socket());
@@ -88,14 +81,13 @@ std::string baseHostCX<Com>::name() {
 	return name__;
 }
 
-template <class Com>
-const char* baseHostCX<Com>::c_name() {
+
+const char* baseHostCX::c_name() {
 	name();
 	return name__.c_str();
 }
 
-template <class Com>
-bool baseHostCX<Com>::reconnect(int delay) {
+bool baseHostCX::reconnect(int delay) {
 
 	if (should_reconnect_now() and permanent()) {
 		close();
@@ -122,8 +114,7 @@ bool baseHostCX<Com>::reconnect(int delay) {
 	return false;
 }
 	
-template <class Com>	
-int baseHostCX<Com>::read() {
+int baseHostCX::read() {
 	
 	if(paused()) {
 		DEB_("HostCX::read[%s]: paused, returning -1",c_name());
@@ -150,7 +141,7 @@ int baseHostCX<Com>::read() {
 	
 	DUM_("HostCX::read[%s]: readbuf_ base=%x, wr at=%x, maximum to write=%d",c_name(),readbuf_.data(),ptr,max_len);
 	
-	ssize_t l = Com::read(socket(), ptr, max_len, 0);
+	ssize_t l = com()->read(socket(), ptr, max_len, 0);
 	//int l = recv(socket(), ptr, max_len, MSG_PEEK);
 
 	
@@ -190,16 +181,13 @@ int baseHostCX<Com>::read() {
 	return l;
 }
 
-template <class Com>
-void baseHostCX<Com>::pre_read() {
+void baseHostCX::pre_read() {
 }
 
-template <class Com>
-void baseHostCX<Com>::post_read() {
+void baseHostCX::post_read() {
 }
 
-template <class Com>
-int baseHostCX<Com>::write() {
+int baseHostCX::write() {
 	
 	if(paused()) {
 		DEB_("HostCX::write[%s]: paused, returning 0",c_name());	
@@ -223,7 +211,7 @@ int baseHostCX<Com>::write() {
         DEB_("HostCX::write[%s]: writebuf_ %d bytes pending",c_name(),tx_size);
 	}
 
-	int l = Com::write(socket(), writebuf_.data(), tx_size, MSG_NOSIGNAL);
+	int l = com()->write(socket(), writebuf_.data(), tx_size, MSG_NOSIGNAL);
 	
 	if (l > 0) {
 		meter_write_bytes += l;
@@ -248,22 +236,20 @@ int baseHostCX<Com>::write() {
 	return l;
 }
 
-template <class Com>
-void baseHostCX<Com>::pre_write() {
+
+void baseHostCX::pre_write() {
 }
 
-template <class Com>
-void baseHostCX<Com>::post_write() {
+
+void baseHostCX::post_write() {
 }
 
-template <class Com>
-int baseHostCX<Com>::process() {
+int baseHostCX::process() {
 	return readbuf()->size();
 }
 
 
-template <class Com>
-ssize_t baseHostCX<Com>::finish() { 
+ssize_t baseHostCX::finish() { 
 	if( readbuf()->size() >= (unsigned int)processed_bytes_ && processed_bytes_ > 0) {
 		DEB_("HostCX::finish[%s]: flushing %d bytes in readbuf_ size %d",c_name(),processed_bytes_,readbuf()->size());
 		readbuf()->flush(processed_bytes_); 
@@ -280,37 +266,32 @@ ssize_t baseHostCX<Com>::finish() {
 	}
 }
 
-template <class Com>
-buffer baseHostCX<Com>::to_read() { 
+buffer baseHostCX::to_read() { 
 	DEB_("HostCX::to_read[%s]: returning buffer::view for %d bytes",c_name(),processed_bytes_);
 	return readbuf()->view(0,processed_bytes_); 
 }
 
-template <class Com>
-void baseHostCX<Com>::to_write(buffer b) {
+void baseHostCX::to_write(buffer b) {
     DEB_("HostCX::to_write[%s]: appending to write %d bytes, from buffer struct",c_name(),b.size());
     writebuf_.append(b); 
     DEB_("HostCX::to_write[%s]: write buffer size %d bytes",c_name(),writebuf_.size());
 }
 
-template <class Com>
-void baseHostCX<Com>::to_write(unsigned char* c, unsigned int l) {
+void baseHostCX::to_write(unsigned char* c, unsigned int l) {
 	DEB_("HostCX::to_write[%s]: appending to write %d bytes from pointer",c_name(),l);
 	writebuf_.append(c,l);
 	DEB_("HostCX::to_write[%s]: write buffer size %d bytes",c_name(),writebuf_.size());
 }
 
-template <class Com>
-void baseHostCX<Com>::accept_socket(int fd) { 
-	Com::accept_socket(fd); 
+void baseHostCX::accept_socket(int fd) { 
+	com()->accept_socket(fd); 
 	
 	if(reduced()) {
-        Com::resolve_socket_src(fd, &host_,&port_);
+        com()->resolve_socket_src(fd, &host_,&port_);
 	}
 }
 
-template <class Com>
-std::string baseHostCX<Com>::hr() {
+std::string baseHostCX::hr() {
 	std::string r;
 	r+= this->name() + " " + string_format("R:%d/%d W:%d/%d",meter_read_count,meter_read_bytes,
 								meter_write_count,meter_write_bytes) + " " 
@@ -320,16 +301,19 @@ std::string baseHostCX<Com>::hr() {
 	return r;
 }
 
-template <class Com>
-std::string baseHostCX<Com>::full_name(unsigned char side) {
+std::string baseHostCX::full_name(unsigned char side) {
     const char* t = host().c_str();
     const char* t_p = port().c_str();
     const char* p = "";
     const char*  p_p = "";
 
-    if (Com::peer() != nullptr) {
-        p =  ((baseHostCX<Com>*)this->peer())->host().c_str();
-        p_p =  ((baseHostCX<Com>*)this->peer())->port().c_str();
+    if (peer() != nullptr) {
+         p =  peer()->host().c_str();
+         p_p =  peer()->port().c_str();
+    
+//         p =  "peerip";
+//         p_p =  "pport";
+        
     } else {
         return string_format("%s:%s",t,t_p);
     }
@@ -343,4 +327,3 @@ std::string baseHostCX<Com>::full_name(unsigned char side) {
 
 }
 
-#endif //__HOSTCX_CPP__

@@ -117,6 +117,8 @@ public:
 	
 	virtual void static_init();
 	virtual void init();
+    virtual baseCom* replicate() { return new SSLCom(); } ;
+    
 	virtual void init_client();
 	virtual void init_server();
 

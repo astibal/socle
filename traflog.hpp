@@ -27,11 +27,10 @@
 #include <iostream>
 
 
-template <class Com>
 class trafLog {
 
 public:
-	trafLog(baseProxy<Com> *p) :
+	trafLog(baseProxy *p) :
     proxy_(p),
 	active_(false),
 	writer_(NULL),
@@ -45,7 +44,7 @@ public:
     }
   
 private:
-	baseProxy<Com> *proxy_;
+	baseProxy *proxy_;
 	bool active_;
 	std::ofstream *writer_;
 	std::string writer_key_l_;

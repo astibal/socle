@@ -29,10 +29,10 @@
 #include <thread>
 #include <mutex>
 
-template<class Com, class Worker, class SubWorker>
-class ThreadedAcceptor : public baseProxy<Com> {
+template<class Worker, class SubWorker>
+class ThreadedAcceptor : public baseProxy {
 public:
-	ThreadedAcceptor();
+	ThreadedAcceptor(baseCom* c);
 	virtual ~ThreadedAcceptor(); 
 	
 	virtual void on_left_new_raw(int);
@@ -54,13 +54,13 @@ protected:
 	int create_workers();
 };
 
-template<class Com,class SubWorker>
-class ThreadedWorkerProxy : public MasterProxy<Com> {
+template<class SubWorker>
+class ThreadedWorkerProxy : public MasterProxy {
 public:
-	ThreadedWorkerProxy() {}
+	ThreadedWorkerProxy(baseCom* c): MasterProxy(c) {}
 	virtual int run_once();	
 };
 
-#include <threadedproxy.impl>
+#include <threadedproxy.cpp>
 
 #endif // _THREADED_PROXY_HPP_

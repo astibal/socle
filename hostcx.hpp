@@ -30,6 +30,7 @@
 #include <unistd.h>
 
 
+#include <basecom.hpp>
 #include <logger.hpp>
 #include <buffer.hpp>
 #include <display.hpp>
@@ -106,8 +107,8 @@ public:
  *  is here. 
  * 
  */
-template <class Com>
-class baseHostCX : public Host, public Com
+
+class baseHostCX : public Host
 {
 	/* Basic elements */
 	
@@ -155,7 +156,17 @@ class baseHostCX : public Host, public Com
     
 
 public:
-    inline std::string& log() { return Com::log_buffer_; };    
+    
+    baseCom* com() { return *com_; }
+    std::shared_ptr<baseCom*> com_;
+    
+    baseHostCX* peer_ = nullptr;
+    baseHostCX* peer() { return peer_; } 
+    // set both levels of peering: cx and com
+    void peer(baseHostCX* p) { peer_ = p; com()->peer_ = peer()->com(); }
+    baseCom* peercom() { if(peer()) { return peer()->com(); } return nullptr; }
+    
+    inline std::string& log() { return com()->log_buffer_; };    
 public:
 	/* meters */
 	unsigned int meter_read_count;
@@ -165,7 +176,7 @@ public:
 	
 public:
 	
-    baseHostCX( const char* h, const char* p ) : Host(h,p)	{
+    baseHostCX( baseCom* c, const char* h, const char* p ) : Host(h,p)	{
 		permanent_ = false;
 		last_reconnect_ = 0;
 		reconnect_delay_ = 30;
@@ -188,10 +199,11 @@ public:
 		meter_read_bytes = 0;
 		meter_write_bytes = 0;
 		
-		Com::init();
+        com_ = std::make_shared<baseCom*>(c);
+		com()->init();
 	};
 	
-	baseHostCX(unsigned int s) : Host() {
+	baseHostCX(baseCom* c, unsigned int s) : Host() {
 		permanent_ = false;
 		last_reconnect_ = 0;
 		reconnect_delay_ = 30;
@@ -217,11 +229,12 @@ public:
         //whenever we initialize object with socket, we will be already opening!
         opening(true);
         
-		Com::init();		
+        com_ = std::make_shared<baseCom*>(c);
+        com()->init();
 	}
 	
 	virtual ~baseHostCX() {
-		Com::cleanup();
+		com()->cleanup();
 	};
 	
 	std::string name();
@@ -250,8 +263,8 @@ public:
     }
 
 	inline bool paused() { 
-        if(paused_ && Com::peer()) {
-            if(Com::peer()->com_status()) {
+        if(paused_ && peercom()) {
+            if(peercom()->com_status()) {
                 DIAS_("Peer's Com status is OK, unpausing");
                 paused(false);
             }
@@ -269,7 +282,7 @@ public:
 //     inline void delayed_accept(bool p) { delayed_accept_ = p; }
 	
 	
-	inline int unblock() { return Com::unblock(fds_);}
+	inline int unblock() { return com()->unblock(fds_);}
 	
 	inline bool status() { return adm_status_; }
 	inline void status(bool b) { adm_status_ = b; }
@@ -311,7 +324,7 @@ public:
 	inline buffer* writebuf() { return &writebuf_; } 
 	
 	inline void send(buffer& b) { writebuf_.append(b); }
-	inline int  peek(buffer& b) { int r = Com::peek(this->socket(),b.data(),b.capacity(),0); if (r > 0) { b.size(r); } return r; }
+	inline int  peek(buffer& b) { int r = com()->peek(this->socket(),b.data(),b.capacity(),0); if (r > 0) { b.size(r); } return r; }
 	
 	inline ssize_t next_read_limit() { return next_read_limit_; }
 	inline void next_read_limit(ssize_t s) { next_read_limit_ = s; }
@@ -341,20 +354,12 @@ public:
 	
 	virtual void on_timer() {};
 	
-	// call Com::accept_socket(int fd) on bind->accepted socket and initialize upper level Com
+	// call com()->accept_socket(int fd) on bind->accepted socket and initialize upper level Com
 	void accept_socket(int fd);
 	
     // return human readable details of this object
 	std::string hr();
     std::string full_name(unsigned char);
 };
-
-#include <basecom.hpp>
-typedef baseHostCX<TCPCom> tcpHostCX;
-#include <sslcom.hpp>
-typedef baseHostCX<SSLCom> sslHostCX;
-
-
-#include <hostcx.impl>
 
 #endif

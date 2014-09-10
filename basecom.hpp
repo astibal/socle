@@ -37,8 +37,13 @@ static const char str_unknown[] = "unknown";
 static const char str_getsockname[] = "getsockname";
 static const char str_getpeername[] = "getpeername";
 
+class baseHostCX;
+
 class baseCom {
 public:
+    
+    friend class baseHostCX;
+    
 	// select variables
     fd_set read_socketSet;
 	fd_set write_socketSet;	
@@ -55,7 +60,8 @@ protected:
 
     // feedback mechanism to get if the communication level is up/down
     // necessary for some mitm scenarios and connection status feedback between 2 sockets
-    baseCom* peer_ = NULL;
+
+    baseCom* peer_ = nullptr;
 
     // this is log buffer inteded for upper layer logger. Whatever is not only about to be printed out, but also stored, 
     // should appear here.    
@@ -70,7 +76,8 @@ public:
 
     
     baseCom* peer() { return peer_; }
-    void peer(baseCom* p) { peer_ = p; }
+    // make it settable only by baseHostCX->peer() call
+//     void peer(baseCom* p) { peer_ = p; }
     
 public:
 	virtual void init();
@@ -79,6 +86,8 @@ public:
 		signal(SIGPIPE, SIG_IGN);
 	};
 	
+    virtual baseCom* replicate() = 0;
+    
     virtual int connect(const char* , const char* , bool = false) = 0;
     virtual int read(int __fd, void* __buf, size_t __n, int __flags) = 0;
     virtual int peek(int __fd, void* __buf, size_t __n, int __flags) = 0;
@@ -94,7 +103,9 @@ public:
 			resolve_nonlocal_socket(sockfd);
 		}
 	};
-	
+
+    int unblock(int s);    
+    
 	virtual void cleanup() = 0;
 
     virtual bool is_connected(int s) = 0;
@@ -284,6 +295,7 @@ public:
 	// non-local socket support
 	inline bool nonlocal() { return nonlocal_; }
 	inline void nonlocal(bool b) { nonlocal_ = b; }	
+    virtual int namesocket(int, std::string&, unsigned short);
 
 	inline bool nonlocal_resolved(void) { return nonlocal_resolved_; }
 	inline std::string& nonlocal_host(void) { return nonlocal_host_; }
@@ -312,11 +324,10 @@ public:
 class TCPCom : public baseCom {
 public:
 	virtual void init();
-	int unblock(int s);
-	
+    virtual baseCom* replicate() { return new TCPCom(); };
+    
     virtual int connect(const char* host, const char* port, bool blocking = false);
 	virtual int bind(unsigned short port);	
-    virtual int namesocket(int, std::string&, unsigned short);
     virtual int accept ( int sockfd, sockaddr* addr, socklen_t* addrlen_ );
 	
     virtual int read(int __fd, void* __buf, size_t __n, int __flags) { return ::recv(__fd,__buf,__n,__flags); };

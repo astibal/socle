@@ -24,18 +24,17 @@
 #include <baseproxy.hpp>
 #include <buffer.hpp>
 
-typedef baseProxy<TCPCom> TCPProxy;
 
-class LRProxy: public TCPProxy {
+class LRProxy: public baseProxy {
 	protected:
 		void write_left_right();
 		void write_right_left();
 		
 	public: 
-		LRProxy();
+		LRProxy(baseCom* c);
 		
-		virtual void on_left_bytes(tcpHostCX*);
-		virtual void on_right_bytes(tcpHostCX*);
+		virtual void on_left_bytes(baseHostCX*);
+		virtual void on_right_bytes(baseHostCX*);
 };
 
 #endif

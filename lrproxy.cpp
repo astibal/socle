@@ -24,19 +24,19 @@
 #include <baseproxy.hpp>
 #include <lrproxy.hpp>
 
-LRProxy::LRProxy() : TCPProxy() {
+LRProxy::LRProxy(baseCom* c) : baseProxy(c) {
 }
 
-void LRProxy::on_left_bytes(tcpHostCX* left) {
+void LRProxy::on_left_bytes(baseHostCX* left) {
 	DEB_("LRProxy::on_left_bytes[%d]",left->socket());
 
 	
-	for(std::vector<tcpHostCX*>::iterator j = right_sockets.begin(); j != right_sockets.end(); ++j) {
+	for(std::vector<baseHostCX*>::iterator j = right_sockets.begin(); j != right_sockets.end(); ++j) {
 		//move from left read buffer -> right write buffer
 		DEB_("LRProxy::on_left_bytes[%d]: copying into socket %d, size %d",left->socket(),(*j)->socket(),left->readbuf()->size());
 		(*j)->to_write(left->to_read());
 	}
-	for(std::vector<tcpHostCX*>::iterator j = right_pc_cx.begin(); j != right_pc_cx.end(); ++j) {
+	for(std::vector<baseHostCX*>::iterator j = right_pc_cx.begin(); j != right_pc_cx.end(); ++j) {
 		DEB_("LRProxy::on_left_bytes[%d]: copying into pc socket %d, size %d",left->socket(),(*j)->socket(),left->readbuf()->size());
 		//move from left read buffer -> right write buffer
 		(*j)->to_write(left->to_read());
@@ -46,14 +46,14 @@ void LRProxy::on_left_bytes(tcpHostCX* left) {
 	left->finish();
 };
 
-void LRProxy::on_right_bytes(tcpHostCX* right) {
+void LRProxy::on_right_bytes(baseHostCX* right) {
 	DEB_("LRProxy::on_right_bytes[%d]",right->socket());
-	for(std::vector<tcpHostCX*>::iterator j = left_sockets.begin(); j != left_sockets.end(); ++j) {
+	for(std::vector<baseHostCX*>::iterator j = left_sockets.begin(); j != left_sockets.end(); ++j) {
 		// move from right read buffer -> left write buffer
 		DEB_("LRProxy::on_right_bytes[%d]: copying into socket %d, size %d",right->socket(),(*j)->socket(),right->readbuf()->size());
 		(*j)->to_write(right->to_read());
 	}
-	for(std::vector<tcpHostCX*>::iterator j = left_pc_cx.begin(); j != left_pc_cx.end(); ++j) {
+	for(std::vector<baseHostCX*>::iterator j = left_pc_cx.begin(); j != left_pc_cx.end(); ++j) {
 		// move from right read buffer -> left write buffer
 		DEB_("LRProxy::on_right_bytes[%d]: copying into pc socket %d, size %d",right->socket(),(*j)->socket(),right->readbuf()->size());
 		(*j)->to_write(right->to_read());
