@@ -235,6 +235,7 @@ public:
 	
 	virtual ~baseHostCX() {
 		com()->cleanup();
+        com_.reset();
 	};
 	
 	std::string name();

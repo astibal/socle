@@ -34,6 +34,16 @@ bool SSLMitmCom::check_cert(const char* peer_name) {
         if(p->sslcom_server) {
             DEB_("SSLMitmCom::check_cert[%x]: calling to spoof peer certificate",this);
             r = p->spoof_cert(cert);
+            if (r) {
+                // this is inefficient: many SSLComs are already initialized, this is running it once 
+                // more ...
+                // check if is waiting would help
+                if (p->sslcom_waiting) {
+                    p->init_server();
+                } else {
+                    WARS_("FIXME: Trying to init SSL server while it's already running!");
+                } 
+            }
         } else {
             WAR_("SSLMitmCom::check_cert[%x]: cannot spoof, peer is not SSL server",this);
         }
@@ -57,8 +67,7 @@ bool SSLMitmCom::spoof_cert(X509* cert_orig) {
     
     X509_NAME_oneline(X509_get_subject_name(cert_orig), tmp, 512);
     std::string subject(tmp);
-        
-    
+   
     // cache lookup
     X509_PAIR* parek = certstore()->find(subject);
     if (parek) {

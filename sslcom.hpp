@@ -112,15 +112,15 @@ public:
     static SSLCertStore* certstore() { return sslcom_certstore_; };
     static void certstore(SSLCertStore* c) { if (sslcom_certstore_ != NULL) { delete sslcom_certstore_; }  sslcom_certstore_ = c; };
 	
-    
-	static bool initialize_threads();
-	
 	virtual void static_init();
 	virtual void init();
     virtual baseCom* replicate() { return new SSLCom(); } ;
     
 	virtual void init_client();
-	virtual void init_server();
+	int upgrade_client_socket(int s);
+    
+    virtual void init_server();
+    int upgrade_server_socket(int s);
 
 	virtual bool check_cert(const char*);
 	
@@ -135,25 +135,7 @@ public:
 	
 	virtual void cleanup();
 
-    virtual bool com_status() {
-        if(TCPCom::com_status()) {
-            bool r = sslcom_status();
-//          T_DIA_("sslcom_status_ok",1,"SSLCom::com_status: returning %d",r);
-            
-            if(r) {
-                DIAS_("SSLCom::com_status: transport layer OK")
-            } else {
-                DIAS_("SSLCom::com_status: SSL layer not ready.")
-            }
-            
-            DIA_("SSLCom::com_status: returning %d",r);
-            return r;
-        }
-     
-//      T_DIAS_("sslcom_status_nok",1,"SSLCom::com_status: returning 0");
-        DIAS_("SSLCom::com_status: transport layer not ready, returning 0");
-        return false;
-    }
+    virtual bool com_status();
 };
 
 #endif

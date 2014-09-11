@@ -144,6 +144,7 @@ void SSLCom::init_client() {
 		exit(5);
 	}	
 
+    sslcom_ssl = SSL_new(sslcom_ctx);
 }
 
 
@@ -153,6 +154,13 @@ void SSLCom::init_server() {
 	
 	DEBS_("SSLCom::init_server");
 	
+    if(sslcom_ctx) {
+        SSL_CTX_free(sslcom_ctx);
+    }
+    if(sslcom_ssl) {
+        SSL_free(sslcom_ssl);
+    }
+    
 	method = SSLv3_server_method();
 	sslcom_ctx = SSL_CTX_new (method);	
 	if (!sslcom_ctx) {
@@ -188,8 +196,6 @@ void SSLCom::init_server() {
 	sslcom_ssl = SSL_new(sslcom_ctx);
 	
 	SSL_set_fd (sslcom_ssl, sslcom_server_fd);
-	SSL_accept (sslcom_ssl);	
-
 	sslcom_server = true;
 }
 
@@ -215,7 +221,8 @@ bool SSLCom::check_cert (const char* host) {
 		return false;
 	};
 	
-    X509_NAME_get_text_by_NID(X509_get_subject_name(peer),NID_commonName, peer_CN, 256);
+    X509_NAME* x509_name = X509_get_subject_name(peer);
+    X509_NAME_get_text_by_NID(x509_name,NID_commonName, peer_CN, 256);
 // 	X509_NAME_oneline(X509_get_subject_name(peer),peer_CERT,1024);
 //	DIA_("Peer certificate:\n%s",peer_CERT);
 	
@@ -228,6 +235,9 @@ bool SSLCom::check_cert (const char* host) {
 		}
 	}
 	
+	X509_free(peer);
+//     X509_NAME_free(x509_name);
+    
 	// finally, SSL is up, set status flag
 	sslcom_status(true);
 	
@@ -290,11 +300,18 @@ void SSLCom::accept_socket ( int sockfd )  {
 	
 	TCPCom::accept_socket(sockfd);
 	
-	sslcom_server_fd = sockfd;
-	sslcom_waiting = true;
-	unblock(sslcom_server_fd);
-	
-	init_server();
+    upgrade_server_socket(sockfd);
+    
+    SSL_accept (sslcom_ssl);
+}
+
+int SSLCom::upgrade_server_socket(int sockfd) {
+
+    sslcom_server_fd = sockfd;
+    sslcom_waiting = true;
+    unblock(sslcom_server_fd);
+    
+    init_server();
 }
 
 
@@ -609,6 +626,56 @@ void SSLCom::cleanup()  {
 	if (sslcom_ctx) SSL_CTX_free(sslcom_ctx);
 }
 
+
+int SSLCom::upgrade_client_socket(int sock) {
+
+    init_client();
+    
+    if(sslcom_ssl == NULL) {
+        ERRS_("Failed to create SSL structure!");
+    }
+//  SSL_set_fd (sslcom_ssl, sock);
+    
+    sslcom_sbio = BIO_new_socket(sock,BIO_NOCLOSE);
+    if (sslcom_sbio == NULL) {
+        ERR_("BIO allocation failed for socket %d",sock)
+    }
+    
+    SSL_set_bio(sslcom_ssl,sslcom_sbio,sslcom_sbio);    
+
+    int r = SSL_connect(sslcom_ssl);
+    if(r <= 0 && is_blocking(sock)) {
+        ERR_("SSL connect error on socket %d",sock);
+        close(sock);
+        return -1;
+    }
+    else if (r <= 0) {
+        /* non-blocking may return -1 */
+        
+        if (r == -1) {
+            int err = SSL_get_error(sslcom_ssl,r);
+            if (err == SSL_ERROR_WANT_READ || err == SSL_ERROR_WANT_READ) {
+                DUMS_("SSL connect pending");
+                
+                sslcom_waiting = true;
+                return sock;
+            }
+        }
+        return sock;    
+    }
+    
+    DEBS_("connection succeeded");  
+    sslcom_waiting = false;
+    
+    //ssl_waiting_host = (char*)host;    
+    check_cert(nullptr);
+    
+    return sock;
+    
+
+}
+
+
 int SSLCom::connect ( const char* host, const char* port, bool blocking )  {
 	int sock = TCPCom::connect( host, port, blocking );
 	
@@ -618,53 +685,7 @@ int SSLCom::connect ( const char* host, const char* port, bool blocking )  {
 // 
 // 		ERRS_("Setting session ID context failed!");
 // 	}
-	
-	init_client();
-	
-	sslcom_ssl = SSL_new(sslcom_ctx);
-	if(sslcom_ssl == NULL) {
-		ERRS_("Failed to create SSL structure!");
-	}
-// 	SSL_set_fd (sslcom_ssl, sock);
-	
-    sslcom_sbio = BIO_new_socket(sock,BIO_NOCLOSE);
-	if (sslcom_sbio == NULL) {
-		ERR_("BIO allocation failed for socket %d",sock)
-	}
-	
-    SSL_set_bio(sslcom_ssl,sslcom_sbio,sslcom_sbio);	
-
-	int r = SSL_connect(sslcom_ssl);
-	if(r <= 0 && blocking) {
-		ERR_("SSL connect error on socket %d",sock);
-		close(sock);
-		return -1;
-	}
-	else if (r <= 0) {
-		/* non-blocking may return -1 */
-		
-		if (r == -1) {
-			int err = SSL_get_error(sslcom_ssl,r);
-			if (err == SSL_ERROR_WANT_READ || err == SSL_ERROR_WANT_READ) {
-				DUMS_("SSL connect pending");
-				
-				sslcom_waiting = true;
-				return sock;
-			}
-		}
-		
-		
-		ssl_waiting_host = (char*)host;
-		return sock;
-		
-	}
-	
-	DEBS_("connection succeeded");	
-	sslcom_waiting = false;
-	
-    check_cert(host);
-	
-	return sock;
+	return upgrade_client_socket(sock);
 }
 
 
@@ -684,4 +705,22 @@ void SSLCom::certstore_setup(void ) {
     DIAS_("SSLCom: loading central certification store: ok");
 }
 
-
+bool SSLCom::com_status() {
+    if(TCPCom::com_status()) {
+        bool r = sslcom_status();
+        // T_DIA_("sslcom_status_ok",1,"SSLCom::com_status: returning %d",r);
+        
+        if(r) {
+            DIAS_("SSLCom::com_status: transport layer OK")
+        } else {
+            DIAS_("SSLCom::com_status: SSL layer not ready.")
+        }
+        
+        DIA_("SSLCom::com_status: returning %d",r);
+        return r;
+    }
+    
+    // T_DIAS_("sslcom_status_nok",1,"SSLCom::com_status: returning 0");
+    DIAS_("SSLCom::com_status: transport layer not ready, returning 0");
+    return false;
+}

@@ -54,8 +54,8 @@ meter_last_write(0),
 handle_last_status(0)
 {
     com_ = c;
-	set_polltime(0,10000);
-	set_sleeptime(30000);
+	set_polltime(0,350);
+	set_sleeptime(400000);
 	time(&last_tick_);
 };
 

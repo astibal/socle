@@ -69,6 +69,9 @@ protected:
     virtual void on_detect(duplexSignature&, vector_range&);
     virtual void on_starttls() {};
 
+protected:
+    bool upgrade_starttls = false;
+
 };
 
 AppHostCX::AppHostCX(baseCom* c, const char* h, const char* p) :baseHostCX(c,h,p) {}
@@ -139,6 +142,17 @@ void AppHostCX::post_write() {
         // we can't detect starttls in POST mode
         detect(sensor());
     }
+    
+    // react on specific signatures 
+    if (mode() == MODE_PRE) {
+        if(upgrade_starttls) {
+            
+            //FIXME: check if all data were sent to client, otherwise block and wait till it's done
+            
+            upgrade_starttls = false;
+            on_starttls(); // now it's safe to upgrade socket
+        }
+    }
 }
 
 void AppHostCX::pre_read() {
@@ -191,7 +205,7 @@ void AppHostCX::pre_read() {
         
         if(updated == true) {
             if (detect(starttls_sensor())) {
-                on_starttls();
+                upgrade_starttls = true;
             }
             detect(sensor());
         }
@@ -209,7 +223,7 @@ void AppHostCX::pre_write() {
             DEB_("AppHostCX::pre_write: write buffer size %d",b->size());
         
             if(detect(starttls_sensor())) {
-                on_starttls();
+                upgrade_starttls = true;
             }
             detect(sensor());
         }
