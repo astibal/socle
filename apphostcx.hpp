@@ -159,12 +159,21 @@ void AppHostCX::pre_read() {
     
     bool updated = false;
     
+    bool __behind_read_warn = true;
+    bool behind_read = false;
+    
     if ( mode() == MODE_PRE) {
         if(this->meter_read_bytes <= DETECT_MAX_BYTES && peek_counter <= this->meter_read_bytes  ) {
             
             if(peek_counter < this->meter_read_bytes) {
+                behind_read = true;
 
-                WAR_("More data read than seen by peek: %d vs. %d",this->meter_read_bytes, peek_counter);
+                if(__behind_read_warn) {
+                    WAR_("More data read than seen by peek: %d vs. %d",this->meter_read_bytes, peek_counter);
+                } else {
+                    DEB_("More data read than seen by peek: %d vs. %d",this->meter_read_bytes, peek_counter);
+                }
+                
                 unsigned int delta = this->meter_read_bytes - peek_counter;
                 unsigned int w = this->readbuf()->size() - delta + 1;
                 DEB_("Creating readbuf view at <%d,%d>",w,delta);
@@ -180,6 +189,9 @@ void AppHostCX::pre_read() {
                     
                     updated = true;
                     
+                    // adapt peek_counter so we know we recovered data from readbuf
+                    peek_counter += v.size();
+                    
                 } else {
                     DEB_("FIXME: Attempt to append readbuf to flow %d bytes (allocated buffer size %d): %s",v.size(),v.capacity(),hex_dump(v.data(),v.size()).c_str());
                 }
@@ -191,7 +203,11 @@ void AppHostCX::pre_read() {
             b.size(0);
             int l = this->peek(b);
             
-            DUM_("AppHostCX::pre_read: peek returns %d bytes",l);
+            if(behind_read && __behind_read_warn) {
+                WAR_("AppHostCX::pre_read: peek returns %d bytes",l);
+            } else {
+                DEB_("AppHostCX::pre_read: peek returns %d bytes",l);
+            }
             
             if(l > 0) {
                 peek_counter += l;
