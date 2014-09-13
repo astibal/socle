@@ -377,12 +377,12 @@ public:
         if(baseCom::com_status()) {
             bool r = is_connected(tcpcom_fd);
             //T_DIA_("tcpcom_status_ok",1,"TCPCom::com_status: returning %d",r);
-            DIA_("TCPCom::com_status: returning %d",r);
+            DEB_("TCPCom::com_status: returning %d",r);
             return r;
         }
         
         // T_DUMS_("tcpcom_status_nok",1,"TCPCom::com_status: returning 0");
-        DIAS_("TCPCom::com_status: returning 0");
+        DEBS_("TCPCom::com_status: returning 0");
         return false;
     }
 protected:

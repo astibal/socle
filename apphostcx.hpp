@@ -80,6 +80,8 @@ AppHostCX::AppHostCX(baseCom* c, unsigned int s) :baseHostCX(c,s) {}
 
 bool AppHostCX::detect(sensorType& cur_sensor) {
 
+    bool matched = false;
+    
     for (sensorType::iterator i = cur_sensor.begin(); i != cur_sensor.end(); ++i ) {
     
         std::pair<duplexStateSignature,bool>& sig = (*i);
@@ -88,7 +90,7 @@ bool AppHostCX::detect(sensorType& cur_sensor) {
         bool& sig_res = std::get<1>(sig);
         
         if (sig_res == false) {
-            DEB_("Signature %s", sig_sig.name.c_str());
+            DEB_("AppHostCX::detect[%s]: Signature %s",c_name(), sig_sig.name.c_str());
             bool r = sig_sig.match(this->flowptr());
             
             vector_range& ret = sig_sig.result();
@@ -97,19 +99,20 @@ bool AppHostCX::detect(sensorType& cur_sensor) {
                 sig_res = true;
                 on_detect(sig_sig,ret);
                 
-                DIA_("Signature matched: %s", vrangetos(ret).c_str());
-                return true;
+                matched = true;
+                DIA_("AppHostCX::detect[%s]: Signature matched: %s",c_name(), vrangetos(ret).c_str());
+                continue;
                 
             } else {
-                DEB_("Signature didn't match: %s", vrangetos(ret).c_str());
+                DEB_("AppHostCX::detect[%s]: Signature didn't match: %s",c_name(), vrangetos(ret).c_str());
             } 
         } else {
-            DEB_("Signature %s already matched", sig_sig.name.c_str());
+            DEB_("AppHostCX::detect[%s]: Signature %s already matched",c_name(), sig_sig.name.c_str());
         }
     }
     
     
-    return false;
+    return matched;
 }
 
 
@@ -157,10 +160,14 @@ void AppHostCX::post_write() {
 
 void AppHostCX::pre_read() {
     
+    DUM_("AppHostCX::pre_read[%s]: === start",c_name());
+    
     bool updated = false;
     
     bool __behind_read_warn = true;
     bool behind_read = false;
+    
+    int behind_read_size = 0;
     
     if ( mode() == MODE_PRE) {
         if(this->meter_read_bytes <= DETECT_MAX_BYTES && peek_counter <= this->meter_read_bytes  ) {
@@ -169,23 +176,23 @@ void AppHostCX::pre_read() {
                 behind_read = true;
 
                 if(__behind_read_warn) {
-                    WAR_("More data read than seen by peek: %d vs. %d",this->meter_read_bytes, peek_counter);
+                    WAR_("AppHostCX::pre_read[%s]: More data read than seen by peek: %d vs. %d",c_name(), this->meter_read_bytes, peek_counter);
                 } else {
-                    DEB_("More data read than seen by peek: %d vs. %d",this->meter_read_bytes, peek_counter);
+                    DEB_("AppHostCX::pre_read[%s]: More data read than seen by peek: %d vs. %d",c_name(),this->meter_read_bytes, peek_counter);
                 }
                 
                 unsigned int delta = this->meter_read_bytes - peek_counter;
-                unsigned int w = this->readbuf()->size() - delta + 1;
-                DEB_("Creating readbuf view at <%d,%d>",w,delta);
+                unsigned int w = this->readbuf()->size() - delta; // "+1" should be not there
+                DEB_("AppHostCX::pre_read[%s]: Creating readbuf view at <%d,%d>",c_name(),w,delta);
                 buffer v = this->readbuf()->view(w,delta);
-                DEB_(" = Readbuf: %d bytes (allocated buffer size %d): %s",this->readbuf()->size(),this->readbuf()->capacity(),hex_dump(this->readbuf()->data(),this->readbuf()->size()).c_str());
-                DEB_(" = view of %d bytes (allocated buffer size %d): %s",v.size(),v.capacity(),hex_dump(v.data(),v.size()).c_str());
+                DEB_("AppHostCX::pre_read[%s]:  = Readbuf: %d bytes (allocated buffer size %d): %s",c_name(),this->readbuf()->size(),this->readbuf()->capacity(),hex_dump(this->readbuf()->data(),this->readbuf()->size()).c_str());
+                DEB_("AppHostCX::pre_read[%s]:  = view of %d bytes (allocated buffer size %d): %s",c_name(),v.size(),v.capacity(),hex_dump(v.data(),v.size()).c_str());
                 
                 
                 if(v.size() > 0) {
                     this->flow().append('r',v);
-                    DIA_("detection pre-mode: salvaged %d bytes from readbuf",v.size(0));
-                    DEB_("Appended from readbuf to flow %d bytes (allocated buffer size %d): %s",v.size(),v.capacity(),hex_dump(v.data(),v.size()).c_str());
+                    DIA_("AppHostCX::pre_read[%s]: detection pre-mode: salvaged %d bytes from readbuf",c_name(),v.size());
+                    DEB_("AppHostCX::pre_read[%s]: Appended from readbuf to flow %d bytes (allocated buffer size %d): %s",c_name(),v.size(),v.capacity(),hex_dump(v.data(),v.size()).c_str());
                     
                     updated = true;
                     
@@ -193,7 +200,9 @@ void AppHostCX::pre_read() {
                     peek_counter += v.size();
                     
                 } else {
-                    DEB_("FIXME: Attempt to append readbuf to flow %d bytes (allocated buffer size %d): %s",v.size(),v.capacity(),hex_dump(v.data(),v.size()).c_str());
+                    WAR_("AppHostCX::pre_read[%s]: FIXME: peek counter behind read counter, but readbuf is empty!",c_name());
+                    WAR_("AppHostCX::pre_read[%s]: \ attempt to create readbuf view at <%d,%d> ptr %p",c_name(),w,delta,readbuf()->data());
+                    
                 }
                 
                 
@@ -204,15 +213,15 @@ void AppHostCX::pre_read() {
             int l = this->peek(b);
             
             if(behind_read && __behind_read_warn) {
-                WAR_("AppHostCX::pre_read: peek returns %d bytes",l);
+                WAR_("AppHostCX::pre_read[%s]: peek returns %d bytes",c_name(),l);
             } else {
-                DEB_("AppHostCX::pre_read: peek returns %d bytes",l);
+                DEB_("AppHostCX::pre_read[%s]: peek returns %d bytes",c_name(),l);
             }
             
             if(l > 0) {
                 peek_counter += l;
                 this->flow().append('r',b);
-                DEB_("Appended to flow %d bytes (allocated buffer size %d): %s",b.size(),b.capacity(),hex_dump(b.data(),b.size()).c_str());
+                DEB_("AppHostCX::pre_read[%s]: Appended to flow %d bytes (allocated buffer size %d): %s",c_name(),b.size(),b.capacity(),hex_dump(b.data(),b.size()).c_str());
                 this->next_read_limit(l); 
                 
                 updated = true;
@@ -226,6 +235,7 @@ void AppHostCX::pre_read() {
             detect(sensor());
         }
     }
+    DUM_("AppHostCX::pre_read[%s]: === end",c_name());
 }
 
 void AppHostCX::pre_write() {
@@ -236,7 +246,7 @@ void AppHostCX::pre_write() {
         if(this->meter_write_bytes <= DETECT_MAX_BYTES && b->size() > 0) {
             
             this->flow().append('w',b);
-            DEB_("AppHostCX::pre_write: write buffer size %d",b->size());
+            DEB_("AppHostCX::pre_write[%s]: write buffer size %d",c_name(),b->size());
         
             if(detect(starttls_sensor())) {
                 upgrade_starttls = true;

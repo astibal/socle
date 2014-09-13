@@ -120,6 +120,8 @@ public:
     virtual range match(const char* str, unsigned int max_len = 0);
     virtual range search_function(std::string &expr, std::string &str) { 
         int where = str.find(expr);
+
+        DEB_("simpleMatch::search_function: \nexpr:\n%s\ndata:\n%s",expr.c_str(),str.c_str());
         
         if (where < 0) {
             return NULLRANGE;
@@ -253,7 +255,8 @@ public:
 //                 INF_("flowMatch::match: pattern[%s] view-size=%d: %s",std::to_string(ff_src).c_str(), ff_view.size(),hex_dump(ff_view.data(),ff_buf->size()).c_str());                     
                 DEB_("flowMatch::match: pattern[%s] view-size=%d",std::to_string(ff_src).c_str(), ff_view.size());                     
                 
-                
+                DEB_("flowMatch::match: data=\n%s",hex_dump(ff_view.data(),ff_view.size()).c_str());
+              
                 range r = sig_match->match((const char*)ff_view.data(),(unsigned int)ff_view.size());
                 DEB_("flowMatch::match: result: %s",rangetos(r).c_str());
                 
@@ -337,6 +340,7 @@ public:
     matchType*  signature;
     std::string name;
     std::string category;
+    bool debug = false;
 };
 
 typedef SignatureType<flowMatch<unsigned char>> duplexSignature;

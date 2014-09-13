@@ -117,7 +117,7 @@ bool baseHostCX::reconnect(int delay) {
 int baseHostCX::read() {
 	
 	if(paused()) {
-		DEB_("HostCX::read[%s]: paused, returning -1",c_name());
+		DUM_("HostCX::read[%s]: paused, returning -1",c_name());
 		return -1;
 	}
 	
