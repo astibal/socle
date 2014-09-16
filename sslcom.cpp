@@ -86,7 +86,7 @@ void SSLCom::static_init() {
 
     baseCom::static_init();
 
-    DIAS_("SSL: Static INIT");
+    DEBS_("SSL: Static INIT");
 
 	if(false) {	
 		// make compiler happy
@@ -99,10 +99,10 @@ void SSLCom::static_init() {
 	std::call_once (SSLCom::openssl_thread_setup_done ,THREAD_setup);
     std::call_once (SSLCom::certstore_setup_done ,SSLCom::certstore_setup);
 	
-	DIAS_("SSL: loading error strings");
+	DEBS_("SSL: loading error strings");
 	SSL_load_error_strings();
 	
-	DIAS_("SSL: loading algorithms");
+	DEBS_("SSL: loading algorithms");
 	SSLeay_add_ssl_algorithms();
 }
 
@@ -178,12 +178,12 @@ void SSLCom::init_server() {
 // 	}
 
     if (sslcom_pref_cert && sslcom_pref_key) {
-        DIA_("SSLCom::init_server[%x]: loading preferred key/cert",this);
+        DEB_("SSLCom::init_server[%x]: loading preferred key/cert",this);
         SSL_CTX_use_PrivateKey(sslcom_ctx,sslcom_pref_key);
         SSL_CTX_use_certificate(sslcom_ctx,sslcom_pref_cert);
         
     } else {
-        DIA_("SSLCom::init_server[%x]: loading default key/cert",this);
+        DEB_("SSLCom::init_server[%x]: loading default key/cert",this);
         SSL_CTX_use_PrivateKey(sslcom_ctx,certstore()->def_sr_key);
         SSL_CTX_use_certificate(sslcom_ctx,certstore()->def_sr_cert);
     }
@@ -312,6 +312,8 @@ int SSLCom::upgrade_server_socket(int sockfd) {
     unblock(sslcom_server_fd);
     
     init_server();
+    
+    return sockfd;
 }
 
 
@@ -341,7 +343,7 @@ int SSLCom::ssl_waiting() {
 	}
 		
 
-	if (r == -1) {
+	if (r < 0) {
 		int err = SSL_get_error(sslcom_ssl,r);
 		if (err == SSL_ERROR_WANT_READ) {
 			DUM_("SSL READ pending: %s",op);
@@ -621,10 +623,27 @@ int SSLCom::write ( int __fd, const void* __buf, size_t __n, int __flags )  {
 void SSLCom::cleanup()  {
 
 	TCPCom::cleanup();
-	
-	if(sslcom_ssl) 	SSL_free (sslcom_ssl);
-	if (sslcom_ctx) SSL_CTX_free(sslcom_ctx);
-}
+
+//     if(sslcom_sbio) {
+//         BIO_free(sslcom_sbio); // produces Invalid read of size 8: at 0x539D840: BIO_free (in /usr/lib/x86_64-linux-gnu/libcrypto.so.1.0.0)
+//         sslcom_sbio = nullptr;
+//     }
+
+    if (!sslcom_waiting) {
+        int shit = SSL_shutdown(sslcom_ssl);  //_sh_utdown _it_
+        if (shit == 0) SSL_shutdown(sslcom_ssl);
+    }
+    
+	if(sslcom_ssl) 	{
+        SSL_free (sslcom_ssl);
+        sslcom_ssl = nullptr;
+    }
+    
+	if (sslcom_ctx) {
+        SSL_CTX_free(sslcom_ctx);
+        sslcom_ctx = nullptr;
+    }
+} 
 
 
 int SSLCom::upgrade_client_socket(int sock) {
@@ -713,14 +732,14 @@ bool SSLCom::com_status() {
         if(r) {
             DIAS_("SSLCom::com_status: transport layer OK")
         } else {
-            DIAS_("SSLCom::com_status: SSL layer not ready.")
+            DEBS_("SSLCom::com_status: SSL layer not ready.")
         }
         
-        DIA_("SSLCom::com_status: returning %d",r);
+        DEB_("SSLCom::com_status: returning %d",r);
         return r;
     }
     
     // T_DIAS_("sslcom_status_nok",1,"SSLCom::com_status: returning 0");
-    DIAS_("SSLCom::com_status: transport layer not ready, returning 0");
+    DEBS_("SSLCom::com_status: lower transport layer not ready, returning 0");
     return false;
 }

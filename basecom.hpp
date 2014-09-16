@@ -50,6 +50,7 @@ public:
 	
 	bool __static_init = false;
 	
+    virtual ~baseCom() {};
 protected:
     // non-local socket support
     bool nonlocal_;
@@ -275,14 +276,14 @@ public:
 				inet_ntop(AF_INET, &(((struct sockaddr_in*) ptr_peer_info)->sin_addr),orig_host, INET_ADDRSTRLEN);
 				orig_port = ntohs(((struct sockaddr_in*) ptr_peer_info)->sin_port);
 				
-				DIA_("baseCom::resolve_socket: %s returns %s:%d",op,orig_host,orig_port);
+				DEB_("baseCom::resolve_socket: %s returns %s:%d",op,orig_host,orig_port);
 				
 			} 
 			else if(ptr_peer_info->ss_family == AF_INET6){
 				inet_ntop(AF_INET6, &(((struct sockaddr_in6*) ptr_peer_info)->sin6_addr), orig_host, INET6_ADDRSTRLEN);
 				orig_port = ntohs(((struct sockaddr_in6*) ptr_peer_info)->sin6_port);
 				
-				DIA_("baseCom::resolve_socket: %s returns %s:%d",op,orig_host,orig_port);
+				DEB_("baseCom::resolve_socket: %s returns %s:%d",op,orig_host,orig_port);
 			}
 
 			*target_host = orig_host;
@@ -357,7 +358,7 @@ public:
         if ( r_getsockopt == 0 ) {
                                     
             if(error_code != 0) {
-                    DIA_("TCPCom::is_connected[%d]: getsockopt errno %d = %s",s,error_code,strerror_r(error_code,str_err,256));
+                    DEB_("TCPCom::is_connected[%d]: getsockopt errno %d = %s",s,error_code,strerror_r(error_code,str_err,256));
             }
             else {
                     DUM_("TCPCom::is_connected[%d]: getsockopt errno %d = %s",s,error_code,strerror_r(error_code,str_err,256));
@@ -368,7 +369,7 @@ public:
     //      return (error_code == 0);
     
         } else {
-            DIAS_("TCPCom::is_connected[%d]: getsockopt failed, returned %d = %s",s,r_getsockopt,strerror_r(r_getsockopt,str_err,256));
+            DIA_("TCPCom::is_connected[%d]: getsockopt failed, returned %d = %s",s,r_getsockopt,strerror_r(r_getsockopt,str_err,256));
             return false;
         } 
     }

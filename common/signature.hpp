@@ -230,11 +230,16 @@ public:
                 last_src = ff_src;
             }
          
-            // FIXME: check size and boundaries
+            // check size and boundaries
             SourceType   sig_src = signature_.at(sig_pos).first;
             baseMatch* sig_match = signature_.at(sig_pos).second;
             unsigned int sig_match_limit_offset = sig_match->match_limits_offset;
             unsigned int sig_match_limit_bytes = sig_match->match_limits_bytes;
+            
+            // don't attempt to match empty buffer
+            if(ff_buf->size() == 0) {
+                continue;
+            }
             
             if ( ff_src == sig_src ) {
                 

@@ -63,6 +63,13 @@ handle_last_status(0)
 baseProxy::~baseProxy() {
 	left_shutdown(); 
 	right_shutdown(); 
+    
+    DUMS_("Proxy: deleting com");
+    
+    if (com_ != nullptr) {
+        delete com_;
+    }
+    
  	DIAS_("Proxy has been destroyed"); 
 };
 

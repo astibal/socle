@@ -136,6 +136,8 @@ public:
 	virtual void cleanup();
 
     virtual bool com_status();
+    
+    virtual ~SSLCom() {};
 };
 
 #endif

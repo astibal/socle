@@ -65,9 +65,10 @@ bool SSLMitmCom::spoof_cert(X509* cert_orig) {
     // X509_NAME_get_text_by_NID(X509_get_subject_name(cert_orig),NID_commonName, tmp,512);
     // std::string cn(tmp);
     
-    X509_NAME_oneline(X509_get_subject_name(cert_orig), tmp, 512);
+    X509_NAME_oneline( X509_get_subject_name(cert_orig) , tmp, 512);
     std::string subject(tmp);
-   
+    
+    
     // cache lookup
     X509_PAIR* parek = certstore()->find(subject);
     if (parek) {

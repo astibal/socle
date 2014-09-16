@@ -16,4 +16,4 @@
     License along with this library.
 */
 
-#define PROXYLIB_VERSION "0.0.50"
+#define PROXYLIB_VERSION "0.0.60"

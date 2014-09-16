@@ -83,6 +83,8 @@ public:
      
      X509_PAIR* find(std::string& subject);
      void erase(std::string& subject);
+     
+     virtual ~SSLCertStore();
 
 };
 

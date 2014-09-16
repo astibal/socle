@@ -49,7 +49,7 @@ bool SSLCertStore::load() {
 }
 
 int SSLCertStore::password_callback(char* buf, int size, int rwflag, void* u) {
-    const char* pw = "fortinet";
+    const char* pw = "pwd";
     const int len = strlen(pw);
     memcpy(buf,pw,len);
     
@@ -151,6 +151,21 @@ void SSLCertStore::destroy() {
     if(def_sr_cert != NULL) X509_free(def_sr_cert);
     if(def_sr_key != NULL) EVP_PKEY_free(def_sr_key);
 
+    for (auto i = cache_.begin(); i != cache_.end(); ++i ) {
+        auto key = (*i).first;
+        X509_PAIR* parek = (*i).second;
+        
+        EVP_PKEY_free(parek->first);
+        
+        X509* cert = parek->second;
+//         STACK_OF(X509_EXTENSION) *exts = cert->cert_info->extensions;
+//         sk_X509_EXTENSION_free(exts);
+        
+        X509_free(cert);
+        delete parek;
+    }
+    
+    cache_.clear();
 }
 
 bool SSLCertStore::add(std::string& subject,EVP_PKEY* cert_privkey, X509* cert, X509_REQ* req) {
@@ -196,9 +211,9 @@ X509_PAIR* SSLCertStore::find(std::string& subject) {
     // cache lookup
     X509_CACHE::iterator entry = cache_.find(subject);
     if (entry == cache_.end()) {
-        DIA_("SSLCertStore::find[%x]: NOT cached '%s'",this,subject.c_str());
+        DEB_("SSLCertStore::find[%x]: NOT cached '%s'",this,subject.c_str());
     } else {
-        DIA_("SSLCertStore::find[%x]: found cached '%s'",this,subject.c_str());
+        DEB_("SSLCertStore::find[%x]: found cached '%s'",this,subject.c_str());
         
         return (*entry).second;  //first is the map key (cert subject in our case)
     }    
@@ -238,15 +253,15 @@ void SSLCertStore::erase(std::string& subject) {
 }
 
 X509_PAIR* SSLCertStore::spoof(X509* cert_orig) {
-    char tmp[512];
+    char tmp[2048];
     DEB_("SSLCertStore::spoof[%x]: about to spoof certificate!",this);
     
     
     // get info from the peer certificate
-    X509_NAME_get_text_by_NID(X509_get_subject_name(cert_orig),NID_commonName, tmp,512);
+    X509_NAME_get_text_by_NID(X509_get_subject_name(cert_orig),NID_commonName, tmp,2048);
     std::string cn(tmp);
     
-    X509_NAME_oneline(X509_get_subject_name(cert_orig), tmp, 512);
+    X509_NAME_oneline(X509_get_subject_name(cert_orig), tmp, 2048);
     std::string subject(tmp);
           
     
@@ -270,11 +285,12 @@ X509_PAIR* SSLCertStore::spoof(X509* cert_orig) {
         return NULL;
     }
 
-    if (X509_REQ_set_subject_name(copy,X509_NAME_dup(X509_get_subject_name(cert_orig))) != 1) {
+    X509_NAME* n_dup = X509_NAME_dup(X509_get_subject_name(cert_orig));
+    if (X509_REQ_set_subject_name(copy,n_dup) != 1) {
         ERR_("SSLCertStore::spoof[%x]: error copying subject to request",this);
         return NULL;
     }
-
+    
     // Copy extensions
     STACK_OF(X509_EXTENSION) *exts = cert_orig->cert_info->extensions;
     int num_of_exts;
@@ -298,7 +314,9 @@ X509_PAIR* SSLCertStore::spoof(X509* cert_orig) {
                 unsigned nid = OBJ_obj2nid(obj); 
                 if(nid == NID_subject_alt_name) {
                     DEB_("SSLCertStore::spoof[%x]: adding subjAltName to extensions",this);
-                    sk_X509_EXTENSION_push(s,X509_EXTENSION_dup(ex));
+                    X509_EXTENSION* n_ex = X509_EXTENSION_dup(ex);
+                    sk_X509_EXTENSION_push(s,n_ex);
+//                     X509_EXTENSION_free(n_ex);  //leak hunt
                 }                
             }
         }
@@ -450,6 +468,11 @@ X509_PAIR* SSLCertStore::spoof(X509* cert_orig) {
         ERR_("SSLCertStore::spoof[%x]: error signing certificate",this);
         return NULL;
     }
+
+    EVP_PKEY_free(pkey);  
+    X509_REQ_free(copy);  
+    X509_NAME_free(n_dup);   
+    X509_NAME_free(copy_subj);
     
     auto parek = new X509_PAIR(def_sr_key,cert);
     return parek;    
@@ -604,4 +627,8 @@ std::string SSLCertStore::print_cert(X509* x) {
     }            
     return s;
             
+}
+
+SSLCertStore::~SSLCertStore() {
+    destroy();
 }

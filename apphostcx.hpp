@@ -46,6 +46,7 @@ public:
     sensorType& starttls_sensor() { return starttls_sensor_; };
     sensorType& sensor() { return sensor_; };
     
+    virtual ~AppHostCX() {};
 protected:
     unsigned int peek_counter = 0;
     duplexFlow appflow_;
@@ -201,7 +202,7 @@ void AppHostCX::pre_read() {
                     
                 } else {
                     WAR_("AppHostCX::pre_read[%s]: FIXME: peek counter behind read counter, but readbuf is empty!",c_name());
-                    WAR_("AppHostCX::pre_read[%s]: \ attempt to create readbuf view at <%d,%d> ptr %p",c_name(),w,delta,readbuf()->data());
+                    WAR_("AppHostCX::pre_read[%s]:   s attempt to create readbuf view at <%d,%d> ptr %p",c_name(),w,delta,readbuf()->data());
                     
                 }
                 

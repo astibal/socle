@@ -157,8 +157,8 @@ class baseHostCX : public Host
 
 public:
     
-    baseCom* com() { return *com_; }
-    std::shared_ptr<baseCom*> com_;
+    baseCom* com() { return com_; }
+    baseCom* com_;
     
     baseHostCX* peer_ = nullptr;
     baseHostCX* peer() { return peer_; } 
@@ -199,7 +199,7 @@ public:
 		meter_read_bytes = 0;
 		meter_write_bytes = 0;
 		
-        com_ = std::make_shared<baseCom*>(c);
+        com_ = c;
 		com()->init();
 	};
 	
@@ -229,13 +229,13 @@ public:
         //whenever we initialize object with socket, we will be already opening!
         opening(true);
         
-        com_ = std::make_shared<baseCom*>(c);
+        com_ = c;
         com()->init();
 	}
 	
 	virtual ~baseHostCX() {
 		com()->cleanup();
-        com_.reset();
+        delete com_;
 	};
 	
 	std::string name();
