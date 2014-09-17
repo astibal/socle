@@ -115,14 +115,17 @@ int TCPCom::connect(const char* host, const char* port, bool blocking) {
 		//if (DDEB(110)) 
 		DEBS_("gai info found");
 		
-		if (sfd == -1)
+		if (sfd == -1) {
+            DEBS_("failed to create socket");
 			continue;
+        }
 		
 		if (not blocking) {
 			unblock(sfd);
 
 			if (::connect(sfd, rp->ai_addr, rp->ai_addrlen) < 0) {
 				if ( errno == EINPROGRESS ) {
+                    DUMS_("socket connnected with EINPROGRESS");
 					break;
 					
 				} else {
@@ -131,6 +134,7 @@ int TCPCom::connect(const char* host, const char* port, bool blocking) {
 			} 
 			close(sfd);
 			sfd = -1;
+            DUMS_("new attempt, socket reset");
 		} else {
 			if (::connect(sfd, rp->ai_addr, rp->ai_addrlen) != 0) {
 				continue;
@@ -140,6 +144,11 @@ int TCPCom::connect(const char* host, const char* port, bool blocking) {
 		}
 	}
 
+	
+	if(sfd <= 0) {
+        ERRS_("connect failed");
+    }
+	
 	if (rp == NULL) {
 		ERRS_("Could not connect");
 		return -2;

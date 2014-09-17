@@ -38,9 +38,12 @@ public:
 	writer_key_r_("???:???") {
 	}
 	
-	~trafLog() {
-        writer_->close();
-        delete writer_;
+	virtual ~trafLog() {
+        
+        if(writer_ != nullptr) {
+            writer_->close();
+            delete writer_;
+        }
     }
   
 private:
@@ -98,7 +101,8 @@ private:
 			}
 		}
 	}
-	
+
+   
 	bool create_writer() {
 		
 		writer_key_l_ = create_writer_key('L');

@@ -360,6 +360,8 @@ int baseProxy::handle_sockets_once() {
 	
 	int ret_sel = select(m + 1, &(com()->read_socketSet), &(com()->write_socketSet), NULL, &n_tv);
 	
+    EXT_("select max: %d",m);
+    
     if ( ret_sel >= 0) {
         
 //         DIAS_(".");

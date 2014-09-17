@@ -153,14 +153,16 @@ void SSLCertStore::destroy() {
 
     for (auto i = cache_.begin(); i != cache_.end(); ++i ) {
         auto key = (*i).first;
+        
         X509_PAIR* parek = (*i).second;
         
+        DEB_("SSLCertStore::destroy cache: %s - private key",key.c_str());
         EVP_PKEY_free(parek->first);
         
         X509* cert = parek->second;
 //         STACK_OF(X509_EXTENSION) *exts = cert->cert_info->extensions;
 //         sk_X509_EXTENSION_free(exts);
-        
+        DEB_("SSLCertStore::destroy cache: %s - cert",key.c_str());
         X509_free(cert);
         delete parek;
     }

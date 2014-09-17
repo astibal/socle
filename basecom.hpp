@@ -25,6 +25,7 @@
 #include <csignal>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <fcntl.h>
@@ -351,6 +352,15 @@ public:
         unsigned int error_code;
         socklen_t l = sizeof(error_code);
         char str_err[256];
+        
+        // tcp socket will stay in EINPROGRESS unless there is ANY stat call! Don't ask why. 
+        // fstating socket seemed to me cheapest/fastest.
+        // fstating with stat struct buffer wasn't working too!
+
+#pragma GCC diagnostic ignored "-Wnonnull"
+#pragma GCC diagnostic push        
+        fstat(s,nullptr);
+#pragma GCC diagnostic pop
         
         int r_getsockopt = getsockopt(s, SOL_SOCKET, SO_ERROR, &error_code, &l);
         error_code = errno;
