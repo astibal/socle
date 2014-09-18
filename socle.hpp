@@ -16,4 +16,4 @@
     License along with this library.
 */
 
-#define PROXYLIB_VERSION "0.0.60"
+#define SOCLE_VERSION "0.0.61"
