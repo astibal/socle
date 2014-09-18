@@ -23,6 +23,10 @@
 #include <sslcertstore.hpp>
 #include <sslmitmcom.hpp>
 
+std::string SSLCertStore::certs_path = "./certs/";
+std::string SSLCertStore::password = "password";
+
+
 bool SSLCertStore::load() {
     bool ret = true;
     
@@ -58,18 +62,21 @@ int SSLCertStore::password_callback(char* buf, int size, int rwflag, void* u) {
 
 
 bool SSLCertStore::load_ca_cert() {
-    FILE *fp_crt = fopen(CA_CERTF, "r");
+    std::string cer = certs_path + CA_CERTF;
+
+    FILE *fp_crt = fopen(cer.c_str(), "r");
     FILE *fp_key = nullptr;
     
     if (!fp_crt) {
-        FAT_("SSLCertStore::load_ca_cert: unable to open: %s\n",CA_CERTF);
+        FAT_("SSLCertStore::load_ca_cert: unable to open: %s",cer.c_str());
         return false;
     }
     
-    fp_key = fopen(CA_KEYF, "r");
+    std::string key = certs_path + CA_KEYF;
+    fp_key = fopen(key.c_str(), "r");
     
     if (!fp_key) {
-        FAT_("SSLCertStore::load_ca_cert: unable to open: %s\n",CA_KEYF);
+        FAT_("SSLCertStore::load_ca_cert: unable to open: %s",key.c_str());
 
         fclose(fp_crt);
         return false;
@@ -77,7 +84,7 @@ bool SSLCertStore::load_ca_cert() {
     
     
     ca_cert = PEM_read_X509(fp_crt, NULL, NULL, NULL);  
-    ca_key = PEM_read_PrivateKey(fp_key,NULL, NULL, (void*)"fortinet");
+    ca_key = PEM_read_PrivateKey(fp_key,NULL, NULL, (void*)password.c_str());
     
     fclose(fp_crt);
     fclose(fp_key);
@@ -86,18 +93,22 @@ bool SSLCertStore::load_ca_cert() {
 }
 
 bool SSLCertStore::load_def_cl_cert() {
-    FILE *fp_crt = fopen(CL_CERTF, "r");
+    
+    std::string cer = certs_path + CL_CERTF;
+    
+    FILE *fp_crt = fopen(cer.c_str(), "r");
     FILE *fp_key = nullptr;
     
     if (!fp_crt) {
-        FAT_("SSLCertStore::load_def_cl_cert: unable to open: %s\n",CL_CERTF);
+        FAT_("SSLCertStore::load_def_cl_cert: unable to open: %s",cer.c_str());
         return false;
     }
     
-    fp_key = fopen(CL_KEYF, "r");
+    std::string key = certs_path + CL_KEYF; 
+    fp_key = fopen(key.c_str(), "r");
     
     if (!fp_key) {
-        FAT_("SSLCertStore::load_def_cl_cert: unable to open: %s\n",CL_KEYF);
+        FAT_("SSLCertStore::load_def_cl_cert: unable to open: %s",key.c_str());
         fclose(fp_crt);
         return false;
     }
@@ -113,18 +124,22 @@ bool SSLCertStore::load_def_cl_cert() {
 }
 
 bool SSLCertStore::load_def_sr_cert() {
-    FILE *fp_crt = fopen(SR_CERTF, "r");
+    
+    std::string cer = certs_path + SR_CERTF;
+    
+    FILE *fp_crt = fopen(cer.c_str(), "r");
     FILE *fp_key = nullptr;
     
     if (!fp_crt) {
-        FAT_("SSLCertStore::load_def_sr_cert: unable to open: %s\n",SR_CERTF);
+        FAT_("SSLCertStore::load_def_sr_cert: unable to open: %s",cer.c_str());
         return false;
     }
     
-    fp_key = fopen(SR_KEYF, "r");
+    std::string key = certs_path + SR_KEYF;
+    fp_key = fopen(key.c_str(), "r");
     
     if (!fp_key) {
-        FAT_("SSLCertStore::load_def_sr_cert: unable to open: %s\n",SR_KEYF);
+        FAT_("SSLCertStore::load_def_sr_cert: unable to open: %s",key.c_str());
         fclose(fp_crt);
         return false;
     }

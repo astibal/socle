@@ -36,29 +36,35 @@
 /* define HOME to be dir for key and cert files... */
 #define HOME "./certs/"
 /* Make these what you want for cert & key files */
-#define CL_CERTF  HOME "cl-cert.pem"
-#define CL_KEYF   HOME "cl-key.pem"
-#define SR_CERTF  HOME "srv-cert.pem"
-#define SR_KEYF   HOME "srv-key.pem"
+#define CL_CERTF  "cl-cert.pem"
+#define CL_KEYF   "cl-key.pem"
+#define SR_CERTF  "srv-cert.pem"
+#define SR_KEYF   "srv-key.pem"
 
-#define CA_CERTF  HOME "ca-cert.pem"
-#define CA_KEYF  HOME "ca-key.pem"
+#define CA_CERTF  "ca-cert.pem"
+#define CA_KEYF   "ca-key.pem"
 
 typedef std::pair<EVP_PKEY*,X509*> X509_PAIR;
 typedef std::map<std::string,X509_PAIR*> X509_CACHE;
 
+
 class SSLCertStore {
+   
 public:
+    
     int       serial=0xCABA1A;
     
-    X509*     ca_cert; // ca certificate
-    EVP_PKEY* ca_key;  // ca key to self-sign 
+    X509*     ca_cert = nullptr; // ca certificate
+    EVP_PKEY* ca_key = nullptr;  // ca key to self-sign 
     
-    X509*     def_sr_cert; // default server certificate
-    EVP_PKEY* def_sr_key;  // default server key
+    X509*     def_sr_cert = nullptr; // default server certificate
+    EVP_PKEY* def_sr_key = nullptr;  // default server key
     
-    X509*     def_cl_cert;  // default client certificate
-    EVP_PKEY* def_cl_key;   // default client key
+    X509*     def_cl_cert = nullptr;  // default client certificate
+    EVP_PKEY* def_cl_key = nullptr;   // default client key
+
+    static std::string certs_path;
+    static std::string password;
     
     static int password_callback(char* buf, int size, int rwflag, void*u);
     
@@ -87,8 +93,5 @@ public:
      virtual ~SSLCertStore();
 
 };
-
-
-
 
 #endif //__SSLCERTSTORE_HPP__
