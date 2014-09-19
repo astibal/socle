@@ -66,7 +66,7 @@ template<class Worker, class SubWorker>
 int ThreadedAcceptor<Worker,SubWorker>::create_workers(void) {	
 	nthreads = std::thread::hardware_concurrency();
 	
-	INF_("Detected %d cores to use.", nthreads);
+	DIA_("Detected %d cores to use.", nthreads);
 	
 	threads_ = new std::thread*[nthreads];
 	workers_ = new Worker*[nthreads];
@@ -95,7 +95,7 @@ int ThreadedAcceptor<Worker,SubWorker>::run(void) {
 	for( unsigned int i = 0; i < nthreads; i++) {
 		auto w = workers_[i];
 		std::thread* ptr = new std::thread(&Worker::run,w);
-		INF_("ThreadedAcceptor::run: started new thread[%d]: ptr=%x, thread_id=%d",i,ptr,ptr->get_id())
+		DIA_("ThreadedAcceptor::run: started new thread[%d]: ptr=%x, thread_id=%d",i,ptr,ptr->get_id())
 		threads_[i] = ptr;
 	}
 	

@@ -61,7 +61,7 @@ int THREAD_setup ( void ) {
     CRYPTO_set_id_callback ( id_function );
     CRYPTO_set_locking_callback ( locking_function );
 	
-	INFS_("OpenSSL threading support: enabled");
+	DIAS_("OpenSSL threading support: enabled");
     return 1;
 }
 
