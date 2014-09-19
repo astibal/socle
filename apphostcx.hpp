@@ -26,7 +26,7 @@
 #include <hostcx.hpp>
 #include <signature.hpp>
 
-typedef typename std::vector<std::pair<duplexStateSignature,bool>> sensorType;
+typedef typename std::vector<std::pair<flowMatchState,duplexFlowMatch*>> sensorType;
 
 
 class AppHostCX: public baseHostCX {
@@ -45,6 +45,7 @@ public:
     
     sensorType& starttls_sensor() { return starttls_sensor_; };
     sensorType& sensor() { return sensor_; };
+    int zip_signatures(sensorType& s, std::vector<duplexFlowMatch*>& v); // create pairs of results and pointers to (somewhere, already created) signatures.
     
     virtual ~AppHostCX() {};
 protected:
@@ -67,7 +68,7 @@ protected:
     
     bool detect(sensorType&);
     
-    virtual void on_detect(duplexSignature&, vector_range&);
+    virtual void on_detect(duplexFlowMatch*, flowMatchState&, vector_range&);
     virtual void on_starttls() {};
 
 protected:
@@ -78,6 +79,29 @@ protected:
 AppHostCX::AppHostCX(baseCom* c, const char* h, const char* p) :baseHostCX(c,h,p) {}
 AppHostCX::AppHostCX(baseCom* c, unsigned int s) :baseHostCX(c,s) {}
 
+int AppHostCX::zip_signatures(sensorType& s, std::vector<duplexFlowMatch*>& v) {
+    s.clear();
+    int r = 0;
+    
+    for( std::vector<duplexFlowMatch*>::iterator i = v.begin(); i < v.end(); ++i ) {
+        
+        if((*i) == nullptr ) {
+            DEBS_("AppHostCX::zip_signatures: attempt to zip nullptr signature");
+            continue;
+        }
+        
+        std::pair<flowMatchState,duplexFlowMatch*> a;
+
+        a.first = flowMatchState();
+        a.second =(*i);
+
+        s.push_back(a);
+        ++r;
+    }
+    
+    DEB_("AppHostCX::zip_signatures: loaded %d of %d",r,v.size());
+    return r;
+};
 
 bool AppHostCX::detect(sensorType& cur_sensor) {
 
@@ -85,20 +109,22 @@ bool AppHostCX::detect(sensorType& cur_sensor) {
     
     for (sensorType::iterator i = cur_sensor.begin(); i != cur_sensor.end(); ++i ) {
     
-        std::pair<duplexStateSignature,bool>& sig = (*i);
+        std::pair<flowMatchState,duplexFlowMatch*>& sig = (*i);
 
-        duplexStateSignature& sig_sig = std::get<0>(sig);
-        bool& sig_res = std::get<1>(sig);
+        // get zipped results with signature pointers
+        duplexFlowMatch* sig_sig = std::get<1>(sig);
+        flowMatchState& sig_res = std::get<0>(sig);
         
-        if (sig_res == false) {
-            DEB_("AppHostCX::detect[%s]: Signature %s",c_name(), sig_sig.name.c_str());
-            bool r = sig_sig.match(this->flowptr());
+        if (sig_res.hit() == false) {
+            DEB_("AppHostCX::detect[%s]: Signature %s",c_name(), sig_sig->name().c_str());
             
-            vector_range& ret = sig_sig.result();
+            bool r = sig_res.update(this->flowptr(),sig_sig);
+            
+            vector_range& ret = sig_res.result();
             
             if (r) {
-                sig_res = true;
-                on_detect(sig_sig,ret);
+                sig_res.hit() = true;
+                on_detect(sig_sig,sig_res,ret);
                 
                 matched = true;
                 DIA_("AppHostCX::detect[%s]: Signature matched: %s",c_name(), vrangetos(ret).c_str());
@@ -108,7 +134,7 @@ bool AppHostCX::detect(sensorType& cur_sensor) {
                 DEB_("AppHostCX::detect[%s]: Signature didn't match: %s",c_name(), vrangetos(ret).c_str());
             } 
         } else {
-            DEB_("AppHostCX::detect[%s]: Signature %s already matched",c_name(), sig_sig.name.c_str());
+            DEB_("AppHostCX::detect[%s]: Signature %s already matched",c_name(), sig_sig->name().c_str());
         }
     }
     
@@ -167,8 +193,6 @@ void AppHostCX::pre_read() {
     
     bool __behind_read_warn = true;
     bool behind_read = false;
-    
-    int behind_read_size = 0;
     
     if ( mode() == MODE_PRE) {
         if(this->meter_read_bytes <= DETECT_MAX_BYTES && peek_counter <= this->meter_read_bytes  ) {
@@ -258,7 +282,7 @@ void AppHostCX::pre_write() {
 }
 
 
-void AppHostCX::on_detect(duplexSignature& sig_sig, vector_range& r) {}
+void AppHostCX::on_detect(duplexFlowMatch* sig_sig, flowMatchState& s, vector_range& r) {}
 
 
 

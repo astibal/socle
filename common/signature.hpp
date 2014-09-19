@@ -161,6 +161,12 @@ range simpleMatch::match(const char* str, unsigned int len) {
 
 template <class SourceType>
 class flowMatch {
+    
+public:
+    std::string& name() { return name_; }
+   
+protected:    
+    std::string name_;                                                         
     std::vector<std::pair<SourceType,baseMatch*>>  signature_;                // series of L/R/X matches to be satisfied
 
 public:    
@@ -252,14 +258,11 @@ public:
                             sig_match_limit_bytes + sig_match_limit_offset < ff_buf->size() ? sig_match_limit_bytes : ff_buf->size()
                                         );
                 }
-                // DEBUGS
-                DEB_("flowMatch::match: flow %d/%d",cur_flow,f->flow().size());
-                DEB_("flowMatch::match: signature[%s]: %s", std::to_string(sig_src).c_str(), sig_match->expr().c_str());
-    //             DIA_("flowMatch::match: pattern[%s]: %s",std::to_string(ff_src).c_str(), hex_dump(ff_view.data(),ff_view.size()).c_str());
-                auto xxx = ff_view.size() < 16 ? ff_view.size() : 16;
-//                 INF_("flowMatch::match: pattern[%s] view-size=%d: %s",std::to_string(ff_src).c_str(), ff_view.size(),hex_dump(ff_view.data(),ff_buf->size()).c_str());                     
-                DEB_("flowMatch::match: pattern[%s] view-size=%d",std::to_string(ff_src).c_str(), ff_view.size());                     
                 
+                // DEBUGS
+                DEB_("flowMatch::match: flow %d/%d : dirchange: %d",cur_flow,f->flow().size(),direction_change);
+                DEB_("flowMatch::match: signature[%s]: %s", std::to_string(sig_src).c_str(), sig_match->expr().c_str());
+                DEB_("flowMatch::match: pattern[%s] view-size=%d",std::to_string(ff_src).c_str(), ff_view.size());                                    
                 DEB_("flowMatch::match: data=\n%s",hex_dump(ff_view.data(),ff_view.size()).c_str());
               
                 range r = sig_match->match((const char*)ff_view.data(),(unsigned int)ff_view.size());
@@ -339,28 +342,24 @@ public:
 };
 
 
-template <class matchType>
-class SignatureType {
-public:
-    matchType*  signature;
-    std::string name;
-    std::string category;
-    bool debug = false;
-};
 
-typedef SignatureType<flowMatch<unsigned char>> duplexSignature;
+
+// typedef SignatureType<flowMatch<unsigned char>> duplexSignature;
 typedef Flow<unsigned char> duplexFlow;
 typedef flowMatch<unsigned char> duplexFlowMatch;
 
 
-class duplexStateSignature : public duplexSignature {
+class flowMatchState {
+protected:
+    bool         hit_ = false;    
+    vector_range ranges_;
+    unsigned int sig_pos_ = 0;
+    
 public:
-    vector_range ranges;
-    unsigned int sig_pos = 0;
+    bool& hit() { return hit_; }
+    vector_range& result() { return ranges_; };
     
-    bool match(duplexFlow* f) {
-        return signature->match(f,ranges,sig_pos);
+    bool update(duplexFlow* f, duplexFlowMatch* signature) {
+       return signature->match(f,ranges_,sig_pos_);
     }
-    
-    vector_range& result() { return ranges; };
 };
