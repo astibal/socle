@@ -33,6 +33,10 @@ std::once_flag SSLCom::openssl_thread_setup_done;
 std::once_flag SSLCom::certstore_setup_done;
 SSLCertStore*  SSLCom::sslcom_certstore_;
 
+
+int SSLCom::counter_ssl_connect = 0;
+int SSLCom::counter_ssl_accept = 0;
+
 void locking_function ( int mode, int n, const char * file, int line )  {
 	
     if ( mode & CRYPTO_LOCK ) {
@@ -335,10 +339,17 @@ int SSLCom::ssl_waiting() {
 	
 	if (!sslcom_server) {
 		r = SSL_connect(sslcom_ssl);
+        
+        //debug counter
+        SSLCom::counter_ssl_connect++;
+        
 		op = op_connect;
 	} 
 	else if(sslcom_server) {
 		r = SSL_accept(sslcom_ssl);
+        
+        SSLCom::counter_ssl_accept++;
+        
 		op = op_accept;
 	}
 		

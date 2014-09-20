@@ -295,7 +295,9 @@ X509_PAIR* SSLCertStore::spoof(X509* cert_orig) {
         return NULL;
     }
     
-    X509_REQ_set_pubkey(copy,X509_get_pubkey(def_sr_cert));
+    EVP_PKEY* pub_sr_cert = X509_get_pubkey(def_sr_cert);
+    X509_REQ_set_pubkey(copy,pub_sr_cert);
+    EVP_PKEY_free(pub_sr_cert);
 
     if (!(copy_subj = X509_NAME_new())) {
         ERR_("SSLCertStore::spoof[%x]: cannot create subject for request",this);
@@ -340,7 +342,8 @@ X509_PAIR* SSLCertStore::spoof(X509* cert_orig) {
         
         int r = X509_REQ_add_extensions(copy,s);
         DEB_("SSLCertStore::spoof[%x]: X509_REQ_add_extensions returned %d",this,r);
-        sk_X509_EXTENSION_free(s);
+        
+        sk_X509_EXTENSION_pop_free(s,X509_EXTENSION_free);
     }   
     
     // pick the correct digest and sign the request 
@@ -490,6 +493,8 @@ X509_PAIR* SSLCertStore::spoof(X509* cert_orig) {
     X509_REQ_free(copy);  
     X509_NAME_free(n_dup);   
     X509_NAME_free(copy_subj);
+    sk_X509_EXTENSION_pop_free(req_exts,X509_EXTENSION_free);
+
     
     auto parek = new X509_PAIR(def_sr_key,cert);
     return parek;    

@@ -100,8 +100,12 @@ protected:
     bool sslcom_status_ = false;
     inline bool sslcom_status() { return sslcom_status_; }
     inline void sslcom_status(bool b) { sslcom_status_ = b; }
+
+public:    
+    // debug counters
+    static int counter_ssl_connect;
+    static int counter_ssl_accept;
     
-public:
     static std::once_flag openssl_thread_setup_done;
     
     // certificate store common across all SSCom instances
