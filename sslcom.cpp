@@ -123,7 +123,7 @@ void SSLCom::init_client() {
 	method = TLSv1_method();
 
 	sslcom_ctx = SSL_CTX_new (method);	
-	//SSL_CTX_set_cipher_list(sslcom_ctx,"EDH-RSA-DES-CBC3-SHA");
+	SSL_CTX_set_cipher_list(sslcom_ctx,"ALL:!ADH:!LOW:!EXP:!MD5:@STRENGTH");
 	
 	if (!sslcom_ctx) {
 		ERRS_("Client: Error creating SSL context!");
@@ -149,6 +149,7 @@ void SSLCom::init_client() {
 	}	
 
     sslcom_ssl = SSL_new(sslcom_ctx);
+    SSL_set_mode(sslcom_ssl, SSL_MODE_ENABLE_PARTIAL_WRITE|SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
 }
 
 
@@ -198,6 +199,7 @@ void SSLCom::init_server() {
 	}	
 
 	sslcom_ssl = SSL_new(sslcom_ctx);
+    SSL_set_mode(sslcom_ssl, SSL_MODE_ENABLE_PARTIAL_WRITE|SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
 	
 	SSL_set_fd (sslcom_ssl, sslcom_server_fd);
 	sslcom_server = true;
@@ -251,12 +253,13 @@ bool SSLCom::check_cert (const char* host) {
 
 /* OK set  */
 bool SSLCom::readable(int s) { 
-	bool r = (
-		( ( FD_ISSET(s,&read_socketSet)  &&  sslcom_write_blocked_on_read) ) ||
-          ( FD_ISSET(s,&read_socketSet) && !sslcom_read_blocked_on_write ) ||
-           sslcom_waiting
-		); 
-	
+    // 	bool r = ( sslcom_write_blocked_on_read  || !sslcom_read_blocked_on_write || sslcom_waiting ); 
+    bool r = !sslcom_read_blocked_on_write;
+    sslcom_read_blocked_on_write = false;
+
+    DUM_("SSLCom::readable[%d]: sslcom_read_blocked_on_write: %d",s,sslcom_read_blocked_on_write);
+    DUM_("SSLCom::readable[%d]: sslcom_write_blocked_on_read: %d",s,sslcom_write_blocked_on_read);  
+    
 	if (r) {
 		DUM_("SSLCom::readable[%d]: %d",s,r);
 	} else {
@@ -266,16 +269,13 @@ bool SSLCom::readable(int s) {
 	return r;
 };
 bool SSLCom::writable(int s) { 
-	//return (FD_ISSET(s,&write_socketSet) || (sslcom_write_blocked_on_read && FD_ISSET(s,&read_socketSet))); 
-	bool r (
-		  ( ( FD_ISSET(s,&write_socketSet) && sslcom_read_blocked_on_write) ) ||
-		    ( FD_ISSET(s,&write_socketSet) && !sslcom_write_blocked_on_read ) || 
-		    sslcom_waiting
-		  ); 	
+    // 	bool r  = ( sslcom_read_blocked_on_write ||  !sslcom_write_blocked_on_read ||  sslcom_waiting ); 	
 	
-	DUM_("SSLCom::writable[%d]: read_set ready: %d",s,FD_ISSET(s,&read_socketSet));
-	DUM_("SSLCom::writable[%d]: write_set ready: %d",s,FD_ISSET(s,&write_socketSet));
-	DUM_("SSLCom::writable[%d]: sslcom_read_blocked_on_write: %d",s,sslcom_read_blocked_on_write);	
+    bool r = !sslcom_write_blocked_on_read;
+    sslcom_write_blocked_on_read = false;
+    
+	DUM_("SSLCom::writable[%d]: sslcom_read_blocked_on_write: %d",s,sslcom_read_blocked_on_write);
+    DUM_("SSLCom::writable[%d]: sslcom_write_blocked_on_read: %d",s,sslcom_write_blocked_on_read);  
 	
 	if (r) {
 		DUM_("SSLCom::writable[%d]: %d",s,r);
@@ -306,7 +306,11 @@ void SSLCom::accept_socket ( int sockfd )  {
 	
     upgrade_server_socket(sockfd);
     
-    SSL_accept (sslcom_ssl);
+    if (SSL_accept (sslcom_ssl) > 0) {
+        DUM_("SSLCom::accept_socket[%d]: success at 1st attempt.",sockfd);
+    } else {
+        DUM_("SSLCom::accept_socket[%d]: need to call later.",sockfd);
+    }
 }
 
 int SSLCom::upgrade_server_socket(int sockfd) {
@@ -360,6 +364,7 @@ int SSLCom::ssl_waiting() {
 			DUM_("SSL READ pending: %s",op);
 			
  			sslcom_waiting = true;
+            forced_read(true);
 // 			sslcom_waiting_read = true;
  			return 1;
 		}
@@ -367,6 +372,7 @@ int SSLCom::ssl_waiting() {
 			DUM_("SSL WRITE pending: %s",op);
 			
  			sslcom_waiting = true;
+            forced_write(true);
 // 			sslcom_waiting_write = true;
  			return 1;
 		}
@@ -391,7 +397,7 @@ int SSLCom::ssl_waiting() {
 		return 0;
 	}
 	
-	DEB_("SSL operation succeeded: %s",op);
+	DEB_("SSLCom::ssl_waiting: operation succeeded: %s", op);
 	sslcom_waiting = false;	
 
 	if(!sslcom_server) {
@@ -438,17 +444,27 @@ int SSLCom::read ( int __fd, void* __buf, size_t __n, int __flags )  {
 		
 		if(total_r >= (int)__n) {
 			DEB_("SSLCom::read[%d]: reached buffer capacity of %d bytes",__fd,__n);
-			break;
+            
+            // this is tricky one :) 
+            // I have spent quite couple of hours of troubleshooting this:
+            // ... 
+            // We have to break here, since write buffer is full
+            // BUT 
+            // openssl already has it internally 
+            // => select won't return this socket as in read_set == no reads anymore !!!
+            // => we have to have mechanism which will enforce read in the next round 
+			forced_read(true);
 		}
 		
 //         sslcom_read_blocked_on_write=0;
 //         sslcom_read_blocked=0;
 
+        again:
         int r = SSL_read (sslcom_ssl,__buf+total_r,__n-total_r);
 // 		if (r > 0) return r;
 
 		if(r == 0) {
-			DIAS_("SSLCom::read: SSL_read returned 0");
+			DEBS_("SSLCom::read: SSL_read returned 0");
 		}
 		
 		int err = SSL_get_error ( sslcom_ssl,r);
@@ -461,7 +477,7 @@ int SSLCom::read ( int __fd, void* __buf, size_t __n, int __flags )  {
 				would have to prevent this condition */
 				// fwrite ( s2c,1,r,stdout );
 				
-				DEB_("SSLCom::read[%d]: %d bytes read from ssl socket",__fd,r);
+				DIA_("SSLCom::read [%d]: %d bytes read from ssl socket %s",__fd,r,(r == __n) ? "(max)" : "");
 				total_r += r;
 				
 				sslcom_read_blocked_on_write=0;
@@ -475,13 +491,13 @@ int SSLCom::read ( int __fd, void* __buf, size_t __n, int __flags )  {
 				
 			case SSL_ERROR_WANT_READ:
 				if(r == -1){
-					DUM_("SSLCom::read[%d]: want read: err=%d,read_now=%d,total=%d",__fd,err,r,total_r);
+					DEB_("SSLCom::read[%d]: want read: err=%d,read_now=%d,total=%d",__fd,err,r,total_r);
 				}
 				else {
 					DEB_("SSLCom::read[%d]: want read: err=%d,read_now=%d,total=%d",__fd,err,r,total_r);
 				}
 				sslcom_read_blocked=1;
-				
+                
 				if(total_r > 0) return total_r;
 				return r;
 
@@ -507,6 +523,7 @@ int SSLCom::read ( int __fd, void* __buf, size_t __n, int __flags )  {
 			case SSL_ERROR_WANT_WRITE:
 				DEB_("SSLCom::read[%d]: want write, last read retured %d, total read %d",__fd,r,total_r);
 				sslcom_read_blocked_on_write=1;
+                forced_write(true);  // we can opportinistically enforce write operation regardless of select result
 				if(total_r > 0) return total_r;
 				return r;
 			
@@ -572,6 +589,10 @@ int SSLCom::write ( int __fd, const void* __buf, size_t __n, int __flags )  {
         normalized__n = __n;
     }
 
+    if (__n <= 0 ) {
+         return 0;
+    }
+    
     again:
 
     /* Try to write */
@@ -586,8 +607,11 @@ int SSLCom::write ( int __fd, const void* __buf, size_t __n, int __flags )  {
 
 		/* We wrote something*/
 		case SSL_ERROR_NONE:
-			DEB_("SSLCom::write[%d]: %d bytes written to the ssl socket",__fd,r);
+			DIA_("SSLCom::write[%d]: %d bytes written to the ssl socket %s",__fd,r, r != __n ? "incomplete" : "");
 			is_problem = false;
+            
+            sslcom_write_blocked_on_read = 0;
+            
 			break;
 			
 		/* We would have blocked */
@@ -601,7 +625,7 @@ int SSLCom::write ( int __fd, const void* __buf, size_t __n, int __flags )  {
 				DUM_("SSLCom::write[%d] want write: repeating last operation",__fd);	
 			}
 
-			goto again;
+// 			goto again;
 			break;
 
 		/* We get a WANT_READ if we're
@@ -613,6 +637,7 @@ int SSLCom::write ( int __fd, const void* __buf, size_t __n, int __flags )  {
 		case SSL_ERROR_WANT_READ:
 			DEB_("SSLCom::write[%d] want read: %d (written %d)",__fd,err,r);	
 			sslcom_write_blocked_on_read=1;
+            forced_read(true);
 			break;
 
 			/* Some other error */

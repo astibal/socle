@@ -50,7 +50,7 @@ int MasterProxy::run_once(void) {
 		}
 	}
 	
-	DUM_("MasterProxy::run_once: returning %d",r);
+	EXT_("MasterProxy::run_once: returning %d",r);
 	return r;
 }
 

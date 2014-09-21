@@ -263,7 +263,7 @@ public:
                 DEB_("flowMatch::match: flow %d/%d : dirchange: %d",cur_flow,f->flow().size(),direction_change);
                 DEB_("flowMatch::match: signature[%s]: %s", std::to_string(sig_src).c_str(), sig_match->expr().c_str());
                 DEB_("flowMatch::match: pattern[%s] view-size=%d",std::to_string(ff_src).c_str(), ff_view.size());                                    
-                DEB_("flowMatch::match: data=\n%s",hex_dump(ff_view.data(),ff_view.size()).c_str());
+                DUM_("flowMatch::match: data=\n%s",hex_dump(ff_view.data(),ff_view.size()).c_str());
               
                 range r = sig_match->match((const char*)ff_view.data(),(unsigned int)ff_view.size());
                 DEB_("flowMatch::match: result: %s",rangetos(r).c_str());

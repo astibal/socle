@@ -260,14 +260,14 @@ void baseProxy::run_timers(void) {
 int baseProxy::prepare_sockets(void) {
     int max = 0;
 
-	com()->zeroize_write_fdset();
-	com()->zeroize_read_fdset();
+	com()->zeroize_writeset();
+	com()->zeroize_readset();
 
     if(left_sockets.size() > 0)
 	for(typename std::vector<baseHostCX*>::iterator i = left_sockets.begin(); i != left_sockets.end(); ++i) {
 		int s = (*i)->socket();
-        com()->set_read_fdset(s);
-		com()->set_write_fdset(s);
+        com()->set_readset(s);
+		com()->set_writeset(s);
 		EXT_("left -> preparing %d",s);
 
         if (s > max) {
@@ -278,8 +278,8 @@ int baseProxy::prepare_sockets(void) {
     if (left_bind_sockets.size() > 0)
 	for(typename std::vector<baseHostCX*>::iterator ii = left_bind_sockets.begin(); ii != left_bind_sockets.end(); ++ii) {
 		int s = (*ii)->socket();
-        com()->set_read_fdset(s);
-		com()->set_write_fdset(s);
+        com()->set_readset(s);
+		com()->set_writeset(s);
 		EXT_("left, bound -> preparing %d",s);
 		
         if (s > max) {
@@ -290,8 +290,8 @@ int baseProxy::prepare_sockets(void) {
     if(right_sockets.size() > 0)
     for(typename std::vector<baseHostCX*>::iterator j = right_sockets.begin(); j != right_sockets.end(); ++j) {
 		int s = (*j)->socket();
-        com()->set_read_fdset(s);
-		com()->set_write_fdset(s);
+        com()->set_readset(s);
+		com()->set_writeset(s);
 		EXT_("right -> preparing %d",s);
 
         if (s > max) {
@@ -302,8 +302,8 @@ int baseProxy::prepare_sockets(void) {
     if(right_bind_sockets.size() > 0)
 	for(typename std::vector<baseHostCX*>::iterator jj = right_bind_sockets.begin(); jj != right_bind_sockets.end(); ++jj) {
 		int s = (*jj)->socket();
-        com()->set_read_fdset(s);
-		com()->set_write_fdset(s);
+        com()->set_readset(s);
+		com()->set_writeset(s);
 		EXT_("right, bound -> preparing %d",s);
 		
         if (s > max) {
@@ -315,8 +315,8 @@ int baseProxy::prepare_sockets(void) {
 	for(typename std::vector<baseHostCX*>::iterator k = left_pc_cx.begin(); k != left_pc_cx.end(); ++k) {
 		int k_s = (*k)->socket();
 		if (k_s <= 0) { continue; };
-        com()->set_read_fdset(k_s);
-		com()->set_write_fdset(k_s);
+        com()->set_readset(k_s);
+		com()->set_writeset(k_s);
 		
 		EXT_("left, perma-conn -> preparing %d",k_s);
 		if (k_s > max) {
@@ -328,8 +328,8 @@ int baseProxy::prepare_sockets(void) {
 	for(typename std::vector<baseHostCX*>::iterator l = right_pc_cx.begin(); l != right_pc_cx.end(); ++l) {    
 		int l_s = (*l)->socket();
 		if (l_s <= 0) { continue; };
-        com()->set_read_fdset(l_s);
-		com()->set_write_fdset(l_s);
+        com()->set_readset(l_s);
+		com()->set_writeset(l_s);
 
 		
 		EXT_("right, perma-conn -> preparing %d",l_s);
@@ -384,38 +384,48 @@ int baseProxy::handle_sockets_once() {
 			
 			int s = (*i)->socket();
 			
-			if (com()->readable(s)) {
-				int red = (*i)->read();
-				
-				if (red == 0) {
-					(*i)->close();
- 					//left_sockets.erase(i);
-					handle_last_status |= HANDLE_LEFT_ERROR;
-					
-					error_on_read = true;
-					on_left_error(*i);
-					break;
-				}
-				
-				if (red > 0) {
-					meter_last_read += red;
-					on_left_bytes(*i);
-				}
-			}
-			if (com()->writable(s)) {
-				int wrt = (*i)->write();
-				if (wrt < 0) {
-					(*i)->close();
-					//left_sockets.erase(i);
-					handle_last_status |= HANDLE_LEFT_ERROR;
-					
-					error_on_write = true;
-					on_left_error(*i);
-					break;
-				} else {
-					meter_last_write += wrt;
-				}
-			}
+            EXT_("L: %d",s);
+            
+            if(com()->in_readset(s) || (*i)->com()->forced_read_reset()) {
+                EXT_("L in R fdset: %d",s);
+                if ((*i)->readable()) {
+                    EXT_("L in R fdset and readable: %d",s)
+                    int red = (*i)->read();
+                    
+                    if (red == 0) {
+                        (*i)->close();
+                        //left_sockets.erase(i);
+                        handle_last_status |= HANDLE_LEFT_ERROR;
+                        
+                        error_on_read = true;
+                        on_left_error(*i);
+                        break;
+                    }
+                    
+                    if (red > 0) {
+                        meter_last_read += red;
+                        on_left_bytes(*i);
+                    }
+                }
+            }
+			if(com()->in_writeset(s) || (*i)->com()->forced_write_reset()) {
+                EXT_("L in W fdset: %d",s);
+                if ((*i)->writable()) {
+                    EXT_("L in W fdset and writable: %d",s)
+                    int wrt = (*i)->write();
+                    if (wrt < 0) {
+                        (*i)->close();
+                        //left_sockets.erase(i);
+                        handle_last_status |= HANDLE_LEFT_ERROR;
+                        
+                        error_on_write = true;
+                        on_left_error(*i);
+                        break;
+                    } else {
+                        meter_last_write += wrt;
+                    }
+                }
+            }
 		}
 		
 		if(right_sockets.size() > 0)
@@ -436,36 +446,46 @@ int baseProxy::handle_sockets_once() {
 			
 			int s = (*j)->socket();
 			
-			if (com()->readable(s)) {
-				int red = (*j)->read();
-				if (red == 0) {
-					(*j)->close();
-					//right_sockets.erase(j);
-					handle_last_status |= HANDLE_RIGHT_ERROR;
-					
-					error_on_read = true;
-					on_right_error(*j);
-					break;
-				}
-				if (red > 0) {
-					meter_last_read += red;
-					on_right_bytes(*j);
-				}
-			}
-			if (com()->writable(s)) {
-				int wrt = (*j)->write();
-				if (wrt < 0) {
-					(*j)->close();
-					//right_sockets.erase(j);
-					handle_last_status |= HANDLE_RIGHT_ERROR;
-					
-					error_on_write = true;
-					on_right_error(*j);
-					break;
-				} else {
-					meter_last_write += wrt;
-				}					
-			}			
+            EXT_("R: %d",s);
+            
+            if(com()->in_readset(s) || (*j)->com()->forced_read_reset()) {
+                EXT_("R in R fdset: %d",s);
+                if ((*j)->readable()) {
+                    EXT_("R in R fdset and readable: %d",s);
+                    int red = (*j)->read();
+                    if (red == 0) {
+                        (*j)->close();
+                        //right_sockets.erase(j);
+                        handle_last_status |= HANDLE_RIGHT_ERROR;
+                        
+                        error_on_read = true;
+                        on_right_error(*j);
+                        break;
+                    }
+                    if (red > 0) {
+                        meter_last_read += red;
+                        on_right_bytes(*j);
+                    }
+                }
+            }
+			if(com()->in_writeset(s) || (*j)->com()->forced_write_reset()) {
+                EXT_("R in W fdset: %d",s);
+                if ((*j)->writable()) {
+                    EXT_("R in W fdset and writable: %d",s);
+                    int wrt = (*j)->write();
+                    if (wrt < 0) {
+                        (*j)->close();
+                        //right_sockets.erase(j);
+                        handle_last_status |= HANDLE_RIGHT_ERROR;
+                        
+                        error_on_write = true;
+                        on_right_error(*j);
+                        break;
+                    } else {
+                        meter_last_write += wrt;
+                    }					
+                }	
+            }
 		}
 
 
@@ -499,45 +519,50 @@ int baseProxy::handle_sockets_once() {
                 break;
             }
             
-            if (com()->readable(k_s)) {
-                int red = (*k)->read();
-                if (red == 0) {
-                    //(*k)->close();
-                    //left_pc_cx.erase(k);
-                    handle_last_status |= HANDLE_LEFT_PC_ERROR;
-                    
-                    error_on_read = true;
-                    on_left_pc_error(*k);
-                    break;
-                } else {
-                    if (opening_status) {
-                        on_left_pc_restore(*k);
-                    }
-                    if (red > 0) {
-                        meter_last_read += red;
-                        on_left_bytes(*k);
+            if(com()->in_readset(k_s) || (*k)->com()->forced_read_reset()) {
+                if ((*k)->readable()) {
+                    int red = (*k)->read();
+                    if (red == 0) {
+                        //(*k)->close();
+                        //left_pc_cx.erase(k);
+                        handle_last_status |= HANDLE_LEFT_PC_ERROR;
+                        
+                        error_on_read = true;
+                        on_left_pc_error(*k);
+                        break;
+                    } else {
+                        if (opening_status) {
+                            on_left_pc_restore(*k);
+                        }
+                        if (red > 0) {
+                            meter_last_read += red;
+                            on_left_bytes(*k);
+                        }
                     }
                 }
             }
-            if (com()->writable(k_s)) {
-                int wrt = (*k)->write();
-                if (wrt < 0) {
-//                  (*k)->close();
-//                  left_pc_cx.erase(k);
-                    handle_last_status |= HANDLE_LEFT_PC_ERROR;
-                    
-                    error_on_write = true;
-                    on_left_pc_error(*k);
-                    break;
-                } 
-                else {
-                    
-                    meter_last_write += wrt;
-                    
-                    if (opening_status) {
-                        on_left_pc_restore(*k);
-                    }
-                }       
+            
+            if(com()->in_writeset(k_s) || (*k)->com()->forced_write_reset()) {
+                if ((*k)->writable()) {
+                    int wrt = (*k)->write();
+                    if (wrt < 0) {
+    //                  (*k)->close();
+    //                  left_pc_cx.erase(k);
+                        handle_last_status |= HANDLE_LEFT_PC_ERROR;
+                        
+                        error_on_write = true;
+                        on_left_pc_error(*k);
+                        break;
+                    } 
+                    else {
+                        
+                        meter_last_write += wrt;
+                        
+                        if (opening_status) {
+                            on_left_pc_restore(*k);
+                        }
+                    }       
+                }
             }               
         }
         
@@ -568,46 +593,50 @@ int baseProxy::handle_sockets_once() {
                 break;
             }
             
-            if (com()->readable(l_s)) {
-                int red = (*l)->read();
-                if (red == 0) {
-                    //(*l)->close();
-                    //right_pc_cx.erase(l);
-                    handle_last_status |= HANDLE_RIGHT_PC_ERROR;
-                    
-                    error_on_read = true;
-                    on_right_pc_error(*l);
-                    break;
-                } else {
-                    if (opening_status && red > 0) {
-                        on_right_pc_restore(*l);
-                    }
-                    if (red > 0) {
-                        meter_last_read += red;
-                        on_right_bytes(*l);
+            if(com()->in_readset(l_s)  || (*l)->com()->forced_read_reset()) {
+                if ((*l)->readable()) {
+                    int red = (*l)->read();
+                    if (red == 0) {
+                        //(*l)->close();
+                        //right_pc_cx.erase(l);
+                        handle_last_status |= HANDLE_RIGHT_PC_ERROR;
+                        
+                        error_on_read = true;
+                        on_right_pc_error(*l);
+                        break;
+                    } else {
+                        if (opening_status && red > 0) {
+                            on_right_pc_restore(*l);
+                        }
+                        if (red > 0) {
+                            meter_last_read += red;
+                            on_right_bytes(*l);
+                        }
                     }
                 }
             }
-            if (com()->writable(l_s)) {
-                int wrt = (*l)->write();
-                if (wrt < 0) {
-//                  (*l)->close();
-//                  right_pc_cx.erase(l);
-                    handle_last_status |= HANDLE_RIGHT_PC_ERROR;
-                    
-                    error_on_write = true;
-                    on_right_pc_error(*l);
-                    break;
-                } 
-                else {
-                    
-                    meter_last_write += wrt;
-                    
-                    if (opening_status && wrt > 0) {
-                        on_right_pc_restore(*l);
-                    }
-                }       
-            }               
+            if(com()->in_writeset(l_s)  || (*l)->com()->forced_write_reset()) {
+                if ((*l)->writable()) {
+                    int wrt = (*l)->write();
+                    if (wrt < 0) {
+    //                  (*l)->close();
+    //                  right_pc_cx.erase(l);
+                        handle_last_status |= HANDLE_RIGHT_PC_ERROR;
+                        
+                        error_on_write = true;
+                        on_right_pc_error(*l);
+                        break;
+                    } 
+                    else {
+                        
+                        meter_last_write += wrt;
+                        
+                        if (opening_status && wrt > 0) {
+                            on_right_pc_restore(*l);
+                        }
+                    }       
+                }   
+            }
         } 
         
         
@@ -620,7 +649,7 @@ int baseProxy::handle_sockets_once() {
             if(left_bind_sockets.size() > 0)
             for(typename std::vector<baseHostCX*>::iterator ii = left_bind_sockets.begin(); ii != left_bind_sockets.end(); ++ii) {
                 int s = (*ii)->socket();
-                if (com()->readable(s)) {
+                if (com()->in_readset(s)) {
                     sockaddr_in clientInfo;
                     socklen_t addrlen = sizeof(clientInfo);
 
@@ -654,7 +683,7 @@ int baseProxy::handle_sockets_once() {
             // iterate and if unpaused, run the accept_socket and release (add them to regular socket list)
             // we will try to remove them all to not have delays
             
-            while(1) {
+            while(true) {
                 bool no_suc = true;
                 
                 if(left_delayed_accepts.size())
@@ -666,6 +695,7 @@ int baseProxy::handle_sockets_once() {
                         ladd(p);
                         left_delayed_accepts.erase(k);
                         
+                        DIA_("baseProxy::run_once: %s removed from delayed",p->c_name());
                         // restart iterator
                         no_suc = false;
                         break;
@@ -678,7 +708,7 @@ int baseProxy::handle_sockets_once() {
             if(right_bind_sockets.size() > 0)
             for(typename std::vector<baseHostCX*>::iterator jj = right_bind_sockets.begin(); jj != right_bind_sockets.end(); ++jj) {
                 int s = (*jj)->socket();
-                if (com()->readable(s)) {
+                if (com()->in_readset(s)) {
                     sockaddr_in clientInfo;
                     socklen_t addrlen = sizeof(clientInfo);
 
@@ -709,7 +739,7 @@ int baseProxy::handle_sockets_once() {
             // iterate and if unpaused, run the accept_socket and release (add them to regular socket list)
             // we will try to remove them all to not have delays
             
-            while(1) {
+            while(true) {
                 bool no_suc = true;
                 
                 if(right_delayed_accepts.size())
@@ -797,7 +827,7 @@ void baseProxy::on_right_pc_error(baseHostCX* cx) {
 	}
 	
 	if ( cx->reconnect()) {
-		INF_("Reconnecting %s",cx->c_name());
+		DIA_("Reconnecting %s",cx->c_name());
 	} 
 	else {
 		DUMS_("reconnection postponed");
@@ -806,12 +836,12 @@ void baseProxy::on_right_pc_error(baseHostCX* cx) {
 
 
 void baseProxy::on_left_pc_restore(baseHostCX* cx) {
-	INF_("Left permanent connection restored: %s",cx->c_name());
+	DIA_("Left permanent connection restored: %s",cx->c_name());
 }
 
 
 void baseProxy::on_right_pc_restore(baseHostCX* cx) {
-	INF_("Right permanent connection restored: %s",cx->c_name());
+	DIA_("Right permanent connection restored: %s",cx->c_name());
 }
 
 
@@ -834,10 +864,13 @@ int baseProxy::run(void) {
 	sl.tv_nsec = get_sleeptime();
 	
 	while(! dead() ) {
-		if (run_once() == 0) {
-			DUM_("Nanosleeping for %dus",sl.tv_nsec );
+        int r = run_once();
+		if (r == 0) {
+			EXT_("Proxy going to sleep for %dus",sl.tv_nsec );
 			nanosleep(&sl, NULL);
-		}
+		} else {
+            DEB_("Proxy transferred %d bytes",r);
+        }
 	}
 
 	return 0;

@@ -160,6 +160,9 @@ public:
     baseCom* com() { return com_; }
     baseCom* com_;
     
+    bool readable() { return com()->readable(socket());};
+    bool writable() { return com()->writable(socket());};
+    
     baseHostCX* peer_ = nullptr;
     baseHostCX* peer() { return peer_; } 
     // set both levels of peering: cx and com

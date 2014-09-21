@@ -16,4 +16,4 @@
     License along with this library.
 */
 
-#define SOCLE_VERSION "0.0.61"
+#define SOCLE_VERSION "0.0.65"

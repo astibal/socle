@@ -129,7 +129,7 @@ int TCPCom::connect(const char* host, const char* port, bool blocking) {
 					break;
 					
 				} else {
-					;
+					INF_("socket connnected with %d", errno);
 				}
 			} 
 			close(sfd);

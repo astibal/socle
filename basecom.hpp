@@ -69,7 +69,23 @@ protected:
     // should appear here.    
     std::string log_buffer_;
 
+    // feedback to read from socket regardless of select result ONCE
+    bool forced_read_ = false;
+    bool forced_write_ = false;
+    
+    // if set forced_read/write, don't reset it once used => always attempt to read | write
+    bool forced_read_always_ = false;
+    bool forced_write_always_ = false;
+      
+    void forced_read(bool b)  { forced_read_ = b; }
+    void forced_write(bool b) { forced_write_ = b; }
+    void forced_read_always(bool b)  { forced_read(b); forced_read_always_ = b; }
+    void forced_write_always(bool b) { forced_write(b); forced_write_always_ = b; }
+  
 public:
+    bool forced_read_reset() { bool r = forced_read_; if (!forced_read_always_) { forced_read_ = false; } return r; }
+    bool forced_write_reset() { bool r = forced_write_; if (!forced_write_always_) {forced_write_ = false; } return r; }
+    
     virtual bool com_status() {
         DUMS_("baseCom::com_status: returning 1");
         return true;
@@ -117,13 +133,16 @@ public:
     
 	// those two need to be virtual, since e.g. OpenSSL read/write cannot be managed only with FD_SET due reads 
 	// sometimes do writes on themselves and another read is necessary
-	virtual bool readable(int s) { return FD_ISSET(s, &read_socketSet); };
-	virtual bool writable(int s) { return FD_ISSET(s, &write_socketSet); };	
-	
-	inline void zeroize_read_fdset() { FD_ZERO(&read_socketSet); };
-	inline void zeroize_write_fdset() { FD_ZERO(&write_socketSet); };
-	inline void set_read_fdset(int s) { FD_SET(s, &read_socketSet); };
-	inline void set_write_fdset(int s) { FD_SET(s, &write_socketSet); };
+    virtual bool readable(int s) { return true; };
+    virtual bool writable(int s) { return true; }; 
+    
+    // operate on FD_SETs
+    virtual bool in_readset(int s) { return FD_ISSET(s, &read_socketSet); };
+	virtual bool in_writeset(int s) { return FD_ISSET(s, &write_socketSet); };	
+	inline void zeroize_readset() { FD_ZERO(&read_socketSet); };
+	inline void zeroize_writeset() { FD_ZERO(&write_socketSet); };
+	inline void set_readset(int s) { FD_SET(s, &read_socketSet); };
+	inline void set_writeset(int s) { FD_SET(s, &write_socketSet); };
 	
     virtual bool __same_target_check(const char* host, const char* port, int existing_socket) { 
 		struct addrinfo hints;
