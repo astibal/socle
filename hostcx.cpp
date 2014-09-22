@@ -234,7 +234,7 @@ int baseHostCX::write() {
 		DEB_("HostCX::write[%s]: %d from %d bytes sent from tx buffer at %x",c_name(),l,tx_size,writebuf_.data());
 		if (l < tx_size) {
 			// rather log this: not a big deal, but we couldn't have sent all data!
-			WAR_("HostCX::write[%s]: only %d from %d bytes sent from tx buffer!",c_name(),l,tx_size);
+			DIA_("HostCX::write[%s]: only %d from %d bytes sent from tx buffer!",c_name(),l,tx_size);
 		}
 		
 		DUM_("HostCX::write[%s]: calling post_write",c_name());

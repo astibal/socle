@@ -360,13 +360,13 @@ int SSLCom::ssl_waiting() {
 	}
 		
 
-	if (r < 0) {
+	if (r == -1) {
 		int err = SSL_get_error(sslcom_ssl,r);
 		if (err == SSL_ERROR_WANT_READ) {
 			DUM_("SSL READ pending: %s",op);
 			
  			sslcom_waiting = true;
-            forced_read(true);
+//             forced_read(true);
 // 			sslcom_waiting_read = true;
  			return 1;
 		}
@@ -374,13 +374,14 @@ int SSLCom::ssl_waiting() {
 			DUM_("SSL WRITE pending: %s",op);
 			
  			sslcom_waiting = true;
-            forced_write(true);
+//             forced_write(true);
 // 			sslcom_waiting_write = true;
  			return 1;
 		}
 		else {
+            INF_("SSL err=%d pending: %s",err,op);
  			sslcom_waiting = false;
- 			return 1;
+ 			return 0;
 		}
  
 		
@@ -586,11 +587,11 @@ int SSLCom::write ( int __fd, const void* __buf, size_t __n, int __flags )  {
 	}	
 	
     sslcom_write_blocked_on_read=0;
-    int normalized__n = 2048;
+    int normalized__n = 20480;
     void *ptr = (void*)__buf;
 
     DEB_("SSLCom::write[%d]: attempt to send %d bytes",__fd,__n);
-    if ( __n < 2048) {
+    if ( __n < 20480) {
         normalized__n = __n;
     }
 

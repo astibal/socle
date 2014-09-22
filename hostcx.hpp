@@ -35,7 +35,7 @@
 #include <buffer.hpp>
 #include <display.hpp>
 
-#define HOSTCX_BUFFSIZE 2048
+#define HOSTCX_BUFFSIZE 20480
 
 //! Basic Host structure class
 /*! 
@@ -110,6 +110,7 @@ public:
 
 class baseHostCX : public Host
 {
+    
 	/* Basic elements */
 	
 	std::string name__; //!< human friendly name

@@ -79,12 +79,13 @@ protected:
     bool forced_read_always_ = false;
     bool forced_write_always_ = false;
       
-    void forced_read(bool b)  { forced_read_ = b; }
-    void forced_write(bool b) { forced_write_ = b; }
+
     void forced_read_always(bool b)  { forced_read(b); forced_read_always_ = b; }
     void forced_write_always(bool b) { forced_write(b); forced_write_always_ = b; }
   
 public:
+    void forced_read(bool b)  { forced_read_ = b; }
+    void forced_write(bool b) { forced_write_ = b; }    
     bool forced_read_reset() { bool r = forced_read_; if (!forced_read_always_) { forced_read_ = false; } return r; }
     bool forced_write_reset() { bool r = forced_write_; if (!forced_write_always_) {forced_write_ = false; } return r; }
     
