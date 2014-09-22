@@ -156,14 +156,19 @@ inline buffer::buffer (const buffer& x)
 {
   if (x.capacity_ != 0)
   {
-    data_ = new unsigned char[x.capacity_];
+    if(x.free_) {
+        data_ = new unsigned char[x.capacity_];
 
-    if (x.size_ != 0)
-      std::memcpy (data_, x.data_, x.size_);
+        if (x.size_ != 0)
+        std::memcpy (data_, x.data_, x.size_);
+    } else {
+        data_ = x.data_;
+    }
   }
   else
     data_ = 0;
 
+  free_ = x.free_;
   size_ = x.size_;
   capacity_ = x.capacity_;
 }
@@ -176,14 +181,20 @@ inline buffer& buffer::operator= (const buffer& x)
     if (x.size_ > capacity_)
     {
       if (free_)
-        delete[] data_;
+        delete[] data_;  // we HAD ownership
 
-      data_ = new unsigned char[x.capacity_];
       capacity_ = x.capacity_;
-      free_ = true;
+      
+      if(x.free_) {
+        data_ = new unsigned char[x.capacity_];
+        free_ = true; 
+      } else {
+        data_ = x.data_;
+        free_ = false;
+      }
     }
 
-    if (x.size_ != 0)
+    if (x.size_ != 0 && x.free_) // copy only if original had ownership: honor ownership
       std::memcpy (data_, x.data_, x.size_);
 
     size_ = x.size_;
