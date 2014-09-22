@@ -19,6 +19,7 @@
 #include "hostcx.hpp"
 #include "logger.hpp"
 #include "display.hpp"
+#include "crc32.hpp"
 
 extern logger lout;
 
@@ -168,6 +169,11 @@ int baseHostCX::read() {
 		// data are already processed
 		DEB_("HostCX::read[%s]: calling post_read",c_name());
 		post_read();
+    
+        if(com()->debug_log_data_crc) {
+            DEB_("HostCX::read[%s]: after: buffer crc = %X",c_name(), socle_crc32(0,readbuf()->data(),readbuf()->size()));         
+        }
+        
 	} else if (l == 0) {
 		DIA_("HostCX::read[%s]: error while reading",c_name());
 		error_ = true;
@@ -193,6 +199,7 @@ int baseHostCX::write() {
 		DEB_("HostCX::write[%s]: paused, returning 0",c_name());	
 		return 0;
 	}
+
 	
 	int tx_size_orig = writebuf_.size();	
 	pre_write();
@@ -233,7 +240,11 @@ int baseHostCX::write() {
 		DUM_("HostCX::write[%s]: calling post_write",c_name());
 		post_write();
 		
-        writebuf_.flush(l);		
+        writebuf_.flush(l);
+        
+        if(com()->debug_log_data_crc) {
+            DEB_("HostCX::write[%s]: after: buffer crc = %X",c_name(), socle_crc32(0,writebuf()->data(),writebuf()->size()));
+        }
 	}
 	
 	return l;

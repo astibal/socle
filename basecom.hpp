@@ -43,6 +43,8 @@ class baseHostCX;
 class baseCom {
 public:
     
+    static bool debug_log_data_crc;
+    
     friend class baseHostCX;
     
 	// select variables

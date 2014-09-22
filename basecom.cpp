@@ -18,6 +18,8 @@
 
 #include <basecom.hpp>
 
+bool baseCom::debug_log_data_crc = false;
+
 void baseCom::init() {
 
 	if(!__static_init) { 
