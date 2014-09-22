@@ -418,7 +418,11 @@ inline void buffer::flush(buffer::size_type b) {
 	}
 
 	if (bytes <= size_) {
-		memcpy(data_,data_+bytes,size_-bytes);
+        if( 2*b < size_) {
+            memmove(data_,data_+bytes,size_-bytes);
+        } else {
+            memcpy(data_,data_+bytes,size_-bytes);
+        }
 		size_-=bytes;
 	} else {
 		throw std::out_of_range ("index out of range: too many bytes to cut");
