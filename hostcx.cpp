@@ -318,26 +318,31 @@ std::string baseHostCX::hr() {
 std::string baseHostCX::full_name(unsigned char side) {
     const char* t = host().c_str();
     const char* t_p = port().c_str();
+    const char* t_c = "";
+    if (com() != nullptr)  t_c = com()->name();
+    
     const char* p = "";
     const char*  p_p = "";
+    const char*  p_c = "";
 
     if (peer() != nullptr) {
          p =  peer()->host().c_str();
          p_p =  peer()->port().c_str();
     
+         if (peer()->com() != nullptr)  p_c = peer()->com()->name();
 //         p =  "peerip";
 //         p_p =  "pport";
         
     } else {
-        return string_format("%s:%s",t,t_p);
+        return string_format("%s/%s:%s",t_c,t,t_p);
     }
 
     if ( (side == 'l') || ( side == 'L') ) {
-        return string_format("%s:%s to %s:%s",t,t_p,p,p_p);
+        return string_format("%s/%s:%s to %s/%s:%s",t_c,t,t_p,p_c,p,p_p);
     } 
 
     //else
-    return string_format("%s:%s to %s:%s",p,p_p,t,t_p);
+    return string_format("%s/%s:%s to %s/%s:%s",p_c,p,p_p,t_c,t,t_p);
 
 }
 

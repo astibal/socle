@@ -42,7 +42,6 @@ class baseHostCX;
 
 class baseCom {
 public:
-    
     static bool debug_log_data_crc;
     
     friend class baseHostCX;
@@ -108,6 +107,7 @@ public:
 	};
 	
     virtual baseCom* replicate() = 0;
+    virtual const char* name() = 0;
     
     virtual int connect(const char* , const char* , bool = false) = 0;
     virtual int read(int __fd, void* __buf, size_t __n, int __flags) = 0;
@@ -352,6 +352,7 @@ class TCPCom : public baseCom {
 public:
 	virtual void init();
     virtual baseCom* replicate() { return new TCPCom(); };
+    virtual const char* name() { return "tcp"; };
     
     virtual int connect(const char* host, const char* port, bool blocking = false);
 	virtual int bind(unsigned short port);	

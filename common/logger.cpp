@@ -34,7 +34,7 @@
 
 logger lout;
 
-static  std::string level_table[] = {"None"," Fatal","Critical","   Error"," Warning","Notify","Informal","Diagnose","Debug","Dumpit","Extreme"};
+static  std::string level_table[] = {"None"," Fatal","Critical","   Error"," Warning","  Notify","Informal","Diagnose","Debug","Dumpit","Extreme"};
 
 
 bool logger::periodic_start(unsigned int s) {
@@ -111,7 +111,7 @@ void logger::log(unsigned int l, const std::string& fmt, ...) {
 		desc = level_table[l];
 	}
 	
-    std::cout << std::string(date,date_len) << "." << tv.tv_sec << " <" << std::this_thread::get_id() << "> " << desc << " - " << str << std::endl;
+    std::cout << std::string(date,date_len) << "." << string_format("%06d",tv.tv_usec) << " <" << std::hex << std::this_thread::get_id() << "> " << desc << " - " << str << std::endl;
 };
 
 

@@ -266,7 +266,7 @@ void AppHostCX::pre_read() {
 void AppHostCX::pre_write() {
     
     if ( mode() == MODE_PRE ) {
-        auto b = this->writebuf();
+        buffer* b = this->writebuf();
         
         if(this->meter_write_bytes <= DETECT_MAX_BYTES && b->size() > 0) {
             

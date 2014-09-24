@@ -119,6 +119,7 @@ public:
 	virtual void static_init();
 	virtual void init();
     virtual baseCom* replicate() { return new SSLCom(); } ;
+    virtual const char* name() { return "ssl"; };
     
 	virtual void init_client();
 	int upgrade_client_socket(int s);
