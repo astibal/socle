@@ -23,6 +23,71 @@
 
 extern logger lout;
 
+baseHostCX::baseHostCX(baseCom* c, const char* h, const char* p): Host(h, p) {
+
+    permanent_ = false;
+    last_reconnect_ = 0;
+    reconnect_delay_ = 30;
+    fds_ = -1;
+    error_ = false;
+    
+    writebuf_ = buffer(HOSTCX_BUFFSIZE);
+    writebuf_.clear();
+    
+    readbuf_ = buffer(HOSTCX_BUFFSIZE);
+    readbuf_.clear();
+    processed_bytes_ = 0;
+    next_read_limit_ = 0;
+    auto_finish_ = true;
+    adm_status_ = true;
+    paused_ = false;
+    
+    meter_read_count = 0;
+    meter_write_count = 0;
+    meter_read_bytes = 0;
+    meter_write_bytes = 0;
+    
+    com_ = c;
+    com()->init();
+}
+
+baseHostCX::baseHostCX(baseCom* c, unsigned int s) {
+    
+    permanent_ = false;
+    last_reconnect_ = 0;
+    reconnect_delay_ = 30;
+    fds_ = s;   
+    error_ = false;
+    
+    writebuf_ = buffer(HOSTCX_BUFFSIZE);
+    writebuf_.clear();
+    
+    readbuf_ = buffer(HOSTCX_BUFFSIZE);     
+    readbuf_.clear();
+    processed_bytes_ = 0;
+    next_read_limit_ = 0;
+    auto_finish_ = true;
+    adm_status_ = true;
+    paused_ = false;
+
+    meter_read_count = 0;
+    meter_write_count = 0;
+    meter_read_bytes = 0;
+    meter_write_bytes = 0;
+    
+    //whenever we initialize object with socket, we will be already opening!
+    opening(true);
+    
+    com_ = c;
+    com()->init();
+}
+
+baseHostCX::~baseHostCX() {
+    com()->cleanup();
+    delete com_;
+}
+
+
 int baseHostCX::connect(bool blocking) {
 	
 	opening(true);
@@ -42,6 +107,41 @@ int baseHostCX::connect(bool blocking) {
 	
 	return fds_;
 }
+
+
+bool baseHostCX::opening_timeout() {
+
+    if (!opening()) { 
+        DUMS_("already opened")
+        return false; 
+    } else { 
+        time_t now = time(NULL); 
+        if (now - t_connected > reconnect_delay()) {
+            DIAS_("opening timeout");
+            return true;
+        } 
+    } 
+    
+    return false;
+}
+
+
+bool baseHostCX::paused() {
+
+    if(paused_ && peercom()) {
+        if(peercom()->com_status()) {
+            DIAS_("Peer's Com status is OK, unpausing");
+            paused(false);
+        }
+    }
+    else if(paused_) {
+        // peer() == NULL !
+        DUMS_("baseHostCX::paused: paused, but no peer set => no peer to wait for => manual mode");
+    }
+    
+    return paused_; 
+}
+
 
 bool baseHostCX::is_connected() {
     bool status = com()->is_connected(socket());

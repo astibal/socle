@@ -180,67 +180,9 @@ public:
 	
 public:
 	
-    baseHostCX( baseCom* c, const char* h, const char* p ) : Host(h,p)	{
-		permanent_ = false;
-		last_reconnect_ = 0;
-		reconnect_delay_ = 30;
-		fds_ = -1;
-		error_ = false;
-		
-		writebuf_ = buffer(HOSTCX_BUFFSIZE);
-		writebuf_.clear();
-		
-		readbuf_ = buffer(HOSTCX_BUFFSIZE);
-		readbuf_.clear();
-		processed_bytes_ = 0;
-        next_read_limit_ = 0;
-		auto_finish_ = true;
-		adm_status_ = true;
-		paused_ = false;
-		
-		meter_read_count = 0;
-		meter_write_count = 0;
-		meter_read_bytes = 0;
-		meter_write_bytes = 0;
-		
-        com_ = c;
-		com()->init();
-	};
-	
-	baseHostCX(baseCom* c, unsigned int s) : Host() {
-		permanent_ = false;
-		last_reconnect_ = 0;
-		reconnect_delay_ = 30;
-		fds_ = s;	
-		error_ = false;
-		
-		writebuf_ = buffer(HOSTCX_BUFFSIZE);
-		writebuf_.clear();
-		
-		readbuf_ = buffer(HOSTCX_BUFFSIZE);		
-		readbuf_.clear();
-		processed_bytes_ = 0;
-        next_read_limit_ = 0;
-		auto_finish_ = true;
-		adm_status_ = true;
-		paused_ = false;
-
-		meter_read_count = 0;
-		meter_write_count = 0;
-		meter_read_bytes = 0;
-		meter_write_bytes = 0;
-		
-        //whenever we initialize object with socket, we will be already opening!
-        opening(true);
-        
-        com_ = c;
-        com()->init();
-	}
-	
-	virtual ~baseHostCX() {
-		com()->cleanup();
-        delete com_;
-	};
+    baseHostCX( baseCom* c, const char* h, const char* p );
+	baseHostCX(baseCom* c, unsigned int s);
+	virtual ~baseHostCX();
 	
 	std::string name();
 	const char* c_name();
@@ -252,41 +194,11 @@ public:
 	inline bool opening() { return opening_; }
 	inline void opening(bool b) { opening_ = b; if (b) { time(&t_connected); } }
 	// if we are trying to open socket too long - effective for non-blocking sockets only
-	inline bool opening_timeout() { 
-        if (!opening()) { 
-            DUMS_("already opened")
-            return false; 
-        } else { 
-            time_t now = time(NULL); 
-            if (now - t_connected > reconnect_delay()) {
-                DIAS_("opening timeout");
-                return true;
-            } 
-        } 
-        
-        return false;
-    }
+	bool opening_timeout();
 
-	inline bool paused() { 
-        if(paused_ && peercom()) {
-            if(peercom()->com_status()) {
-                DIAS_("Peer's Com status is OK, unpausing");
-                paused(false);
-            }
-        }
-        else if(paused_) {
-            // peer() == NULL !
-            DUMS_("baseHostCX::paused: paused, but no peer set => no peer to wait for => manual mode");
-        }
-        
-        return paused_; 
-    }
+	bool paused();
 	inline void paused(bool p) { paused_ = p; }
-	
-//     inline bool delayed_accept() { return delayed_accept_; }
-//     inline void delayed_accept(bool p) { delayed_accept_ = p; }
-	
-	
+
 	inline int unblock() { return com()->unblock(fds_);}
 	
 	inline bool status() { return adm_status_; }

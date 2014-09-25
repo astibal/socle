@@ -16,6 +16,9 @@
     License along with this library.
 */
 
+#ifndef SIGNATURE_HPP
+ #define SIGNATURE_HPP
+
 #include <string>
 #include <regex>
 #include <vector>
@@ -363,3 +366,5 @@ public:
        return signature->match(f,ranges_,sig_pos_);
     }
 };
+
+#endif

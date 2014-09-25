@@ -31,6 +31,7 @@
 #include <openssl/err.h>
 
 #include <basecom.hpp>
+#include <tcpcom.hpp>
 #include <sslcertstore.hpp>
 
 
