@@ -58,7 +58,7 @@ template<class SubWorker>
 class ThreadedWorkerProxy : public MasterProxy {
 public:
 	ThreadedWorkerProxy(baseCom* c): MasterProxy(c) {}
-	virtual int run_once();	
+	virtual int handle_sockets_once(baseCom*);	
 };
 
 #include <threadedproxy.cpp>

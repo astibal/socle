@@ -54,7 +54,6 @@ meter_last_write(0),
 handle_last_status(0)
 {
     com_ = c;
-	set_polltime(0,350);
 	set_sleeptime(400000);
 	time(&last_tick_);
 };
@@ -73,13 +72,6 @@ baseProxy::~baseProxy() {
  	DIAS_("Proxy has been destroyed"); 
 };
 
-
-
-void baseProxy::set_polltime(unsigned int sec, unsigned int usec)
-{
-	tv.tv_sec = sec;
-    tv.tv_usec = usec;
-};
 
 
 void baseProxy::ladd(baseHostCX* cs) {
@@ -257,17 +249,17 @@ void baseProxy::run_timers(void) {
 
 // (re)set socket set and calculate max socket no
 
-int baseProxy::prepare_sockets(void) {
+int baseProxy::prepare_sockets(baseCom* fdset_owner) {
     int max = 0;
 
-	com()->zeroize_writeset();
-	com()->zeroize_readset();
-
+    
+    EXT_("baseProxy::prepare_sockets: preparing my sockets for Com: %x",fdset_owner);
+    
     if(left_sockets.size() > 0)
 	for(typename std::vector<baseHostCX*>::iterator i = left_sockets.begin(); i != left_sockets.end(); ++i) {
 		int s = (*i)->socket();
-        com()->set_readset(s);
-		com()->set_writeset(s);
+        fdset_owner->set_readset(s);
+		fdset_owner->set_writeset(s);
 		EXT_("left -> preparing %d",s);
 
         if (s > max) {
@@ -278,8 +270,8 @@ int baseProxy::prepare_sockets(void) {
     if (left_bind_sockets.size() > 0)
 	for(typename std::vector<baseHostCX*>::iterator ii = left_bind_sockets.begin(); ii != left_bind_sockets.end(); ++ii) {
 		int s = (*ii)->socket();
-        com()->set_readset(s);
-		com()->set_writeset(s);
+        fdset_owner->set_readset(s);
+		fdset_owner->set_writeset(s);
 		EXT_("left, bound -> preparing %d",s);
 		
         if (s > max) {
@@ -290,8 +282,8 @@ int baseProxy::prepare_sockets(void) {
     if(right_sockets.size() > 0)
     for(typename std::vector<baseHostCX*>::iterator j = right_sockets.begin(); j != right_sockets.end(); ++j) {
 		int s = (*j)->socket();
-        com()->set_readset(s);
-		com()->set_writeset(s);
+        fdset_owner->set_readset(s);
+		fdset_owner->set_writeset(s);
 		EXT_("right -> preparing %d",s);
 
         if (s > max) {
@@ -302,8 +294,8 @@ int baseProxy::prepare_sockets(void) {
     if(right_bind_sockets.size() > 0)
 	for(typename std::vector<baseHostCX*>::iterator jj = right_bind_sockets.begin(); jj != right_bind_sockets.end(); ++jj) {
 		int s = (*jj)->socket();
-        com()->set_readset(s);
-		com()->set_writeset(s);
+        fdset_owner->set_readset(s);
+		fdset_owner->set_writeset(s);
 		EXT_("right, bound -> preparing %d",s);
 		
         if (s > max) {
@@ -315,8 +307,8 @@ int baseProxy::prepare_sockets(void) {
 	for(typename std::vector<baseHostCX*>::iterator k = left_pc_cx.begin(); k != left_pc_cx.end(); ++k) {
 		int k_s = (*k)->socket();
 		if (k_s <= 0) { continue; };
-        com()->set_readset(k_s);
-		com()->set_writeset(k_s);
+        fdset_owner->set_readset(k_s);
+		fdset_owner->set_writeset(k_s);
 		
 		EXT_("left, perma-conn -> preparing %d",k_s);
 		if (k_s > max) {
@@ -328,8 +320,8 @@ int baseProxy::prepare_sockets(void) {
 	for(typename std::vector<baseHostCX*>::iterator l = right_pc_cx.begin(); l != right_pc_cx.end(); ++l) {    
 		int l_s = (*l)->socket();
 		if (l_s <= 0) { continue; };
-        com()->set_readset(l_s);
-		com()->set_writeset(l_s);
+        fdset_owner->set_readset(l_s);
+		fdset_owner->set_writeset(l_s);
 
 		
 		EXT_("right, perma-conn -> preparing %d",l_s);
@@ -344,28 +336,17 @@ int baseProxy::prepare_sockets(void) {
 };
 
 
-int baseProxy::handle_sockets_once() {
-	EXTS_("CALL: handle_sockets_once");
-	
+int baseProxy::handle_sockets_once(baseCom* xcom) {
+
 	run_timers();
-    int m = prepare_sockets();
-    EXTS_("handle_sockets_once: sockets prepared");
 	
 	meter_last_read = 0;
 	meter_last_write = 0;
 	error_on_read = false;
 	error_on_write = false;
 	
-	auto n_tv = tv;
-	
-	int ret_sel = select(m + 1, &(com()->read_socketSet), &(com()->write_socketSet), NULL, &n_tv);
-	
-    EXT_("select max: %d",m);
-    
-    if ( ret_sel >= 0) {
+    if ( xcom->poll_result >= 0) {
         
-//         DIAS_(".");
-		
 		if(left_sockets.size() > 0)
 		for(typename std::vector<baseHostCX*>::iterator i = left_sockets.begin(); i != left_sockets.end(); ++i) {
 			
@@ -386,7 +367,7 @@ int baseProxy::handle_sockets_once() {
 			
             EXT_("L: %d",s);
             
-            if(com()->in_readset(s) || (*i)->com()->forced_read_reset()) {
+            if(xcom->in_readset(s) || (*i)->com()->forced_read_reset()) {
                 EXT_("L in R fdset: %d",s);
                 if ((*i)->readable()) {
                     EXT_("L in R fdset and readable: %d",s)
@@ -408,7 +389,7 @@ int baseProxy::handle_sockets_once() {
                     }
                 }
             }
-			if(com()->in_writeset(s) || (*i)->com()->forced_write_reset()) {
+			if(xcom->in_writeset(s) || (*i)->com()->forced_write_reset()) {
                 EXT_("L in W fdset: %d",s);
                 if ((*i)->writable()) {
                     EXT_("L in W fdset and writable: %d",s)
@@ -448,7 +429,7 @@ int baseProxy::handle_sockets_once() {
 			
             EXT_("R: %d",s);
             
-            if(com()->in_readset(s) || (*j)->com()->forced_read_reset()) {
+            if(xcom->in_readset(s) || (*j)->com()->forced_read_reset()) {
                 EXT_("R in R fdset: %d",s);
                 if ((*j)->readable()) {
                     EXT_("R in R fdset and readable: %d",s);
@@ -468,7 +449,7 @@ int baseProxy::handle_sockets_once() {
                     }
                 }
             }
-			if(com()->in_writeset(s) || (*j)->com()->forced_write_reset()) {
+			if(xcom->in_writeset(s) || (*j)->com()->forced_write_reset()) {
                 EXT_("R in W fdset: %d",s);
                 if ((*j)->writable()) {
                     EXT_("R in W fdset and writable: %d",s);
@@ -519,7 +500,7 @@ int baseProxy::handle_sockets_once() {
                 break;
             }
             
-            if(com()->in_readset(k_s) || (*k)->com()->forced_read_reset()) {
+            if(xcom->in_readset(k_s) || (*k)->com()->forced_read_reset()) {
                 if ((*k)->readable()) {
                     int red = (*k)->read();
                     if (red == 0) {
@@ -542,7 +523,7 @@ int baseProxy::handle_sockets_once() {
                 }
             }
             
-            if(com()->in_writeset(k_s) || (*k)->com()->forced_write_reset()) {
+            if(xcom->in_writeset(k_s) || (*k)->com()->forced_write_reset()) {
                 if ((*k)->writable()) {
                     int wrt = (*k)->write();
                     if (wrt < 0) {
@@ -593,7 +574,7 @@ int baseProxy::handle_sockets_once() {
                 break;
             }
             
-            if(com()->in_readset(l_s)  || (*l)->com()->forced_read_reset()) {
+            if(xcom->in_readset(l_s)  || (*l)->com()->forced_read_reset()) {
                 if ((*l)->readable()) {
                     int red = (*l)->read();
                     if (red == 0) {
@@ -615,7 +596,7 @@ int baseProxy::handle_sockets_once() {
                     }
                 }
             }
-            if(com()->in_writeset(l_s)  || (*l)->com()->forced_write_reset()) {
+            if(xcom->in_writeset(l_s)  || (*l)->com()->forced_write_reset()) {
                 if ((*l)->writable()) {
                     int wrt = (*l)->write();
                     if (wrt < 0) {
@@ -643,13 +624,13 @@ int baseProxy::handle_sockets_once() {
 		// no socket is really ready to be processed; while it make sense to check 'connecting' sockets, it makes
 		// no sense to loop through bound sockets.
 		
-		if (ret_sel > 0) {
+		if (xcom->poll_result > 0) {
             // now operate bound sockets to create accepted sockets
             
             if(left_bind_sockets.size() > 0)
             for(typename std::vector<baseHostCX*>::iterator ii = left_bind_sockets.begin(); ii != left_bind_sockets.end(); ++ii) {
                 int s = (*ii)->socket();
-                if (com()->in_readset(s)) {
+                if (xcom->in_readset(s)) {
                     sockaddr_in clientInfo;
                     socklen_t addrlen = sizeof(clientInfo);
 
@@ -708,7 +689,7 @@ int baseProxy::handle_sockets_once() {
             if(right_bind_sockets.size() > 0)
             for(typename std::vector<baseHostCX*>::iterator jj = right_bind_sockets.begin(); jj != right_bind_sockets.end(); ++jj) {
                 int s = (*jj)->socket();
-                if (com()->in_readset(s)) {
+                if (xcom->in_readset(s)) {
                     sockaddr_in clientInfo;
                     socklen_t addrlen = sizeof(clientInfo);
 
@@ -765,7 +746,7 @@ int baseProxy::handle_sockets_once() {
 // 		DIAS_("_");
 
         // handle the case when we are running this cycle due to n_tv timeout. In such a case return 0 to sleep accordingly.
-        if (ret_sel ==  0) {
+        if (xcom->poll_result ==  0) {
             return 0;
         } else {
             return handle_last_status + meter_last_read + meter_last_write;
@@ -863,8 +844,26 @@ int baseProxy::run(void) {
 	sl.tv_sec = 0;
 	sl.tv_nsec = get_sleeptime();
 	
+  
 	while(! dead() ) {
-        int r = run_once();
+        
+        if(pollroot()) {
+            
+            com()->zeroize_exset();
+            com()->zeroize_readset();
+            com()->zeroize_writeset();            
+            
+            EXTS_("baseProxy::run: preparing sockets");
+            int s_max = prepare_sockets(com());
+            EXTS_("baseProxy::run: sockets prepared");
+            if (s_max) {
+                com()->poll();
+            }
+        }
+        
+        int r = handle_sockets_once(com());
+        EXT_("baseProxy::handle_sockets_once: %d",r);
+        
 		if (r == 0) {
 			EXT_("Proxy going to sleep for %dus",sl.tv_nsec );
 			nanosleep(&sl, NULL);
@@ -875,12 +874,6 @@ int baseProxy::run(void) {
 
 	return 0;
 };
-
-
-int baseProxy::run_once(void) {
-	return handle_sockets_once();
-}
-
 
 void baseProxy::sleep(void) {
 	usleep(sleep_time);

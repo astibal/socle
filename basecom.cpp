@@ -32,7 +32,9 @@ void baseCom::init() {
 	nonlocal_resolved_ = false;
 	nonlocal_host_ = "";
 	nonlocal_port_ = 0;
-	memset(&nonlocal_peer_info_,0,sizeof(nonlocal_peer_info_));		
+	memset(&nonlocal_peer_info_,0,sizeof(nonlocal_peer_info_));
+    
+    polltime(0,350);
 }
 
 
@@ -257,4 +259,21 @@ bool baseCom::resolve_nonlocal_socket(int sock) {
     }
     
     return false;
+}
+
+
+int baseCom::poll() {
+    
+    timeval n_tv = poll_tv;
+    EXTS_("baseCom::poll: called");
+    int r = ::select( poll_sockmax + 1, &read_socketSet, &write_socketSet, NULL, &n_tv);
+    EXT_("baseCom::poll: select returned %d",r);
+    if (r < 0) {
+        DIA_("baseCom::poll: error returned by select: errno %d",errno);
+    }
+    
+    poll_sockmax = 0;
+    poll_result = r;
+    
+    return r;
 }

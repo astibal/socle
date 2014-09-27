@@ -48,8 +48,9 @@
 
 class Proxy {
 public:
+    virtual int prepare_sockets(baseCom*) = 0;   // which Com should be set: typically it should be the parent's proxy's Com
+    virtual int handle_sockets_once(baseCom*) = 0;    
 	virtual int run(void) = 0;
-	virtual int run_once(void) = 0;	
 	virtual void shutdown() = 0;
 	virtual ~Proxy() = 0;
 };
@@ -61,7 +62,7 @@ protected:
 	
 	bool dead_;
 	bool new_raw_;
-	baseProxy* parent_;
+	baseProxy* parent_ = nullptr;
     
 	bool error_on_read;
 	bool error_on_write;
@@ -84,7 +85,6 @@ protected:
     std::vector<baseHostCX*> left_delayed_accepts;
     std::vector<baseHostCX*> right_delayed_accepts;   
     
-	timeval tv;
 	
 	//run() loop variables 
 	unsigned int sleep_time; // microseconds
@@ -93,6 +93,7 @@ protected:
 	unsigned int meter_last_write;
 	unsigned int handle_last_status;
 	
+    bool pollroot_ = false;    
 #ifdef WITH_LOG
 protected:
 	logger log;
@@ -183,9 +184,13 @@ public:
 	
 	void sleep(void);
 	
-	virtual int run(void);
-	virtual int run_once(void);
-	
+	virtual int run();
+    virtual int prepare_sockets(baseCom*);   // which Com should be set: typically it should be the parent's proxy's Com
+    virtual int handle_sockets_once(baseCom*);
+
+    inline bool pollroot() { return pollroot_; };
+    inline void pollroot(bool b) { pollroot_ = b; };
+    	
 	// overide to create custom context objects
 	virtual baseHostCX* new_cx(int);
 	virtual baseHostCX* new_cx(const char*, const char*);
@@ -212,8 +217,6 @@ public:
 protected:
 	// internal functions which should not be used directly
 	void run_timers(void);
-	int prepare_sockets(void);
-    int handle_sockets_once(void);
     int read_socket(int,char);
 	
 // 	inline bool readable(int s) { return FD_ISSET(s, &read_socketSet); };

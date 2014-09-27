@@ -75,6 +75,7 @@ int ThreadedAcceptor<Worker,SubWorker>::create_workers(void) {
 		Worker *w = new Worker(this->com()->replicate());
 		w->com()->nonlocal(this->com()->nonlocal());
 		w->parent((baseProxy*)this);
+        w->pollroot(true);
 		
 		DIA_("Created ThreadedWorkerProxy %x",w);
 		workers_[i] = w;
@@ -90,6 +91,7 @@ int ThreadedAcceptor<Worker,SubWorker>::create_workers(void) {
 template<class Worker, class SubWorker>
 int ThreadedAcceptor<Worker,SubWorker>::run(void) {
 	
+    pollroot(true);
 	create_workers();
 	
 	for( unsigned int i = 0; i < nthreads; i++) {
@@ -130,7 +132,7 @@ int ThreadedAcceptor<Worker,SubWorker>::pop() {
 
 
 template<class SubWorker>
-int ThreadedWorkerProxy<SubWorker>::run_once() {
+int ThreadedWorkerProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
 	
 	ThreadedAcceptor<ThreadedWorkerProxy<SubWorker>,SubWorker> *p = (ThreadedAcceptor<ThreadedWorkerProxy<SubWorker>,SubWorker> *)MasterProxy::parent();
 	if(p == NULL) {
@@ -156,5 +158,5 @@ int ThreadedWorkerProxy<SubWorker>::run_once() {
 
 	}
 	
-	return MasterProxy::run_once();
+	return MasterProxy::handle_sockets_once(com());
 }

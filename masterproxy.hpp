@@ -26,15 +26,17 @@ class MasterProxy : public baseProxy {
 
 protected:
 	std::vector<baseProxy*> proxies_;
+    
 public:
     
     MasterProxy(baseCom* c): baseProxy(c) {}
     
     std::vector<baseProxy*>& proxies() { return proxies_; };
 	
-	virtual int run_once(void);	
+    virtual int prepare_sockets(baseCom*);
+	virtual int handle_sockets_once(baseCom*);	
 	virtual void shutdown();
-	
+
 	std::string hr();
 };
 

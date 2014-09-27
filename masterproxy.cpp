@@ -24,22 +24,39 @@
 #include "logger.hpp"
 
 
-int MasterProxy::run_once(void) {
+int MasterProxy::prepare_sockets(baseCom* xcom)
+{
+    int r = 0;
+    
+    r += baseProxy::prepare_sockets(xcom);
+    for(typename std::vector<baseProxy*>::iterator ii = proxies().begin(); ii != proxies().end(); ++ii) {
+        baseProxy *p = (*ii);
+        if(!p->dead()) {
+            r += p->prepare_sockets(xcom); // fill my fd_sets!
+        }
+    }    
+    
+    return r;
+}
+
+
+int MasterProxy::handle_sockets_once(baseCom* xcom) {
 	
-    int r = baseProxy::run_once();
-	
-	for(typename std::vector<baseProxy*>::iterator ii = proxies().begin(); ii != proxies().end(); ii++) {
+    
+    int r = 0;
+
+	for(typename std::vector<baseProxy*>::iterator ii = proxies().begin(); ii != proxies().end(); ++ii) {
 		
 		baseProxy *p = (*ii); 
 		
 		if (p->dead()) { 
 			p->shutdown();
 		} else {
-			r += p->run_once();
+			r += p->handle_sockets_once(xcom);
 		}
 	}
 	
-	for(typename std::vector<baseProxy*>::iterator ii = proxies().begin(); ii != proxies().end(); ii++) {
+	for(typename std::vector<baseProxy*>::iterator ii = proxies().begin(); ii != proxies().end(); ++ii) {
 		
 		baseProxy *p = (*ii); 
 		

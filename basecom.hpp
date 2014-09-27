@@ -46,9 +46,20 @@ public:
     
     friend class baseHostCX;
     
-	// select variables
+    // select variables
     fd_set read_socketSet;
-	fd_set write_socketSet;	
+    fd_set write_socketSet;
+    fd_set ex_socketSet;
+    timeval poll_tv;
+    int     poll_sockmax = 0;
+    int     poll_result = 0;
+    
+    int poll();
+    void polltime(unsigned int sec, unsigned int usec)
+    {
+        poll_tv.tv_sec = sec;
+        poll_tv.tv_usec = usec;
+    };    
 	
 	bool __static_init = false;
 	
@@ -135,12 +146,15 @@ public:
     virtual bool writable(int s) { return true; }; 
     
     // operate on FD_SETs
-    virtual bool in_readset(int s) { return FD_ISSET(s, &read_socketSet); };
-	virtual bool in_writeset(int s) { return FD_ISSET(s, &write_socketSet); };	
+    inline bool in_readset(int s) { return FD_ISSET(s, &read_socketSet); };
+	inline bool in_writeset(int s) { return FD_ISSET(s, &write_socketSet); };
+    inline bool in_exset(int s) { return FD_ISSET(s, &ex_socketSet); };  
 	inline void zeroize_readset() { FD_ZERO(&read_socketSet); };
 	inline void zeroize_writeset() { FD_ZERO(&write_socketSet); };
-	inline void set_readset(int s) { FD_SET(s, &read_socketSet); };
-	inline void set_writeset(int s) { FD_SET(s, &write_socketSet); };
+    inline void zeroize_exset() { FD_ZERO(&ex_socketSet); };
+	inline void set_readset(int s) { FD_SET(s, &read_socketSet); if(s > poll_sockmax) { poll_sockmax = s; } };
+	inline void set_writeset(int s) { FD_SET(s, &write_socketSet); if(s > poll_sockmax) { poll_sockmax = s; } };
+    inline void set_exset(int s) { FD_SET(s, &ex_socketSet); if(s > poll_sockmax) { poll_sockmax = s; } };
 	
     virtual bool __same_target_check(const char* host, const char* port, int existing_socket);
 	
