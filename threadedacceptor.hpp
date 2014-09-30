@@ -16,35 +16,51 @@
     License along with this library.
 */
 
-#define SOCLE_VERSION "0.0.65"
-
-#include <common/base64.hpp>
-#include <common/crc32.hpp>
-
-#include <common/buffer.hpp>
-                                                                        
-#include <common/display.hpp>
-#include <common/logger.hpp>
-#include <common/timeops.hpp>
-
-
-#include <common/signature.hpp>
-
-
-#include <basecom.hpp>
-#include <tcpcom.hpp>
-#include <sslcom.hpp>
-
-#include <sslmitmcom.hpp>
-#include <sslcertstore.hpp>
+#ifndef _THREADED_ACCEPTOR_HPP_
+#define _THREADED_ACCEPTOR_HPP_
 
 #include <hostcx.hpp>
-#include <apphostcx.hpp>
-
 #include <baseproxy.hpp>
-#include <lrproxy.hpp>
 #include <masterproxy.hpp>
-#include <threadedacceptor.hpp>
 
-#include <traflog.hpp>
+#include <vector>
+#include <deque>
 
+#include <thread>
+#include <mutex>
+
+template<class Worker, class SubWorker>
+class ThreadedAcceptor : public baseProxy {
+public:
+	ThreadedAcceptor(baseCom* c);
+	virtual ~ThreadedAcceptor(); 
+	
+	virtual void on_left_new_raw(int);
+	virtual void on_right_new_raw(int);
+	
+	virtual int run(void);
+	
+	int push(int);
+	int pop();
+	
+protected:
+	mutable std::mutex sq_lock_;
+	std::deque<int> sq_;
+	
+	size_t nthreads;
+	std::thread **threads_;
+	Worker **workers_;
+	
+	int create_workers();
+};
+
+template<class SubWorker>
+class ThreadedAcceptorProxy : public MasterProxy {
+public:
+	ThreadedAcceptorProxy(baseCom* c): MasterProxy(c) {}
+	virtual int handle_sockets_once(baseCom*);	
+};
+
+#include <threadedacceptor.cpp>
+
+#endif // _THREADED_ACCEPTOR_HPP_

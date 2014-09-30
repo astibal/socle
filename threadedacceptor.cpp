@@ -19,7 +19,7 @@
 #include <vector>
 #include <thread>
 
-#include <threadedproxy.hpp>
+#include <threadedacceptor.hpp>
 #include <logger.hpp>
 
 template<class Worker, class SubWorker>
@@ -77,7 +77,7 @@ int ThreadedAcceptor<Worker,SubWorker>::create_workers(void) {
 		w->parent((baseProxy*)this);
         w->pollroot(true);
 		
-		DIA_("Created ThreadedWorkerProxy %x",w);
+		DIA_("Created ThreadedAcceptorProxy %x",w);
 		workers_[i] = w;
 		
 		// also init threads pool
@@ -132,9 +132,9 @@ int ThreadedAcceptor<Worker,SubWorker>::pop() {
 
 
 template<class SubWorker>
-int ThreadedWorkerProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
+int ThreadedAcceptorProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
 	
-	ThreadedAcceptor<ThreadedWorkerProxy<SubWorker>,SubWorker> *p = (ThreadedAcceptor<ThreadedWorkerProxy<SubWorker>,SubWorker> *)MasterProxy::parent();
+	ThreadedAcceptor<ThreadedAcceptorProxy<SubWorker>,SubWorker> *p = (ThreadedAcceptor<ThreadedAcceptorProxy<SubWorker>,SubWorker> *)MasterProxy::parent();
 	if(p == NULL) {
 		FATS_("PARENT is NULL");
 	}
@@ -146,7 +146,7 @@ int ThreadedWorkerProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
 	
 	int s = p->pop();
 	if(s > 0) {
-		DIA_("ThreadedWorkerProxy::run: removed from queue: %d",s);
+		DIA_("ThreadedAcceptorProxy::run: removed from queue: %d",s);
 
 		auto cx = this->new_cx(s);
 		if(!cx->paused()) {
