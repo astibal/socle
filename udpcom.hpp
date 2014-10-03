@@ -32,10 +32,26 @@
 #include <time.h>
 #include <unistd.h>
 
+#include <buffer.hpp>
 #include <logger.hpp>
 #include <basecom.hpp>
+#include <baseproxy.hpp>
 
-class UDPCom : public baseCom {
+struct Datagram {
+    sockaddr_in dst;
+    sockaddr_in src;
+    buffer rx;
+    int socket;
+    
+    bool embryonic = true;
+};    
+
+class DatagramCom {
+public:
+    static std::map<uint64_t,Datagram> datagrams_received;
+};
+
+class UDPCom : public baseCom, public DatagramCom {
 public:
     virtual void init();
     virtual baseCom* replicate() { return new UDPCom(); };
@@ -45,16 +61,27 @@ public:
     virtual int bind(unsigned short port);  
     virtual int accept ( int sockfd, sockaddr* addr, socklen_t* addrlen_ );
     
-    virtual int read(int __fd, void* __buf, size_t __n, int __flags) { return ::recvfrom(__fd,__buf,__n,__flags,&udpcom_addr,&udpcom_addrlen); };
+    virtual bool in_readset(int s);
+    virtual bool in_writeset(int s);
+    virtual bool in_exset(int s);
+    virtual int poll();
+    virtual int read(int __fd, void* __buf, size_t __n, int __flags);
+    virtual int read_from_pool(int __fd, void* __buf, size_t __n, int __flags);
     virtual int peek(int __fd, void* __buf, size_t __n, int __flags) { return read(__fd,__buf,__n, __flags | MSG_PEEK );};
-    virtual int write(int __fd, const void* __buf, size_t __n, int __flags)  { return ::sendto(__fd,__buf,__n,__flags,&udpcom_addr, udpcom_addrlen); };
-    virtual void close(int __fd) { /* don't close udp socket, it's not accepted */ };
+    
+    
+    virtual int write(int __fd, const void* __buf, size_t __n, int __flags);
+    virtual int write_to_pool(int __fd, const void* __buf, size_t __n, int __flags);
+    
+    virtual void close(int __fd) { ::close(__fd); };
     
     virtual void cleanup() {};  
     
     virtual bool is_connected(int s);
     virtual bool com_status();
 
+    virtual bool resolve_nonlocal_socket(int sock);
+    virtual bool resolve_socket(bool source, int s, std::string* target_host, std::string* target_port, sockaddr_storage* target_storage = 0);
 protected:
     int udpcom_fd = 0;
     sockaddr udpcom_addr;

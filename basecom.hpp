@@ -54,7 +54,7 @@ public:
     int     poll_sockmax = 0;
     int     poll_result = 0;
     
-    int poll();
+    virtual int poll();
     void polltime(unsigned int sec, unsigned int usec)
     {
         poll_tv.tv_sec = sec;
@@ -146,26 +146,30 @@ public:
     virtual bool writable(int s) { return true; }; 
     
     // operate on FD_SETs
-    inline bool in_readset(int s) { return FD_ISSET(s, &read_socketSet); };
-	inline bool in_writeset(int s) { return FD_ISSET(s, &write_socketSet); };
-    inline bool in_exset(int s) { return FD_ISSET(s, &ex_socketSet); };  
+    virtual bool in_readset(int s) { return FD_ISSET(s, &read_socketSet); };
+	virtual bool in_writeset(int s) { return FD_ISSET(s, &write_socketSet); };
+    virtual bool in_exset(int s) { return FD_ISSET(s, &ex_socketSet); };  
 	inline void zeroize_readset() { FD_ZERO(&read_socketSet); };
 	inline void zeroize_writeset() { FD_ZERO(&write_socketSet); };
     inline void zeroize_exset() { FD_ZERO(&ex_socketSet); };
-	inline void set_readset(int s) { FD_SET(s, &read_socketSet); if(s > poll_sockmax) { poll_sockmax = s; } };
-	inline void set_writeset(int s) { FD_SET(s, &write_socketSet); if(s > poll_sockmax) { poll_sockmax = s; } };
-    inline void set_exset(int s) { FD_SET(s, &ex_socketSet); if(s > poll_sockmax) { poll_sockmax = s; } };
+	inline void set_readset(int s) { if (s > 0) { FD_SET(s, &read_socketSet); if(s > poll_sockmax) { poll_sockmax = s; } } };
+	inline void set_writeset(int s) { if (s > 0) { FD_SET(s, &write_socketSet); if(s > poll_sockmax) { poll_sockmax = s; } } };
+    inline void set_exset(int s) { if (s > 0) { FD_SET(s, &ex_socketSet); if(s > poll_sockmax) { poll_sockmax = s; } } };
+    inline void unset_readset(int s) { FD_CLR(s, &read_socketSet); };
+    inline void unset_writeset(int s) { FD_CLR(s, &write_socketSet); };
+    inline void unset_exset(int s) { FD_CLR(s, &ex_socketSet); };
+    
 	
     virtual bool __same_target_check(const char* host, const char* port, int existing_socket);
 	
 	bool __deprecated_check_same_destination(int s, int ss);
 
-    bool resolve_socket_(bool source,int s, std::string *target_host, std::string *target_port, struct sockaddr_storage *target_storage = NULL );    
+    virtual bool resolve_socket(bool source,int s, std::string *target_host, std::string *target_port, struct sockaddr_storage *target_storage = NULL );    
 	bool resolve_socket_src(int s, std::string *target_host, std::string *target_port, struct sockaddr_storage *target_storage = NULL ) { 
-		return resolve_socket_(true, s, target_host, target_port, target_storage);
+		return resolve_socket(true, s, target_host, target_port, target_storage);
 	}
 	bool resolve_socket_dst(int s, std::string *target_host, std::string *target_port, struct sockaddr_storage *target_storage = NULL ) {
-		return resolve_socket_(false, s, target_host, target_port, target_storage);
+		return resolve_socket(false, s, target_host, target_port, target_storage);
 	}	
 	
 	// non-local socket support
@@ -179,7 +183,7 @@ public:
 	inline struct sockaddr_storage* nonlocal_peer_info() { return &nonlocal_peer_info_; }	
 	
 	virtual int nonlocal_bind(unsigned short port);
-	bool resolve_nonlocal_socket(int sock);
+	virtual bool resolve_nonlocal_socket(int sock);
 };
 
 # endif

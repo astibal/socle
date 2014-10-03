@@ -124,8 +124,12 @@ class baseHostCX : public Host
 	bool permanent_; 	      //!< indice if we want to reconnect, if socket fails (unless HostCX is reduced)
 	time_t last_reconnect_;   //!< last time of an attempt to reconnect
 	int reconnect_delay_ = 30; //!< how often we will reconnect the socket (in seconds)
+	int idle_delay_ = 3600;     // when connection is idle for this time, it will timeout
 
 	time_t t_connected; 	  //!< connection timeout facility, useful when socket is opened non-blocking
+	
+	time_t w_activity;
+    time_t r_activity;
 	
 	
 	/* socket I/O facility */
@@ -192,9 +196,10 @@ public:
 	// larval connection facility
 	bool opening_ = false;
 	inline bool opening() { return opening_; }
-	inline void opening(bool b) { opening_ = b; if (b) { time(&t_connected); } }
+	inline void opening(bool b) { opening_ = b; if (b) { time(&t_connected); time(&w_activity); time(&r_activity); } }
 	// if we are trying to open socket too long - effective for non-blocking sockets only
 	bool opening_timeout();
+    bool idle_timeout();
 
 	bool paused();
 	inline void paused(bool p) { paused_ = p; }
@@ -235,6 +240,9 @@ public:
 	int connect(bool blocking=false);
 	bool reconnect(int delay=5);
 	inline int reconnect_delay() { return reconnect_delay_; }
+	inline int idle_delay() { return idle_delay_; };
+    inline void idle_delay(int d) { idle_delay_ = d; };
+    
 	inline bool should_reconnect_now() { time_t now = time(NULL); return (now - last_reconnect_ > reconnect_delay() && !reduced()); }
 	
 	inline buffer* readbuf() { return &readbuf_; }

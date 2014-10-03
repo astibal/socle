@@ -126,6 +126,17 @@ bool baseHostCX::opening_timeout() {
 }
 
 
+bool baseHostCX::idle_timeout() {
+    time_t now = time(NULL); 
+    if (now - w_activity > idle_delay() && now - w_activity) {
+        DIAS_("idle timeout");
+        return true;
+    }     
+    
+    return false;
+}
+
+
 bool baseHostCX::paused() {
 
     if(paused_ && peercom()) {
@@ -250,6 +261,7 @@ int baseHostCX::read() {
 	
 		meter_read_bytes += l;
 		meter_read_count++;
+        time(&r_activity);
 	
 		// claim opening socket already opened
 		if (opening()) {
@@ -326,6 +338,7 @@ int baseHostCX::write() {
 	if (l > 0) {
 		meter_write_bytes += l;
 		meter_write_count++;
+        time(&w_activity);
 	
 		if (opening()) {
 			DEB_("HostCX::write[%s]: connection established",c_name());

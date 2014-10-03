@@ -73,6 +73,9 @@ int baseCom::namesocket(int sockfd, std::string& addr, unsigned short port) {
 
     inet_aton(addr.c_str(),&sockName.sin_addr);
     
+    int optval = 1;
+    setsockopt(sockfd, SOL_IP, IP_TRANSPARENT, &optval, sizeof(optval));
+    
     if (::bind(sockfd, (sockaddr *)&sockName, sizeof(sockName)) == 0) {
         return 0;
     }
@@ -187,7 +190,7 @@ bool baseCom::__deprecated_check_same_destination(int s, int ss) {
 }
 
 
-bool baseCom::resolve_socket_(bool source, int s, std::string* target_host, std::string* target_port, sockaddr_storage* target_storage) {
+bool baseCom::resolve_socket(bool source, int s, std::string* target_host, std::string* target_port, sockaddr_storage* target_storage) {
 
     char orig_host[INET6_ADDRSTRLEN];
     struct sockaddr_storage peer_info_;
@@ -216,7 +219,7 @@ bool baseCom::resolve_socket_(bool source, int s, std::string* target_host, std:
     
     if(ret < 0) {
         DIA_("baseCom::resolve_socket: %s failed!",op);
-        return -1;
+        return false;
     } 
     else {
         unsigned short orig_port = 0;
@@ -246,7 +249,8 @@ bool baseCom::resolve_socket_(bool source, int s, std::string* target_host, std:
 
 bool baseCom::resolve_nonlocal_socket(int sock) {
 
-    std::string h,p;
+    std::string h("0.0.0.0");
+    std::string p("0");
     struct sockaddr_storage s; memset(&s,0,sizeof(s));
     
     nonlocal_resolved_ = resolve_socket_dst(sock, &h, &p, &s);

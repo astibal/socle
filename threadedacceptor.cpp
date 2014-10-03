@@ -22,6 +22,9 @@
 #include <threadedacceptor.hpp>
 #include <logger.hpp>
 
+template<class SubWorker>
+int ThreadedAcceptorProxy<SubWorker>::workers_total = 2;
+
 template<class Worker, class SubWorker>
 ThreadedAcceptor<Worker,SubWorker>::ThreadedAcceptor(baseCom* c): baseProxy(c),
 threads_(NULL) {
@@ -65,6 +68,7 @@ void ThreadedAcceptor<Worker,SubWorker>::on_right_new_raw(int s) {
 template<class Worker, class SubWorker>
 int ThreadedAcceptor<Worker,SubWorker>::create_workers(void) {	
 	nthreads = std::thread::hardware_concurrency();
+    Worker::workers_total = nthreads;
 	
 	DIA_("Detected %d cores to use.", nthreads);
 	
@@ -72,7 +76,7 @@ int ThreadedAcceptor<Worker,SubWorker>::create_workers(void) {
 	workers_ = new Worker*[nthreads];
 	
 	for( unsigned int i = 0; i < nthreads; i++) {
-		Worker *w = new Worker(this->com()->replicate());
+		Worker *w = new Worker(this->com()->replicate(),i);
 		w->com()->nonlocal(this->com()->nonlocal());
 		w->parent((baseProxy*)this);
         w->pollroot(true);
@@ -146,7 +150,7 @@ int ThreadedAcceptorProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
 	
 	int s = p->pop();
 	if(s > 0) {
-		DIA_("ThreadedAcceptorProxy::run: removed from queue: %d",s);
+		DIA_("ThreadedAcceptorProxy::run: removed from queue: %016llx (socket %d)",s,s);
 
 		auto cx = this->new_cx(s);
 		if(!cx->paused()) {

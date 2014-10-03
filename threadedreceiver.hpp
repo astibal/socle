@@ -30,10 +30,7 @@
 #include <mutex>
 #include <map>
 
-struct ReceiverEntry {
-    msghdr hdr;
-    buffer rx;
-};
+
 
 template<class Worker, class SubWorker>
 class ThreadedReceiver : public baseProxy {
@@ -48,6 +45,7 @@ public:
     
     int push(int);
     int pop();
+    int pop_for_worker(int id);
     
 protected:
     mutable std::mutex sq_lock_;
@@ -58,10 +56,6 @@ protected:
     Worker **workers_;
     
     int create_workers();
-    
-    
-    // data map (session_key) -> ReceiverEntry
-    std::map<uint64_t,ReceiverEntry> entries_;
 };
 
 
@@ -69,8 +63,13 @@ protected:
 template<class SubWorker>
 class ThreadedReceiverProxy : public MasterProxy {
 public:
-    ThreadedReceiverProxy(baseCom* c): MasterProxy(c) {}
+    ThreadedReceiverProxy(baseCom* c, int worker_id): MasterProxy(c), worker_id_(worker_id) {}
     virtual int handle_sockets_once(baseCom*);  
+
+    static int workers_total;   
+protected:
+    int worker_id_ = 0;
+ 
 };
 
 #include <threadedreceiver.cpp>

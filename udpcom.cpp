@@ -18,6 +18,8 @@
 
 #include <udpcom.hpp>
 
+std::map<uint64_t,Datagram> DatagramCom::datagrams_received;
+
 int UDPCom::accept(int sockfd, sockaddr* addr, socklen_t* addrlen_) {
     return sockfd;
 }
@@ -36,15 +38,20 @@ int UDPCom::bind(short unsigned int port) {
     setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof optval);
     
     optval = 1;
-    setsockopt(s, IPPROTO_IP,IP_RECVORIGDSTADDR, &optval, sizeof optval);
     
     if(nonlocal_) {
         // allows socket to accept connections for non-local IPs
+        DIA_("UDPCom::bind[%d]: setting it transparent",s);
         setsockopt(s, SOL_IP, IP_TRANSPARENT, &optval, sizeof(optval));     
     }
+
+    optval = 1;
+//     setsockopt(s, IPPROTO_IP,IP_RECVORIGDSTADDR, &optval, sizeof optval);
+    if (setsockopt(s, SOL_IP,IP_RECVORIGDSTADDR, &optval, sizeof optval) != 0) return -131;
+
     
     if (::bind(s, (sockaddr *)&sockName, sizeof(sockName)) == -1) return -130;
-   
+
     return s;    
 }
 
@@ -91,6 +98,9 @@ int UDPCom::connect(const char* host, const char* port, bool blocking) {
 
         udpcom_addr = *rp->ai_addr;
         udpcom_addrlen = rp->ai_addrlen;
+        
+        ::connect(sfd,&udpcom_addr,udpcom_addrlen);
+        
         break;
     }
 
@@ -122,3 +132,215 @@ bool UDPCom::is_connected(int s) {
 
 
 
+bool UDPCom::resolve_nonlocal_socket(int sock) {
+
+    auto it_record = DatagramCom::datagrams_received.find((unsigned int)sock);
+    if(it_record != DatagramCom::datagrams_received.end()) {  
+        Datagram& record = (*it_record).second;
+        
+        DIA_("UDPCom::resolve_nonlocal_socket[%x]: found datagram pool entry",sock);
+        
+
+        nonlocal_host() = inet_ntoa(record.dst.sin_addr);
+        nonlocal_port() = ntohs(record.dst.sin_port);
+        nonlocal_resolved_ = true;
+         
+        return true;
+    }
+    
+    DIA_("UDPCom::resolve_nonlocal_socket[%x]: datagram pool entry NOT FOUND",sock);
+    return false;
+}
+
+bool UDPCom::in_readset(int s) {
+    
+    auto it_record = DatagramCom::datagrams_received.find((unsigned int)s);
+    if(it_record != DatagramCom::datagrams_received.end()) {  
+        Datagram& record = (*it_record).second;    
+        
+        if(record.rx.size() > 0) {
+            DIA_("UDPCom::in_readset[%d]: record found, data size %dB",s,record.rx.size());
+        }
+        
+        return (record.rx.size() > 0);
+        
+    } else {
+        EXT_("UDPCom::in_readset[%d]: record NOT found",s);
+        return baseCom::in_readset(s);
+    }
+}
+
+bool UDPCom::in_writeset(int s) {
+    auto it_record = DatagramCom::datagrams_received.find((unsigned int)s);
+    if(it_record != DatagramCom::datagrams_received.end()) {  
+        Datagram& record = (*it_record).second;    
+        
+        return true;
+        
+    } else {
+        return baseCom::in_writeset(s);
+    }
+}
+
+bool UDPCom::in_exset(int s) {
+    auto it_record = DatagramCom::datagrams_received.find((unsigned int)s);
+    if(it_record != DatagramCom::datagrams_received.end()) {  
+        Datagram& record = (*it_record).second;    
+        
+        return false;
+        
+    } else {
+        return baseCom::in_exset(s);
+    }
+
+}
+
+
+int UDPCom::poll() {
+    EXTS_("UDPCom::poll: start");
+    
+//     if(in_readset(5)) {
+//         DIAS_("Socket 5 is here, prepared for polling");
+//     }
+    
+    int r = baseCom::poll();
+    if(in_readset(5)) {
+        DIAS_("Socket 5 is here, with data ready");
+    }
+    
+    EXTS_("UDPCom::poll: end");
+    return r;
+}
+
+
+
+
+int UDPCom::read(int __fd, void* __buf, size_t __n, int __flags) {
+
+    if (__fd < 0) {
+        return read_from_pool(__fd,__buf,__n,__flags);
+    } else {
+        return ::recv(__fd,__buf,__n,__flags);
+    }
+};
+
+int UDPCom::read_from_pool(int __fd, void* __buf, size_t __n, int __flags) {
+
+    auto it_record = DatagramCom::datagrams_received.find((unsigned int)__fd);
+    if(it_record != DatagramCom::datagrams_received.end()) {  
+        Datagram& record = (*it_record).second;
+
+        if(record.rx.size() == 0) {
+//            return ::recv(record.socket,__buf,__n,__flags);
+        } else {
+        
+            int to_copy = __n;
+            if(record.rx.size() <= __n) {
+                to_copy = record.rx.size();
+            }
+            
+            memcpy(__buf,record.rx.data(),to_copy);
+
+            record.rx.flush(to_copy);
+
+            DIA_("UDPCom::read_from_pool[%x]: retrieved %d bytes from receive pool",__fd,to_copy);
+            
+            return to_copy;
+        }
+    } else {
+        return 0; // return hard error, terminate
+    }
+    
+    return 0;
+}
+
+int UDPCom::write(int __fd, const void* __buf, size_t __n, int __flags)
+{
+    
+    if(__n <= 0) {
+        return 0;
+    }
+    
+    if(__fd < 0) {
+        return write_to_pool(__fd,__buf,__n,__flags);
+    } else {
+        return ::sendto(__fd,__buf,__n,__flags,&udpcom_addr, udpcom_addrlen);
+    }
+    return -1;
+}
+
+int UDPCom::write_to_pool(int __fd, const void* __buf, size_t __n, int __flags) {
+    auto it_record = DatagramCom::datagrams_received.find((unsigned int)__fd);
+    if(it_record != DatagramCom::datagrams_received.end()) {  
+        Datagram& record = (*it_record).second;
+        
+        DIA_("UDPCom::write_to_pool[%x]: about to write %d bytes into socket %d",__fd,__n,record.socket);
+        
+        msghdr m;
+        struct iovec io;
+        char cmbuf[128];
+        
+        io.iov_base = (void*)__buf;
+        io.iov_len = __n;
+        
+        m.msg_iov = &io;
+        m.msg_iovlen = 1;
+        m.msg_name = (void*)&record.src;
+        m.msg_namelen = sizeof(struct sockaddr_in);
+        m.msg_control = cmbuf;
+        m.msg_controllen = sizeof(cmbuf);            
+        
+        struct cmsghdr *cmsg;
+        struct in_pktinfo *pktinfo;
+        cmsg = CMSG_FIRSTHDR(&m);
+        cmsg->cmsg_level = IPPROTO_IP;
+        cmsg->cmsg_type = IP_PKTINFO;
+        cmsg->cmsg_len = CMSG_LEN(sizeof(struct in_pktinfo));
+        pktinfo = (struct in_pktinfo*) CMSG_DATA(cmsg);
+        pktinfo->ipi_spec_dst = record.dst.sin_addr;
+        pktinfo->ipi_ifindex = 0;
+        m.msg_controllen = CMSG_SPACE(sizeof(struct in_pktinfo));
+
+        int l = 0;
+        int n = 1;
+        int d = socket (AF_INET, SOCK_DGRAM, 0);
+        int ret = setsockopt (d, SOL_IP, IP_TRANSPARENT, &n, sizeof(int));
+        
+        ret = ::bind (d, (struct sockaddr*)&(record.dst), sizeof (struct sockaddr_in));
+        if(ret != 0) {
+            ERRS_("UDPCom::write_to_pool[%d]: cannot bind to destination!",__fd);
+        } else {
+            DIA_("UDPCom::write_to_pool[%d]: custom transparent socket: %d",__fd,d);
+            l = ::sendmsg(d,&m,0);
+            DIA_("UDPCom::write_to_pool[%d]: socket: %d: written %d bytes",__fd,d,l);
+        }
+        ::close(d);
+        
+        
+        //l = send(record.socket,__buf,__n,__flags);
+        return l;
+        
+    } else {
+        return -1;
+    }
+}
+
+bool UDPCom::resolve_socket(bool source, int s, std::string* target_host, std::string* target_port, sockaddr_storage* target_storage) {
+    auto it_record = DatagramCom::datagrams_received.find((unsigned int)s);
+    if(it_record != DatagramCom::datagrams_received.end()) {  
+        Datagram& record = (*it_record).second;
+        
+        if(source == true) {
+            target_host->assign(inet_ntoa(record.src.sin_addr));
+            target_port->assign(std::to_string(ntohs(record.src.sin_port)));
+        } else {
+            target_host->assign(inet_ntoa(record.dst.sin_addr));
+            target_port->assign(std::to_string(ntohs(record.dst.sin_port)));
+        }
+        
+    } else {
+        return baseCom::resolve_socket(source,s,target_host,target_port,target_storage);
+    }
+    
+    return true;
+}

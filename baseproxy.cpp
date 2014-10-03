@@ -357,6 +357,12 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
 				on_left_error(*i);
 				break;
 			}
+            if( (*i)->idle_timeout() ) {
+                DIA_("baseProxy::handle_sockets_once[%d]: idle timeout!",(*i)->socket());
+                (*i)->close();
+                on_left_error(*i);
+                break;
+            }
 			
 			// paused cx is subject to timeout only, no r/w is done on it ( it would return -1/0 anyway, so spare some cycles)
 			if((*i)->paused()) {
@@ -419,7 +425,12 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
 				on_right_error(*j);
 				break;
 			}			
-
+            if( (*j)->idle_timeout() ) {
+                DIA_("baseProxy::handle_sockets_once[%d]: idle timeout!",(*j)->socket());
+                (*j)->close();
+                on_left_error(*j);
+                break;
+            }
 			// paused cx is subject to timeout only, no r/w is done on it ( it would return -1/0 anyway, so spare some cycles)
 			if((*j)->paused()) {
 				continue;
@@ -483,7 +494,12 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
                 on_left_pc_error(*k);
                 break;
             }           
-
+            if( (*k)->idle_timeout() ) {
+                DIA_("baseProxy::handle_sockets_once[%d]: idle timeout!",(*k)->socket());
+                (*k)->close();
+                on_left_error(*k);
+                break;
+            }
             // paused cx is subject to timeout only, no r/w is done on it ( it would return -1/0 anyway, so spare some cycles)
             if((*k)->paused()) {
                 continue;
@@ -558,7 +574,12 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
                 on_right_pc_error(*l);
                 break;
             }           
-
+            if( (*l)->idle_timeout() ) {
+                DIA_("baseProxy::handle_sockets_once[%d]: idle timeout!",(*l)->socket());
+                (*l)->close();
+                on_left_error(*l);
+                break;
+            }
             // paused cx is subject to timeout only, no r/w is done on it ( it would return -1/0 anyway, so spare some cycles)
             if((*l)->paused()) {
                 continue;
@@ -749,7 +770,7 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
         if (xcom->poll_result ==  0) {
             return 0;
         } else {
-            return handle_last_status + meter_last_read + meter_last_write;
+            return  meter_last_read + meter_last_write;
         }
     }
     return 0;

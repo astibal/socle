@@ -57,8 +57,13 @@ protected:
 template<class SubWorker>
 class ThreadedAcceptorProxy : public MasterProxy {
 public:
-	ThreadedAcceptorProxy(baseCom* c): MasterProxy(c) {}
+	ThreadedAcceptorProxy(baseCom* c, int worker_id): MasterProxy(c), worker_id_(worker_id) {}
 	virtual int handle_sockets_once(baseCom*);	
+    
+    static int workers_total;
+protected:
+    int worker_id_ = 0;
+
 };
 
 #include <threadedacceptor.cpp>

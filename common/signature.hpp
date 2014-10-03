@@ -26,6 +26,7 @@
 #include <buffer.hpp>
 #include <display.hpp>
 #include <logger.hpp>
+#include <ranges.hpp>
 
 typedef std::pair<unsigned char,buffer*> side_buffer_ptr;
 
@@ -70,25 +71,6 @@ public:
 };
 
 
-typedef typename std::pair<int,int> range;
-typedef typename std::vector<range> vector_range;
-
-const range NULLRANGE(0,-1);
-
-std::string rangetos(range r) { return string_format("<%d,%d>",r.first,r.second); }
-
-std::string vrangetos(vector_range r) {
-    std::string s;
-    for(unsigned int i = 0; i < r.size(); i++) {
-        s += rangetos(r[i]);
-        if ( ( i + 1 ) < r.size()) {
-            s += ",";
-        }
-    }
-    
-    return s;
-}
-
 class baseMatch {
 protected:
     std::string expr_;
@@ -120,7 +102,31 @@ public:
     simpleMatch(const char* e, unsigned int o, unsigned int b) : baseMatch(e,o,b),  last_result_(NULLRANGE) {}
     simpleMatch(std::string& e, unsigned int o, unsigned int b) : baseMatch(e,o,b),  last_result_(NULLRANGE) {}
     
-    virtual range match(const char* str, unsigned int max_len = 0);
+    virtual range match(const char* str, unsigned int len = 0) {
+        
+        range result;
+        
+        auto s = std::string(str,len);
+        EXT_("simpleMatch::match: '%s', len='%d' ",hex_dump((unsigned char*)s.c_str(),len).c_str(),len);
+        
+        range loc = search_function(expr(),s);
+        
+
+        if(loc == NULLRANGE) {
+            DEBS_("simpleMatch::match: <0,-1>");
+            result = NULLRANGE;
+            
+        } else {
+            int pos = loc.first;
+            int len = loc.second;
+            
+            DEB_("simpleMatch::match: <%d,%d>",pos,len);
+            result = range(pos,pos+len-1);
+        }
+        
+        return result;
+    };
+        
     virtual range search_function(std::string &expr, std::string &str) { 
         int where = str.find(expr);
 
@@ -137,30 +143,6 @@ public:
     virtual range operator() (const char* str, unsigned int max_len = 0) { return match(str,max_len); };
 };
 
-range simpleMatch::match(const char* str, unsigned int len) { 
-    
-    range result;
-    
-    auto s = std::string(str,len);
-    EXT_("simpleMatch::match: '%s', len='%d' ",hex_dump((unsigned char*)s.c_str(),len).c_str(),len);
-    
-    range loc = search_function(expr(),s);
-    
-
-    if(loc == NULLRANGE) {
-        DEBS_("simpleMatch::match: <0,-1>");
-        result = NULLRANGE;
-        
-    } else {
-        int pos = loc.first;
-        int len = loc.second;
-        
-        DEB_("simpleMatch::match: <%d,%d>",pos,len);
-        result = range(pos,pos+len-1);
-    }
-    
-    return result;
-};
 
 template <class SourceType>
 class flowMatch {
