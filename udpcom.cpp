@@ -199,14 +199,7 @@ bool UDPCom::in_exset(int s) {
 int UDPCom::poll() {
     EXTS_("UDPCom::poll: start");
     
-//     if(in_readset(5)) {
-//         DIAS_("Socket 5 is here, prepared for polling");
-//     }
-    
     int r = baseCom::poll();
-    if(in_readset(5)) {
-        DIAS_("Socket 5 is here, with data ready");
-    }
     
     EXTS_("UDPCom::poll: end");
     return r;
@@ -343,4 +336,16 @@ bool UDPCom::resolve_socket(bool source, int s, std::string* target_host, std::s
     }
     
     return true;
+}
+
+
+void UDPCom::close(int __fd) {
+    if(__fd > 0) {
+        ::close(__fd);
+    } else {
+        auto it_record = DatagramCom::datagrams_received.find((unsigned int)__fd);
+        if(it_record != DatagramCom::datagrams_received.end()) {  
+                DatagramCom::datagrams_received.erase((unsigned int)__fd);
+        }
+    }
 }
