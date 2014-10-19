@@ -267,7 +267,7 @@ int UDPCom::write_to_pool(int __fd, const void* __buf, size_t __n, int __flags) 
     if(it_record != DatagramCom::datagrams_received.end()) {  
         Datagram& record = (*it_record).second;
         
-        DIA_("UDPCom::write_to_pool[%x]: about to write %d bytes into socket %d",__fd,__n,record.socket);
+        DIA_("UDPCom::write_to_pool[%d]: about to write %d bytes into socket %d",__fd,__n,record.socket);
         
         msghdr m;
         struct iovec io;
@@ -346,6 +346,9 @@ void UDPCom::close(int __fd) {
         auto it_record = DatagramCom::datagrams_received.find((unsigned int)__fd);
         if(it_record != DatagramCom::datagrams_received.end()) {  
                 DatagramCom::datagrams_received.erase((unsigned int)__fd);
+                DIA_("UDPCom::close[%d]: datagrams_received entry erased",__fd);
+        } else {
+            DIA_("UDPCom::close[%d]: datagrams_received entry NOT found, thus not erased",__fd);
         }
     }
 }

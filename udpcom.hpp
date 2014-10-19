@@ -44,6 +44,7 @@ struct Datagram {
     int socket;
     
     bool embryonic = true;
+    baseHostCX* cx = nullptr;
 };    
 
 class DatagramCom {

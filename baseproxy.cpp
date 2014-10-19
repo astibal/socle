@@ -363,7 +363,13 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
                 on_left_error(*i);
                 break;
             }
-			
+            if( (*i)->error() ) {
+                DIA_("baseProxy::handle_sockets_once[%d]: error!",(*i)->socket());
+                (*i)->close();
+                on_left_error(*i);
+                break;
+            }
+            
 			// paused cx is subject to timeout only, no r/w is done on it ( it would return -1/0 anyway, so spare some cycles)
 			if((*i)->paused()) {
 				continue;
@@ -431,7 +437,14 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
                 on_left_error(*j);
                 break;
             }
-			// paused cx is subject to timeout only, no r/w is done on it ( it would return -1/0 anyway, so spare some cycles)
+            if( (*j)->error() ) {
+                DIA_("baseProxy::handle_sockets_once[%d]: error!",(*j)->socket());
+                (*j)->close();
+                on_left_error(*j);
+                break;
+            }
+            
+            // paused cx is subject to timeout only, no r/w is done on it ( it would return -1/0 anyway, so spare some cycles)
 			if((*j)->paused()) {
 				continue;
 			}
@@ -500,6 +513,13 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
                 on_left_error(*k);
                 break;
             }
+            if( (*k)->error() ) {
+                DIA_("baseProxy::handle_sockets_once[%d]: error!",(*k)->socket());
+                (*k)->close();
+                on_left_error(*k);
+                break;
+            }            
+            
             // paused cx is subject to timeout only, no r/w is done on it ( it would return -1/0 anyway, so spare some cycles)
             if((*k)->paused()) {
                 continue;
@@ -580,6 +600,13 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
                 on_left_error(*l);
                 break;
             }
+            if( (*l)->error() ) {
+                DIA_("baseProxy::handle_sockets_once[%d]: error!",(*l)->socket());
+                (*l)->close();
+                on_left_error(*l);
+                break;
+            }            
+            
             // paused cx is subject to timeout only, no r/w is done on it ( it would return -1/0 anyway, so spare some cycles)
             if((*l)->paused()) {
                 continue;

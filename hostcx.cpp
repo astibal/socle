@@ -288,7 +288,7 @@ int baseHostCX::read() {
         
 	} else if (l == 0) {
 		DIA_("HostCX::read[%s]: error while reading",c_name());
-		error_ = true;
+		error(true);
 	} else {
 		processed_bytes_ = 0;
 	}

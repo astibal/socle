@@ -135,12 +135,15 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
         Datagram dgram;
         struct Datagram& d = dgram;
         auto it = DatagramCom::datagrams_received.find(session_key);
+        bool clashed = false;
         
         
         if(it == DatagramCom::datagrams_received.end()) {
             // new session key (new udp "connection")
             DEB_("ThreadedReceiver::on_left_new_raw[%d]: inserting new session key in storage: %d",sock, session_key);
 
+            clash:
+            
             d.src = from;
             d.dst = orig;
             d.rx.size(0);
@@ -159,12 +162,31 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
             Datagram& n_it = DatagramCom::datagrams_received[session_key];
             
             n_it.rx.append(recv_buf_,len);
-            DIA_("ThreadedReceiver::on_left_new_raw[%d]: inserting new session key in storage: key=%d, bytes=%d",sock, session_key,n_it.rx.size());
+            if(clashed) {
+                DIA_("ThreadedReceiver::on_left_new_raw[%d]: re-inserting clashed session key in storage: key=%d, bytes=%d",sock, session_key,n_it.rx.size());
+            } else {
+                DIA_("ThreadedReceiver::on_left_new_raw[%d]: inserting new session key in storage: key=%d, bytes=%d",sock, session_key,n_it.rx.size());
+            }
 //             push(session_key);
             push(session_key);
         }
         else {
             Datagram& o_it = DatagramCom::datagrams_received[session_key];
+            
+            if( (o_it.src.sin_addr.s_addr != from.sin_addr.s_addr) ||
+                (o_it.src.sin_port != from.sin_port) ||
+                (o_it.dst.sin_addr.s_addr != orig.sin_addr.s_addr) ||
+                (o_it.dst.sin_port != orig.sin_port) ||
+                (o_it.src.sin_family != orig.sin_family)
+            ) {
+                DIA_("ThreadedReceiver::on_left_new_raw[%d]: key %d: session clash!",sock, session_key);
+                clashed = true;
+                o_it.embryonic = true;
+                o_it.cx->error(true);
+                
+                goto clash;
+            }
+            
             if(o_it.rx.size() != 0) {
                     DIA_("ThreadedReceiver::on_left_new_raw[%d]: key %d: dropped %dB of non-proxied data",sock, session_key,o_it.rx.size());
             }
@@ -322,6 +344,8 @@ int ThreadedReceiverProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
                         
                         // create new cx
                         auto cx = this->new_cx(s);
+                        record.cx = cx;
+                        
                         if(!cx->paused()) {
                             cx->accept_socket(s);
                         }
