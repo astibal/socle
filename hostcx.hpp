@@ -188,7 +188,7 @@ public:
 	baseHostCX(baseCom* c, unsigned int s);
 	virtual ~baseHostCX();
 	
-	std::string name();
+	std::string& name();
 	const char* c_name();
 	
     ssize_t processed_bytes() { return processed_bytes_; };
@@ -286,6 +286,9 @@ public:
     // return human readable details of this object
 	std::string hr();
     std::string full_name(unsigned char);
+    
+    // debug options
+    static bool socket_in_name;
 };
 
 #endif

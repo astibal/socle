@@ -23,6 +23,8 @@
 
 extern logger lout;
 
+bool baseHostCX::socket_in_name = false;
+
 baseHostCX::baseHostCX(baseCom* c, const char* h, const char* p): Host(h, p) {
 
     permanent_ = false;
@@ -172,12 +174,25 @@ void baseHostCX::close() {
  }
 }
 
-std::string baseHostCX::name() {
+std::string& baseHostCX::name() {
 
 	if (reduced()) {
+        std::string com_name = "?";
+        if(com() != nullptr) {
+            com_name = com()->name();
+        }        
+        
 		if (valid()) {
-            com()->resolve_socket_src(fds_, &host_,&port_);
-            name__ = string_format("%d::%s:%s",socket(),host().c_str(),port().c_str());
+
+            if(com() != nullptr) {
+                com()->resolve_socket_src(fds_, &host_,&port_);
+            }
+            
+            if(socket_in_name) {
+                name__ = string_format("%d::%s_%s:%s",socket(), com()->name() , host().c_str(),port().c_str());
+            } else {
+                name__ = string_format("%s_%s:%s",com()->name() , host().c_str(),port().c_str());
+            }
             
 			//name__ = string_format("%d:<reduced>",socket());
 		}
@@ -186,8 +201,15 @@ std::string baseHostCX::name() {
         }
 		
 	} else {
-		name__ = string_format("%d::%s:%s",socket(),host().c_str(),port().c_str());
-		
+        if(name__.size() > 0) {
+            return name__;
+        }
+        
+        if(socket_in_name) {
+            name__ = string_format("%d::%s_%s:%s",socket(), com()->name() ,host().c_str(),port().c_str());
+        } else {
+            name__ = string_format("%s_%s:%s",com()->name() ,host().c_str(),port().c_str());
+        }
 	}
 
 	return name__;
