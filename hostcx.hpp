@@ -115,7 +115,7 @@ class baseHostCX : public Host
 	
 	std::string name__; //!< human friendly name
 
-	int fds_;			//!< socket/file descriptor itself
+	int fds_ = 0;			//!< socket/file descriptor itself
 	bool error_ = false;//!< indicates that the last read operation on socket returned 0
 	
 	

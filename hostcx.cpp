@@ -28,7 +28,7 @@ baseHostCX::baseHostCX(baseCom* c, const char* h, const char* p): Host(h, p) {
     permanent_ = false;
     last_reconnect_ = 0;
     reconnect_delay_ = 30;
-    fds_ = -1;
+    fds_ = 0;
     error_ = false;
     
     writebuf_ = buffer(HOSTCX_BUFFSIZE);
@@ -163,10 +163,10 @@ bool baseHostCX::is_connected() {
 
 void baseHostCX::close() {
 	
- if(fds_ > 0) {
-	::close(fds_); 
+ if(fds_ != 0) {
+	com()->close(fds_); 
 	DEB_("HostCX::close[%s]: socket closed",c_name());
-	fds_ = -1; 
+	fds_ = 0; 
  } else {
 	 DEB_("HostCX::close[%s]: no-op, cannot be closed",c_name());
  }

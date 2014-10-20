@@ -44,6 +44,11 @@ struct Datagram {
     int socket;
     
     bool embryonic = true;
+    bool reuse = false;         // make this true if there is e.g. clash and closed CX/Com should not
+                                // trigger it's removal from the pool: com()->close() will otherwise
+                                // erase it.
+                                // It's toggle type, whenever used, it should be again set to false,
+                                // in order to be deleted once in the future.
     baseHostCX* cx = nullptr;
 };    
 

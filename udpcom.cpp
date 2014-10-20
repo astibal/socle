@@ -166,8 +166,10 @@ bool UDPCom::in_readset(int s) {
         
     } else {
         EXT_("UDPCom::in_readset[%d]: record NOT found",s);
-        return baseCom::in_readset(s);
+        if( s > 0) return baseCom::in_readset(s);
     }
+    
+    return false;
 }
 
 bool UDPCom::in_writeset(int s) {
@@ -178,8 +180,10 @@ bool UDPCom::in_writeset(int s) {
         return true;
         
     } else {
-        return baseCom::in_writeset(s);
+        if( s > 0) return baseCom::in_writeset(s);
     }
+    
+    return false;
 }
 
 bool UDPCom::in_exset(int s) {
@@ -190,9 +194,10 @@ bool UDPCom::in_exset(int s) {
         return false;
         
     } else {
-        return baseCom::in_exset(s);
+        if( s > 0) return baseCom::in_exset(s);
     }
 
+    return false;
 }
 
 
@@ -345,8 +350,16 @@ void UDPCom::close(int __fd) {
     } else {
         auto it_record = DatagramCom::datagrams_received.find((unsigned int)__fd);
         if(it_record != DatagramCom::datagrams_received.end()) {  
-                DatagramCom::datagrams_received.erase((unsigned int)__fd);
-                DIA_("UDPCom::close[%d]: datagrams_received entry erased",__fd);
+                Datagram& it = DatagramCom::datagrams_received[(unsigned int)__fd];
+                
+                if(! it.reuse) {
+                    DIA_("UDPCom::close[%d]: datagrams_received entry erased",__fd);
+                    DatagramCom::datagrams_received.erase((unsigned int)__fd);
+                } else {
+                    DIA_("UDPCom::close[%d]: datagrams_received entry reuse flag set, entry  not deleted.",__fd);
+                    it.reuse = false;
+                }
+                
         } else {
             DIA_("UDPCom::close[%d]: datagrams_received entry NOT found, thus not erased",__fd);
         }

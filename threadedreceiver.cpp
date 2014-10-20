@@ -136,6 +136,7 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
         struct Datagram& d = dgram;
         auto it = DatagramCom::datagrams_received.find(session_key);
         bool clashed = false;
+        baseHostCX* clashed_cx = nullptr;
         
         
         if(it == DatagramCom::datagrams_received.end()) {
@@ -158,10 +159,17 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
 //             
 //             d.socket = n_sock;
             
+            
             DatagramCom::datagrams_received[session_key] = d;
             Datagram& n_it = DatagramCom::datagrams_received[session_key];
             
             n_it.rx.append(recv_buf_,len);
+            
+            if (clashed) {
+                n_it.reuse = true;
+                clashed_cx->error();
+            }
+            
             if(clashed) {
                 DIA_("ThreadedReceiver::on_left_new_raw[%d]: re-inserting clashed session key in storage: key=%d, bytes=%d",sock, session_key,n_it.rx.size());
             } else {
@@ -181,8 +189,7 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
             ) {
                 DIA_("ThreadedReceiver::on_left_new_raw[%d]: key %d: session clash!",sock, session_key);
                 clashed = true;
-                o_it.embryonic = true;
-                o_it.cx->error(true);
+                clashed_cx = o_it.cx;
                 
                 goto clash;
             }
