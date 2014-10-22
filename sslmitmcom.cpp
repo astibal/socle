@@ -50,7 +50,8 @@ bool SSLMitmCom::check_cert(const char* peer_name) {
     } else {
         WARS_("SSLMitmCom::check_cert: cannot set peer's cert to spoof: peer is not SSLMitmCom type");
     }
-        
+    
+    X509_free(cert);
     return r;
 }
 
