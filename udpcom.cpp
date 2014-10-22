@@ -277,6 +277,7 @@ int UDPCom::write_to_pool(int __fd, const void* __buf, size_t __n, int __flags) 
         msghdr m;
         struct iovec io;
         char cmbuf[128];
+        memset(cmbuf,0,sizeof(cmbuf));
         
         io.iov_base = (void*)__buf;
         io.iov_len = __n;
