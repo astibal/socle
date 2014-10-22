@@ -326,8 +326,10 @@ int SSLCom::upgrade_server_socket(int sockfd) {
     return sockfd;
 }
 
-
-int SSLCom::ssl_waiting() {
+// return -1 on unrecoverable and we should stop 
+// return 0 when still waiting
+// return > 0 when not waiting anymore 
+int SSLCom::waiting() {
 
 	const char* op_accept = "accept";
 	const char* op_connect = "connect";
@@ -363,7 +365,7 @@ int SSLCom::ssl_waiting() {
 	if (r == -1) {
 		int err = SSL_get_error(sslcom_ssl,r);
 		if (err == SSL_ERROR_WANT_READ) {
-			DUM_("SSL READ pending: %s",op);
+			DUM_("SSL_%s: want read",op);
 			
  			sslcom_waiting = true;
 //             forced_read(true);
@@ -371,16 +373,16 @@ int SSLCom::ssl_waiting() {
  			return 1;
 		}
 		else if (err == SSL_ERROR_WANT_WRITE) {
-			DUM_("SSL WRITE pending: %s",op);
+			DUM_("SSL_%s: want write",op);
 			
  			sslcom_waiting = true;
 //             forced_write(true);
-// 			sslcom_waiting_write = true;
+// 			    sslcom_waiting_write = true;
  			return 1;
 		}
 		else {
-            INF_("SSL err=%d pending: %s",err,op);
- 			sslcom_waiting = false;
+            DIA_("SSL_%s: error: %d",op,err);
+ 			sslcom_waiting = true;
  			return 0;
 		}
  
@@ -391,13 +393,13 @@ int SSLCom::ssl_waiting() {
 		//unclean shutdown
 		sslcom_waiting = false;
 		SSL_shutdown(sslcom_ssl);
-		return 0;
+		return -1;
 		
 	} else if (r == 0) {
 		DIA_("SSL failed: %s",op);
 		// shutdown OK, but connection failed
 		sslcom_waiting = false;		
-		return 0;
+		return -1;
 	}
 	
 	DEB_("SSLCom::ssl_waiting: operation succeeded: %s", op);
@@ -428,9 +430,16 @@ int SSLCom::read ( int __fd, void* __buf, size_t __n, int __flags )  {
 	
 	// non-blocking socket can be still opening 
 	if( sslcom_waiting ) {
-		int c = ssl_waiting();
-		if (c <= 0) return c;
-	}
+		int c = waiting();
+        if (c == 0) {
+            DEB_("SSLCom:: read[%d]: ssl_waiting() returned %d: still waiting",__fd,c);
+            return -1;
+        } else 
+        if (c < 0) {
+            DIA_("SSLCom:: read[%d]: ssl_waiting() returned %d: unrecoverable!",__fd,c);
+            return 0;
+        }
+    }   
 	
 	// if we are peeking, just do it and return, no magic done is here
 	if ((__flags & MSG_PEEK) != 0) {
@@ -503,8 +512,8 @@ int SSLCom::read ( int __fd, void* __buf, size_t __n, int __flags )  {
 					DEB_("SSLCom::read[%d]: want read: err=%d,read_now=%4d,total=%4d",__fd,err,r,total_r);
 				}
 				sslcom_read_blocked=1;
-                
-				if(total_r > 0) return total_r;
+
+                if(total_r > 0) return total_r;
 				return r;
 
 				/* We get a WANT_WRITE if we're
@@ -516,13 +525,15 @@ int SSLCom::read ( int __fd, void* __buf, size_t __n, int __flags )  {
 				when it is */
 				
 			case SSL_ERROR_WANT_CONNECT:
-				DEB_("SSLCom::read[%d]: want connect",__fd);
-				if(total_r > 0) return total_r;
+				INF_("SSLCom::read[%d]: want connect",__fd);
+                
+                if(total_r > 0) return total_r;
 				return r;
 
 			case SSL_ERROR_WANT_ACCEPT:
-				DEB_("SSLCom::read[%d]: want accept",__fd);
-				if(total_r > 0) return total_r;
+				INF_("SSLCom::read[%d]: want accept",__fd);
+
+                if(total_r > 0) return total_r;              
 				return r;
 				
 				
@@ -579,11 +590,15 @@ int SSLCom::write ( int __fd, const void* __buf, size_t __n, int __flags )  {
 
 // 	// non-blocking socket can be still opening 
 	if( sslcom_waiting ) {
-		int c = ssl_waiting();
-		if (c <= 0) {
-			DEB_("SSLCom::write[%d]: ssl_waiting() <= 1, returning",__fd);
+		int c = waiting();
+		if (c == 0) {
+			DEB_("SSLCom::write[%d]: ssl_waiting() returned %d: still waiting",__fd,c);
 			return 0;
-		}
+		} else 
+        if (c < 0) {
+            DIA_("SSLCom::write[%d]: ssl_waiting() returned %d: unrecoverable!",__fd,c);
+            return -1;
+        }
 	}	
 	
     sslcom_write_blocked_on_read=0;

@@ -93,7 +93,7 @@ protected:
 	bool sslcom_waiting=true;
 	bool sslcom_server=false;
 	int sslcom_server_fd=0;
-	int ssl_waiting();
+	int waiting();
 	
 	char* ssl_waiting_host = NULL;
 	  
