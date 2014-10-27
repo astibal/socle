@@ -27,12 +27,16 @@ int AppHostCX::zip_signatures(sensorType& s, std::vector<duplexFlowMatch*>& v) {
     s.clear();
     int r = 0;
     
+    DEBS_("AppHostCX::zip_signatures: zipper start");
     for( std::vector<duplexFlowMatch*>::iterator i = v.begin(); i < v.end(); ++i ) {
         
         if((*i) == nullptr ) {
             DEBS_("AppHostCX::zip_signatures: attempt to zip nullptr signature");
             continue;
         }
+        
+        duplexFlowMatch* ptr = (*i);
+        DEB_("AppHostCX::zip_signatures: sensor %x, zipping %s",&s, ptr->name().c_str());
         
         std::pair<flowMatchState,duplexFlowMatch*> a;
 
@@ -51,6 +55,10 @@ bool AppHostCX::detect(sensorType& cur_sensor) {
 
     bool matched = false;
     
+    if(cur_sensor.size() <= 0) {
+        DIA_("AppHostCX::detect[%s]: Sensor %x is empty!",c_name(), &sensor());
+    }
+    
     for (sensorType::iterator i = cur_sensor.begin(); i != cur_sensor.end(); ++i ) {
     
         std::pair<flowMatchState,duplexFlowMatch*>& sig = (*i);
@@ -60,7 +68,7 @@ bool AppHostCX::detect(sensorType& cur_sensor) {
         flowMatchState& sig_res = std::get<0>(sig);
         
         if (sig_res.hit() == false) {
-            DEB_("AppHostCX::detect[%s]: Signature %s",c_name(), sig_sig->name().c_str());
+            DEB_("AppHostCX::detect[%s]: Sensor %x, signature name %s",c_name(), &sensor(), sig_sig->name().c_str());
             
             bool r = sig_res.update(this->flowptr(),sig_sig);
             

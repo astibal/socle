@@ -168,7 +168,7 @@ void SSLCom::init_server() {
         SSL_free(sslcom_ssl);
     }
     
-	method = SSLv3_server_method();
+	method = TLSv1_server_method();
 	sslcom_ctx = SSL_CTX_new (method);	
 	if (!sslcom_ctx) {
 		ERRS_("Server: Error creating SSL context!");

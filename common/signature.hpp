@@ -44,15 +44,18 @@ public:
     unsigned int append(SourceType src,buffer* pb) { return append(src,pb->data(),pb->size());};
     unsigned int append(SourceType src,const void* data, size_t len) {
         if(flow_.size() == 0) {
+            DEB_("New flow init: side: %c: data:\n%s",src,hex_dump((unsigned char*)data,len).c_str());
             auto b = new buffer(data,len);
             // src initialized by value, buffer is pointer
             std::pair<SourceType,buffer*> t(src,b);
             flow_.push_back(t);
         }
         else if (flow_.back().first == src) {
+            DEB_("Appending to side: %c: data:\n%s",src,hex_dump((unsigned char*)data,len).c_str());
             flow_.back().second->append(data,len);
         }
         else if (flow_.back().first != src) {
+            DEB_("New side: %c: data:\n%s",src,hex_dump((unsigned char*)data,len).c_str());
             auto b = new buffer(data,len);
             // src initialized by value, buffer is pointer
             std::pair<SourceType,buffer*> t(src,b);
@@ -315,6 +318,7 @@ public:
         std::smatch m;
         std::regex_search ( str , m, expr_comp_ );
         
+        DUM_("regexMatch::search_function: \nexpr:\n%s\ndata:\n%s",expr.c_str(),hex_dump((unsigned char*)str.c_str(),str.size()).c_str());
         DEB_("regexMatch::search_function: matches %d times.", m.size());
         
         for (unsigned i=0; i<m.size(); ++i) {
