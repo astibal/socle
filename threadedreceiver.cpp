@@ -106,7 +106,7 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
             s = s << 16;
             s += sp;
             
-            s |= 2^31; //this will produce negative number, which should determine  if it's normal socket or not
+            s |= (1 << 31); //this will produce negative number, which should determine  if it's normal socket or not
             
     //         uint64_t d = orig->sin_addr.s_addr;
     //         uint32_t dp = orig->sin_port;
