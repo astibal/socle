@@ -68,6 +68,13 @@ int THREAD_setup ( void ) {
     CRYPTO_set_locking_callback ( locking_function );
 	
 	DIAS_("OpenSSL threading support: enabled");
+    
+    DIAS_("OpenSSL: loading error strings");
+    SSL_load_error_strings();
+    
+    DIAS_("OpenSSL: loading algorithms");
+    SSLeay_add_ssl_algorithms();
+    
     return 1;
 }
 
@@ -104,12 +111,6 @@ void SSLCom::static_init() {
 	// call openssl threads support - only once from all threads!
 	std::call_once (SSLCom::openssl_thread_setup_done ,THREAD_setup);
     std::call_once (SSLCom::certstore_setup_done ,SSLCom::certstore_setup);
-	
-	DEBS_("SSL: loading error strings");
-	SSL_load_error_strings();
-	
-	DEBS_("SSL: loading algorithms");
-	SSLeay_add_ssl_algorithms();
 }
 
 
