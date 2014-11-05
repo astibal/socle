@@ -138,6 +138,7 @@ private:
 		
 		active_ = false;
 		delete writer_;
+        writer_ = nullptr;
 		return false;
 	}
 	
@@ -179,7 +180,7 @@ public:
 			if (create_writer()) {
 				DIA_("writer '%s' created",writer_key_l_.c_str());
 			} else {
-				ERR_("write '%s' creation failed!",writer_key_l_.c_str());
+				ERR_("write '%s' failed to create dump file!",writer_key_l_.c_str());
 			}
 		}
 		
