@@ -31,9 +31,12 @@
 class trafLog {
 
 public:
-	trafLog(baseProxy *p) :
+	trafLog(baseProxy *p,const char* d_dir, const char* f_prefix, const char* f_suffix) :
     proxy_(p),
 	active_(false),
+	data_dir(d_dir),
+	file_prefix(f_prefix),
+	file_suffix(f_suffix),
 	writer_(NULL),
 	writer_key_l_("???:???"),
 	writer_key_r_("???:???") {
@@ -50,6 +53,11 @@ public:
 private:
 	baseProxy *proxy_;
 	bool active_;
+    
+    std::string data_dir;
+    std::string file_prefix;
+    std::string file_suffix;
+    
 	std::ofstream *writer_;
 	std::string writer_key_l_;
 	std::string writer_key_r_;
@@ -109,10 +117,9 @@ private:
 		writer_key_l_ = create_writer_key('L');
 		writer_key_r_ = create_writer_key('R');
 		
-		std::string datadir = "mitm/";
-		mkdir(datadir.c_str(),700);
+		mkdir(data_dir.c_str(),700);
 			
-		std::string hostdir = datadir+host_l_+"/";
+		std::string hostdir = data_dir+"/"+host_l_+"/";
 		mkdir(hostdir.c_str(),0770);
 
 		time_t now = time(0);
@@ -123,7 +130,7 @@ private:
 		
 		std::string file_datepart = string_format("%02d-%02d-%02d_",loc.tm_hour,loc.tm_min,loc.tm_sec);
 		
-		writer_ = new std::ofstream(hostdir + datedir + "mitm_dump_" + file_datepart + writer_key_l_);
+		writer_ = new std::ofstream(hostdir + datedir + file_prefix + file_datepart + writer_key_l_ + "." + file_suffix);
 		if(writer_->is_open()) {
 			active_ = true;
 			return true;

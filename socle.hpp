@@ -16,7 +16,7 @@
     License along with this library.
 */
 
-#define SOCLE_VERSION "0.0.74"
+#define SOCLE_VERSION "0.0.75"
 
 #include <common/base64.hpp>
 #include <common/crc32.hpp>
