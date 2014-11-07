@@ -583,8 +583,12 @@ int SSLCom::read ( int __fd, void* __buf, size_t __n, int __flags )  {
 }
 
 int SSLCom::write ( int __fd, const void* __buf, size_t __n, int __flags )  {
-	
-	DEB_("SSLCom::write[%d]: called: about to write %d bytes",__fd,__n);	
+
+    if(__n == 0) {
+        EXT_("SSLCom::write[%d]: called: about to write %d bytes",__fd,__n);    
+    } else {
+        DEB_("SSLCom::write[%d]: called: about to write %d bytes",__fd,__n);	
+    }
 	
 	//this one will be much trickier than just single call of SSL_read
 	// return SSL_write(sslcom_ssl, __buf, __n);
@@ -606,7 +610,11 @@ int SSLCom::write ( int __fd, const void* __buf, size_t __n, int __flags )  {
     int normalized__n = 20480;
     void *ptr = (void*)__buf;
 
-    DEB_("SSLCom::write[%d]: attempt to send %d bytes",__fd,__n);
+    if(__n == 0) {
+        EXT_("SSLCom::write[%d]: attempt to send %d bytes",__fd,__n);
+    } else {
+        DEB_("SSLCom::write[%d]: attempt to send %d bytes",__fd,__n);
+    }
     if ( __n < 20480) {
         normalized__n = __n;
     }

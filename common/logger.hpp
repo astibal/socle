@@ -148,19 +148,25 @@ protected:
 	unsigned int period_ = 5;
 	time_t last_period = 0;
 	bool last_period_status = false;
+    
+    //if target is set, should we write also to std::cout?
+    bool dup_to_cout_ = true;
 	
 	mutable std::mutex mtx_lout;
 	
 	std::map<std::string,timer_tt> timers;
 	mutable std::mutex mtx_timers;
 	
-     std::ostream* target_ = NULL;
+     std::ostream* target_ = nullptr;
 public:
 	logger() { level_=0; period_ =5; };
     ~logger() { if(target_) { target()->flush(); delete target_; } };
 	
 	void level(unsigned int l) { level_ = l; };
 	inline unsigned int level(void) const { return level_; };
+    
+    void dup2_cout(bool b) { dup_to_cout_ = b; }
+    bool dup2_cout() { return dup_to_cout_; }
 	
 	bool click_timer(std::string, int);
 	
