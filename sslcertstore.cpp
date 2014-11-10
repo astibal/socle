@@ -607,7 +607,7 @@ std::string SSLCertStore::print_cert(X509* x) {
 
             BUF_MEM *bptr;
             BIO_get_mem_ptr(ext_bio, &bptr);
-            BIO_set_close(ext_bio, BIO_NOCLOSE);
+            BIO_set_close(ext_bio, BIO_CLOSE);
         
 #pragma GCC diagnostic pop
             
@@ -624,8 +624,6 @@ std::string SSLCertStore::print_cert(X509* x) {
                 bptr->data[lastchar] = (char) 0;
             }
         
-            BIO_free(ext_bio);
-
             unsigned nid = OBJ_obj2nid(obj);    
             if (nid == NID_undef) {
                 // no lookup found for the provided OID so nid came back as undefined.
@@ -645,6 +643,8 @@ std::string SSLCertStore::print_cert(X509* x) {
             
             s.append(string_format("Extension[%d] length = %u\n ", i,bptr->length));
             s.append(string_format("Extension[%d] value = '%s'\n ", i,bptr->data));
+            
+            BIO_free(ext_bio);
         }
     }            
     return s;
