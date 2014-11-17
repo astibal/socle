@@ -126,10 +126,10 @@ void SSLCom::init_client() {
 	
 	const SSL_METHOD *method;
 	
-	method = TLSv1_2_client_method();
+	method = TLSv1_client_method();
 
 	sslcom_ctx = SSL_CTX_new (method);	
-  	SSL_CTX_set_cipher_list(sslcom_ctx,"ALL:!ADH:!LOW:!EXP:!MD5:@STRENGTH");
+    SSL_CTX_set_cipher_list(sslcom_ctx,"ALL:!ADH:!LOW:!EXP:!MD5:@STRENGTH");
 	
 	if (!sslcom_ctx) {
 		ERRS_("Client: Error creating SSL context!");
