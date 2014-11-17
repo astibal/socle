@@ -22,6 +22,7 @@
 #include <openssl/pem.h>
 #include <openssl/ssl.h>
 #include <openssl/err.h>
+#include <openssl/tls1.h>
 
 #include <sslcom.hpp>
 #include <logger.hpp>
@@ -30,6 +31,8 @@
 #include <cstdio>
 
 #include <crc32.hpp>
+#include <display.hpp>
+#include <buffer.hpp>
 
 std::once_flag SSLCom::openssl_thread_setup_done;
 std::once_flag SSLCom::certstore_setup_done;
@@ -123,10 +126,10 @@ void SSLCom::init_client() {
 	
 	const SSL_METHOD *method;
 	
-	method = TLSv1_method();
+	method = TLSv1_2_client_method();
 
 	sslcom_ctx = SSL_CTX_new (method);	
-// 	SSL_CTX_set_cipher_list(sslcom_ctx,"ALL:!ADH:!LOW:!EXP:!MD5:@STRENGTH");
+  	SSL_CTX_set_cipher_list(sslcom_ctx,"ALL:!ADH:!LOW:!EXP:!MD5:@STRENGTH");
 	
 	if (!sslcom_ctx) {
 		ERRS_("Client: Error creating SSL context!");
@@ -204,7 +207,7 @@ void SSLCom::init_server() {
 	sslcom_ssl = SSL_new(sslcom_ctx);
     SSL_set_mode(sslcom_ssl, SSL_MODE_ENABLE_PARTIAL_WRITE|SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
 	
-	SSL_set_fd (sslcom_ssl, sslcom_server_fd);
+	SSL_set_fd (sslcom_ssl, sslcom_fd);
 	sslcom_server = true;
 }
 
@@ -316,11 +319,17 @@ void SSLCom::accept_socket ( int sockfd )  {
     }
 }
 
+void SSLCom::delay_socket(int sockfd) {
+    // we need to know even delayed socket
+    sslcom_fd = sockfd;
+}
+
+
 int SSLCom::upgrade_server_socket(int sockfd) {
 
-    sslcom_server_fd = sockfd;
+    sslcom_fd = sockfd;
     sslcom_waiting = true;
-    unblock(sslcom_server_fd);
+    unblock(sslcom_fd);
     
     init_server();
     
@@ -347,6 +356,11 @@ int SSLCom::waiting() {
 	int r = 0;
 	
 	if (!sslcom_server) {
+
+        if(! waiting_peer_hello()) {
+             return 0;
+        }
+        
 		r = SSL_connect(sslcom_ssl);
         
         //debug counter
@@ -414,6 +428,144 @@ int SSLCom::waiting() {
 	return r;
 	
 }
+
+bool SSLCom::waiting_peer_hello()
+{
+    if(sslcom_peer_hello_received) {
+        DUMS_("SSLCom::waiting_peer_hello: already called, returning true");
+        return true;
+    }
+    
+    DIAS_("SSLCom::waiting_peer_hello: called");
+    if(peer()) {
+        SSLCom *p = static_cast<SSLCom*>(peer());
+        if(p != nullptr) {
+            if(p->sslcom_fd > 0) {
+                DIA_("SSLCom::waiting_peer_hello: reading max %d bytes from peer socket %d",2048,p->sslcom_fd);
+                int red = ::recv(p->sslcom_fd,sslcom_peer_hello_buffer,1500,MSG_PEEK);
+                if (red > 0) {
+                    DIA_("SSLCom::waiting_peer_hello: %d bytes in buffer for hello analysis",red);
+                    sslcom_peer_hello_received = true;
+                    DEB_("SSLCom::waiting_peer_hello: ClientHello data:\n%s",hex_dump(sslcom_peer_hello_buffer,red).c_str());
+                    
+                    parse_peer_hello(sslcom_peer_hello_buffer,red);
+                    
+                } else {
+                    DIA_("SSLCom::waiting_peer_hello: %d bytes",red);
+                }
+                
+            } else {
+                DIAS_("SSLCom::waiting_peer_hello: SSLCom peer doesn't have sslcom_fd set");
+            }
+        } else {
+            DIAS_("SSLCom::waiting_peer_hello: peer not SSLCom type");
+        }
+    } else {
+        DIAS_("SSLCom::waiting_peer_hello: no peers");
+    }
+    
+    return sslcom_peer_hello_received;
+}
+
+bool SSLCom::parse_peer_hello(unsigned char* ptr, unsigned int len) {
+
+    bool ret = false;
+    
+    uint8_t content_type = 0;
+    
+    if(len >= 34) {
+        buffer b = buffer(ptr,len);
+        buffer session_id = buffer();
+        unsigned int curpos = 0;
+        
+        unsigned char message_type = b.get_at<unsigned char>(curpos); curpos+=sizeof(unsigned char);
+        unsigned char version_maj = b.get_at<unsigned char>(curpos); curpos+=sizeof(unsigned char);
+        unsigned char version_min = b.get_at<unsigned char>(curpos); curpos+=sizeof(unsigned char);
+        
+        unsigned short message_length = ntohs(b.get_at<unsigned short>(curpos)); curpos+=sizeof(unsigned short);
+        
+        
+        DIA_("SSLCom::parse_peer_hello: received message type %d, version %d.%d, length %d",message_type,version_maj, version_min, message_length);
+        
+        if(message_type == 22) {
+            
+            unsigned char handshake_type = b.get_at<unsigned char>(curpos); curpos+=(sizeof(unsigned char) + 1); //@6 (there is padding 0x00, or length is 24bit :-O)
+            unsigned short handshake_length = ntohs(b.get_at<unsigned short>(curpos)); curpos+=sizeof(unsigned short); //@9
+            unsigned char handshake_version_maj = b.get_at<unsigned char>(curpos); curpos+=sizeof(unsigned char); //@10
+            unsigned char handshake_version_min = b.get_at<unsigned char>(curpos); curpos+=sizeof(unsigned char); //@11
+            unsigned int  handshake_unixtime = ntohl(b.get_at<unsigned char>(curpos)); curpos+=sizeof(unsigned int); //@15
+            
+            curpos += 28; // skip random 24B bytes
+            
+            unsigned char session_id_length = b.get_at<unsigned char>(curpos); curpos+=sizeof(unsigned char);
+            
+            // we already know it's handshake, it's ok to return true
+            if(handshake_type == 1) {
+                DIA_("SSLCom::parse_peer_hello: handshake (type %u), version %u.%u, length %u",handshake_type,handshake_version_maj,handshake_version_min,handshake_length);
+                ret = true;
+            }
+            
+            if(session_id_length > 0) {
+                session_id = b.view(curpos,session_id_length); curpos+=session_id_length;
+                DEB_("SSLCom::parse_peer_hello: session_id (length %d):\n%s",session_id_length, hex_dump(session_id.data(),session_id.size()).c_str());
+            } else {
+                DEBS_("SSLCom::parse_peer_hello: no session_id found.");
+            }
+            
+            unsigned short ciphers_length = ntohs(b.get_at<unsigned short>(curpos)); curpos+=sizeof(unsigned short);
+            curpos += ciphers_length; //skip ciphers
+            unsigned char compression_length = b.get_at<unsigned char>(curpos); curpos+=sizeof(unsigned char);
+            curpos += compression_length; // skip compression methods
+
+            DEB_("SSLCom::parse_peer_hello: ciphers length %d, compression length %d",ciphers_length,compression_length);
+            
+            /* extension section */
+            unsigned short extensions_length = ntohs(b.get_at<unsigned short>(curpos)); curpos+=sizeof(unsigned short);
+            DEB_("SSLCom::parse_peer_hello: extensions payload length %d",extensions_length);
+            
+            if(extensions_length > 0) {
+
+                // minimal extension size is 5 (2 for ID, 2 for len)
+                while(curpos + 4 < b.size()) {
+                    curpos += parse_peer_hello_extensions(b,curpos);
+                }
+            }
+        }
+    }
+    
+    return ret;
+}
+
+unsigned short SSLCom::parse_peer_hello_extensions(buffer& b, unsigned int curpos) {
+
+    unsigned short ext_id = ntohs(b.get_at<unsigned short>(curpos)); curpos+=sizeof(unsigned short);
+    unsigned short ext_length = ntohs(b.get_at<unsigned short>(curpos)); curpos+=sizeof(unsigned short);
+    
+    DEB_("SSLCom::parse_peer_hello_extensions: extension id 0x%x, length %d", ext_id, ext_length);
+
+    switch(ext_id) {
+        
+        /* server name*/
+        case 0: 
+            unsigned short sn_list_length = htons(b.get_at<unsigned short>(curpos)); curpos+= sizeof(unsigned short);
+            unsigned  char sn_type = b.get_at<unsigned char>(curpos); curpos+= sizeof(unsigned char);
+            
+            /* type is hostname*/
+            if(sn_type == 0) {
+                unsigned short sn_hostname_length = htons(b.get_at<unsigned short>(curpos)); curpos+= sizeof(unsigned short);
+                std::string s;
+                s.append((const char*)b.data()+curpos,(size_t)sn_hostname_length);
+                
+                DIA_("SSLCom::parse_peer_hello_extensions:    SNI hostname: %s",s.c_str());
+                SSL_set_tlsext_host_name(sslcom_ssl,s.c_str());
+            }
+            
+            break;
+    }
+    
+    return ext_length + 4;  // +4 for ext_id and ext_length
+}
+
 
 
 #pragma GCC diagnostic ignored "-Wpointer-arith"
@@ -730,33 +882,40 @@ int SSLCom::upgrade_client_socket(int sock) {
     
     SSL_set_bio(sslcom_ssl,sslcom_sbio,sslcom_sbio);    
 
-    int r = SSL_connect(sslcom_ssl);
-    if(r <= 0 && is_blocking(sock)) {
-        ERR_("SSL connect error on socket %d",sock);
-        close(sock);
-        return -1;
-    }
-    else if (r <= 0) {
-        /* non-blocking may return -1 */
-        
-        if (r == -1) {
-            int err = SSL_get_error(sslcom_ssl,r);
-            if (err == SSL_ERROR_WANT_READ || err == SSL_ERROR_WANT_READ) {
-                DUMS_("SSL connect pending");
-                
-                sslcom_waiting = true;
-                return sock;
-            }
+    bool ch = waiting_peer_hello();
+    
+    if(ch) {
+        int r = SSL_connect(sslcom_ssl);        
+        if(r <= 0 && is_blocking(sock)) {
+            ERR_("SSL connect error on socket %d",sock);
+            close(sock);
+            return -1;
         }
-        return sock;    
+        else if (r <= 0) {
+            /* non-blocking may return -1 */
+            
+            if (r == -1) {
+                int err = SSL_get_error(sslcom_ssl,r);
+                if (err == SSL_ERROR_WANT_READ || err == SSL_ERROR_WANT_READ) {
+                    DUMS_("SSL connect pending");
+                    
+                    sslcom_waiting = true;
+                    return sock;
+                }
+            }
+            return sock;    
+        }
+        
+        DEBS_("connection succeeded");  
+        sslcom_waiting = false;
+        sslcom_fd = sock;
+        
+        //ssl_waiting_host = (char*)host;    
+        check_cert(nullptr);
+        
     }
     
-    DEBS_("connection succeeded");  
-    sslcom_waiting = false;
-    
-    //ssl_waiting_host = (char*)host;    
-    check_cert(nullptr);
-    
+   
     return sock;
     
 

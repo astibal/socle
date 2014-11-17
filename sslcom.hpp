@@ -30,6 +30,7 @@
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 
+#include <buffer.hpp>
 #include <basecom.hpp>
 #include <tcpcom.hpp>
 #include <sslcertstore.hpp>
@@ -92,11 +93,18 @@ protected:
 	
 	bool sslcom_waiting=true;
 	bool sslcom_server=false;
-	int sslcom_server_fd=0;
+	int sslcom_fd=0;
 	int waiting();
 	
 	char* ssl_waiting_host = NULL;
-	  
+	
+    bool waiting_peer_hello();
+    bool parse_peer_hello(unsigned char* ptr, unsigned int len);
+    unsigned short parse_peer_hello_extensions(buffer& b, unsigned int curpos);
+    
+    bool sslcom_peer_hello_received = false;
+    unsigned char sslcom_peer_hello_buffer[1500];
+    
     // is the socket up or not
     bool sslcom_status_ = false;
     inline bool sslcom_status() { return sslcom_status_; }
@@ -134,6 +142,8 @@ public:
 	virtual bool writable (int s);
 	
 	virtual void accept_socket ( int sockfd	);
+    virtual void delay_socket ( int sockfd );
+    
     virtual int connect ( const char* host, const char* port, bool blocking = false );
 	
 	virtual int read ( int __fd, void* __buf, size_t __n, int __flags );

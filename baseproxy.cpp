@@ -694,9 +694,10 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
                         cx->com()->nonlocal((*ii)->com()->nonlocal());
                         
                         if(!cx->paused()) {
-                            cx->accept_socket(client);
+                            cx->on_accept_socket(client);
                         } else {
-                            DEB_("baseProxy::handle_sockets_once[%d]: adding to delayed sockets",client);
+                            cx->on_delay_socket(client);
+                            DEB_("baseProxy::handle_sockets_once[%d]: adding to left delayed sockets",client);
                             // dealayed accept in effect -- carrier is accepted, but we will postpone higher level accept_socket
                             ldaadd(cx);
                             
@@ -720,7 +721,7 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
                     
                     baseHostCX *p = *k;
                     if(!(*k)->paused()) {
-                        p->accept_socket(p->socket());
+                        p->on_accept_socket(p->socket());
                         ladd(p);
                         left_delayed_accepts.erase(k);
                         
@@ -753,9 +754,11 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
                         cx->com()->nonlocal((*jj)->com()->nonlocal());
 
                         if(!cx->paused()) {
-                            cx->accept_socket(client);
+                            cx->on_accept_socket(client);
                         } else {
+                            cx->on_delay_socket(client);
                             // dealayed accept in effect -- carrier is accepted, but we will postpone higher level accept_socket
+                            DEB_("baseProxy::handle_sockets_once[%d]: adding to right delayed sockets",client);
                             rdaadd(cx);
                         } 
                         on_right_new(cx);
@@ -776,7 +779,7 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
                     
                     baseHostCX *p = *k;
                     if(!(*k)->paused()) {
-                        p->accept_socket(p->socket());
+                        p->on_accept_socket(p->socket());
                         radd(p);
                         right_delayed_accepts.erase(k);
                         

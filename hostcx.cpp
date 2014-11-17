@@ -432,12 +432,16 @@ void baseHostCX::to_write(unsigned char* c, unsigned int l) {
 	DEB_("HostCX::to_write[%s]: write buffer size %d bytes",c_name(),writebuf_.size());
 }
 
-void baseHostCX::accept_socket(int fd) { 
+void baseHostCX::on_accept_socket(int fd) { 
 	com()->accept_socket(fd); 
 	
 	if(reduced()) {
         com()->resolve_socket_src(fd, &host_,&port_);
 	}
+}
+
+void baseHostCX::on_delay_socket(int fd) {
+    com()->delay_socket(fd);
 }
 
 std::string baseHostCX::hr() {

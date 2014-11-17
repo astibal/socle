@@ -126,12 +126,18 @@ public:
 	
 	// syscall wrapper 
 	virtual int accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen_) = 0;
-	// call to init already accepted socket
+	
+    // call to init already accepted socket
 	virtual void accept_socket(int sockfd) {
 		if(nonlocal_) {
 			resolve_nonlocal_socket(sockfd);
 		}
 	};
+    
+    // call to init socket about to be accepted in the future but paused for now
+    virtual void delay_socket(int sockfd) {
+        /* do nothing */
+    }
 
     int unblock(int s);   
     inline int is_blocking(int s) { return !(::fcntl(s, F_GETFL, 0) & O_NONBLOCK);  }

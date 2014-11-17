@@ -280,8 +280,11 @@ public:
 	
 	virtual void on_timer() {};
 	
-	// call com()->accept_socket(int fd) on bind->accepted socket and initialize upper level Com
-	void accept_socket(int fd);
+	// call com()->on_accept_socket(int fd) on bind->accepted socket and initialize upper level Com
+	void on_accept_socket(int fd);
+    // call com()->on_delay_socket(int fd) on bind->accepted socket to init upper level Com. This is analogy to accept_socket,
+    // but is called on socket which is not accepted yet (CX is paused and if baseProxy is used, put in delay list).
+    void on_delay_socket(int fd);
 	
     // return human readable details of this object
 	std::string hr();

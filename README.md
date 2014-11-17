@@ -11,14 +11,21 @@ In other words, Socle's main purpose is to make comfortable writing various prox
 
 # DEVELOPMENT ROADMAP #
 
-## 0.4.0 branch - stable ##
+## 0.4.0 branch - stable
 * stabilize/fix code, cleanups
 * documentation and examples improvements
 * no more changes, unless it's necessary
 
-## 0.5.0 branch - testing ## 
+## 0.5.0 branch - testing
 * more SSL debugs with 
-   *SSL_set_msg_callback*  -- can be used to obtain state information for SSL objects created from ctx during connection setup and use
-   *SSL_set_info_callback*   -- can be used to define a message callback function cb for observing all SSL/TLS protocol messages
+  *SSL_set_msg_callback*  -- can be used to obtain state information for SSL objects created from ctx during connection setup and use
+  *SSL_set_info_callback*  -- can be used to define a message callback function cb for observing all SSL/TLS protocol messages
 
+* shapers
+  implement *bucket system* to be used by proxy hierarchy
+
+* DTLS support
+  implement DTLSCom, DTLSMitmCom class to proxy also DTLS traffic
+
+  
 * Repository is owned by Ales Stibal <astib@mag0.net>

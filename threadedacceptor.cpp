@@ -154,7 +154,9 @@ int ThreadedAcceptorProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
 
 		auto cx = this->new_cx(s);
 		if(!cx->paused()) {
-            cx->accept_socket(s);
+            cx->on_accept_socket(s);
+        } else {
+            cx->on_delay_socket(s);
         }
 		cx->com()->nonlocal(this->com()->nonlocal());
 		cx->com()->resolve_nonlocal_socket(s);

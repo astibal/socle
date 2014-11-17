@@ -62,6 +62,8 @@ public:
   unsigned char operator[] (size_type) const;
   unsigned char& at (size_type);
   unsigned char at (size_type) const;
+  
+  template <typename T> T get_at(int idx);
 
   size_type find (unsigned char, size_type pos = 0) const;
   size_type rfind (unsigned char, size_type pos = npos) const;
@@ -378,6 +380,16 @@ inline unsigned char buffer::at (size_type i) const
 
   return data_[i];
 }
+
+template <typename T>
+T buffer::get_at(int idx)
+{
+    if(idx + sizeof(T) >= size_)
+        throw std::out_of_range ("index out of range");
+    
+    return *((T*)(&data_[idx]));
+}
+
 
 inline buffer::size_type buffer::find (unsigned char v, size_type pos) const
 {

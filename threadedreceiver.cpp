@@ -354,7 +354,7 @@ int ThreadedReceiverProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
                         record.cx = cx;
                         
                         if(!cx->paused()) {
-                            cx->accept_socket(s);
+                            cx->on_accept_socket(s);
                         }
                         cx->idle_delay(120);
                         auto cx_dcom = dynamic_cast<DatagramCom*>(cx->com());
