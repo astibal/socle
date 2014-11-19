@@ -167,7 +167,10 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
             
             if (clashed) {
                 n_it.reuse = true;
-                clashed_cx->error();
+                
+                if(clashed_cx != nullptr) {
+                    clashed_cx->error();
+                }
             }
             
             if(clashed) {
@@ -187,7 +190,7 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
                 (o_it.dst.sin_port != orig.sin_port) ||
                 (o_it.src.sin_family != orig.sin_family)
             ) {
-                DIA_("ThreadedReceiver::on_left_new_raw[%d]: key %d: session clash!",sock, session_key);
+                DIA_("ThreadedReceiver::on_left_new_raw[%d]: key %d: session clash with cx@%x!",sock, session_key,o_it.cx);
                 clashed = true;
                 clashed_cx = o_it.cx;
                 
