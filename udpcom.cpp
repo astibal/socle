@@ -39,7 +39,7 @@ int UDPCom::bind(short unsigned int port) {
     
     optval = 1;
     
-    if(nonlocal_) {
+    if(nonlocal_dst_) {
         // allows socket to accept connections for non-local IPs
         DIA_("UDPCom::bind[%d]: setting it transparent",s);
         setsockopt(s, SOL_IP, IP_TRANSPARENT, &optval, sizeof(optval));     
@@ -96,6 +96,17 @@ int UDPCom::connect(const char* host, const char* port, bool blocking) {
             continue;
         }
 
+        
+        if(nonlocal_src()) {
+            DEB_("UDPCom::connect[%s:%s]: About to name socket[%d] after: %s:%d",host,port,sfd,nonlocal_src_host().c_str(),nonlocal_src_port());
+            int bind_status = namesocket(sfd,nonlocal_src_host(),nonlocal_src_port());
+            if (bind_status != 0) {
+                    WAR_("UDPCom:connect: cannot bind this port: %s",strerror(bind_status));
+            } else {
+                DIA_("UDPCom::connect[%s:%s]: socket[%d] transparency for %s:%d OK",host,port,sfd,nonlocal_src_host().c_str(),nonlocal_src_port());
+            }
+        }        
+        
         udpcom_addr = *rp->ai_addr;
         udpcom_addrlen = rp->ai_addrlen;
         
@@ -141,9 +152,9 @@ bool UDPCom::resolve_nonlocal_socket(int sock) {
         DIA_("UDPCom::resolve_nonlocal_socket[%x]: found datagram pool entry",sock);
         
 
-        nonlocal_host() = inet_ntoa(record.dst.sin_addr);
-        nonlocal_port() = ntohs(record.dst.sin_port);
-        nonlocal_resolved_ = true;
+        nonlocal_dst_host() = inet_ntoa(record.dst.sin_addr);
+        nonlocal_dst_port() = ntohs(record.dst.sin_port);
+        nonlocal_dst_resolved_ = true;
          
         return true;
     }

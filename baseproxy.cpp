@@ -691,7 +691,7 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
                         baseHostCX* cx = new_cx(client);
                         
                         // propagate nonlocal setting
-                        cx->com()->nonlocal((*ii)->com()->nonlocal());
+                        cx->com()->nonlocal_dst((*ii)->com()->nonlocal_dst());
                         
                         if(!cx->paused()) {
                             cx->on_accept_socket(client);
@@ -751,7 +751,7 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
                         baseHostCX* cx = new_cx(client);
 
                         // propagate nonlocal setting
-                        cx->com()->nonlocal((*jj)->com()->nonlocal());
+                        cx->com()->nonlocal_dst((*jj)->com()->nonlocal_dst());
 
                         if(!cx->paused()) {
                             cx->on_accept_socket(client);
@@ -939,7 +939,7 @@ int baseProxy::bind(unsigned short port, unsigned char side) {
 	// this function will always return value of 'port' parameter (but <=0 will not be added)
 	
 	baseHostCX *cx = new baseHostCX(com()->replicate(), s);
-	cx->com()->nonlocal(com()->nonlocal());
+	cx->com()->nonlocal_dst(com()->nonlocal_dst());
 	
 	if ( s > 0 ) {
 		if ( side == 'L') lbadd(cx);

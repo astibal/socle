@@ -77,7 +77,7 @@ int ThreadedAcceptor<Worker,SubWorker>::create_workers(void) {
 	
 	for( unsigned int i = 0; i < nthreads; i++) {
 		Worker *w = new Worker(this->com()->replicate(),i);
-		w->com()->nonlocal(this->com()->nonlocal());
+		w->com()->nonlocal_dst(this->com()->nonlocal_dst());
 		w->parent((baseProxy*)this);
         w->pollroot(true);
 		
@@ -158,8 +158,8 @@ int ThreadedAcceptorProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
         } else {
             cx->on_delay_socket(s);
         }
-		cx->com()->nonlocal(this->com()->nonlocal());
-		cx->com()->resolve_nonlocal_socket(s);
+		cx->com()->nonlocal_dst(this->com()->nonlocal_dst());
+		cx->com()->resolve_nonlocal_dst_socket(s);
 		this->on_left_new(cx);
 
 	}

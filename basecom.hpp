@@ -66,11 +66,16 @@ public:
     virtual ~baseCom() {};
 protected:
     // non-local socket support
-    bool nonlocal_;
-	bool nonlocal_resolved_;
-	std::string nonlocal_host_;
-	unsigned short nonlocal_port_;
-	struct sockaddr_storage nonlocal_peer_info_;
+    bool nonlocal_dst_;
+	bool nonlocal_dst_resolved_;
+	std::string nonlocal_dst_host_;
+	unsigned short nonlocal_dst_port_;
+	struct sockaddr_storage nonlocal_dst_peer_info_;
+    
+    bool nonlocal_src_ = true;
+    std::string nonlocal_src_host_;
+    unsigned short nonlocal_src_port_;
+    
 
     // feedback mechanism to get if the communication level is up/down
     // necessary for some mitm scenarios and connection status feedback between 2 sockets
@@ -129,8 +134,8 @@ public:
 	
     // call to init already accepted socket
 	virtual void accept_socket(int sockfd) {
-		if(nonlocal_) {
-			resolve_nonlocal_socket(sockfd);
+		if(nonlocal_dst_) {
+			resolve_nonlocal_dst_socket(sockfd);
 		}
 	};
     
@@ -179,17 +184,24 @@ public:
 	}	
 	
 	// non-local socket support
-	inline bool nonlocal() { return nonlocal_; }
-	inline void nonlocal(bool b) { nonlocal_ = b; }	
+	inline bool nonlocal_dst() { return nonlocal_dst_; }
+	inline void nonlocal_dst(bool b) { nonlocal_dst_ = b; }	
     virtual int namesocket(int, std::string&, unsigned short);
 
-	inline bool nonlocal_resolved(void) { return nonlocal_resolved_; }
-	inline std::string& nonlocal_host(void) { return nonlocal_host_; }
-	inline unsigned short& nonlocal_port(void) { return nonlocal_port_; }
-	inline struct sockaddr_storage* nonlocal_peer_info() { return &nonlocal_peer_info_; }	
+	inline bool nonlocal_dst_resolved(void) { return nonlocal_dst_resolved_; }
+	inline std::string& nonlocal_dst_host(void) { return nonlocal_dst_host_; }
+	inline unsigned short& nonlocal_dst_port(void) { return nonlocal_dst_port_; }
+	inline struct sockaddr_storage* nonlocal_dst_peer_info() { return &nonlocal_dst_peer_info_; }	
+	
+    inline bool nonlocal_src() { return nonlocal_src_; }
+    inline void nonlocal_src(bool b) { nonlocal_src_ = b; } 
+    inline std::string& nonlocal_src_host(void) { return nonlocal_src_host_; }
+    inline unsigned short& nonlocal_src_port(void) { return nonlocal_src_port_; }
+    
+	
 	
 	virtual int nonlocal_bind(unsigned short port);
-	virtual bool resolve_nonlocal_socket(int sock);
+	virtual bool resolve_nonlocal_dst_socket(int sock);
 };
 
 # endif

@@ -28,22 +28,22 @@ void baseCom::init() {
 	} 	
 	
 	// non-local sockets support
-	nonlocal_ = false;
-	nonlocal_resolved_ = false;
-	nonlocal_host_ = "";
-	nonlocal_port_ = 0;
-	memset(&nonlocal_peer_info_,0,sizeof(nonlocal_peer_info_));
+	nonlocal_dst_ = false;
+	nonlocal_dst_resolved_ = false;
+	nonlocal_dst_host_ = "";
+	nonlocal_dst_port_ = 0;
+	memset(&nonlocal_dst_peer_info_,0,sizeof(nonlocal_dst_peer_info_));
     
     polltime(0,350);
 }
 
 
 int baseCom::nonlocal_bind (unsigned short port) {
-	nonlocal(true);
+	nonlocal_dst(true);
 	
 	int r = bind(port);
 	if (r < 0) {
-		nonlocal(false);
+		nonlocal_dst(false);
 	}
 	
 	return r;
@@ -247,17 +247,17 @@ bool baseCom::resolve_socket(bool source, int s, std::string* target_host, std::
     return false;
 }
 
-bool baseCom::resolve_nonlocal_socket(int sock) {
+bool baseCom::resolve_nonlocal_dst_socket(int sock) {
 
     std::string h("0.0.0.0");
     std::string p("0");
     struct sockaddr_storage s; memset(&s,0,sizeof(s));
     
-    nonlocal_resolved_ = resolve_socket_dst(sock, &h, &p, &s);
-    if(nonlocal_resolved()) {
-        nonlocal_host_ = h;
-        nonlocal_port_ = std::stoi(p);
-        nonlocal_peer_info_ = s;
+    nonlocal_dst_resolved_ = resolve_socket_dst(sock, &h, &p, &s);
+    if(nonlocal_dst_resolved()) {
+        nonlocal_dst_host_ = h;
+        nonlocal_dst_port_ = std::stoi(p);
+        nonlocal_dst_peer_info_ = s;
         
         return true;
     }

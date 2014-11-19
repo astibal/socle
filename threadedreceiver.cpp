@@ -227,7 +227,7 @@ int ThreadedReceiver<Worker,SubWorker>::create_workers(void) {
     
     for( unsigned int i = 0; i < nthreads; i++) {
         Worker *w = new Worker(this->com()->replicate(),i);
-        w->com()->nonlocal(this->com()->nonlocal());
+        w->com()->nonlocal_dst(this->com()->nonlocal_dst());
         w->parent((baseProxy*)this);
         w->pollroot(true);
         
@@ -366,10 +366,10 @@ int ThreadedReceiverProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
                             delete cx;
                             
                         } else {
-                            cx_bcom->nonlocal(this->com()->nonlocal());
-                            cx_bcom->resolve_nonlocal_socket(s);
+                            cx_bcom->nonlocal_dst(this->com()->nonlocal_dst());
+                            cx_bcom->resolve_nonlocal_dst_socket(s);
                         
-                            DIA_("ThreadedReceiverProxy::handle_sockets_once[%d]: CX created, bound socket %d ,nonlocal: %s:%u",s, record.socket,cx->com()->nonlocal_host().c_str(),cx->com()->nonlocal_port());
+                            DIA_("ThreadedReceiverProxy::handle_sockets_once[%d]: CX created, bound socket %d ,nonlocal: %s:%u",s, record.socket,cx->com()->nonlocal_dst_host().c_str(),cx->com()->nonlocal_dst_port());
                             this->on_left_new(cx);                            
                         }
                         

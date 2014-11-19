@@ -23,7 +23,6 @@ void TCPCom::init() {
     baseCom::init(); 
 };
 
-    
 int TCPCom::connect(const char* host, const char* port, bool blocking) { 
     struct addrinfo hints;
     struct addrinfo *gai_result, *rp;
@@ -40,7 +39,7 @@ int TCPCom::connect(const char* host, const char* port, bool blocking) {
 
     gai = getaddrinfo(host, port, &hints, &gai_result);
     if (gai != 0) {
-        DEB_("getaddrinfo: %s",gai_strerror(gai));
+        DEB_("TCPCom::connect[%s:%s]: getaddrinfo: %s",host,port,gai_strerror(gai));
         return -2;
     }
 
@@ -53,8 +52,21 @@ int TCPCom::connect(const char* host, const char* port, bool blocking) {
         sfd = socket(rp->ai_family, rp->ai_socktype,
                     rp->ai_protocol);
 
+        DEB_("TCPCom::connect[%s:%s]: gai info found",host,port);
+        // Keep it here: would be good if we can do something like this in the future
+        
+        if(nonlocal_src()) {
+            DEB_("TCPCom::connect[%s:%s]: About to name socket[%d] after: %s:%d",host,port,sfd,nonlocal_src_host().c_str(),nonlocal_src_port());
+            int bind_status = namesocket(sfd,nonlocal_src_host(),nonlocal_src_port());
+            if (bind_status != 0) {
+                    WAR_("cannot bind this port: %s",strerror(bind_status));
+            } else {
+                DIA_("TCPCom::connect[%s:%s]: socket[%d] transparency for %s:%d OK",host,port,sfd,nonlocal_src_host().c_str(),nonlocal_src_port());
+            }
+        }
+
         //if (DDEB(110)) 
-        DEBS_("gai info found");
+        
         
         if (sfd == -1) {
             DEBS_("failed to create socket");
@@ -116,7 +128,7 @@ int TCPCom::bind(unsigned short port) {
     int optval = 1;
     setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof optval);
     
-    if(nonlocal_) {
+    if(nonlocal_dst_) {
         // allows socket to accept connections for non-local IPs
         DIA_("TCPCom::bind[%d]: setting it transparent",s);
         setsockopt(s, SOL_IP, IP_TRANSPARENT, &optval, sizeof(optval));     
