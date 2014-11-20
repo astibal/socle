@@ -312,6 +312,7 @@ void SSLCom::accept_socket ( int sockfd )  {
 	
     upgrade_server_socket(sockfd);
     
+    ERR_clear_error();
     if (SSL_accept (sslcom_ssl) > 0) {
         DUM_("SSLCom::accept_socket[%d]: success at 1st attempt.",sockfd);
     } else {
@@ -361,6 +362,7 @@ int SSLCom::waiting() {
              return 0;
         }
         
+        ERR_clear_error();
 		r = SSL_connect(sslcom_ssl);
         
         //debug counter
@@ -369,6 +371,7 @@ int SSLCom::waiting() {
 		op = op_connect;
 	} 
 	else if(sslcom_server) {
+        ERR_clear_error();
 		r = SSL_accept(sslcom_ssl);
         
         SSLCom::counter_ssl_accept++;
@@ -398,7 +401,7 @@ int SSLCom::waiting() {
 		else {
             DIA_("SSL_%s: error: %d",op,err);
  			sslcom_waiting = true;
- 			return 0;
+ 			return -1;
 		}
  
 		
@@ -626,6 +629,7 @@ int SSLCom::read ( int __fd, void* __buf, size_t __n, int __flags )  {
 //         sslcom_read_blocked=0;
 
         //again:
+        ERR_clear_error();
         int r = SSL_read (sslcom_ssl,__buf+total_r,__n-total_r);
 // 		if (r > 0) return r;
 
@@ -778,6 +782,7 @@ int SSLCom::write ( int __fd, const void* __buf, size_t __n, int __flags )  {
     again:
 
     /* Try to write */
+    ERR_clear_error();
     int r = SSL_write (sslcom_ssl,ptr,normalized__n);
 
 // 	if (r > 0) return r;
@@ -885,6 +890,7 @@ int SSLCom::upgrade_client_socket(int sock) {
     bool ch = waiting_peer_hello();
     
     if(ch) {
+        ERR_clear_error();
         int r = SSL_connect(sslcom_ssl);        
         if(r <= 0 && is_blocking(sock)) {
             ERR_("SSL connect error on socket %d",sock);
