@@ -50,7 +50,7 @@ baseHostCX::baseHostCX(baseCom* c, const char* h, const char* p): Host(h, p) {
     meter_write_bytes = 0;
     
     com_ = c;
-    com()->init();
+    com()->init(this);
 }
 
 baseHostCX::baseHostCX(baseCom* c, unsigned int s) {
@@ -81,7 +81,7 @@ baseHostCX::baseHostCX(baseCom* c, unsigned int s) {
     opening(true);
     
     com_ = c;
-    com()->init();
+    com()->init(this);
 }
 
 baseHostCX::~baseHostCX() {

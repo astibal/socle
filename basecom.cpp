@@ -17,15 +17,18 @@
 */
 
 #include <basecom.hpp>
+#include <hostcx.hpp>
 
 bool baseCom::debug_log_data_crc = false;
 
-void baseCom::init() {
+void baseCom::init(baseHostCX* owner) {
 
 	if(!__static_init) { 
 		static_init(); 
 		__static_init = true; 
 	} 	
+	
+	owner_cx_ = owner;
 	
 	// non-local sockets support
 	nonlocal_dst_ = false;

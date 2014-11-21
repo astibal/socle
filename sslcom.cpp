@@ -33,6 +33,7 @@
 #include <crc32.hpp>
 #include <display.hpp>
 #include <buffer.hpp>
+#include "hostcx.hpp"
 
 std::once_flag SSLCom::openssl_thread_setup_done;
 std::once_flag SSLCom::certstore_setup_done;
@@ -117,10 +118,112 @@ void SSLCom::static_init() {
 }
 
 
-void SSLCom::init()  {
+void SSLCom::init(baseHostCX* owner)  {
 	
-	TCPCom::init();
+	TCPCom::init(owner);
 }
+
+void SSLCom::ssl_info_callback(const SSL* s, int where, int ret) {
+
+    const char *str;
+
+    int w = where& ~SSL_ST_MASK;
+
+    if (w & SSL_ST_CONNECT) str="SSL_connect";
+    else if (w & SSL_ST_ACCEPT) str="SSL_accept";
+    else str="undefined";
+
+    if (where & SSL_CB_LOOP)
+    {
+        INF_("SSLCom::ssl_info_callback: %s:%s",str,SSL_state_string_long(s));
+    }
+    else if (where & SSL_CB_ALERT)
+    {
+        str=(where & SSL_CB_READ)?"read":"write";
+        INF_("SSLCom::ssl_info_callback: SSL3 alert %s:%s:%s", str, SSL_alert_type_string_long(ret), SSL_alert_desc_string_long(ret));
+    }
+    else if (where & SSL_CB_EXIT)
+    {
+        if (ret == 0) {
+            INF_("SSLCom::ssl_info_callback: %s:failed in %s", str,SSL_state_string_long(s));
+        }
+        else if (ret < 0)  {
+            INF_("SSLCom::ssl_info_callback %s:error in %s", str,SSL_state_string_long(s));
+        }
+    }
+    
+}
+
+void SSLCom::ssl_msg_callback(int write_p, int version, int content_type, const void* buf, size_t len, SSL* ssl, void* arg)
+{
+    const char *msg_version;
+    const char *msg_direction;
+    const char *msg_content_type;
+    
+    const char *name = "unknown_cx";
+    
+    SSLCom* com = static_cast<SSLCom*>(arg);
+    if(com != nullptr) {
+        if(com->owner_cx() != nullptr) {
+            name = com->owner_cx()->c_name();
+        }
+    }
+    
+    switch (version) {
+        case SSL2_VERSION:
+            msg_version = "ssl2";
+            break;
+        case SSL3_VERSION:
+            msg_version = "ssl3";
+            break;
+        case TLS1_VERSION:
+            msg_version = "tls1.0";
+            break;
+        case TLS1_1_VERSION:
+            msg_version = "tls1.1";
+            break;
+        case TLS1_2_VERSION:
+            msg_version = "tls1.2";
+            break;
+            
+        default:
+            msg_version = "unknown";
+    }
+    
+    switch(content_type) {
+        case 20:
+            msg_content_type = "ChangeCipherSpec";
+            break;
+        case 21:
+            msg_content_type = "Alert";
+            break;
+        case 22:
+            msg_content_type = "Handshake";
+            break;
+        case 23:
+            msg_content_type = "ApplicationData";
+            break;
+        
+        default:
+            msg_content_type = "Unknown";
+    }
+    
+    if(write_p == 0) {
+        msg_direction = "received";
+    } else {
+        msg_direction = "sent";
+    }
+    
+    INF_("SSLCom::ssl_msg_callback[%s]: %s/%s has been %s",name,msg_version,msg_content_type,msg_direction);
+    
+    if(content_type == 21) {
+        //INF_("SSLCom::ssl_msg_callback: Alert dump: %s",hex_dump((unsigned char*)buf,len).c_str());
+        unsigned short code = ntohs(buffer::get_at<unsigned short>((unsigned char*)buf));
+        INF_("SSLCom::ssl_msg_callback[%s]: alert info: %s/%s",name,SSL_alert_type_string_long(code),SSL_alert_desc_string_long(code));
+    }
+}
+
+
 
 void SSLCom::init_client() {
 	
@@ -129,13 +232,20 @@ void SSLCom::init_client() {
 	method = TLSv1_client_method();
 
 	sslcom_ctx = SSL_CTX_new (method);	
-    SSL_CTX_set_cipher_list(sslcom_ctx,"ALL:!ADH:!LOW:!EXP:!MD5:@STRENGTH");
-	
+
 	if (!sslcom_ctx) {
 		ERRS_("Client: Error creating SSL context!");
 		exit(2);
 	}
+
+    SSL_CTX_set_cipher_list(sslcom_ctx,"ALL:!ADH:!LOW:!EXP:!MD5:@STRENGTH");
+    SSL_CTX_set_msg_callback(sslcom_ctx,ssl_msg_callback);
+    SSL_CTX_set_msg_callback_arg(sslcom_ctx,(void*)this);
+    SSL_CTX_set_info_callback(sslcom_ctx,ssl_info_callback);
+    SSL_CTX_set_options(sslcom_ctx,SSL_OP_NO_TICKET);
 	
+    
+    
 // 	if (SSL_CTX_use_certificate_file(sslcom_ctx, CL_CERTF, SSL_FILETYPE_PEM) <= 0) {
 // 		ERRS_("Client: Error loading certificate!");
 // 		exit(3);
@@ -187,6 +297,10 @@ void SSLCom::init_server() {
 // 		ERRS_("Server: Error loading private key!");
 // 		exit(4);
 // 	}
+
+    SSL_CTX_set_msg_callback(sslcom_ctx,ssl_msg_callback);
+    SSL_CTX_set_info_callback(sslcom_ctx,ssl_info_callback);
+    SSL_CTX_set_options(sslcom_ctx,SSL_OP_NO_TICKET);
 
     if (sslcom_pref_cert && sslcom_pref_key) {
         DEB_("SSLCom::init_server[%x]: loading preferred key/cert",this);

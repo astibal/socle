@@ -37,7 +37,7 @@
 
 class TCPCom : public baseCom {
 public:
-    virtual void init();
+    virtual void init(baseHostCX* owner);
     virtual baseCom* replicate() { return new TCPCom(); };
     virtual const char* name() { return "tcp"; };
     

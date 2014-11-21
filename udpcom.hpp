@@ -59,7 +59,7 @@ public:
 
 class UDPCom : public baseCom, public DatagramCom {
 public:
-    virtual void init();
+    virtual void init(baseHostCX* owner);
     virtual baseCom* replicate() { return new UDPCom(); };
     virtual const char* name() { return "udp"; };
     

@@ -132,9 +132,9 @@ int UDPCom::connect(const char* host, const char* port, bool blocking) {
     return sfd;
 }
 
-void UDPCom::init()
+void UDPCom::init(baseHostCX* owner)
 {
-    baseCom::init();
+    baseCom::init(owner);
 }
 
 bool UDPCom::is_connected(int s) {

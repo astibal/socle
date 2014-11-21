@@ -158,12 +158,16 @@ class baseHostCX : public Host
     // Com class can optionally unpause socket, using paused flag as signalling between Com and CX interfaces.
     // You want to keep it true
     bool allow_com_unpause_ = true;
-    
 
+protected:
+    
+    baseCom* com_;
+    
 public:
     
     baseCom* com() { return com_; }
-    baseCom* com_;
+    inline void com(baseCom* c) { com_ = c; if(c != nullptr) {  com_->init(this); } else { DIAS_("baseHostCX:com: setting com_ to nullptr"); } };
+
     
     bool readable() { return com()->readable(socket());};
     bool writable() { return com()->writable(socket());};

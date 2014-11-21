@@ -64,6 +64,7 @@ public:
   unsigned char at (size_type) const;
   
   template <typename T> T get_at(int idx);
+  template <typename T> static T get_at(unsigned char* data);
 
   size_type find (unsigned char, size_type pos = 0) const;
   size_type rfind (unsigned char, size_type pos = npos) const;
@@ -84,6 +85,8 @@ private:
 
 bool operator== (const buffer&, const buffer&);
 bool operator!= (const buffer&, const buffer&);
+
+
 
 //
 // Implementation.
@@ -390,6 +393,10 @@ T buffer::get_at(int idx)
     return *((T*)(&data_[idx]));
 }
 
+
+template <typename T> T buffer::get_at(unsigned char* data) {
+    return *((T*)(data));
+}
 
 inline buffer::size_type buffer::find (unsigned char v, size_type pos) const
 {

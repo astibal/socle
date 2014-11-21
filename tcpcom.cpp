@@ -18,9 +18,9 @@
 
 #include <tcpcom.hpp>
 
-void TCPCom::init() { 
+void TCPCom::init(baseHostCX* owner) { 
     
-    baseCom::init(); 
+    baseCom::init(owner); 
 };
 
 int TCPCom::connect(const char* host, const char* port, bool blocking) { 

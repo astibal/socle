@@ -53,6 +53,8 @@ public:
     timeval poll_tv;
     int     poll_sockmax = 0;
     int     poll_result = 0;
+    baseHostCX* owner_cx_ = nullptr;
+    inline baseHostCX* owner_cx() { return owner_cx_; }
     
     virtual int poll();
     void polltime(unsigned int sec, unsigned int usec)
@@ -113,7 +115,7 @@ public:
 //     void peer(baseCom* p) { peer_ = p; }
     
 public:
-	virtual void init();
+	virtual void init(baseHostCX* owner);
 	
 	virtual void static_init() {
 		signal(SIGPIPE, SIG_IGN);

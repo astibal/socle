@@ -126,7 +126,7 @@ public:
     static void certstore(SSLCertStore* c) { if (sslcom_certstore_ != NULL) { delete sslcom_certstore_; }  sslcom_certstore_ = c; };
 	
 	virtual void static_init();
-	virtual void init();
+	virtual void init(baseHostCX* owner);
     virtual baseCom* replicate() { return new SSLCom(); } ;
     virtual const char* name() { return "ssl"; };
     
@@ -136,6 +136,9 @@ public:
     virtual void init_server();
     int upgrade_server_socket(int s);
 
+    static void ssl_msg_callback(int write_p, int version, int content_type, const void *buf, size_t len, SSL *ssl, void *arg);
+    static void ssl_info_callback(const SSL *s, int where, int ret);
+    
 	virtual bool check_cert(const char*);
 	
 	virtual bool readable (int s);
