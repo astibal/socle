@@ -46,7 +46,9 @@ public:
     int push(int);
     int pop();
     int pop_for_worker(int id);
-    
+
+    inline void worker_count_preference(int c) { worker_count_preference_ = c; };
+    inline int worker_count_preference(void) { return worker_count_preference_; };    
 protected:
     mutable std::mutex sq_lock_;
     std::deque<int> sq_;
@@ -54,8 +56,9 @@ protected:
     size_t nthreads;
     std::thread **threads_;
     Worker **workers_;
-    
-    int create_workers();
+
+    int worker_count_preference_=0;
+    int create_workers(int count=0);
 };
 
 

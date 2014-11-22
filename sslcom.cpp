@@ -47,19 +47,59 @@ void locking_function ( int mode, int n, const char * file, int line )  {
 	
     if ( mode & CRYPTO_LOCK ) {
         MUTEX_LOCK ( mutex_buf[n] );
+        DUM_("SSL threading: locked mutex %u for thread %u (%s:%d)",n,id_function(),file,line);
     } else {
         MUTEX_UNLOCK ( mutex_buf[n] );
+        DUM_("SSL threading: unlocked mutex %u from thread %u (%s:%d)",n,id_function(),file,line);
     }
 }
 
 unsigned long id_function ( void ) {
 	
-    return ( ( unsigned long ) THREAD_ID );
+    std::hash<std::thread::id> h; 
+    unsigned long id = ( unsigned long ) h(std::this_thread::get_id());
+    
+    DUM_("SSL threading: id_function: returning %u",id);
+    
+    return id;
 }
+
+
+static struct CRYPTO_dynlock_value * dyn_create_function(const char *file,
+                                                         int line)
+{
+    struct CRYPTO_dynlock_value *value;
+ 
+//     value = (struct CRYPTO_dynlock_value *)malloc(sizeof(
+//                                                   struct CRYPTO_dynlock_value));
+    value = new CRYPTO_dynlock_value();
+    
+    if (!value)
+        return NULL;
+    MUTEX_SETUP(value->mutex);
+    return value;
+}
+ 
+static void dyn_lock_function(int mode, struct CRYPTO_dynlock_value *l,
+                              const char *file, int line)
+{
+    if (mode & CRYPTO_LOCK)
+        MUTEX_LOCK(l->mutex);
+    else
+        MUTEX_UNLOCK(l->mutex);
+}
+ 
+static void dyn_destroy_function(struct CRYPTO_dynlock_value *l,
+                                 const char *file, int line)
+{
+    MUTEX_CLEANUP(l->mutex);
+    free(l);
+}
+ 
 
 int THREAD_setup ( void ) {
     int i;
-    mutex_buf = ( MUTEX_TYPE * ) malloc ( CRYPTO_num_locks( ) * sizeof ( MUTEX_TYPE ) );
+    mutex_buf = new MUTEX_TYPE[CRYPTO_num_locks()];
     if ( !mutex_buf ) {
 		
 		FATS_("OpenSSL threading support: cannot allocate mutex buffer");
@@ -70,7 +110,10 @@ int THREAD_setup ( void ) {
     }
     CRYPTO_set_id_callback ( id_function );
     CRYPTO_set_locking_callback ( locking_function );
-	
+    CRYPTO_set_dynlock_create_callback(dyn_create_function);
+    CRYPTO_set_dynlock_lock_callback(dyn_lock_function);
+    CRYPTO_set_dynlock_destroy_callback(dyn_destroy_function);
+    
 	DIAS_("OpenSSL threading support: enabled");
     
     DIAS_("OpenSSL: loading error strings");
@@ -89,10 +132,14 @@ int THREAD_cleanup ( void ) {
     }
     CRYPTO_set_id_callback ( NULL );
     CRYPTO_set_locking_callback ( NULL );
+    CRYPTO_set_dynlock_create_callback(NULL);
+    CRYPTO_set_dynlock_lock_callback(NULL);
+    CRYPTO_set_dynlock_destroy_callback(NULL);
+    
     for ( i = 0; i < CRYPTO_num_locks( ); i++ ) {
         MUTEX_CLEANUP ( mutex_buf[i] );
     }
-    free ( mutex_buf );
+    delete[] mutex_buf;
     mutex_buf = NULL;
     return 1;
 }
@@ -135,20 +182,20 @@ void SSLCom::ssl_info_callback(const SSL* s, int where, int ret) {
 
     if (where & SSL_CB_LOOP)
     {
-        INF_("SSLCom::ssl_info_callback: %s:%s",str,SSL_state_string_long(s));
+        DEB_("SSLCom::ssl_info_callback: %s:%s",str,SSL_state_string_long(s));
     }
     else if (where & SSL_CB_ALERT)
     {
         str=(where & SSL_CB_READ)?"read":"write";
-        INF_("SSLCom::ssl_info_callback: SSL3 alert %s:%s:%s", str, SSL_alert_type_string_long(ret), SSL_alert_desc_string_long(ret));
+        DIA_("SSLCom::ssl_info_callback: SSL3 alert %s:%s:%s", str, SSL_alert_type_string_long(ret), SSL_alert_desc_string_long(ret));
     }
     else if (where & SSL_CB_EXIT)
     {
         if (ret == 0) {
-            INF_("SSLCom::ssl_info_callback: %s:failed in %s", str,SSL_state_string_long(s));
+            DEB_("SSLCom::ssl_info_callback: %s:failed in %s", str,SSL_state_string_long(s));
         }
         else if (ret < 0)  {
-            INF_("SSLCom::ssl_info_callback %s:error in %s", str,SSL_state_string_long(s));
+            DEB_("SSLCom::ssl_info_callback %s:error in %s", str,SSL_state_string_long(s));
         }
     }
     
@@ -167,6 +214,8 @@ void SSLCom::ssl_msg_callback(int write_p, int version, int content_type, const 
         if(com->owner_cx() != nullptr) {
             name = com->owner_cx()->c_name();
         }
+    } else {
+        name = "com_not_found";
     }
     
     switch (version) {
@@ -214,12 +263,12 @@ void SSLCom::ssl_msg_callback(int write_p, int version, int content_type, const 
         msg_direction = "sent";
     }
     
-    INF_("SSLCom::ssl_msg_callback[%s]: %s/%s has been %s",name,msg_version,msg_content_type,msg_direction);
+    DEB_("SSLCom::ssl_msg_callback[%s]: %s/%s has been %s",name,msg_version,msg_content_type,msg_direction);
     
     if(content_type == 21) {
         //INF_("SSLCom::ssl_msg_callback: Alert dump: %s",hex_dump((unsigned char*)buf,len).c_str());
         unsigned short code = ntohs(buffer::get_at<unsigned short>((unsigned char*)buf));
-        INF_("SSLCom::ssl_msg_callback[%s]: alert info: %s/%s",name,SSL_alert_type_string_long(code),SSL_alert_desc_string_long(code));
+        DIA_("SSLCom::ssl_msg_callback[%s]: alert info: %s/%s",name,SSL_alert_type_string_long(code),SSL_alert_desc_string_long(code));
     }
 }
 
@@ -265,6 +314,7 @@ void SSLCom::init_client() {
 	}	
 
     sslcom_ssl = SSL_new(sslcom_ctx);
+    SSL_set_session(sslcom_ssl, NULL);
     SSL_set_mode(sslcom_ssl, SSL_MODE_ENABLE_PARTIAL_WRITE|SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
 }
 
@@ -299,6 +349,7 @@ void SSLCom::init_server() {
 // 	}
 
     SSL_CTX_set_msg_callback(sslcom_ctx,ssl_msg_callback);
+    SSL_CTX_set_msg_callback_arg(sslcom_ctx,(void*)this);
     SSL_CTX_set_info_callback(sslcom_ctx,ssl_info_callback);
     SSL_CTX_set_options(sslcom_ctx,SSL_OP_NO_TICKET);
 
@@ -319,6 +370,7 @@ void SSLCom::init_server() {
 	}	
 
 	sslcom_ssl = SSL_new(sslcom_ctx);
+    SSL_set_session(sslcom_ssl, NULL);
     SSL_set_mode(sslcom_ssl, SSL_MODE_ENABLE_PARTIAL_WRITE|SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
 	
 	SSL_set_fd (sslcom_ssl, sslcom_fd);
@@ -701,7 +753,7 @@ int SSLCom::read ( int __fd, void* __buf, size_t __n, int __flags )  {
 	// non-blocking socket can be still opening 
 	if( sslcom_waiting ) {
 		int c = waiting();
-        if (c == 0) {
+        if (c >= 0) {
             DEB_("SSLCom:: read[%d]: ssl_waiting() returned %d: still waiting",__fd,c);
             return -1;
         } else 
@@ -866,7 +918,7 @@ int SSLCom::write ( int __fd, const void* __buf, size_t __n, int __flags )  {
 // 	// non-blocking socket can be still opening 
 	if( sslcom_waiting ) {
 		int c = waiting();
-		if (c == 0) {
+		if (c >= 0) {
 			DEB_("SSLCom::write[%d]: ssl_waiting() returned %d: still waiting",__fd,c);
 			return 0;
 		} else 

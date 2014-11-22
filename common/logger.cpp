@@ -34,7 +34,7 @@
 
 logger lout;
 
-static  std::string level_table[] = {"None","   Fatal","Critical","   Error"," Warning","  Notify","Informat","Diagnose","Debug","Dumpit","Extreme"};
+static  std::string level_table[] = {"None    ","Fatal   ","Critical","Error   ","Warning ","Notify  ","Informat","Diagnose","Debug   ","Dumpit  ","Extreme "};
 
 
 bool logger::periodic_start(unsigned int s) {

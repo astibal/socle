@@ -66,8 +66,13 @@ void ThreadedAcceptor<Worker,SubWorker>::on_right_new_raw(int s) {
 
 
 template<class Worker, class SubWorker>
-int ThreadedAcceptor<Worker,SubWorker>::create_workers(void) {	
+int ThreadedAcceptor<Worker,SubWorker>::create_workers(int count) {	
+
 	nthreads = std::thread::hardware_concurrency();
+    if(count > 0) {
+        nthreads = count;
+    }
+    
     Worker::workers_total = nthreads;
 	
 	DIA_("Detected %d cores to use.", nthreads);
@@ -96,7 +101,7 @@ template<class Worker, class SubWorker>
 int ThreadedAcceptor<Worker,SubWorker>::run(void) {
 	
     pollroot(true);
-	create_workers();
+	create_workers(worker_count_preference());
 	
 	for( unsigned int i = 0; i < nthreads; i++) {
 		auto w = workers_[i];

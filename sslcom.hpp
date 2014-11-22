@@ -21,6 +21,7 @@
 
 #include <map>
 #include <string>
+#include <thread>
 
 #include <openssl/rsa.h>
 #include <openssl/crypto.h>
@@ -48,12 +49,18 @@
 #elif defined (_POSIX_THREADS)
     /* _POSIX_THREADS is normally defined in unistd.h if pthreads are available
        on your platform. */
-    #define MUTEX_TYPE pthread_mutex_t
-    #define MUTEX_SETUP(x) pthread_mutex_init(&(x), NULL)
-    #define MUTEX_CLEANUP(x) pthread_mutex_destroy(&(x))
-    #define MUTEX_LOCK(x) pthread_mutex_lock(&(x))
-    #define MUTEX_UNLOCK(x) pthread_mutex_unlock(&(x))
-    #define THREAD_ID pthread_self( )
+//     #define MUTEX_TYPE pthread_mutex_t
+//     #define MUTEX_SETUP(x) pthread_mutex_init(&(x), NULL)
+//     #define MUTEX_CLEANUP(x) pthread_mutex_destroy(&(x))
+//     #define MUTEX_LOCK(x) pthread_mutex_lock(&(x))
+//     #define MUTEX_UNLOCK(x) pthread_mutex_unlock(&(x))
+//     #define THREAD_ID pthread_self( )
+
+    #define MUTEX_TYPE std::mutex
+    #define MUTEX_SETUP(x) 
+    #define MUTEX_CLEANUP(x) 
+    #define MUTEX_LOCK(x) x.lock()
+    #define MUTEX_UNLOCK(x) x.unlock()
 #else
     #error You must define mutex operations appropriate for your platform!
 #endif
@@ -65,7 +72,7 @@
 #pragma GCC diagnostic push
 
 /* This array will store all of the mutexes available to OpenSSL. */
-static MUTEX_TYPE *mutex_buf = NULL ;
+static MUTEX_TYPE* mutex_buf = nullptr;
 void locking_function ( int mode, int n, const char * file, int line );
 unsigned long id_function ( void );
 
@@ -75,6 +82,11 @@ unsigned long id_function ( void );
 
 int THREAD_setup ( void );
 int THREAD_cleanup ( void );
+
+struct CRYPTO_dynlock_value
+{
+    MUTEX_TYPE mutex;
+};
 
 class SSLCom : public TCPCom {
 
