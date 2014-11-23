@@ -509,6 +509,14 @@ int SSLCom::upgrade_server_socket(int sockfd) {
     unblock(sslcom_fd);
     
     init_server();
+
+    sslcom_sbio = BIO_new_socket(sockfd,BIO_NOCLOSE);
+    if (sslcom_sbio == NULL) {
+        ERR_("BIO allocation failed for socket %d",sockfd)
+    }
+    
+    SSL_set_bio(sslcom_ssl,sslcom_sbio,sslcom_sbio);
+
     
     return sockfd;
 }
