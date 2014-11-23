@@ -88,6 +88,7 @@ struct CRYPTO_dynlock_value
     MUTEX_TYPE mutex;
 };
 
+
 class SSLCom : public TCPCom {
 
 protected:
@@ -169,6 +170,19 @@ public:
     virtual bool com_status();
     
     virtual ~SSLCom() {};
+    
+   
+public:
+    int prof_accept_cnt=0;
+    int prof_connect_cnt=0;
+    int prof_want_read_cnt=0;
+    int prof_want_write_cnt=0;
+    int prof_write_cnt=0;
+    int prof_read_cnt=0;
+    int prof_peek_cnt=0;
+
+    int prof_accept_ok=0;
+    int prof_connect_ok=0;
 };
 
 #endif

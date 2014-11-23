@@ -268,7 +268,15 @@ void SSLCom::ssl_msg_callback(int write_p, int version, int content_type, const 
     if(content_type == 21) {
         //INF_("SSLCom::ssl_msg_callback: Alert dump: %s",hex_dump((unsigned char*)buf,len).c_str());
         unsigned short code = ntohs(buffer::get_at<unsigned short>((unsigned char*)buf));
-        DIA_("SSLCom::ssl_msg_callback[%s]: alert info: %s/%s",name,SSL_alert_type_string_long(code),SSL_alert_desc_string_long(code));
+        if(com) {
+            DIA_("SSLCom::ssl_msg_callback[%s]: alert info: %s/%s[%u]",name,SSL_alert_type_string_long(code),SSL_alert_desc_string_long(code),code);
+            if(code == 522) {
+                // unexpected message
+                DIA_("  prof_accept_cnt %d, prof_connect_cnt %d, prof_peek_cnt %d, prof_read_cnt %d, prof_want_read_cnt %d, prof_want_write_cnt %d, prof_write_cnt %d",
+                    com->prof_accept_cnt   , com->prof_connect_cnt   , com->prof_peek_cnt   , com->prof_read_cnt   , com->prof_want_read_cnt   , com->prof_want_write_cnt   , com->prof_write_cnt);
+                DIA_("   prof_accept_ok %d, prof_connect_ok %d",com->prof_accept_ok, com->prof_connect_ok);
+            }
+        }
     }
 }
 
@@ -481,9 +489,11 @@ void SSLCom::accept_socket ( int sockfd )  {
     ERR_clear_error();
     if (SSL_accept (sslcom_ssl) > 0) {
         DUM_("SSLCom::accept_socket[%d]: success at 1st attempt.",sockfd);
+        prof_accept_ok = 1;
     } else {
         DUM_("SSLCom::accept_socket[%d]: need to call later.",sockfd);
     }
+    prof_accept_cnt++;
 }
 
 void SSLCom::delay_socket(int sockfd) {
@@ -530,6 +540,7 @@ int SSLCom::waiting() {
         
         ERR_clear_error();
 		r = SSL_connect(sslcom_ssl);
+        prof_connect_cnt++;
         
         //debug counter
         SSLCom::counter_ssl_connect++;
@@ -539,6 +550,7 @@ int SSLCom::waiting() {
 	else if(sslcom_server) {
         ERR_clear_error();
 		r = SSL_accept(sslcom_ssl);
+        prof_accept_cnt++;
         
         SSLCom::counter_ssl_accept++;
         
@@ -585,6 +597,12 @@ int SSLCom::waiting() {
 		sslcom_waiting = false;		
 		return -1;
 	}
+	
+	if(!sslcom_server) {
+        prof_connect_ok = 1;
+    } else {
+        prof_accept_ok = 1;
+    }
 	
 	DEB_("SSLCom::ssl_waiting: operation succeeded: %s", op);
 	sslcom_waiting = false;	
@@ -766,6 +784,8 @@ int SSLCom::read ( int __fd, void* __buf, size_t __n, int __flags )  {
 	// if we are peeking, just do it and return, no magic done is here
 	if ((__flags & MSG_PEEK) != 0) {
         int peek_r = SSL_peek(sslcom_ssl,__buf,__n);
+        prof_peek_cnt++;
+        
         if(peek_r > 0) {
             DEB_("SSLCom::read[%d]: peek returned %d",__fd, peek_r);
         } else {
@@ -797,6 +817,7 @@ int SSLCom::read ( int __fd, void* __buf, size_t __n, int __flags )  {
         //again:
         ERR_clear_error();
         int r = SSL_read (sslcom_ssl,__buf+total_r,__n-total_r);
+        prof_read_cnt++;
 // 		if (r > 0) return r;
 
 		if(r == 0) {
@@ -950,6 +971,7 @@ int SSLCom::write ( int __fd, const void* __buf, size_t __n, int __flags )  {
     /* Try to write */
     ERR_clear_error();
     int r = SSL_write (sslcom_ssl,ptr,normalized__n);
+    prof_write_cnt++;
 
 // 	if (r > 0) return r;
 	
@@ -1015,6 +1037,10 @@ void SSLCom::cleanup()  {
 
 	TCPCom::cleanup();
 
+    DEB_("  prof_accept_cnt %d, prof_connect_cnt %d, prof_peek_cnt %d, prof_read_cnt %d, prof_want_read_cnt %d, prof_want_write_cnt %d, prof_write_cnt %d",
+        prof_accept_cnt   , prof_connect_cnt   , prof_peek_cnt   , prof_read_cnt   , prof_want_read_cnt   , prof_want_write_cnt   , prof_write_cnt);
+    DEB_("   prof_accept_ok %d, prof_connect_ok %d",prof_accept_ok, prof_connect_ok);
+    
 //     if(sslcom_sbio) {
 //         BIO_free(sslcom_sbio); // produces Invalid read of size 8: at 0x539D840: BIO_free (in /usr/lib/x86_64-linux-gnu/libcrypto.so.1.0.0)
 //         sslcom_sbio = nullptr;
@@ -1057,7 +1083,9 @@ int SSLCom::upgrade_client_socket(int sock) {
     
     if(ch) {
         ERR_clear_error();
-        int r = SSL_connect(sslcom_ssl);        
+        int r = SSL_connect(sslcom_ssl);  
+        prof_connect_cnt++;
+        
         if(r <= 0 && is_blocking(sock)) {
             ERR_("SSL connect error on socket %d",sock);
             close(sock);
@@ -1077,6 +1105,8 @@ int SSLCom::upgrade_client_socket(int sock) {
             }
             return sock;    
         }
+        
+        prof_connect_ok = 1;
         
         DEBS_("connection succeeded");  
         sslcom_waiting = false;

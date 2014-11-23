@@ -431,13 +431,15 @@ X509_PAIR* SSLCertStore::spoof(X509* cert_orig) {
         return NULL;
     }
     
+    #define EXPIRE_START (-60*60*24)
+    
     // set duration for the certificate
-    if (!(X509_gmtime_adj(X509_get_notBefore(cert), 0))) {
+    if (!(X509_gmtime_adj(X509_get_notBefore(cert), EXPIRE_START))) {
         ERR_("SSLCertStore::spoof[%x]: error setting beginning time of the certificate",this);
         return NULL;
     }
     
-    #define DAYS_TILL_EXPIRE 365
+    #define DAYS_TILL_EXPIRE 364
     #define EXPIRE_SECS (60* 60*24*DAYS_TILL_EXPIRE)
 
     if (!(X509_gmtime_adj(X509_get_notAfter(cert), EXPIRE_SECS))) {
