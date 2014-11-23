@@ -296,6 +296,7 @@ void SSLCom::init_client() {
 	}
 
     SSL_CTX_set_cipher_list(sslcom_ctx,"ALL:!ADH:!LOW:!EXP:!MD5:@STRENGTH");
+    //SSL_CTX_set_cipher_list(sslcom_ctx,"RC4-SHA");
     SSL_CTX_set_msg_callback(sslcom_ctx,ssl_msg_callback);
     SSL_CTX_set_msg_callback_arg(sslcom_ctx,(void*)this);
     SSL_CTX_set_info_callback(sslcom_ctx,ssl_info_callback);
@@ -355,6 +356,9 @@ void SSLCom::init_server() {
 // 		ERRS_("Server: Error loading private key!");
 // 		exit(4);
 // 	}
+
+    SSL_CTX_set_cipher_list(sslcom_ctx,"ALL:!ADH:!LOW:!EXP:!MD5:@STRENGTH");
+    //SSL_CTX_set_cipher_list(sslcom_ctx,"RC4-SHA");
 
     SSL_CTX_set_msg_callback(sslcom_ctx,ssl_msg_callback);
     SSL_CTX_set_msg_callback_arg(sslcom_ctx,(void*)this);
@@ -572,6 +576,7 @@ int SSLCom::waiting() {
 			DUM_("SSL_%s: want read",op);
 			
  			sslcom_waiting = true;
+            prof_want_read_cnt++;
 //             forced_read(true);
 // 			sslcom_waiting_read = true;
  			return 1;
@@ -580,6 +585,7 @@ int SSLCom::waiting() {
 			DUM_("SSL_%s: want write",op);
 			
  			sslcom_waiting = true;
+            prof_want_write_cnt++;
 //             forced_write(true);
 // 			    sslcom_waiting_write = true;
  			return 1;
