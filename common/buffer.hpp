@@ -77,10 +77,10 @@ public:
   buffer view();
   
 private:
-  unsigned char* data_;
-  size_type size_;
-  size_type capacity_;
-  bool free_;
+  unsigned char* data_ = nullptr;;
+  size_type size_ = 0;
+  size_type capacity_ = 0;
+  bool free_ = true;
 };
 
 bool operator== (const buffer&, const buffer&);

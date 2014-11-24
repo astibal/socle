@@ -307,7 +307,7 @@ int ThreadedReceiver<Worker, SubWorker>::pop_for_worker(int id) {
     if (((unsigned int)b) % Worker::workers_total == (unsigned int)id) {
         int r = sq_.back();
         sq_.pop_back();
-        DIA_("ThreadedReceiver::pop_for_worker: pop-ing %d for worker %d",r,id);
+        DIA_("ThreadedReceiver::pop_for_worker: pop-ing %d for worker %d, queue size %d",r,id,sq_.size());
         
         return r;
     }
@@ -340,7 +340,7 @@ int ThreadedReceiverProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
             if (((unsigned int)s) % workers_total == (unsigned int)worker_id_) {
                 DIA_("ThreadedReceiverProxy::%d is for me!",s);
 
-
+                DIA_("ThreadedReceiverProxy::handle_sockets_once: DatagramCom::datagrams_received.size() = %d",DatagramCom::datagrams_received.size());
                     
                 auto it_record = DatagramCom::datagrams_received.find(s);
                 
