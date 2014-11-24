@@ -493,7 +493,8 @@ void SSLCom::accept_socket ( int sockfd )  {
     ERR_clear_error();
     if (SSL_accept (sslcom_ssl) > 0) {
         DUM_("SSLCom::accept_socket[%d]: success at 1st attempt.",sockfd);
-        prof_accept_ok = 1;
+        prof_accept_ok++;
+        sslcom_waiting = false;
     } else {
         DUM_("SSLCom::accept_socket[%d]: need to call later.",sockfd);
     }
@@ -592,6 +593,14 @@ int SSLCom::waiting() {
 		}
 		else {
             DIA_("SSL_%s: error: %d",op,err);
+            
+            long err2 = ERR_get_error();
+            do {
+                DIA_("  error code: %s",ERR_error_string(err2,nullptr));
+                err2 = ERR_get_error();
+            } while (err2 != 0);
+            
+            
  			sslcom_waiting = true;
  			return -1;
 		}
@@ -613,9 +622,9 @@ int SSLCom::waiting() {
 	}
 	
 	if(!sslcom_server) {
-        prof_connect_ok = 1;
+        prof_connect_ok++;
     } else {
-        prof_accept_ok = 1;
+        prof_accept_ok++;
     }
 	
 	DEB_("SSLCom::ssl_waiting: operation succeeded: %s", op);
@@ -1120,7 +1129,7 @@ int SSLCom::upgrade_client_socket(int sock) {
             return sock;    
         }
         
-        prof_connect_ok = 1;
+        prof_connect_ok++;
         
         DEBS_("connection succeeded");  
         sslcom_waiting = false;
