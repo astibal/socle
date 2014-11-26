@@ -19,6 +19,7 @@
 #include <udpcom.hpp>
 
 std::map<uint64_t,Datagram> DatagramCom::datagrams_received;
+std::mutex DatagramCom::lock;
 
 int UDPCom::accept(int sockfd, sockaddr* addr, socklen_t* addrlen_) {
     return sockfd;
@@ -145,6 +146,8 @@ bool UDPCom::is_connected(int s) {
 
 bool UDPCom::resolve_nonlocal_socket(int sock) {
 
+    std::lock_guard<std::mutex> l(DatagramCom::lock);
+    
     auto it_record = DatagramCom::datagrams_received.find((unsigned int)sock);
     if(it_record != DatagramCom::datagrams_received.end()) {  
         Datagram& record = (*it_record).second;
@@ -165,6 +168,8 @@ bool UDPCom::resolve_nonlocal_socket(int sock) {
 
 bool UDPCom::in_readset(int s) {
     
+    std::lock_guard<std::mutex> l(DatagramCom::lock);
+    
     auto it_record = DatagramCom::datagrams_received.find((unsigned int)s);
     if(it_record != DatagramCom::datagrams_received.end()) {  
         Datagram& record = (*it_record).second;    
@@ -184,6 +189,9 @@ bool UDPCom::in_readset(int s) {
 }
 
 bool UDPCom::in_writeset(int s) {
+    
+    std::lock_guard<std::mutex> l(DatagramCom::lock);
+    
     auto it_record = DatagramCom::datagrams_received.find((unsigned int)s);
     if(it_record != DatagramCom::datagrams_received.end()) {  
         Datagram& record = (*it_record).second;    
@@ -198,6 +206,9 @@ bool UDPCom::in_writeset(int s) {
 }
 
 bool UDPCom::in_exset(int s) {
+    
+    std::lock_guard<std::mutex> l(DatagramCom::lock);
+    
     auto it_record = DatagramCom::datagrams_received.find((unsigned int)s);
     if(it_record != DatagramCom::datagrams_received.end()) {  
         Datagram& record = (*it_record).second;    
@@ -235,6 +246,8 @@ int UDPCom::read(int __fd, void* __buf, size_t __n, int __flags) {
 
 int UDPCom::read_from_pool(int __fd, void* __buf, size_t __n, int __flags) {
 
+    std::lock_guard<std::mutex> l(DatagramCom::lock);
+    
     auto it_record = DatagramCom::datagrams_received.find((unsigned int)__fd);
     if(it_record != DatagramCom::datagrams_received.end()) {  
         Datagram& record = (*it_record).second;
@@ -279,6 +292,9 @@ int UDPCom::write(int __fd, const void* __buf, size_t __n, int __flags)
 }
 
 int UDPCom::write_to_pool(int __fd, const void* __buf, size_t __n, int __flags) {
+    
+    std::lock_guard<std::mutex> l(DatagramCom::lock);
+    
     auto it_record = DatagramCom::datagrams_received.find((unsigned int)__fd);
     if(it_record != DatagramCom::datagrams_received.end()) {  
         Datagram& record = (*it_record).second;
@@ -336,6 +352,9 @@ int UDPCom::write_to_pool(int __fd, const void* __buf, size_t __n, int __flags) 
 }
 
 bool UDPCom::resolve_socket(bool source, int s, std::string* target_host, std::string* target_port, sockaddr_storage* target_storage) {
+    
+    std::lock_guard<std::mutex> l(DatagramCom::lock);
+    
     auto it_record = DatagramCom::datagrams_received.find((unsigned int)s);
     if(it_record != DatagramCom::datagrams_received.end()) {  
         Datagram& record = (*it_record).second;
@@ -360,6 +379,9 @@ void UDPCom::close(int __fd) {
     if(__fd > 0) {
         ::close(__fd);
     } else {
+        
+        std::lock_guard<std::mutex> l(DatagramCom::lock);
+        
         auto it_record = DatagramCom::datagrams_received.find((unsigned int)__fd);
         if(it_record != DatagramCom::datagrams_received.end()) {  
                 Datagram& it = DatagramCom::datagrams_received[(unsigned int)__fd];

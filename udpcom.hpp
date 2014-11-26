@@ -54,6 +54,7 @@ struct Datagram {
 
 class DatagramCom {
 public:
+    static std::mutex lock;
     static std::map<uint64_t,Datagram> datagrams_received;
 };
 
