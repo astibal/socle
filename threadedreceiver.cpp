@@ -291,12 +291,12 @@ int ThreadedReceiver<Worker,SubWorker>::pop() {
 
 template<class Worker, class SubWorker>
 int ThreadedReceiver<Worker, SubWorker>::pop_for_worker(int id) {
+    
+    std::lock_guard<std::mutex> lck(sq_lock_);
 
     if(sq_.size() == 0) {
         return 0;
     }
-    
-    std::lock_guard<std::mutex> lck(sq_lock_);
     
     uint32_t b = sq_.back();
     

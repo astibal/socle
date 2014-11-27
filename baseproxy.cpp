@@ -434,13 +434,13 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
             if( (*j)->idle_timeout() ) {
                 DIA_("baseProxy::handle_sockets_once[%d]: idle timeout!",(*j)->socket());
                 (*j)->close();
-                on_left_error(*j);
+                on_right_error(*j);
                 break;
             }
             if( (*j)->error() ) {
                 DIA_("baseProxy::handle_sockets_once[%d]: error!",(*j)->socket());
                 (*j)->close();
-                on_left_error(*j);
+                on_right_error(*j);
                 break;
             }
             
@@ -597,13 +597,13 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
             if( (*l)->idle_timeout() ) {
                 DIA_("baseProxy::handle_sockets_once[%d]: idle timeout!",(*l)->socket());
                 (*l)->close();
-                on_left_error(*l);
+                on_right_error(*l);
                 break;
             }
             if( (*l)->error() ) {
                 DIA_("baseProxy::handle_sockets_once[%d]: error!",(*l)->socket());
                 (*l)->close();
-                on_left_error(*l);
+                on_right_error(*l);
                 break;
             }            
             
