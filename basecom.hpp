@@ -190,6 +190,7 @@ public:
 	inline void nonlocal_dst(bool b) { nonlocal_dst_ = b; }	
     virtual int namesocket(int, std::string&, unsigned short);
 
+    inline void nonlocal_dst_resolved(bool b) { nonlocal_dst_resolved_ = b; }
 	inline bool nonlocal_dst_resolved(void) { return nonlocal_dst_resolved_; }
 	inline std::string& nonlocal_dst_host(void) { return nonlocal_dst_host_; }
 	inline unsigned short& nonlocal_dst_port(void) { return nonlocal_dst_port_; }

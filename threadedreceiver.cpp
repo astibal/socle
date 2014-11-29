@@ -292,11 +292,12 @@ int ThreadedReceiver<Worker,SubWorker>::pop() {
 template<class Worker, class SubWorker>
 int ThreadedReceiver<Worker, SubWorker>::pop_for_worker(int id) {
 
+   
+    std::lock_guard<std::mutex> lck(sq_lock_);
+
     if(sq_.size() == 0) {
         return 0;
     }
-    
-    std::lock_guard<std::mutex> lck(sq_lock_);
     
     uint32_t b = sq_.back();
     
@@ -359,7 +360,7 @@ int ThreadedReceiverProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
                         auto cx = this->new_cx(s);
                         record.cx = cx;
                         
-                        if(!cx->paused()) {
+                        if(!cx->paused_read()) {
                             cx->on_accept_socket(s);
                         }
                         cx->idle_delay(120);

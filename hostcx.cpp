@@ -42,7 +42,8 @@ baseHostCX::baseHostCX(baseCom* c, const char* h, const char* p): Host(h, p) {
     next_read_limit_ = 0;
     auto_finish_ = true;
     adm_status_ = true;
-    paused_ = false;
+    paused_read_ = false;
+    paused_write_ = false;
     
     meter_read_count = 0;
     meter_write_count = 0;
@@ -70,7 +71,8 @@ baseHostCX::baseHostCX(baseCom* c, unsigned int s) {
     next_read_limit_ = 0;
     auto_finish_ = true;
     adm_status_ = true;
-    paused_ = false;
+    paused_read_ = false;
+    paused_write_ = false;
 
     meter_read_count = 0;
     meter_write_count = 0;
@@ -139,21 +141,38 @@ bool baseHostCX::idle_timeout() {
 }
 
 
-bool baseHostCX::paused() {
+bool baseHostCX::paused_read() {
 
-    if(paused_ && peercom()) {
+    if(paused_read_ && peercom()) {
         if(peercom()->com_status()) {
             DIAS_("Peer's Com status is OK, unpausing");
-            paused(false);
+            paused_read(false);
         }
     }
-    else if(paused_) {
+    else if(paused_read_) {
         // peer() == NULL !
         DUMS_("baseHostCX::paused: paused, but no peer set => no peer to wait for => manual mode");
     }
     
-    return paused_; 
+    return paused_read_; 
 }
+
+bool baseHostCX::paused_write() {
+
+    if(paused_write_ && peercom()) {
+        if(peercom()->com_status()) {
+            DIAS_("Peer's Com status is OK, unpausing");
+            paused_write(false);
+        }
+    }
+    else if(paused_write_) {
+        // peer() == NULL !
+        DUMS_("baseHostCX::paused: paused, but no peer set => no peer to wait for => manual mode");
+    }
+    
+    return paused_write_; 
+}
+
 
 
 bool baseHostCX::is_connected() {
@@ -250,8 +269,8 @@ bool baseHostCX::reconnect(int delay) {
 	
 int baseHostCX::read() {
 	
-	if(paused()) {
-		DUM_("HostCX::read[%s]: paused, returning -1",c_name());
+	if(paused_read()) {
+		DUM_("HostCX::read[%s]: read operation is paused, returning -1",c_name());
 		return -1;
 	}
 	
@@ -329,8 +348,8 @@ void baseHostCX::post_read() {
 
 int baseHostCX::write() {
 	
-	if(paused()) {
-		DEB_("HostCX::write[%s]: paused, returning 0",c_name());	
+	if(paused_write()) {
+		DEB_("HostCX::write[%s]: write operation is paused, returning 0",c_name());	
 		return 0;
 	}
 

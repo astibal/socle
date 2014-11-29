@@ -152,7 +152,8 @@ class baseHostCX : public Host
 	bool adm_status_ = true;
 	
 	// paused hostcx won't be read/written until unpaused.
-	bool paused_ = false;
+	bool paused_read_ = false;
+    bool paused_write_ = false;
 //     bool delayed_accept_ = false;
     
     // Com class can optionally unpause socket, using paused flag as signalling between Com and CX interfaces.
@@ -205,8 +206,15 @@ public:
 	bool opening_timeout();
     bool idle_timeout();
 
-	bool paused();
-	inline void paused(bool p) { paused_ = p; }
+	bool paused_read();
+    bool paused_write();
+	inline void paused_read(bool p) { paused_read_ = p; }
+	inline void paused_write(bool p) { paused_read_ = p; }
+	inline void paused(bool p) { paused_read(p); paused_write(p); }
+	
+	// add the facility to indicate to owning object there something he should pay attention
+	// this us dummy implementation returning false
+	virtual bool new_message() { return false; }
 
 	inline int unblock() { return com()->unblock(fds_);}
 	

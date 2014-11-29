@@ -370,52 +370,58 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
                 break;
             }
             
-			// paused cx is subject to timeout only, no r/w is done on it ( it would return -1/0 anyway, so spare some cycles)
-			if((*i)->paused()) {
-				continue;
-			}
-			
-			int s = (*i)->socket();
-			
+            //process new messages before paused check
+            if( (*i)->new_message() ) {
+                DIA_("baseProxy::handle_sockets_once[%d]: new message!",(*i)->socket());
+                on_left_message(*i);
+                break;
+            }
+
+            int s = (*i)->socket();
             EXT_("L: %d",s);
             
-            if(xcom->in_readset(s) || (*i)->com()->forced_read_reset()) {
-                EXT_("L in R fdset: %d",s);
-                if ((*i)->readable()) {
-                    EXT_("L in R fdset and readable: %d",s)
-                    int red = (*i)->read();
-                    
-                    if (red == 0) {
-                        (*i)->close();
-                        //left_sockets.erase(i);
-                        handle_last_status |= HANDLE_LEFT_ERROR;
+			// paused cx is subject to timeout only, no r/w is done on it ( it would return -1/0 anyway, so spare some cycles)
+			if(! (*i)->paused_read()) {
+                if(xcom->in_readset(s) || (*i)->com()->forced_read_reset()) {
+                    EXT_("L in R fdset: %d",s);
+                    if ((*i)->readable()) {
+                        EXT_("L in R fdset and readable: %d",s)
+                        int red = (*i)->read();
                         
-                        error_on_read = true;
-                        on_left_error(*i);
-                        break;
-                    }
-                    
-                    if (red > 0) {
-                        meter_last_read += red;
-                        on_left_bytes(*i);
+                        if (red == 0) {
+                            (*i)->close();
+                            //left_sockets.erase(i);
+                            handle_last_status |= HANDLE_LEFT_ERROR;
+                            
+                            error_on_read = true;
+                            on_left_error(*i);
+                            break;
+                        }
+                        
+                        if (red > 0) {
+                            meter_last_read += red;
+                            on_left_bytes(*i);
+                        }
                     }
                 }
             }
-			if(xcom->in_writeset(s) || (*i)->com()->forced_write_reset()) {
-                EXT_("L in W fdset: %d",s);
-                if ((*i)->writable()) {
-                    EXT_("L in W fdset and writable: %d",s)
-                    int wrt = (*i)->write();
-                    if (wrt < 0) {
-                        (*i)->close();
-                        //left_sockets.erase(i);
-                        handle_last_status |= HANDLE_LEFT_ERROR;
-                        
-                        error_on_write = true;
-                        on_left_error(*i);
-                        break;
-                    } else {
-                        meter_last_write += wrt;
+            if(! (*i)->paused_write()) {
+                if(xcom->in_writeset(s) || (*i)->com()->forced_write_reset()) {
+                    EXT_("L in W fdset: %d",s);
+                    if ((*i)->writable()) {
+                        EXT_("L in W fdset and writable: %d",s)
+                        int wrt = (*i)->write();
+                        if (wrt < 0) {
+                            (*i)->close();
+                            //left_sockets.erase(i);
+                            handle_last_status |= HANDLE_LEFT_ERROR;
+                            
+                            error_on_write = true;
+                            on_left_error(*i);
+                            break;
+                        } else {
+                            meter_last_write += wrt;
+                        }
                     }
                 }
             }
@@ -434,62 +440,68 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
             if( (*j)->idle_timeout() ) {
                 DIA_("baseProxy::handle_sockets_once[%d]: idle timeout!",(*j)->socket());
                 (*j)->close();
-                on_left_error(*j);
+                on_right_error(*j);
                 break;
             }
             if( (*j)->error() ) {
                 DIA_("baseProxy::handle_sockets_once[%d]: error!",(*j)->socket());
                 (*j)->close();
-                on_left_error(*j);
+                on_right_error(*j);
                 break;
             }
+
+            //process new messages before paused check
+            if( (*j)->new_message() ) {
+                DIA_("baseProxy::handle_sockets_once[%d]: new message!",(*j)->socket());
+                on_right_message(*j);
+            }
             
-            // paused cx is subject to timeout only, no r/w is done on it ( it would return -1/0 anyway, so spare some cycles)
-			if((*j)->paused()) {
-				continue;
-			}
 			
 			int s = (*j)->socket();
-			
             EXT_("R: %d",s);
             
-            if(xcom->in_readset(s) || (*j)->com()->forced_read_reset()) {
-                EXT_("R in R fdset: %d",s);
-                if ((*j)->readable()) {
-                    EXT_("R in R fdset and readable: %d",s);
-                    int red = (*j)->read();
-                    if (red == 0) {
-                        (*j)->close();
-                        //right_sockets.erase(j);
-                        handle_last_status |= HANDLE_RIGHT_ERROR;
-                        
-                        error_on_read = true;
-                        on_right_error(*j);
-                        break;
-                    }
-                    if (red > 0) {
-                        meter_last_read += red;
-                        on_right_bytes(*j);
+            // paused cx is subject to timeout only, no r/w is done on it ( it would return -1/0 anyway, so spare some cycles)
+            if( ! (*j)->paused_read()) {
+                if(xcom->in_readset(s) || (*j)->com()->forced_read_reset()) {
+                    EXT_("R in R fdset: %d",s);
+                    if ((*j)->readable()) {
+                        EXT_("R in R fdset and readable: %d",s);
+                        int red = (*j)->read();
+                        if (red == 0) {
+                            (*j)->close();
+                            //right_sockets.erase(j);
+                            handle_last_status |= HANDLE_RIGHT_ERROR;
+                            
+                            error_on_read = true;
+                            on_right_error(*j);
+                            break;
+                        }
+                        if (red > 0) {
+                            meter_last_read += red;
+                            on_right_bytes(*j);
+                        }
                     }
                 }
             }
-			if(xcom->in_writeset(s) || (*j)->com()->forced_write_reset()) {
-                EXT_("R in W fdset: %d",s);
-                if ((*j)->writable()) {
-                    EXT_("R in W fdset and writable: %d",s);
-                    int wrt = (*j)->write();
-                    if (wrt < 0) {
-                        (*j)->close();
-                        //right_sockets.erase(j);
-                        handle_last_status |= HANDLE_RIGHT_ERROR;
-                        
-                        error_on_write = true;
-                        on_right_error(*j);
-                        break;
-                    } else {
-                        meter_last_write += wrt;
-                    }					
-                }	
+            if( ! (*j)->paused_write()) {
+                if(xcom->in_writeset(s) || (*j)->com()->forced_write_reset()) {
+                    EXT_("R in W fdset: %d",s);
+                    if ((*j)->writable()) {
+                        EXT_("R in W fdset and writable: %d",s);
+                        int wrt = (*j)->write();
+                        if (wrt < 0) {
+                            (*j)->close();
+                            //right_sockets.erase(j);
+                            handle_last_status |= HANDLE_RIGHT_ERROR;
+                            
+                            error_on_write = true;
+                            on_right_error(*j);
+                            break;
+                        } else {
+                            meter_last_write += wrt;
+                        }					
+                    }	
+                }
             }
 		}
 
@@ -510,77 +522,90 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
             if( (*k)->idle_timeout() ) {
                 DIA_("baseProxy::handle_sockets_once[%d]: idle timeout!",(*k)->socket());
                 (*k)->close();
-                on_left_error(*k);
+                on_left_pc_error(*k);
                 break;
             }
             if( (*k)->error() ) {
                 DIA_("baseProxy::handle_sockets_once[%d]: error!",(*k)->socket());
                 (*k)->close();
-                on_left_error(*k);
+                on_left_pc_error(*k);
                 break;
             }            
             
+            //process new messages before paused check
+            if( (*k)->new_message() ) {
+                DIA_("baseProxy::handle_sockets_once[%d]: new message!",(*k)->socket());
+                on_left_message(*k);
+            }
+
+            
+                
+            int k_s = (*k)->socket();            
+                
             // paused cx is subject to timeout only, no r/w is done on it ( it would return -1/0 anyway, so spare some cycles)
-            if((*k)->paused()) {
-                continue;
-            }
-            
-            
-            int k_s = (*k)->socket();
-            
-            // if socket is already in error, don't read, instead just raise again error, if we should reconnect
-            if ((*k)->error() and (*k)->should_reconnect_now()) {
-                on_left_pc_error(*k);
-                break;
-            } else if ((*k)->error()) {
-                break;
-            }
-            
-            if(xcom->in_readset(k_s) || (*k)->com()->forced_read_reset()) {
-                if ((*k)->readable()) {
-                    int red = (*k)->read();
-                    if (red == 0) {
-                        //(*k)->close();
-                        //left_pc_cx.erase(k);
-                        handle_last_status |= HANDLE_LEFT_PC_ERROR;
-                        
-                        error_on_read = true;
-                        on_left_pc_error(*k);
-                        break;
-                    } else {
-                        if (opening_status) {
-                            on_left_pc_restore(*k);
-                        }
-                        if (red > 0) {
-                            meter_last_read += red;
-                            on_left_bytes(*k);
+            if( ! (*k)->paused_read()) {
+
+                // if socket is already in error, don't read, instead just raise again error, if we should reconnect
+                if ((*k)->error() and (*k)->should_reconnect_now()) {
+                    on_left_pc_error(*k);
+                    break;
+                } else if ((*k)->error()) {
+                    break;
+                }
+                
+                if(xcom->in_readset(k_s) || (*k)->com()->forced_read_reset()) {
+                    if ((*k)->readable()) {
+                        int red = (*k)->read();
+                        if (red == 0) {
+                            handle_last_status |= HANDLE_LEFT_PC_ERROR;
+                            
+                            error_on_read = true;
+                            on_left_pc_error(*k);
+                            break;
+                        } else {
+                            if (opening_status) {
+                                on_left_pc_restore(*k);
+                            }
+                            if (red > 0) {
+                                meter_last_read += red;
+                                on_left_bytes(*k);
+                            }
                         }
                     }
                 }
             }
             
-            if(xcom->in_writeset(k_s) || (*k)->com()->forced_write_reset()) {
-                if ((*k)->writable()) {
-                    int wrt = (*k)->write();
-                    if (wrt < 0) {
-    //                  (*k)->close();
-    //                  left_pc_cx.erase(k);
-                        handle_last_status |= HANDLE_LEFT_PC_ERROR;
-                        
-                        error_on_write = true;
-                        on_left_pc_error(*k);
-                        break;
-                    } 
-                    else {
-                        
-                        meter_last_write += wrt;
-                        
-                        if (opening_status) {
-                            on_left_pc_restore(*k);
-                        }
-                    }       
+            if( ! (*k)->paused_write()) {
+
+                // if socket is already in error, don't read, instead just raise again error, if we should reconnect
+                if ((*k)->error() and (*k)->should_reconnect_now()) {
+                    on_left_pc_error(*k);
+                    break;
+                } else if ((*k)->error()) {
+                    break;
                 }
-            }               
+                            
+                if(xcom->in_writeset(k_s) || (*k)->com()->forced_write_reset()) {
+                    if ((*k)->writable()) {
+                        int wrt = (*k)->write();
+                        if (wrt < 0) {
+                            handle_last_status |= HANDLE_LEFT_PC_ERROR;
+                            
+                            error_on_write = true;
+                            on_left_pc_error(*k);
+                            break;
+                        } 
+                        else {
+                            
+                            meter_last_write += wrt;
+                            
+                            if (opening_status) {
+                                on_left_pc_restore(*k);
+                            }
+                        }       
+                    }
+                }               
+            }
         }
         
         if(right_pc_cx.size() > 0)
@@ -597,74 +622,91 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
             if( (*l)->idle_timeout() ) {
                 DIA_("baseProxy::handle_sockets_once[%d]: idle timeout!",(*l)->socket());
                 (*l)->close();
-                on_left_error(*l);
+                on_right_pc_error(*l);
                 break;
             }
             if( (*l)->error() ) {
                 DIA_("baseProxy::handle_sockets_once[%d]: error!",(*l)->socket());
                 (*l)->close();
-                on_left_error(*l);
-                break;
-            }            
-            
-            // paused cx is subject to timeout only, no r/w is done on it ( it would return -1/0 anyway, so spare some cycles)
-            if((*l)->paused()) {
-                continue;
-            }
-            
-            int l_s = (*l)->socket();
-
-            // if socket is already in error, don't read, instead just raise again error, if we should reconnect
-            if ((*l)->error() and (*l)->should_reconnect_now()) {
                 on_right_pc_error(*l);
                 break;
-            } else if ((*l)->error()) {
-                break;
+            }            
+
+            //process new messages before paused check
+            if( (*l)->new_message() ) {
+                DIA_("baseProxy::handle_sockets_once[%d]: new message!",(*l)->socket());
+                on_right_message(*l);
             }
+
             
-            if(xcom->in_readset(l_s)  || (*l)->com()->forced_read_reset()) {
-                if ((*l)->readable()) {
-                    int red = (*l)->read();
-                    if (red == 0) {
-                        //(*l)->close();
-                        //right_pc_cx.erase(l);
-                        handle_last_status |= HANDLE_RIGHT_PC_ERROR;
-                        
-                        error_on_read = true;
-                        on_right_pc_error(*l);
-                        break;
-                    } else {
-                        if (opening_status && red > 0) {
-                            on_right_pc_restore(*l);
-                        }
-                        if (red > 0) {
-                            meter_last_read += red;
-                            on_right_bytes(*l);
+            int l_s = (*l)->socket();            
+            // paused cx is subject to timeout only, no r/w is done on it ( it would return -1/0 anyway, so spare some cycles)
+            if((*l)->paused_read()) {
+
+                // if socket is already in error, don't read, instead just raise again error, if we should reconnect
+                if ((*l)->error() and (*l)->should_reconnect_now()) {
+                    on_right_pc_error(*l);
+                    break;
+                } else if ((*l)->error()) {
+                    break;
+                }
+                
+                if(xcom->in_readset(l_s)  || (*l)->com()->forced_read_reset()) {
+                    if ((*l)->readable()) {
+                        int red = (*l)->read();
+                        if (red == 0) {
+                            //(*l)->close();
+                            //right_pc_cx.erase(l);
+                            handle_last_status |= HANDLE_RIGHT_PC_ERROR;
+                            
+                            error_on_read = true;
+                            on_right_pc_error(*l);
+                            break;
+                        } else {
+                            if (opening_status && red > 0) {
+                                on_right_pc_restore(*l);
+                            }
+                            if (red > 0) {
+                                meter_last_read += red;
+                                on_right_bytes(*l);
+                            }
                         }
                     }
                 }
             }
-            if(xcom->in_writeset(l_s)  || (*l)->com()->forced_write_reset()) {
-                if ((*l)->writable()) {
-                    int wrt = (*l)->write();
-                    if (wrt < 0) {
-    //                  (*l)->close();
-    //                  right_pc_cx.erase(l);
-                        handle_last_status |= HANDLE_RIGHT_PC_ERROR;
-                        
-                        error_on_write = true;
-                        on_right_pc_error(*l);
-                        break;
-                    } 
-                    else {
-                        
-                        meter_last_write += wrt;
-                        
-                        if (opening_status && wrt > 0) {
-                            on_right_pc_restore(*l);
-                        }
-                    }       
-                }   
+            
+            if((*l)->paused_read()) {
+
+                // if socket is already in error, don't read, instead just raise again error, if we should reconnect
+                if ((*l)->error() and (*l)->should_reconnect_now()) {
+                    on_right_pc_error(*l);
+                    break;
+                } else if ((*l)->error()) {
+                    break;
+                }            
+
+                if(xcom->in_writeset(l_s)  || (*l)->com()->forced_write_reset()) {
+                    if ((*l)->writable()) {
+                        int wrt = (*l)->write();
+                        if (wrt < 0) {
+        //                  (*l)->close();
+        //                  right_pc_cx.erase(l);
+                            handle_last_status |= HANDLE_RIGHT_PC_ERROR;
+                            
+                            error_on_write = true;
+                            on_right_pc_error(*l);
+                            break;
+                        } 
+                        else {
+                            
+                            meter_last_write += wrt;
+                            
+                            if (opening_status && wrt > 0) {
+                                on_right_pc_restore(*l);
+                            }
+                        }       
+                    }   
+                }
             }
         } 
         
@@ -693,7 +735,7 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
                         // propagate nonlocal setting
                         cx->com()->nonlocal_dst((*ii)->com()->nonlocal_dst());
                         
-                        if(!cx->paused()) {
+                        if(!cx->paused_read()) {
                             cx->on_accept_socket(client);
                         } else {
                             cx->on_delay_socket(client);
@@ -720,7 +762,7 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
                 for(typename std::vector<baseHostCX*>::iterator k = left_delayed_accepts.begin(); k != left_delayed_accepts.end(); ++k) {
                     
                     baseHostCX *p = *k;
-                    if(!(*k)->paused()) {
+                    if(!(*k)->paused_read()) {
                         p->on_accept_socket(p->socket());
                         ladd(p);
                         left_delayed_accepts.erase(k);
@@ -753,7 +795,7 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
                         // propagate nonlocal setting
                         cx->com()->nonlocal_dst((*jj)->com()->nonlocal_dst());
 
-                        if(!cx->paused()) {
+                        if(!cx->paused_read()) {
                             cx->on_accept_socket(client);
                         } else {
                             cx->on_delay_socket(client);
@@ -778,7 +820,7 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
                 for(typename std::vector<baseHostCX*>::iterator k = right_delayed_accepts.begin(); k != right_delayed_accepts.end(); ++k) {
                     
                     baseHostCX *p = *k;
-                    if(!(*k)->paused()) {
+                    if(!(*k)->paused_read()) {
                         p->on_accept_socket(p->socket());
                         radd(p);
                         right_delayed_accepts.erase(k);

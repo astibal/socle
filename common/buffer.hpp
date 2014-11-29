@@ -387,7 +387,7 @@ inline unsigned char buffer::at (size_type i) const
 template <typename T>
 T buffer::get_at(int idx)
 {
-    if(idx + sizeof(T) >= size_)
+    if(idx + sizeof(T) - 1 >= size_)
         throw std::out_of_range ("index out of range");
     
     return *((T*)(&data_[idx]));

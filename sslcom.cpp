@@ -266,7 +266,7 @@ void SSLCom::ssl_msg_callback(int write_p, int version, int content_type, const 
     DEB_("SSLCom::ssl_msg_callback[%s]: %s/%s has been %s",name,msg_version,msg_content_type,msg_direction);
     
     if(content_type == 21) {
-        //INF_("SSLCom::ssl_msg_callback: Alert dump: %s",hex_dump((unsigned char*)buf,len).c_str());
+        DEB_("SSLCom::ssl_msg_callback: Alert dump: %s",hex_dump((unsigned char*)buf,len).c_str());
         unsigned short code = ntohs(buffer::get_at<unsigned short>((unsigned char*)buf));
         if(com) {
             DIA_("SSLCom::ssl_msg_callback[%s]: alert info: %s/%s[%u]",name,SSL_alert_type_string_long(code),SSL_alert_desc_string_long(code),code);
@@ -550,6 +550,8 @@ int SSLCom::waiting() {
         if(! waiting_peer_hello()) {
              return 0;
         }
+
+        DEBS_("SSLCom::waiting: before SSL_connect");
         
         ERR_clear_error();
 		r = SSL_connect(sslcom_ssl);
@@ -634,13 +636,15 @@ int SSLCom::waiting() {
 		check_cert(ssl_waiting_host);
 	}
 	
-	
 	return r;
 	
 }
 
 bool SSLCom::waiting_peer_hello()
 {
+    
+    DEBS_("SSLCom::waiting_peer_hello: start");
+    
     if(sslcom_peer_hello_received) {
         DUMS_("SSLCom::waiting_peer_hello: already called, returning true");
         return true;
@@ -652,6 +656,7 @@ bool SSLCom::waiting_peer_hello()
         if(p != nullptr) {
             if(p->sslcom_fd > 0) {
                 DIA_("SSLCom::waiting_peer_hello: reading max %d bytes from peer socket %d",2048,p->sslcom_fd);
+                
                 int red = ::recv(p->sslcom_fd,sslcom_peer_hello_buffer,1500,MSG_PEEK);
                 if (red > 0) {
                     DIA_("SSLCom::waiting_peer_hello: %d bytes in buffer for hello analysis",red);
@@ -661,7 +666,7 @@ bool SSLCom::waiting_peer_hello()
                     parse_peer_hello(sslcom_peer_hello_buffer,red);
                     
                 } else {
-                    DIA_("SSLCom::waiting_peer_hello: %d bytes",red);
+                    DIA_("SSLCom::waiting_peer_hello: peek returns %d, readbuf=%d",red,owner_cx()->readbuf()->size());
                 }
                 
             } else {
@@ -892,13 +897,13 @@ int SSLCom::read ( int __fd, void* __buf, size_t __n, int __flags )  {
 				when it is */
 				
 			case SSL_ERROR_WANT_CONNECT:
-				INF_("SSLCom::read[%d]: want connect",__fd);
+				DIA_("SSLCom::read[%d]: want connect",__fd);
                 
                 if(total_r > 0) return total_r;
 				return r;
 
 			case SSL_ERROR_WANT_ACCEPT:
-				INF_("SSLCom::read[%d]: want accept",__fd);
+				DIA_("SSLCom::read[%d]: want accept",__fd);
 
                 if(total_r > 0) return total_r;              
 				return r;

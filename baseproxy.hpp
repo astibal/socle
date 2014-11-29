@@ -200,6 +200,8 @@ public:
     virtual void on_right_bytes(baseHostCX*);
 	virtual void on_left_error(baseHostCX*);
 	virtual void on_right_error(baseHostCX*);
+    virtual void on_left_message(baseHostCX* cx) {};
+    virtual void on_right_message(baseHostCX* cx) {};
 	
 	virtual void on_left_pc_error(baseHostCX*);
 	virtual void on_right_pc_error(baseHostCX*);
