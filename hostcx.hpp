@@ -209,7 +209,7 @@ public:
 	bool paused_read();
     bool paused_write();
 	inline void paused_read(bool p) { paused_read_ = p; }
-	inline void paused_write(bool p) { paused_read_ = p; }
+	inline void paused_write(bool p) { paused_write_ = p; }
 	inline void paused(bool p) { paused_read(p); paused_write(p); }
 	
 	// add the facility to indicate to owning object there something he should pay attention
