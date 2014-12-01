@@ -64,10 +64,11 @@ bool logger::periodic_end() {
 
 void logger::log(unsigned int l, const std::string& fmt, ...) {
 
-	if (l > level()) return;
-	
 	std::lock_guard<std::mutex> lck(mtx_lout);
-	
+
+    if (l > level() && ! forced_) return;
+    forced_ = false;
+    
 	struct timeval tv;
 	struct timezone tz;
 	
@@ -132,6 +133,34 @@ void logger::log(unsigned int l, const std::string& fmt, ...) {
         std::cout << std::string(date,date_len) << "." << string_format("%06d",tv.tv_usec) << " <" << std::hex << std::this_thread::get_id() << "> " << desc << " - " << str << std::endl;
     }
 };
+
+
+void logger::log2(unsigned int l, const char* src, int line, const std::string& fmt, ...) {
+    std::string src_info = string_format("%20s:%-4d",src,line);
+
+
+    int size = 512;
+    std::string str;
+    va_list ap;
+    while (1) {
+        str.resize(size);
+        va_start(ap, fmt);
+        int n = vsnprintf((char *)str.c_str(), size, fmt.c_str(), ap);
+        va_end(ap);
+
+        if (n > -1 && n < size) {
+            str.resize(n);
+                break;
+        }
+        
+        if (n > -1)
+            size = n + 1;
+        else
+            size *= 2;
+    }    
+    
+    log(l,src_info + ": " + str);
+}
 
 
 bool logger::click_timer ( std::string xname , int interval) {

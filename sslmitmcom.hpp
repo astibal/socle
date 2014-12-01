@@ -51,6 +51,11 @@ public:
    virtual const char* name() { return "ssl+insp"; };
 
     virtual ~SSLMitmCom() {};
+
+public:
+    static int& log_level_ref() { return log_level; }
+private:
+    static int log_level;
 };
 
 #endif // __SSLMITMCOM_HPP__

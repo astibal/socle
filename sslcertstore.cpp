@@ -25,7 +25,7 @@
 
 std::string SSLCertStore::certs_path = "./certs/";
 std::string SSLCertStore::password = "password";
-
+int SSLCertStore::log_level = NON;
 
 bool SSLCertStore::load() {
     bool ret = true;
@@ -42,7 +42,7 @@ bool SSLCertStore::load() {
     if (ca_cert == NULL || ca_key == NULL 
         || def_cl_cert == NULL || def_cl_key == NULL 
         || def_sr_cert == NULL || def_sr_key == NULL) {
-        DIA_("SSLCertStore::load: key/certs: ca(%x/%x) def_cl(%x/%x) def_sr(%x/%x)", ca_key,ca_cert,  
+        DIA__("SSLCertStore::load: key/certs: ca(%x/%x) def_cl(%x/%x) def_sr(%x/%x)", ca_key,ca_cert,  
              def_cl_key,def_cl_cert,  def_sr_key,def_sr_cert);
         
         destroy();
@@ -68,7 +68,7 @@ bool SSLCertStore::load_ca_cert() {
     FILE *fp_key = nullptr;
     
     if (!fp_crt) {
-        FAT_("SSLCertStore::load_ca_cert: unable to open: %s",cer.c_str());
+        FAT__("SSLCertStore::load_ca_cert: unable to open: %s",cer.c_str());
         return false;
     }
     
@@ -76,7 +76,7 @@ bool SSLCertStore::load_ca_cert() {
     fp_key = fopen(key.c_str(), "r");
     
     if (!fp_key) {
-        FAT_("SSLCertStore::load_ca_cert: unable to open: %s",key.c_str());
+        FAT__("SSLCertStore::load_ca_cert: unable to open: %s",key.c_str());
 
         fclose(fp_crt);
         return false;
@@ -100,7 +100,7 @@ bool SSLCertStore::load_def_cl_cert() {
     FILE *fp_key = nullptr;
     
     if (!fp_crt) {
-        FAT_("SSLCertStore::load_def_cl_cert: unable to open: %s",cer.c_str());
+        FAT__("SSLCertStore::load_def_cl_cert: unable to open: %s",cer.c_str());
         return false;
     }
     
@@ -108,7 +108,7 @@ bool SSLCertStore::load_def_cl_cert() {
     fp_key = fopen(key.c_str(), "r");
     
     if (!fp_key) {
-        FAT_("SSLCertStore::load_def_cl_cert: unable to open: %s",key.c_str());
+        FAT__("SSLCertStore::load_def_cl_cert: unable to open: %s",key.c_str());
         fclose(fp_crt);
         return false;
     }
@@ -131,7 +131,7 @@ bool SSLCertStore::load_def_sr_cert() {
     FILE *fp_key = nullptr;
     
     if (!fp_crt) {
-        FAT_("SSLCertStore::load_def_sr_cert: unable to open: %s",cer.c_str());
+        FAT__("SSLCertStore::load_def_sr_cert: unable to open: %s",cer.c_str());
         return false;
     }
     
@@ -139,7 +139,7 @@ bool SSLCertStore::load_def_sr_cert() {
     fp_key = fopen(key.c_str(), "r");
     
     if (!fp_key) {
-        FAT_("SSLCertStore::load_def_sr_cert: unable to open: %s",key.c_str());
+        FAT__("SSLCertStore::load_def_sr_cert: unable to open: %s",key.c_str());
         fclose(fp_crt);
         return false;
     }
@@ -171,13 +171,13 @@ void SSLCertStore::destroy() {
         
         X509_PAIR* parek = (*i).second;
         
-        DEB_("SSLCertStore::destroy cache: %s - private key",key.c_str());
+        DEB__("SSLCertStore::destroy cache: %s - private key",key.c_str());
         EVP_PKEY_free(parek->first);
         
         X509* cert = parek->second;
 //         STACK_OF(X509_EXTENSION) *exts = cert->cert_info->extensions;
 //         sk_X509_EXTENSION_free(exts);
-        DEB_("SSLCertStore::destroy cache: %s - cert",key.c_str());
+        DEB__("SSLCertStore::destroy cache: %s - cert",key.c_str());
         X509_free(cert);
         delete parek;
     }
@@ -190,7 +190,7 @@ bool SSLCertStore::add(std::string& subject,EVP_PKEY* cert_privkey, X509* cert, 
     X509_PAIR* parek = new X509_PAIR(cert_privkey,cert);
     
     if (cert_privkey == NULL || cert == NULL || parek == NULL) {
-        DIA_("SSLCertStore::add[x]: one of about to be stored componet is NULL",this);
+        DIA__("SSLCertStore::add[x]: one of about to be stored componet is NULL",this);
         return false;
     }
     
@@ -209,14 +209,14 @@ bool SSLCertStore::add(std::string& subject,X509_PAIR* parek, X509_REQ* req) {
     }
     catch (std::exception& e) {
         op_status = false;
-        DIA_("SSLCertStore::add[x] - exception caught: %s",this,e.what());
+        DIA__("SSLCertStore::add[x] - exception caught: %s",this,e.what());
     }
     
     // now you can write too
     mutex_cache_write_.unlock();
     
     if(!op_status) {
-        ERR_("Error to add certificate '%s' into memory cache!",subject.c_str());
+        ERR__("Error to add certificate '%s' into memory cache!",subject.c_str());
         return false;
     }
     
@@ -228,9 +228,9 @@ X509_PAIR* SSLCertStore::find(std::string& subject) {
     // cache lookup
     X509_CACHE::iterator entry = cache_.find(subject);
     if (entry == cache_.end()) {
-        DEB_("SSLCertStore::find[%x]: NOT cached '%s'",this,subject.c_str());
+        DEB__("SSLCertStore::find[%x]: NOT cached '%s'",this,subject.c_str());
     } else {
-        DEB_("SSLCertStore::find[%x]: found cached '%s'",this,subject.c_str());
+        DEB__("SSLCertStore::find[%x]: found cached '%s'",this,subject.c_str());
         
         return (*entry).second;  //first is the map key (cert subject in our case)
     }    
@@ -260,10 +260,10 @@ void SSLCertStore::erase(std::string& subject) {
     }
     catch(std::exception& e) {
         op_status = false;
-        DIA_("SSLCertStore::add[x] - exception caught: %s",this,e.what());            
+        DIA__("SSLCertStore::add[x] - exception caught: %s",this,e.what());            
     }
     if(!op_status) {
-        ERR_("Error to remove certificate '%s' from cache",subject.c_str());
+        ERR__("Error to remove certificate '%s' from cache",subject.c_str());
     }
     
     mutex_cache_write_.unlock();
@@ -271,7 +271,7 @@ void SSLCertStore::erase(std::string& subject) {
 
 X509_PAIR* SSLCertStore::spoof(X509* cert_orig) {
     char tmp[2048];
-    DEB_("SSLCertStore::spoof[%x]: about to spoof certificate!",this);
+    DEB__("SSLCertStore::spoof[%x]: about to spoof certificate!",this);
     
     
     // get info from the peer certificate
@@ -282,7 +282,7 @@ X509_PAIR* SSLCertStore::spoof(X509* cert_orig) {
     std::string subject(tmp);
           
     
-    DEB_("SSLCertStore::spoof[%x]: generating CSR for '%s'",this,subject.c_str());    
+    DEB__("SSLCertStore::spoof[%x]: generating CSR for '%s'",this,subject.c_str());    
         
     X509_REQ* copy = X509_REQ_new();
     X509_NAME* copy_subj = NULL;
@@ -291,7 +291,7 @@ X509_PAIR* SSLCertStore::spoof(X509* cert_orig) {
 
     
     if(!copy) {
-        ERR_("SSLCertStore::spoof[%x]: cannot create request",this);
+        ERR__("SSLCertStore::spoof[%x]: cannot create request",this);
         return NULL;
     }
     
@@ -300,13 +300,13 @@ X509_PAIR* SSLCertStore::spoof(X509* cert_orig) {
     EVP_PKEY_free(pub_sr_cert);
 
     if (!(copy_subj = X509_NAME_new())) {
-        ERR_("SSLCertStore::spoof[%x]: cannot create subject for request",this);
+        ERR__("SSLCertStore::spoof[%x]: cannot create subject for request",this);
         return NULL;
     }
 
     X509_NAME* n_dup = X509_NAME_dup(X509_get_subject_name(cert_orig));
     if (X509_REQ_set_subject_name(copy,n_dup) != 1) {
-        ERR_("SSLCertStore::spoof[%x]: error copying subject to request",this);
+        ERR__("SSLCertStore::spoof[%x]: error copying subject to request",this);
         return NULL;
     }
     
@@ -321,18 +321,18 @@ X509_PAIR* SSLCertStore::spoof(X509* cert_orig) {
             for (int i=0; i < num_of_exts; i++) {
                 X509_EXTENSION *ex = sk_X509_EXTENSION_value(exts, i);
                 if(!ex) {
-                    ERR_("SSLCertStore::spoof[%x]: error obtaining certificate extension [%d] value ",this,i)
+                    ERR__("SSLCertStore::spoof[%x]: error obtaining certificate extension [%d] value ",this,i)
                     continue;
                 }
                 ASN1_OBJECT *obj = X509_EXTENSION_get_object(ex);
                 if(!obj) {
-                    ERR_("SSLCertStore::spoof[%x]: unable to extract ASN1 object from extension [%d]",this,i);
+                    ERR__("SSLCertStore::spoof[%x]: unable to extract ASN1 object from extension [%d]",this,i);
                     continue;
                 }
                 
                 unsigned nid = OBJ_obj2nid(obj); 
                 if(nid == NID_subject_alt_name) {
-                    DEB_("SSLCertStore::spoof[%x]: adding subjAltName to extensions",this);
+                    DEB__("SSLCertStore::spoof[%x]: adding subjAltName to extensions",this);
                     X509_EXTENSION* n_ex = X509_EXTENSION_dup(ex);
                     sk_X509_EXTENSION_push(s,n_ex);
 //                     X509_EXTENSION_free(n_ex);  //leak hunt
@@ -341,7 +341,7 @@ X509_PAIR* SSLCertStore::spoof(X509* cert_orig) {
         }
         
         int r = X509_REQ_add_extensions(copy,s);
-        DEB_("SSLCertStore::spoof[%x]: X509_REQ_add_extensions returned %d",this,r);
+        DEB__("SSLCertStore::spoof[%x]: X509_REQ_add_extensions returned %d",this,r);
         
         sk_X509_EXTENSION_pop_free(s,X509_EXTENSION_free);
     }   
@@ -354,19 +354,19 @@ X509_PAIR* SSLCertStore::spoof(X509* cert_orig) {
         digest = EVP_sha1();
     }
     else {
-        ERR_("SSLCertStore::spoof[%x]: error checking public key for a valid digest",this);
+        ERR__("SSLCertStore::spoof[%x]: error checking public key for a valid digest",this);
         return NULL;
     }
     
     if (!(X509_REQ_sign( copy, pkey, digest))) {
-        ERR_("SSLCertStore::spoof[%x]: error signing request",this);
+        ERR__("SSLCertStore::spoof[%x]: error signing request",this);
     }
     
-    DEB_("SSLCertStore::spoof[%x]: generating CSR finished",this);    
+    DEB__("SSLCertStore::spoof[%x]: generating CSR finished",this);    
 
     //------------------------------------------------------------------------------------------
 
-    DIA_("SSLCertStore::spoof[%x]: faking certificate '%s'",this,subject.c_str());     
+    DIA__("SSLCertStore::spoof[%x]: faking certificate '%s'",this,subject.c_str());     
     
 
     X509 *cert = NULL;
@@ -375,13 +375,13 @@ X509_PAIR* SSLCertStore::spoof(X509* cert_orig) {
 
     // create new certificate 
     if (!(cert = X509_new( ))) {
-        ERR_("SSLCertStore::spoof[%x]: error creating X509 object",this);
+        ERR__("SSLCertStore::spoof[%x]: error creating X509 object",this);
         return NULL;
     }
 
     // set version number for the certificate (X509v3) and then serial #
     if (X509_set_version (cert, 2L) != 1) {
-        ERR_("SSLCertStore::spoof[%x]: cannot set X509 version!",this);
+        ERR__("SSLCertStore::spoof[%x]: cannot set X509 version!",this);
         return NULL;
     }
 
@@ -389,17 +389,17 @@ X509_PAIR* SSLCertStore::spoof(X509* cert_orig) {
     
     // get public key from request
     if (!(pkey = X509_REQ_get_pubkey(copy))) {
-        ERR_("SSLCertStore::spoof[%x]: error getting public key from request",this);
+        ERR__("SSLCertStore::spoof[%x]: error getting public key from request",this);
         return NULL;
     }
 
     // Setting subject name
     if (!(name = X509_REQ_get_subject_name(copy))) {
-        ERR_("SSLCertStore::spoof[%x]: error getting subject name from request",this);
+        ERR__("SSLCertStore::spoof[%x]: error getting subject name from request",this);
         return NULL;
     }
     if (X509_set_subject_name(cert, name) != 1) {
-        ERR_("SSLCertStore::spoof[%x]: error setting subject name of certificate",this);
+        ERR__("SSLCertStore::spoof[%x]: error setting subject name of certificate",this);
         return NULL;
     }     
 
@@ -408,7 +408,7 @@ X509_PAIR* SSLCertStore::spoof(X509* cert_orig) {
     
     STACK_OF(X509_EXTENSION) *req_exts = NULL;
     if (!(req_exts = X509_REQ_get_extensions(copy))) {
-        INF_("SSLCertStore::spoof[%x]: error getting the request's extension",this);
+        INF__("SSLCertStore::spoof[%x]: error getting the request's extension",this);
     } else {
         subjAltName_pos = X509v3_get_ext_by_NID(req_exts,OBJ_sn2nid("subjectAltName"),-1);
         subjAltName = X509v3_get_ext(req_exts, subjAltName_pos);
@@ -417,17 +417,17 @@ X509_PAIR* SSLCertStore::spoof(X509* cert_orig) {
     
     // Setting issuer
     if (!(name = X509_get_subject_name(ca_cert))) {
-        ERR_("SSLCertStore::spoof[%x]: error getting subject name from CA certificate",this);
+        ERR__("SSLCertStore::spoof[%x]: error getting subject name from CA certificate",this);
         return NULL;
     }
     if (X509_set_issuer_name(cert, name) != 1) {
-        ERR_("SSLCertStore::spoof[%x]: error setting issuer name of certificate",this);
+        ERR__("SSLCertStore::spoof[%x]: error setting issuer name of certificate",this);
         return NULL;
         
     }
     // set public key in the certificate 
     if ((X509_set_pubkey( cert, pkey)) != 1) {
-        ERR_("SSLCertStore::spoof[%x]: error setting public key of the certificate",this);
+        ERR__("SSLCertStore::spoof[%x]: error setting public key of the certificate",this);
         return NULL;
     }
     
@@ -435,7 +435,7 @@ X509_PAIR* SSLCertStore::spoof(X509* cert_orig) {
     
     // set duration for the certificate
     if (!(X509_gmtime_adj(X509_get_notBefore(cert), EXPIRE_START))) {
-        ERR_("SSLCertStore::spoof[%x]: error setting beginning time of the certificate",this);
+        ERR__("SSLCertStore::spoof[%x]: error setting beginning time of the certificate",this);
         return NULL;
     }
     
@@ -443,7 +443,7 @@ X509_PAIR* SSLCertStore::spoof(X509* cert_orig) {
     #define EXPIRE_SECS (60* 60*24*DAYS_TILL_EXPIRE)
 
     if (!(X509_gmtime_adj(X509_get_notAfter(cert), EXPIRE_SECS))) {
-        ERR_("SSLCertStore::spoof[%x]: error setting ending time of the certificate",this);
+        ERR__("SSLCertStore::spoof[%x]: error setting ending time of the certificate",this);
         return NULL;
     }
 
@@ -456,20 +456,20 @@ X509_PAIR* SSLCertStore::spoof(X509* cert_orig) {
 
         X509_EXTENSION * ext;
         if (!(ext = X509V3_EXT_conf(NULL, &ctx, ext_ent[i].key, ext_ent[i].value))) {
-            WAR_("SSLCertStore::spoof[%x]: error on \"%s = %s\"",this,ext_ent[i].key, ext_ent[i].value);
-            WAR_("SSLCertStore::spoof[%x]: error creating X509 extension object",this);
+            WAR__("SSLCertStore::spoof[%x]: error on \"%s = %s\"",this,ext_ent[i].key, ext_ent[i].value);
+            WAR__("SSLCertStore::spoof[%x]: error creating X509 extension object",this);
             continue;
         }
         if (!X509_add_ext(cert, ext, -1)) {
-            ERR_("SSLCertStore::spoof[%x]: error on \"%s = %s\"",this,ext_ent[i].key, ext_ent[i].value);
-            ERR_("SSLCertStore::spoof[%x]: error adding X509 extension into certificate",this);
+            ERR__("SSLCertStore::spoof[%x]: error on \"%s = %s\"",this,ext_ent[i].key, ext_ent[i].value);
+            ERR__("SSLCertStore::spoof[%x]: error adding X509 extension into certificate",this);
         }
         X509_EXTENSION_free(ext);
     }
     
     if(subjAltName != NULL) {
         if (!X509_add_ext(cert, subjAltName, -1)) {
-            ERR_("SSLCertStore::spoof[%x]: error adding subjectAltName to certificate",this);
+            ERR__("SSLCertStore::spoof[%x]: error adding subjectAltName to certificate",this);
             return NULL;
         }
     }
@@ -482,12 +482,12 @@ X509_PAIR* SSLCertStore::spoof(X509* cert_orig) {
         digest = EVP_sha1();
     }
     else {
-        ERR_("SSLCertStore::spoof[%x]: error checking CA private key for a valid digest",this);
+        ERR__("SSLCertStore::spoof[%x]: error checking CA private key for a valid digest",this);
         return NULL;
     }
 
     if (!(X509_sign(cert, ca_key, digest))) {
-        ERR_("SSLCertStore::spoof[%x]: error signing certificate",this);
+        ERR__("SSLCertStore::spoof[%x]: error signing certificate",this);
         return NULL;
     }
 

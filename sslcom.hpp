@@ -35,7 +35,7 @@
 #include <basecom.hpp>
 #include <tcpcom.hpp>
 #include <sslcertstore.hpp>
-
+#include <logger.hpp>
 
 // Threading support
 
@@ -183,6 +183,11 @@ public:
 
     int prof_accept_ok=0;
     int prof_connect_ok=0;
+
+public:
+    static int& log_level_ref() { return log_level; }
+private:
+    static int log_level;
 };
 
 #endif

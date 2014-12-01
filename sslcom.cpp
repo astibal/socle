@@ -42,6 +42,7 @@ SSLCertStore*  SSLCom::sslcom_certstore_;
 
 int SSLCom::counter_ssl_connect = 0;
 int SSLCom::counter_ssl_accept = 0;
+int SSLCom::log_level = NON;
 
 void locking_function ( int mode, int n, const char * file, int line )  {
 	
@@ -150,7 +151,7 @@ void SSLCom::static_init() {
 
     baseCom::static_init();
 
-    DEBS_("SSL: Static INIT");
+    DEBS__("SSL: Static INIT");
 
 	if(false) {	
 		// make compiler happy
@@ -182,20 +183,20 @@ void SSLCom::ssl_info_callback(const SSL* s, int where, int ret) {
 
     if (where & SSL_CB_LOOP)
     {
-        DEB_("SSLCom::ssl_info_callback: %s:%s",str,SSL_state_string_long(s));
+        DEB__("SSLCom::ssl_info_callback: %s:%s",str,SSL_state_string_long(s));
     }
     else if (where & SSL_CB_ALERT)
     {
         str=(where & SSL_CB_READ)?"read":"write";
-        DIA_("SSLCom::ssl_info_callback: SSL3 alert %s:%s:%s", str, SSL_alert_type_string_long(ret), SSL_alert_desc_string_long(ret));
+        DIA__("SSLCom::ssl_info_callback: SSL3 alert %s:%s:%s", str, SSL_alert_type_string_long(ret), SSL_alert_desc_string_long(ret));
     }
     else if (where & SSL_CB_EXIT)
     {
         if (ret == 0) {
-            DEB_("SSLCom::ssl_info_callback: %s:failed in %s", str,SSL_state_string_long(s));
+            DEB__("SSLCom::ssl_info_callback: %s:failed in %s", str,SSL_state_string_long(s));
         }
         else if (ret < 0)  {
-            DEB_("SSLCom::ssl_info_callback %s:error in %s", str,SSL_state_string_long(s));
+            DEB__("SSLCom::ssl_info_callback %s:error in %s", str,SSL_state_string_long(s));
         }
     }
     
@@ -263,18 +264,18 @@ void SSLCom::ssl_msg_callback(int write_p, int version, int content_type, const 
         msg_direction = "sent";
     }
     
-    DEB_("SSLCom::ssl_msg_callback[%s]: %s/%s has been %s",name,msg_version,msg_content_type,msg_direction);
+    DEB__("SSLCom::ssl_msg_callback[%s]: %s/%s has been %s",name,msg_version,msg_content_type,msg_direction);
     
     if(content_type == 21) {
-        DEB_("SSLCom::ssl_msg_callback: Alert dump: %s",hex_dump((unsigned char*)buf,len).c_str());
+        DEB__("SSLCom::ssl_msg_callback: Alert dump: %s",hex_dump((unsigned char*)buf,len).c_str());
         unsigned short code = ntohs(buffer::get_at<unsigned short>((unsigned char*)buf));
         if(com) {
-            DIA_("SSLCom::ssl_msg_callback[%s]: alert info: %s/%s[%u]",name,SSL_alert_type_string_long(code),SSL_alert_desc_string_long(code),code);
+            DIA__("SSLCom::ssl_msg_callback[%s]: alert info: %s/%s[%u]",name,SSL_alert_type_string_long(code),SSL_alert_desc_string_long(code),code);
             if(code == 522) {
                 // unexpected message
-                DIA_("  prof_accept_cnt %d, prof_connect_cnt %d, prof_peek_cnt %d, prof_read_cnt %d, prof_want_read_cnt %d, prof_want_write_cnt %d, prof_write_cnt %d",
+                DIA__("  prof_accept_cnt %d, prof_connect_cnt %d, prof_peek_cnt %d, prof_read_cnt %d, prof_want_read_cnt %d, prof_want_write_cnt %d, prof_write_cnt %d",
                     com->prof_accept_cnt   , com->prof_connect_cnt   , com->prof_peek_cnt   , com->prof_read_cnt   , com->prof_want_read_cnt   , com->prof_want_write_cnt   , com->prof_write_cnt);
-                DIA_("   prof_accept_ok %d, prof_connect_ok %d",com->prof_accept_ok, com->prof_connect_ok);
+                DIA__("   prof_accept_ok %d, prof_connect_ok %d",com->prof_accept_ok, com->prof_connect_ok);
             }
         }
     }
@@ -291,7 +292,7 @@ void SSLCom::init_client() {
 	sslcom_ctx = SSL_CTX_new (method);	
 
 	if (!sslcom_ctx) {
-		ERRS_("Client: Error creating SSL context!");
+		ERRS__("Client: Error creating SSL context!");
 		exit(2);
 	}
 
@@ -305,20 +306,20 @@ void SSLCom::init_client() {
     
     
 // 	if (SSL_CTX_use_certificate_file(sslcom_ctx, CL_CERTF, SSL_FILETYPE_PEM) <= 0) {
-// 		ERRS_("Client: Error loading certificate!");
+// 		ERRS__("Client: Error loading certificate!");
 // 		exit(3);
 // 	}
 // 	if (SSL_CTX_use_PrivateKey_file(sslcom_ctx, CL_KEYF, SSL_FILETYPE_PEM) <= 0) {
-// 		ERRS_("Client: Error loading private key!");
+// 		ERRS__("Client: Error loading private key!");
 // 		exit(4);
 // 	}
 
-    DIA_("SSLCom::init_client[%x]: loading default key/cert",this);
+    DIA__("SSLCom::init_client[%x]: loading default key/cert",this);
     SSL_CTX_use_PrivateKey(sslcom_ctx,certstore()->def_cl_key);
     SSL_CTX_use_certificate(sslcom_ctx,certstore()->def_cl_cert);
 
 	if (!SSL_CTX_check_private_key(sslcom_ctx)) {
-		ERRS_("Client: Private key does not match the certificate public key\n");
+		ERRS__("Client: Private key does not match the certificate public key\n");
 		exit(5);
 	}	
 
@@ -332,7 +333,7 @@ void SSLCom::init_server() {
 	
 	const SSL_METHOD *method;
 	
-	DEBS_("SSLCom::init_server");
+	DEBS__("SSLCom::init_server");
 	
     if(sslcom_ctx) {
         SSL_CTX_free(sslcom_ctx);
@@ -344,16 +345,16 @@ void SSLCom::init_server() {
 	method = TLSv1_server_method();
 	sslcom_ctx = SSL_CTX_new (method);	
 	if (!sslcom_ctx) {
-		ERRS_("Server: Error creating SSL context!");
+		ERRS__("Server: Error creating SSL context!");
 		exit(2);
 	}
 	
 // 	if (SSL_CTX_use_certificate_file(sslcom_ctx, SR_CERTF, SSL_FILETYPE_PEM) <= 0) {
-// 		ERRS_("Server: Error loading certificate!");
+// 		ERRS__("Server: Error loading certificate!");
 // 		exit(3);
 // 	}
 // 	if (SSL_CTX_use_PrivateKey_file(sslcom_ctx, SR_KEYF, SSL_FILETYPE_PEM) <= 0) {
-// 		ERRS_("Server: Error loading private key!");
+// 		ERRS__("Server: Error loading private key!");
 // 		exit(4);
 // 	}
 
@@ -366,18 +367,18 @@ void SSLCom::init_server() {
     SSL_CTX_set_options(sslcom_ctx,SSL_OP_NO_TICKET);
 
     if (sslcom_pref_cert && sslcom_pref_key) {
-        DEB_("SSLCom::init_server[%x]: loading preferred key/cert",this);
+        DEB__("SSLCom::init_server[%x]: loading preferred key/cert",this);
         SSL_CTX_use_PrivateKey(sslcom_ctx,sslcom_pref_key);
         SSL_CTX_use_certificate(sslcom_ctx,sslcom_pref_cert);
         
     } else {
-        DEB_("SSLCom::init_server[%x]: loading default key/cert",this);
+        DEB__("SSLCom::init_server[%x]: loading default key/cert",this);
         SSL_CTX_use_PrivateKey(sslcom_ctx,certstore()->def_sr_key);
         SSL_CTX_use_certificate(sslcom_ctx,certstore()->def_sr_cert);
     }
         
 	if (!SSL_CTX_check_private_key(sslcom_ctx)) {
-		ERRS_("Server: Private key does not match the certificate public key\n");
+		ERRS__("Server: Private key does not match the certificate public key\n");
 		exit(5);
 	}	
 
@@ -394,7 +395,7 @@ bool SSLCom::check_cert (const char* host) {
     char peer_CN[256];
 
     if ( SSL_get_verify_result ( sslcom_ssl ) !=X509_V_OK ) {
-        DIAS_( "check_cert: certificate doesn't verify" );
+        DIAS__( "check_cert: certificate doesn't verify" );
     }
 
     /*Check the cert chain. The chain length
@@ -405,7 +406,7 @@ bool SSLCom::check_cert (const char* host) {
     peer=SSL_get_peer_certificate ( sslcom_ssl );
 	
 	if(peer == NULL) {
-		ERRS_("check_cert: unable to retrieve peer certificate");
+		ERRS__("check_cert: unable to retrieve peer certificate");
 		
 		// cannot proceed, next checks require peer X509 data
 		return false;
@@ -414,14 +415,14 @@ bool SSLCom::check_cert (const char* host) {
     X509_NAME* x509_name = X509_get_subject_name(peer);
     X509_NAME_get_text_by_NID(x509_name,NID_commonName, peer_CN, 256);
 // 	X509_NAME_oneline(X509_get_subject_name(peer),peer_CERT,1024);
-//	DIA_("Peer certificate:\n%s",peer_CERT);
+//	DIA__("Peer certificate:\n%s",peer_CERT);
 	
-	DIA_("peer CN: %s",peer_CN);
+	DIA__("peer CN: %s",peer_CN);
 	if(host != NULL) {
-		DIA_("peer host: %s",host);
+		DIA__("peer host: %s",host);
 		
 		if ( strcasecmp ( peer_CN,host ) ) {
-		DIAS_( "Common name doesn't match host name" );
+		DIAS__( "Common name doesn't match host name" );
 		}
 	}
 	
@@ -441,13 +442,13 @@ bool SSLCom::readable(int s) {
     bool r = !sslcom_read_blocked_on_write;
     sslcom_read_blocked_on_write = false;
 
-    DUM_("SSLCom::readable[%d]: sslcom_read_blocked_on_write: %d",s,sslcom_read_blocked_on_write);
-    DUM_("SSLCom::readable[%d]: sslcom_write_blocked_on_read: %d",s,sslcom_write_blocked_on_read);  
+    DUM__("SSLCom::readable[%d]: sslcom_read_blocked_on_write: %d",s,sslcom_read_blocked_on_write);
+    DUM__("SSLCom::readable[%d]: sslcom_write_blocked_on_read: %d",s,sslcom_write_blocked_on_read);  
     
 	if (r) {
-		DUM_("SSLCom::readable[%d]: %d",s,r);
+		DUM__("SSLCom::readable[%d]: %d",s,r);
 	} else {
-		DEB_("SSLCom::readable[%d]: %d",s,r);
+		DEB__("SSLCom::readable[%d]: %d",s,r);
 	}
 	
 	return r;
@@ -458,13 +459,13 @@ bool SSLCom::writable(int s) {
     bool r = !sslcom_write_blocked_on_read;
     sslcom_write_blocked_on_read = false;
     
-	DUM_("SSLCom::writable[%d]: sslcom_read_blocked_on_write: %d",s,sslcom_read_blocked_on_write);
-    DUM_("SSLCom::writable[%d]: sslcom_write_blocked_on_read: %d",s,sslcom_write_blocked_on_read);  
+	DUM__("SSLCom::writable[%d]: sslcom_read_blocked_on_write: %d",s,sslcom_read_blocked_on_write);
+    DUM__("SSLCom::writable[%d]: sslcom_write_blocked_on_read: %d",s,sslcom_write_blocked_on_read);  
 	
 	if (r) {
-		DUM_("SSLCom::writable[%d]: %d",s,r);
+		DUM__("SSLCom::writable[%d]: %d",s,r);
 	} else {
-		DEB_("SSLCom::writable[%d]: %d",s,r);
+		DEB__("SSLCom::writable[%d]: %d",s,r);
 	}
 	
 	return r;
@@ -484,7 +485,7 @@ bool SSLCom::writable(int s) {
 
 void SSLCom::accept_socket ( int sockfd )  {
 
-	DIA_("SSLCom::accept_socket: %d",sockfd)
+	DIA__("SSLCom::accept_socket: %d",sockfd)
 	
 	TCPCom::accept_socket(sockfd);
 	
@@ -492,11 +493,11 @@ void SSLCom::accept_socket ( int sockfd )  {
     
     ERR_clear_error();
     if (SSL_accept (sslcom_ssl) > 0) {
-        DUM_("SSLCom::accept_socket[%d]: success at 1st attempt.",sockfd);
+        DUM__("SSLCom::accept_socket[%d]: success at 1st attempt.",sockfd);
         prof_accept_ok++;
         sslcom_waiting = false;
     } else {
-        DUM_("SSLCom::accept_socket[%d]: need to call later.",sockfd);
+        DUM__("SSLCom::accept_socket[%d]: need to call later.",sockfd);
     }
     prof_accept_cnt++;
 }
@@ -517,7 +518,7 @@ int SSLCom::upgrade_server_socket(int sockfd) {
 
     sslcom_sbio = BIO_new_socket(sockfd,BIO_NOCLOSE);
     if (sslcom_sbio == NULL) {
-        ERR_("BIO allocation failed for socket %d",sockfd)
+        ERR__("BIO allocation failed for socket %d",sockfd)
     }
     
     SSL_set_bio(sslcom_ssl,sslcom_sbio,sslcom_sbio);
@@ -538,7 +539,7 @@ int SSLCom::waiting() {
 	const char* op = op_unknown;
 	
 	if (sslcom_ssl == NULL) {
-		WARS_("SSLCom::ssl_waiting: sslcom_ssl = NULL");
+		WARS__("SSLCom::ssl_waiting: sslcom_ssl = NULL");
 		exit(1);
 		return 0;
 	}
@@ -551,7 +552,7 @@ int SSLCom::waiting() {
              return 0;
         }
 
-        DEBS_("SSLCom::waiting: before SSL_connect");
+        DEBS__("SSLCom::waiting: before SSL_connect");
         
         ERR_clear_error();
 		r = SSL_connect(sslcom_ssl);
@@ -576,7 +577,7 @@ int SSLCom::waiting() {
 	if (r == -1) {
 		int err = SSL_get_error(sslcom_ssl,r);
 		if (err == SSL_ERROR_WANT_READ) {
-			DUM_("SSL_%s: want read",op);
+			DUM__("SSL_%s: want read",op);
 			
  			sslcom_waiting = true;
             prof_want_read_cnt++;
@@ -585,7 +586,7 @@ int SSLCom::waiting() {
  			return 1;
 		}
 		else if (err == SSL_ERROR_WANT_WRITE) {
-			DUM_("SSL_%s: want write",op);
+			DUM__("SSL_%s: want write",op);
 			
  			sslcom_waiting = true;
             prof_want_write_cnt++;
@@ -594,11 +595,11 @@ int SSLCom::waiting() {
  			return 1;
 		}
 		else {
-            DIA_("SSL_%s: error: %d",op,err);
+            DIA__("SSL_%s: error: %d",op,err);
             
             long err2 = ERR_get_error();
             do {
-                DIA_("  error code: %s",ERR_error_string(err2,nullptr));
+                DIA__("  error code: %s",ERR_error_string(err2,nullptr));
                 err2 = ERR_get_error();
             } while (err2 != 0);
             
@@ -609,7 +610,7 @@ int SSLCom::waiting() {
  
 		
 	} else if (r < -1) {
-		DIA_("SSL failed: %s",op);
+		DIA__("SSL failed: %s",op);
 		
 		//unclean shutdown
 		sslcom_waiting = false;
@@ -617,7 +618,7 @@ int SSLCom::waiting() {
 		return -1;
 		
 	} else if (r == 0) {
-		DIA_("SSL failed: %s",op);
+		DIA__("SSL failed: %s",op);
 		// shutdown OK, but connection failed
 		sslcom_waiting = false;		
 		return -1;
@@ -629,7 +630,7 @@ int SSLCom::waiting() {
         prof_accept_ok++;
     }
 	
-	DEB_("SSLCom::ssl_waiting: operation succeeded: %s", op);
+	DEB__("SSLCom::ssl_waiting: operation succeeded: %s", op);
 	sslcom_waiting = false;	
 
 	if(!sslcom_server) {
@@ -643,40 +644,40 @@ int SSLCom::waiting() {
 bool SSLCom::waiting_peer_hello()
 {
     
-    DEBS_("SSLCom::waiting_peer_hello: start");
+    DEBS__("SSLCom::waiting_peer_hello: start");
     
     if(sslcom_peer_hello_received) {
-        DUMS_("SSLCom::waiting_peer_hello: already called, returning true");
+        DUMS__("SSLCom::waiting_peer_hello: already called, returning true");
         return true;
     }
     
-    DIAS_("SSLCom::waiting_peer_hello: called");
+    DIAS__("SSLCom::waiting_peer_hello: called");
     if(peer()) {
         SSLCom *p = static_cast<SSLCom*>(peer());
         if(p != nullptr) {
             if(p->sslcom_fd > 0) {
-                DIA_("SSLCom::waiting_peer_hello: reading max %d bytes from peer socket %d",2048,p->sslcom_fd);
+                DIA__("SSLCom::waiting_peer_hello: reading max %d bytes from peer socket %d",2048,p->sslcom_fd);
                 
                 int red = ::recv(p->sslcom_fd,sslcom_peer_hello_buffer,1500,MSG_PEEK);
                 if (red > 0) {
-                    DIA_("SSLCom::waiting_peer_hello: %d bytes in buffer for hello analysis",red);
+                    DIA__("SSLCom::waiting_peer_hello: %d bytes in buffer for hello analysis",red);
                     sslcom_peer_hello_received = true;
-                    DEB_("SSLCom::waiting_peer_hello: ClientHello data:\n%s",hex_dump(sslcom_peer_hello_buffer,red).c_str());
+                    DEB__("SSLCom::waiting_peer_hello: ClientHello data:\n%s",hex_dump(sslcom_peer_hello_buffer,red).c_str());
                     
                     parse_peer_hello(sslcom_peer_hello_buffer,red);
                     
                 } else {
-                    DIA_("SSLCom::waiting_peer_hello: peek returns %d, readbuf=%d",red,owner_cx()->readbuf()->size());
+                    DIA__("SSLCom::waiting_peer_hello: peek returns %d, readbuf=%d",red,owner_cx()->readbuf()->size());
                 }
                 
             } else {
-                DIAS_("SSLCom::waiting_peer_hello: SSLCom peer doesn't have sslcom_fd set");
+                DIAS__("SSLCom::waiting_peer_hello: SSLCom peer doesn't have sslcom_fd set");
             }
         } else {
-            DIAS_("SSLCom::waiting_peer_hello: peer not SSLCom type");
+            DIAS__("SSLCom::waiting_peer_hello: peer not SSLCom type");
         }
     } else {
-        DIAS_("SSLCom::waiting_peer_hello: no peers");
+        DIAS__("SSLCom::waiting_peer_hello: no peers");
     }
     
     return sslcom_peer_hello_received;
@@ -700,7 +701,7 @@ bool SSLCom::parse_peer_hello(unsigned char* ptr, unsigned int len) {
         unsigned short message_length = ntohs(b.get_at<unsigned short>(curpos)); curpos+=sizeof(unsigned short);
         
         
-        DIA_("SSLCom::parse_peer_hello: received message type %d, version %d.%d, length %d",message_type,version_maj, version_min, message_length);
+        DIA__("SSLCom::parse_peer_hello: received message type %d, version %d.%d, length %d",message_type,version_maj, version_min, message_length);
         
         if(message_type == 22) {
             
@@ -716,15 +717,15 @@ bool SSLCom::parse_peer_hello(unsigned char* ptr, unsigned int len) {
             
             // we already know it's handshake, it's ok to return true
             if(handshake_type == 1) {
-                DIA_("SSLCom::parse_peer_hello: handshake (type %u), version %u.%u, length %u",handshake_type,handshake_version_maj,handshake_version_min,handshake_length);
+                DIA__("SSLCom::parse_peer_hello: handshake (type %u), version %u.%u, length %u",handshake_type,handshake_version_maj,handshake_version_min,handshake_length);
                 ret = true;
             }
             
             if(session_id_length > 0) {
                 session_id = b.view(curpos,session_id_length); curpos+=session_id_length;
-                DEB_("SSLCom::parse_peer_hello: session_id (length %d):\n%s",session_id_length, hex_dump(session_id.data(),session_id.size()).c_str());
+                DEB__("SSLCom::parse_peer_hello: session_id (length %d):\n%s",session_id_length, hex_dump(session_id.data(),session_id.size()).c_str());
             } else {
-                DEBS_("SSLCom::parse_peer_hello: no session_id found.");
+                DEBS__("SSLCom::parse_peer_hello: no session_id found.");
             }
             
             unsigned short ciphers_length = ntohs(b.get_at<unsigned short>(curpos)); curpos+=sizeof(unsigned short);
@@ -732,11 +733,11 @@ bool SSLCom::parse_peer_hello(unsigned char* ptr, unsigned int len) {
             unsigned char compression_length = b.get_at<unsigned char>(curpos); curpos+=sizeof(unsigned char);
             curpos += compression_length; // skip compression methods
 
-            DEB_("SSLCom::parse_peer_hello: ciphers length %d, compression length %d",ciphers_length,compression_length);
+            DEB__("SSLCom::parse_peer_hello: ciphers length %d, compression length %d",ciphers_length,compression_length);
             
             /* extension section */
             unsigned short extensions_length = ntohs(b.get_at<unsigned short>(curpos)); curpos+=sizeof(unsigned short);
-            DEB_("SSLCom::parse_peer_hello: extensions payload length %d",extensions_length);
+            DEB__("SSLCom::parse_peer_hello: extensions payload length %d",extensions_length);
             
             if(extensions_length > 0) {
 
@@ -756,7 +757,7 @@ unsigned short SSLCom::parse_peer_hello_extensions(buffer& b, unsigned int curpo
     unsigned short ext_id = ntohs(b.get_at<unsigned short>(curpos)); curpos+=sizeof(unsigned short);
     unsigned short ext_length = ntohs(b.get_at<unsigned short>(curpos)); curpos+=sizeof(unsigned short);
     
-    DEB_("SSLCom::parse_peer_hello_extensions: extension id 0x%x, length %d", ext_id, ext_length);
+    DEB__("SSLCom::parse_peer_hello_extensions: extension id 0x%x, length %d", ext_id, ext_length);
 
     switch(ext_id) {
         
@@ -771,7 +772,7 @@ unsigned short SSLCom::parse_peer_hello_extensions(buffer& b, unsigned int curpo
                 std::string s;
                 s.append((const char*)b.data()+curpos,(size_t)sn_hostname_length);
                 
-                DIA_("SSLCom::parse_peer_hello_extensions:    SNI hostname: %s",s.c_str());
+                DIA__("SSLCom::parse_peer_hello_extensions:    SNI hostname: %s",s.c_str());
                 SSL_set_tlsext_host_name(sslcom_ssl,s.c_str());
             }
             
@@ -794,17 +795,17 @@ int SSLCom::read ( int __fd, void* __buf, size_t __n, int __flags )  {
 	int total_r = 0;
     int rounds = 0;
 	
-	DUM_("SSLCom::read[%d]: about to read  max %4d bytes",__fd,__n);
+	DUM__("SSLCom::read[%d]: about to read  max %4d bytes",__fd,__n);
 	
 	// non-blocking socket can be still opening 
 	if( sslcom_waiting ) {
 		int c = waiting();
         if (c >= 0) {
-            DEB_("SSLCom:: read[%d]: ssl_waiting() returned %d: still waiting",__fd,c);
+            DEB__("SSLCom:: read[%d]: ssl_waiting() returned %d: still waiting",__fd,c);
             return -1;
         } else 
         if (c < 0) {
-            DIA_("SSLCom:: read[%d]: ssl_waiting() returned %d: unrecoverable!",__fd,c);
+            DIA__("SSLCom:: read[%d]: ssl_waiting() returned %d: unrecoverable!",__fd,c);
             return 0;
         }
     }   
@@ -815,9 +816,9 @@ int SSLCom::read ( int __fd, void* __buf, size_t __n, int __flags )  {
         prof_peek_cnt++;
         
         if(peek_r > 0) {
-            DEB_("SSLCom::read[%d]: peek returned %d",__fd, peek_r);
+            DEB__("SSLCom::read[%d]: peek returned %d",__fd, peek_r);
         } else {
-            EXT_("SSLCom::read[%d]: peek returned  %d",__fd, peek_r);
+            EXT__("SSLCom::read[%d]: peek returned  %d",__fd, peek_r);
         } 
         
         return peek_r;
@@ -826,7 +827,7 @@ int SSLCom::read ( int __fd, void* __buf, size_t __n, int __flags )  {
     do {
 		
 		if(total_r >= (int)__n) {
-			DEB_("SSLCom::read[%d]: reached buffer capacity of %4d bytes",__fd,__n);
+			DEB__("SSLCom::read[%d]: reached buffer capacity of %4d bytes",__fd,__n);
             
             // this is tricky one :) 
             // I have spent quite couple of hours of troubleshooting this:
@@ -849,7 +850,7 @@ int SSLCom::read ( int __fd, void* __buf, size_t __n, int __flags )  {
 // 		if (r > 0) return r;
 
 		if(r == 0) {
-			DEBS_("SSLCom::read: SSL_read returned 0");
+			DEBS__("SSLCom::read: SSL_read returned 0");
 		}
 		
 		int err = SSL_get_error ( sslcom_ssl,r);
@@ -862,7 +863,7 @@ int SSLCom::read ( int __fd, void* __buf, size_t __n, int __flags )  {
 				would have to prevent this condition */
 				// fwrite ( s2c,1,r,stdout );
 				
-				DIA_("SSLCom::read [%d]: %4d bytes read:%d from ssl socket %s, %X",__fd,r,rounds,(r == (signed int)__n) ? "(max)" : "",
+				DIA__("SSLCom::read [%d]: %4d bytes read:%d from ssl socket %s, %X",__fd,r,rounds,(r == (signed int)__n) ? "(max)" : "",
                                 debug_log_data_crc ? socle_crc32(0,__buf,r) : 0
                 );
 				total_r += r;
@@ -872,16 +873,16 @@ int SSLCom::read ( int __fd, void* __buf, size_t __n, int __flags )  {
 				break;
 				
 			case SSL_ERROR_ZERO_RETURN:
-				DEB_("SSLCom::read[%d]: zero returned",__fd);
+				DEB__("SSLCom::read[%d]: zero returned",__fd);
 				SSL_shutdown (sslcom_ssl);
 				return r;
 				
 			case SSL_ERROR_WANT_READ:
 				if(r == -1){
-					DEB_("SSLCom::read[%d]: want read: err=%d,read_now=%4d,total=%4d",__fd,err,r,total_r);
+					DEB__("SSLCom::read[%d]: want read: err=%d,read_now=%4d,total=%4d",__fd,err,r,total_r);
 				}
 				else {
-					DEB_("SSLCom::read[%d]: want read: err=%d,read_now=%4d,total=%4d",__fd,err,r,total_r);
+					DEB__("SSLCom::read[%d]: want read: err=%d,read_now=%4d,total=%4d",__fd,err,r,total_r);
 				}
 				sslcom_read_blocked=1;
 
@@ -897,38 +898,38 @@ int SSLCom::read ( int __fd, void* __buf, size_t __n, int __flags )  {
 				when it is */
 				
 			case SSL_ERROR_WANT_CONNECT:
-				DIA_("SSLCom::read[%d]: want connect",__fd);
+				DIA__("SSLCom::read[%d]: want connect",__fd);
                 
                 if(total_r > 0) return total_r;
 				return r;
 
 			case SSL_ERROR_WANT_ACCEPT:
-				DIA_("SSLCom::read[%d]: want accept",__fd);
+				DIA__("SSLCom::read[%d]: want accept",__fd);
 
                 if(total_r > 0) return total_r;              
 				return r;
 				
 				
 			case SSL_ERROR_WANT_WRITE:
-				DEB_("SSLCom::read[%d]: want write, last read retured %d, total read %4d",__fd,r,total_r);
+				DEB__("SSLCom::read[%d]: want write, last read retured %d, total read %4d",__fd,r,total_r);
 				sslcom_read_blocked_on_write=1;
                 forced_write(true);  // we can opportinistically enforce write operation regardless of select result
 				if(total_r > 0) return total_r;
 				return r;
 			
 			case SSL_ERROR_WANT_X509_LOOKUP:
-				DEB_("SSLCom::read[%d]: want x509 lookup",__fd);
+				DEB__("SSLCom::read[%d]: want x509 lookup",__fd);
 				if(total_r > 0) return total_r;
 				return r;
 				
 			case SSL_ERROR_SYSCALL:
-				DEB_("SSLCom::read[%d]: syscall errorq",__fd);
+				DEB__("SSLCom::read[%d]: syscall errorq",__fd);
 				if(total_r > 0) return total_r;
 				return r;
 				
 			default:
 				if (r != -1 && err != 1) {
-					DEB_("SSLCom::read[%d] problem: %d, read returned %4d",__fd,err,r);
+					DEB__("SSLCom::read[%d] problem: %d, read returned %4d",__fd,err,r);
 				}
 	// 			SSL_shutdown (sslcom_ssl);
 				if(total_r > 0) return total_r;
@@ -944,10 +945,10 @@ int SSLCom::read ( int __fd, void* __buf, size_t __n, int __flags )  {
     //} while ( SSL_pending ( sslcom_ssl ) && !sslcom_read_blocked );
     } while ( SSL_pending ( sslcom_ssl ) && !sslcom_read_blocked);
 
-	DEB_("SSLCom::read: total %4d bytes read",total_r);
+	DEB__("SSLCom::read: total %4d bytes read",total_r);
 
 	if(total_r == 0) {
-		DIAS_("SSLCom::read: logic error, total_r == 0");
+		DIAS__("SSLCom::read: logic error, total_r == 0");
 	}
 	
 	return total_r;
@@ -956,9 +957,9 @@ int SSLCom::read ( int __fd, void* __buf, size_t __n, int __flags )  {
 int SSLCom::write ( int __fd, const void* __buf, size_t __n, int __flags )  {
 
     if(__n == 0) {
-        EXT_("SSLCom::write[%d]: called: about to write %d bytes",__fd,__n);    
+        EXT__("SSLCom::write[%d]: called: about to write %d bytes",__fd,__n);    
     } else {
-        DEB_("SSLCom::write[%d]: called: about to write %d bytes",__fd,__n);	
+        DEB__("SSLCom::write[%d]: called: about to write %d bytes",__fd,__n);	
     }
 	
 	//this one will be much trickier than just single call of SSL_read
@@ -968,11 +969,11 @@ int SSLCom::write ( int __fd, const void* __buf, size_t __n, int __flags )  {
 	if( sslcom_waiting ) {
 		int c = waiting();
 		if (c >= 0) {
-			DEB_("SSLCom::write[%d]: ssl_waiting() returned %d: still waiting",__fd,c);
+			DEB__("SSLCom::write[%d]: ssl_waiting() returned %d: still waiting",__fd,c);
 			return 0;
 		} else 
         if (c < 0) {
-            DIA_("SSLCom::write[%d]: ssl_waiting() returned %d: unrecoverable!",__fd,c);
+            DIA__("SSLCom::write[%d]: ssl_waiting() returned %d: unrecoverable!",__fd,c);
             return -1;
         }
 	}	
@@ -982,9 +983,9 @@ int SSLCom::write ( int __fd, const void* __buf, size_t __n, int __flags )  {
     void *ptr = (void*)__buf;
 
     if(__n == 0) {
-        EXT_("SSLCom::write[%d]: attempt to send %d bytes",__fd,__n);
+        EXT__("SSLCom::write[%d]: attempt to send %d bytes",__fd,__n);
     } else {
-        DEB_("SSLCom::write[%d]: attempt to send %d bytes",__fd,__n);
+        DEB__("SSLCom::write[%d]: attempt to send %d bytes",__fd,__n);
     }
     if ( __n < 20480) {
         normalized__n = __n;
@@ -1010,7 +1011,7 @@ int SSLCom::write ( int __fd, const void* __buf, size_t __n, int __flags )  {
 
 		/* We wrote something*/
 		case SSL_ERROR_NONE:
-			DIA_("SSLCom::write[%d]: %4d bytes written to the ssl socket %s, %X",__fd,r, r != (signed int)__n ? "(incomplete)" : "",
+			DIA__("SSLCom::write[%d]: %4d bytes written to the ssl socket %s, %X",__fd,r, r != (signed int)__n ? "(incomplete)" : "",
                             debug_log_data_crc ? socle_crc32(0,__buf,r) : 0
             );
 			is_problem = false;
@@ -1021,13 +1022,13 @@ int SSLCom::write ( int __fd, const void* __buf, size_t __n, int __flags )  {
 			
 		/* We would have blocked */
 		case SSL_ERROR_WANT_WRITE:
-			DIA_("SSLCom::write[%d] want write: %d (written %4d)",__fd,err,r);	
+			DIA__("SSLCom::write[%d] want write: %d (written %4d)",__fd,err,r);	
 
 			if (r > 0) {
 				normalized__n = normalized__n - r;
 				ptr += r;
 			} else {
-				DUM_("SSLCom::write[%d] want write: repeating last operation",__fd);	
+				DUM__("SSLCom::write[%d] want write: repeating last operation",__fd);	
 			}
 
 			goto again;
@@ -1040,14 +1041,14 @@ int SSLCom::write ( int __fd, const void* __buf, size_t __n, int __flags )  {
 			We need to wait on the socket to be readable
 			but reinitiate our write when it is */
 		case SSL_ERROR_WANT_READ:
-			DIA_("SSLCom::write[%d] want read: %d (written %4d)",__fd,err,r);	
+			DIA__("SSLCom::write[%d] want read: %d (written %4d)",__fd,err,r);	
 			sslcom_write_blocked_on_read=1;
             forced_read(true);
 			break;
 
 			/* Some other error */
 		default:
-			DEB_("SSLCom::write[%d] problem: %d",__fd,err);
+			DEB__("SSLCom::write[%d] problem: %d",__fd,err);
 
 
 	}
@@ -1065,9 +1066,9 @@ void SSLCom::cleanup()  {
 
 	TCPCom::cleanup();
 
-    DEB_("  prof_accept_cnt %d, prof_connect_cnt %d, prof_peek_cnt %d, prof_read_cnt %d, prof_want_read_cnt %d, prof_want_write_cnt %d, prof_write_cnt %d",
+    DEB__("  prof_accept_cnt %d, prof_connect_cnt %d, prof_peek_cnt %d, prof_read_cnt %d, prof_want_read_cnt %d, prof_want_write_cnt %d, prof_write_cnt %d",
         prof_accept_cnt   , prof_connect_cnt   , prof_peek_cnt   , prof_read_cnt   , prof_want_read_cnt   , prof_want_write_cnt   , prof_write_cnt);
-    DEB_("   prof_accept_ok %d, prof_connect_ok %d",prof_accept_ok, prof_connect_ok);
+    DEB__("   prof_accept_ok %d, prof_connect_ok %d",prof_accept_ok, prof_connect_ok);
     
 //     if(sslcom_sbio) {
 //         BIO_free(sslcom_sbio); // produces Invalid read of size 8: at 0x539D840: BIO_free (in /usr/lib/x86_64-linux-gnu/libcrypto.so.1.0.0)
@@ -1096,13 +1097,13 @@ int SSLCom::upgrade_client_socket(int sock) {
     init_client();
     
     if(sslcom_ssl == NULL) {
-        ERRS_("Failed to create SSL structure!");
+        ERRS__("Failed to create SSL structure!");
     }
 //  SSL_set_fd (sslcom_ssl, sock);
     
     sslcom_sbio = BIO_new_socket(sock,BIO_NOCLOSE);
     if (sslcom_sbio == NULL) {
-        ERR_("BIO allocation failed for socket %d",sock)
+        ERR__("BIO allocation failed for socket %d",sock)
     }
     
     SSL_set_bio(sslcom_ssl,sslcom_sbio,sslcom_sbio);    
@@ -1115,7 +1116,7 @@ int SSLCom::upgrade_client_socket(int sock) {
         prof_connect_cnt++;
         
         if(r <= 0 && is_blocking(sock)) {
-            ERR_("SSL connect error on socket %d",sock);
+            ERR__("SSL connect error on socket %d",sock);
             close(sock);
             return -1;
         }
@@ -1125,7 +1126,7 @@ int SSLCom::upgrade_client_socket(int sock) {
             if (r == -1) {
                 int err = SSL_get_error(sslcom_ssl,r);
                 if (err == SSL_ERROR_WANT_READ || err == SSL_ERROR_WANT_READ) {
-                    DUMS_("SSL connect pending");
+                    DUMS__("SSL connect pending");
                     
                     sslcom_waiting = true;
                     return sock;
@@ -1136,7 +1137,7 @@ int SSLCom::upgrade_client_socket(int sock) {
         
         prof_connect_ok++;
         
-        DEBS_("connection succeeded");  
+        DEBS__("connection succeeded");  
         sslcom_waiting = false;
         sslcom_fd = sock;
         
@@ -1159,7 +1160,7 @@ int SSLCom::connect ( const char* host, const char* port, bool blocking )  {
 // 								   (const unsigned char*)sslcom_server_session_id_context,
 // 									strlen(sslcom_server_session_id_context)) == 0) {
 // 
-// 		ERRS_("Setting session ID context failed!");
+// 		ERRS__("Setting session ID context failed!");
 // 	}
 	return upgrade_client_socket(sock);
 }
@@ -1168,35 +1169,35 @@ int SSLCom::connect ( const char* host, const char* port, bool blocking )  {
 
 void SSLCom::certstore_setup(void ) {
     
-    DIAS_("SSLCom: loading central certification store: start");
+    DIAS__("SSLCom: loading central certification store: start");
     
     SSLCom::sslcom_certstore_ = new SSLCertStore();
     bool ret = SSLCom::certstore()->load();
     
     if(! ret) {
-        FATS_("Failure loading certificates, bailing out.");
+        FATS__("Failure loading certificates, bailing out.");
         exit(2);
     }
     
-    DIAS_("SSLCom: loading central certification store: ok");
+    DIAS__("SSLCom: loading central certification store: ok");
 }
 
 bool SSLCom::com_status() {
     if(TCPCom::com_status()) {
         bool r = sslcom_status();
-        // T_DIA_("sslcom_status_ok",1,"SSLCom::com_status: returning %d",r);
+        // T_DIA__("sslcom_status_ok",1,"SSLCom::com_status: returning %d",r);
         
         if(r) {
-            DIAS_("SSLCom::com_status: transport layer OK")
+            DIAS__("SSLCom::com_status: transport layer OK")
         } else {
-            DEBS_("SSLCom::com_status: SSL layer not ready.")
+            DEBS__("SSLCom::com_status: SSL layer not ready.")
         }
         
-        DEB_("SSLCom::com_status: returning %d",r);
+        DEB__("SSLCom::com_status: returning %d",r);
         return r;
     }
     
-    // T_DIAS_("sslcom_status_nok",1,"SSLCom::com_status: returning 0");
-    DEBS_("SSLCom::com_status: lower transport layer not ready, returning 0");
+    // T_DIAS__("sslcom_status_nok",1,"SSLCom::com_status: returning 0");
+    DEBS__("SSLCom::com_status: lower transport layer not ready, returning 0");
     return false;
 }

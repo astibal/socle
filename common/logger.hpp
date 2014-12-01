@@ -43,29 +43,90 @@
 
 #define D_(x) if(lout.level() >= DEB) { (x); }
 
-#define LOG_(lev,x,...) \
+#define O_LOG_(lev,x,...) \
 	if(lout.level() >= lev) { \
 		lout.log(lev,(x),__VA_ARGS__); \
 	}
 
-#define LOGS_(lev,x) \
+#define O_LOGS_(lev,x) \
 	if(lout.level() >= lev) { \
 		lout.log(lev,(x)); \
 	}
 
+#define _FILE_ (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
+	
+#define LOG_(lev,x,...) \
+    if(lout.level() >= lev) { \
+        if( ( lout.print_srcline() && lout.level() > INF ) || lout.print_srcline_always()) { \
+            lout.log2(lev,_FILE_,__LINE__,(x),__VA_ARGS__); \
+        } else { \
+            lout.log(lev,(x),__VA_ARGS__); \
+        } \
+    }
+
+#define LOGS_(lev,x) \
+    if(lout.level() >= lev) { \
+        if( ( lout.print_srcline() && lout.level() > INF ) || lout.print_srcline_always()) { \
+            lout.log2(lev,_FILE_,__LINE__,(x)); \
+        } else { \
+            lout.log(lev,(x)); \
+        } \
+    }
+	
 #define T_LOG_(name,interval,lev,x,...) \
-	if(lout.level() >= lev) { \
-		if(lout.click_timer(name,interval)) { \
-			LOG_(lev,x,__VA_ARGS__); \
-		} \
-	}
+    if(lout.level() >= lev) { \
+        if(lout.click_timer(name,interval)) { \
+            LOG_(lev,x,__VA_ARGS__); \
+        } \
+    }
 
 #define T_LOGS_(name,interval,lev,x) \
-	if(lout.level() >= lev) { \
-		if(lout.click_timer(name,interval)) { \
-			LOGS_(lev,x); \
-		} \
-	}
+    if(lout.level() >= lev) { \
+        if(lout.click_timer(name,interval)) { \
+            LOGS_(lev,x); \
+        } \
+    }
+	
+#define L_LOG_(lev,x,...) \
+    if(log_level >= lev || lout.level() >= lev) { \
+        lout.force(log_level >= lev); \
+        if( ( lout.print_srcline() && lout.level() > INF ) || ( lout.print_srcline() && log_level > INF ) || lout.print_srcline_always()) { \
+            lout.log2(lev,_FILE_,__LINE__,(x),__VA_ARGS__); \
+        } else { \
+            lout.log(lev,(x),__VA_ARGS__); \
+        } \
+    }
+
+#define L_LOGS_(lev,x) \
+    if(log_level >= lev || lout.level() >= lev) { \
+        lout.force(log_level >= lev); \
+        if( ( lout.print_srcline() && lout.level() > INF ) || ( lout.print_srcline() && log_level > INF ) || lout.print_srcline_always()) { \
+            lout.log2(lev,_FILE_,__LINE__,(x)); \
+        } else { \
+            lout.log(lev,(x)); \
+        } \
+    }    
+    
+	
+#define _T_L_LOG_(name,interval,lev,x,...) \
+    if(this->log_level >= lev || lout.level() >= lev) { \
+        lout.force(log_level >= lev); \
+        if( ( lout.print_srcline() && lout.level() > INF ) || ( lout.print_srcline() && log_level > INF ) || lout.print_srcline_always()) { \
+            if(lout.click_timer(name,interval)) { \
+                LOG_(lev,x,__VA_ARGS__); \
+            } \
+        }\
+    }
+
+#define T_L_LOGS_(name,interval,lev,x) \
+    if(this->log_level >= lev || lout.level() >= lev) { \
+        lout.force(log_level >= lev); \
+        if( ( lout.print_srcline() && lout.level() > INF ) || ( lout.print_srcline() && log_level > INF ) || lout.print_srcline_always()) { \
+            if(lout.click_timer(name,interval)) { \
+                LOGS_(lev,x); \
+            } \
+        } \
+    }
 
 	
 #define EXT_(x,...) LOG_(EXT,(x),__VA_ARGS__)
@@ -132,6 +193,73 @@
 #define T_NONS_(n,i,x) T_LOGS_(n,i,NON,(x))
 
 
+
+#define EXT__(x,...) L_LOG_(EXT,(x),__VA_ARGS__)
+#define EXTS__(x,...) L_LOGS_(EXT,(x))
+#define T_EXT__(n,i,x,...) T_L_LOG_(n,i,EXT,(x),__VA_ARGS__)
+#define T_EXTS__(n,i,x) T_L_LOGS_(n,i,EXT,(x))
+
+#define DUM__(x,...) L_LOG_(DUM,(x),__VA_ARGS__)
+#define DUMS__(x,...) L_LOGS_(DUM,(x))
+#define T_DUM__(n,i,x,...) T_L_LOG_(n,i,DUM,(x),__VA_ARGS__)
+#define T_DUMS__(n,i,x) T_L_LOGS_(n,i,DUM,(x))
+        
+#define DEB__(x,...) L_LOG_(DEB,(x),__VA_ARGS__)
+#define DEBS__(x,...) L_LOGS_(DEB,(x))
+#define T_DEB__(n,i,x,...) T_L_LOG_(n,i,DEB,(x),__VA_ARGS__)
+#define T_DEBS__(n,i,x) T_L_LOGS_(n,i,DEB,(x))
+
+
+#define DIA__(x,...) L_LOG_(DIA,(x),__VA_ARGS__)
+#define DIAS__(x,...) L_LOGS_(DIA,(x))
+#define T_DIA__(n,i,x,...) T_L_LOG_(n,i,DIA,(x),__VA_ARGS__)
+#define T_DIAS__(n,i,x) T_L_LOGS_(n,i,DIA,(x))
+
+
+#define INF__(x,...) L_LOG_(INF,(x),__VA_ARGS__)
+#define INFS__(x,...) L_LOGS_(INF,(x))
+#define T_INF__(n,i,x,...) T_L_LOG_(n,i,INF,(x),__VA_ARGS__)
+#define T_INFS__(n,i,x) T_L_LOGS_(n,i,INF,(x))
+
+
+#define NOT__(x,...) L_LOG_(NOT,(x),__VA_ARGS__)
+#define NOTS__(x,...) L_LOGS_(NOT,(x))
+#define T_NOT__(n,i,x,...) T_L_LOG_(n,i,NOT,(x),__VA_ARGS__)
+#define T_NOTS__(n,i,x) T_L_LOGS_(n,i,NOT,(x))
+
+
+#define WAR__(x,...) L_LOG_(WAR,(x),__VA_ARGS__)
+#define WARS__(x,...) L_LOGS_(WAR,(x))
+#define T_WAR__(n,i,x,...) T_L_LOG_(n,i,WAR,(x),__VA_ARGS__)
+#define T_WARS__(n,i,x) T_L_LOGS_(n,i,WAR,(x))
+
+
+#define ERR__(x,...) L_LOG_(ERR,(x),__VA_ARGS__)
+#define ERRS__(x,...) L_LOGS_(ERR,(x))
+#define T_ERR__(n,i,x,...) T_L_LOG_(n,i,ERR,(x),__VA_ARGS__)
+#define T_ERRS__(n,i,x) T_L_LOGS_(n,i,ERR,(x))
+
+
+#define CRI__(x,...) L_LOG_(CRI,(x),__VA_ARGS__)
+#define CRIS__(x,...) L_LOGS_(CRI,(x))
+#define T_CRI__(n,i,x,...) T_L_LOG_(n,i,CRI,(x),__VA_ARGS__)
+#define T_CRIS__(n,i,x) T_L_LOGS_(n,i,CRI,(x))
+
+
+#define FAT__(x,...) L_LOG_(FAT,(x),__VA_ARGS__)
+#define FATS__(x,...) L_LOGS_(FAT,(x))
+#define T_FAT__(n,i,x,...) T_L_LOG_(n,i,FAT,(x),__VA_ARGS__)
+#define T_FATS__(n,i,x) T_L_LOGS_(n,i,FAT,(x))
+
+
+#define NON__(x,...) L_LOG_(NON,(x),__VA_ARGS__)
+#define NONS__(x,...) L_LOGS_(NON,(x))
+#define T_NON__(n,i,x,...) T_L_LOG_(n,i,NON,(x),__VA_ARGS__)
+#define T_NONS__(n,i,x) T_L_LOGS_(n,i,NON,(x))
+
+
+
+
 #define PERIOD_START(interval) lout.periodic_start(interval);
 #define PERIOD_END lout.periodic_end();
 
@@ -151,7 +279,16 @@ protected:
     
     //if target is set, should we write also to std::cout?
     bool dup_to_cout_ = true;
-	
+    
+    //should we print also source with line, if loglevel >= DIA?
+    bool print_srcline_ = true;
+
+    //should we print it always, regarless of log level?
+    bool print_srcline_always_ = false;
+
+    // next print output will be forced => printed regardless of it's level
+    bool forced_ = false;
+    
 	mutable std::mutex mtx_lout;
 	
 	std::map<std::string,timer_tt> timers;
@@ -162,11 +299,16 @@ public:
 	logger() { level_=0; period_ =5; };
     ~logger() { if(target_) { target()->flush(); delete target_; } };
 	
-	void level(unsigned int l) { level_ = l; };
+	inline void level(unsigned int l) { level_ = l; };
 	inline unsigned int level(void) const { return level_; };
     
-    void dup2_cout(bool b) { dup_to_cout_ = b; }
-    bool dup2_cout() { return dup_to_cout_; }
+    inline void dup2_cout(bool b) { dup_to_cout_ = b; }
+    inline bool dup2_cout() { return dup_to_cout_; }
+
+    inline void print_srcline(bool b) { print_srcline_ = b; }
+    inline bool print_srcline() { return print_srcline_; }
+    inline void print_srcline_always(bool b) { print_srcline_always_ = b; }
+    inline bool print_srcline_always() { return print_srcline_always_; }
 	
 	bool click_timer(std::string, int);
 	
@@ -174,8 +316,9 @@ public:
  	std::ostream* target() { return target_; }
  	void target(std::ostream* o) { target_ = o; }
 	
-// 	std::string format(const std::string&, ...);
 	void log(unsigned int, const std::string&, ...);
+    void log2(unsigned int, const char*, int , const std::string&, ...);
+    void force(bool b) { forced_ = b; }
 	
 	inline unsigned int period() { return period_; }
 	inline void period(unsigned int p) { period_ = p; }

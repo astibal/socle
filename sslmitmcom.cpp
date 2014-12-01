@@ -18,9 +18,11 @@
 
 #include <sslmitmcom.hpp>
 
+int SSLMitmCom::log_level = NON;
+
 bool SSLMitmCom::check_cert(const char* peer_name) {
     
-    DEBS_("SSLMitmCom::check_cert: called");
+    DEBS__("SSLMitmCom::check_cert: called");
     bool r = SSLCom::check_cert(peer_name);
     X509* cert = SSL_get_peer_certificate(SSLCom::sslcom_ssl);
     
@@ -32,7 +34,7 @@ bool SSLMitmCom::check_cert(const char* peer_name) {
         p->sslcom_server = true;
         
         if(p->sslcom_server) {
-            DEB_("SSLMitmCom::check_cert[%x]: calling to spoof peer certificate",this);
+            DEB__("SSLMitmCom::check_cert[%x]: calling to spoof peer certificate",this);
             r = p->spoof_cert(cert);
             if (r) {
                 // this is inefficient: many SSLComs are already initialized, this is running it once 
@@ -41,14 +43,14 @@ bool SSLMitmCom::check_cert(const char* peer_name) {
                 if (p->sslcom_waiting) {
                     p->init_server();
                 } else {
-                    WARS_("FIXME: Trying to init SSL server while it's already running!");
+                    WARS__("FIXME: Trying to init SSL server while it's already running!");
                 } 
             }
         } else {
-            WAR_("SSLMitmCom::check_cert[%x]: cannot spoof, peer is not SSL server",this);
+            WAR__("SSLMitmCom::check_cert[%x]: cannot spoof, peer is not SSL server",this);
         }
     } else {
-        WARS_("SSLMitmCom::check_cert: cannot set peer's cert to spoof: peer is not SSLMitmCom type");
+        WARS__("SSLMitmCom::check_cert: cannot set peer's cert to spoof: peer is not SSLMitmCom type");
     }
     
     X509_free(cert);
@@ -57,7 +59,7 @@ bool SSLMitmCom::check_cert(const char* peer_name) {
 
 bool SSLMitmCom::spoof_cert(X509* cert_orig) {
     char tmp[512];
-    DEB_("SSLMitmCom::spoof_cert[%x]: about to spoof certificate!",this);
+    DEB__("SSLMitmCom::spoof_cert[%x]: about to spoof certificate!",this);
     
     
     // get info from the peer certificate
@@ -73,7 +75,7 @@ bool SSLMitmCom::spoof_cert(X509* cert_orig) {
     // cache lookup
     X509_PAIR* parek = certstore()->find(subject);
     if (parek) {
-        DIA_("SSLMitmCom::spoof_cert[%x]: certstore hit for '%s'",this,subject.c_str());
+        DIA__("SSLMitmCom::spoof_cert[%x]: certstore hit for '%s'",this,subject.c_str());
         sslcom_pref_cert = parek->second;
         sslcom_pref_key = parek->first;
         
@@ -81,11 +83,11 @@ bool SSLMitmCom::spoof_cert(X509* cert_orig) {
     }
     
   
-    DIA_("SSLMitmCom::spoof_cert[%x]: NOT in my certstore '%s'",this,subject.c_str());    
+    DIA__("SSLMitmCom::spoof_cert[%x]: NOT in my certstore '%s'",this,subject.c_str());    
     
     parek = certstore()->spoof(cert_orig);
     if(!parek) {
-        WAR_("SSLMitmCom::spoof_cert[%x]: certstore failed to spoof '%d' - default will be used",this,subject.c_str()); 
+        WAR__("SSLMitmCom::spoof_cert[%x]: certstore failed to spoof '%d' - default will be used",this,subject.c_str()); 
         return false;
     } 
     else {
@@ -94,7 +96,7 @@ bool SSLMitmCom::spoof_cert(X509* cert_orig) {
     }
     
     if (! certstore()->add(subject,parek)) {
-        DIA_("SSLMitmCom::spoof_cert[%x]: spoof was successful, but cache add failed for %s",this,subject.c_str());
+        DIA__("SSLMitmCom::spoof_cert[%x]: spoof was successful, but cache add failed for %s",this,subject.c_str());
         return true;
     }
     
