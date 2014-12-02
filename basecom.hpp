@@ -88,9 +88,14 @@ protected:
     // should appear here.    
     std::string log_buffer_;
 
-    // feedback to read from socket regardless of select result ONCE
+    // feedback to read/write from socket regardless of select result ONCE
     bool forced_read_ = false;
     bool forced_write_ = false;
+    
+    // feedback to read/write from socket on write/read op (SSL is doing that)
+    bool forced_read_on_write_ = false;
+    bool forced_write_on_read_ = false;
+    
     
     // if set forced_read/write, don't reset it once used => always attempt to read | write
     bool forced_read_always_ = false;
@@ -103,6 +108,13 @@ protected:
 public:
     void forced_read(bool b)  { forced_read_ = b; }
     void forced_write(bool b) { forced_write_ = b; }    
+
+    void forced_read_on_write(bool b)  { forced_read_on_write_ = b; }
+    void forced_write_on_read(bool b) { forced_write_on_read_ = b; }    
+    bool forced_read_on_write_reset() { bool r = forced_read_on_write_; forced_read_on_write_= false;  return r; }
+    bool forced_write_on_read_reset() { bool r = forced_write_on_read_; forced_write_on_read_ = false;  return r; }
+
+    
     bool forced_read_reset() { bool r = forced_read_; if (!forced_read_always_) { forced_read_ = false; } return r; }
     bool forced_write_reset() { bool r = forced_write_; if (!forced_write_always_) {forced_write_ = false; } return r; }
     

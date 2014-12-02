@@ -817,13 +817,12 @@ int SSLCom::read ( int __fd, void* __buf, size_t __n, int __flags )  {
 	
 	int total_r = 0;
     int rounds = 0;
-	
-	DUM___("SSLCom::read[%d]: about to read  max %4d bytes",__fd,__n);
+
 	
 	// non-blocking socket can be still opening 
 	if( sslcom_waiting ) {
 		int c = waiting();
-        if (c >= 0) {
+        if (c == 0) {
             DEB___("SSLCom:: read[%d]: ssl_waiting() returned %d: still waiting",__fd,c);
             return -1;
         } else 
@@ -835,6 +834,7 @@ int SSLCom::read ( int __fd, void* __buf, size_t __n, int __flags )  {
 	
 	// if we are peeking, just do it and return, no magic done is here
 	if ((__flags & MSG_PEEK) != 0) {
+        DUM___("SSLCom::read[%d]: about to peek  max %4d bytes",__fd,__n);        
         int peek_r = SSL_peek(sslcom_ssl,__buf,__n);
         prof_peek_cnt++;
         
@@ -850,7 +850,7 @@ int SSLCom::read ( int __fd, void* __buf, size_t __n, int __flags )  {
     do {
 		
 		if(total_r >= (int)__n) {
-			DEB___("SSLCom::read[%d]: reached buffer capacity of %4d bytes",__fd,__n);
+			DEB___("SSLCom::read[%d]: reached buffer capacity of %4d bytes, forcing new read",__fd,__n);
             
             // this is tricky one :) 
             // I have spent quite couple of hours of troubleshooting this:
@@ -861,12 +861,14 @@ int SSLCom::read ( int __fd, void* __buf, size_t __n, int __flags )  {
             // => select won't return this socket as in read_set == no reads anymore !!!
             // => we have to have mechanism which will enforce read in the next round 
 			forced_read(true);
+            break;
 		}
 		
 //         sslcom_read_blocked_on_write=0;
 //         sslcom_read_blocked=0;
 
-        //again:
+        DUM___("SSLCom::read[%d]: about to read  max %4d bytes",__fd,__n);
+        
         ERR_clear_error();
         int r = SSL_read (sslcom_ssl,__buf+total_r,__n-total_r);
         prof_read_cnt++;
@@ -908,7 +910,8 @@ int SSLCom::read ( int __fd, void* __buf, size_t __n, int __flags )  {
 					DEB___("SSLCom::read[%d]: want read: err=%d,read_now=%4d,total=%4d",__fd,err,r,total_r);
 				}
 				sslcom_read_blocked=1;
-
+                 //forced_read(true);
+                
                 if(total_r > 0) return total_r;
 				return r;
 
@@ -936,7 +939,10 @@ int SSLCom::read ( int __fd, void* __buf, size_t __n, int __flags )  {
 			case SSL_ERROR_WANT_WRITE:
 				DEB___("SSLCom::read[%d]: want write, last read retured %d, total read %4d",__fd,r,total_r);
 				sslcom_read_blocked_on_write=1;
-                forced_write(true);  // we can opportinistically enforce write operation regardless of select result
+                
+                //forced_write(true);  // we can opportinistically enforce write operation regardless of select result
+                forced_write_on_read(true);
+                
 				if(total_r > 0) return total_r;
 				return r;
 			
@@ -991,7 +997,7 @@ int SSLCom::write ( int __fd, const void* __buf, size_t __n, int __flags )  {
 // 	// non-blocking socket can be still opening 
 	if( sslcom_waiting ) {
 		int c = waiting();
-		if (c >= 0) {
+		if (c == 0) {
 			DEB___("SSLCom::write[%d]: ssl_waiting() returned %d: still waiting",__fd,c);
 			return 0;
 		} else 
@@ -1066,7 +1072,9 @@ int SSLCom::write ( int __fd, const void* __buf, size_t __n, int __flags )  {
 		case SSL_ERROR_WANT_READ:
 			DIA___("SSLCom::write[%d] want read: %d (written %4d)",__fd,err,r);	
 			sslcom_write_blocked_on_read=1;
-            forced_read(true);
+//             forced_read(true);
+            
+            forced_read_on_write(true);
 			break;
 
 			/* Some other error */

@@ -42,7 +42,9 @@
 
 extern int errno;
 extern ::logger lout;
-	
+
+int baseProxy::log_level = NON;
+
 baseProxy::baseProxy(baseCom* c) :
 dead_(false),
 new_raw_(false),
@@ -336,6 +338,188 @@ int baseProxy::prepare_sockets(baseCom* fdset_owner) {
 };
 
 
+bool baseProxy::handle_cx_events(unsigned char side, baseHostCX* cx) {
+        // treat non-blocking still opening sockets 
+        if( cx->opening_timeout() ) {
+            DIA_("baseProxy::handle_sockets_once[%d]: opening timeout!",cx->socket());
+            cx->close();
+            
+                 if(side == 'l')  { on_left_error(cx);  }
+            else if(side == 'r')  { on_right_error(cx); }
+            return false;
+        }
+        if( cx->idle_timeout() ) {
+            DIA_("baseProxy::handle_sockets_once[%d]: idle timeout!",cx->socket());
+            cx->close();
+
+                 if(side == 'l')  { on_left_error(cx);  }
+            else if(side == 'r')  { on_right_error(cx); }
+            return false;
+        }
+        if( cx->error() ) {
+            DIA_("baseProxy::handle_sockets_once[%d]: error!",cx->socket());
+            cx->close();
+
+                 if(side == 'l')  { on_left_error(cx);  }
+            else if(side == 'r')  { on_right_error(cx); }
+            return false;
+        }
+        
+        //process new messages before paused check
+        if( cx->new_message() ) {
+            DIA_("baseProxy::handle_sockets_once[%d]: new message!",cx->socket());
+                 if(side == 'l') {  on_left_message(cx); }
+            else if(side == 'r') { on_right_message(cx); }
+            return false;
+        }    
+        
+        return true;
+}
+
+bool baseProxy::handle_cx_read(unsigned char side, baseHostCX* cx) {
+    
+    EXT_("%c in R fdset: %d", side, cx->socket());
+    if (cx->readable()) {
+        EXT_("%c in R fdset and readable: %d", side, cx->socket())
+        int red = cx->read();
+        
+        if (red == 0) {
+            cx->close();
+            //left_sockets.erase(i);
+            handle_last_status |= HANDLE_LEFT_ERROR;
+            
+            error_on_read = true;
+                 if(side == 'l') { on_left_error(cx); }
+            else if(side == 'r') { on_right_error(cx); }
+           
+            return false;
+        }
+        
+        if (red > 0) {
+            meter_last_read += red;
+                 if(side == 'l') { on_left_bytes(cx); }
+            else if(side == 'r') { on_right_bytes(cx); }
+        }
+    }
+    
+    return true;
+}
+
+bool baseProxy::handle_cx_write(unsigned char side, baseHostCX* cx) {
+    EXT_("%c in W fdset: %d",side, cx->socket());
+    if (cx->writable()) {
+        EXT_("%c in W fdset and writable: %d",side, cx->socket())
+        int wrt = cx->write();
+        if (wrt < 0) {
+            cx->close();
+            //left_sockets.erase(i);
+            handle_last_status |= HANDLE_LEFT_ERROR;
+            
+            error_on_write = true;
+                 if(side == 'l') { on_left_error(cx); }
+            else if(side == 'r') { on_right_error(cx); }
+            
+            return false;
+        } else {
+            meter_last_write += wrt;
+        }
+    }
+
+    return true;
+}
+
+bool baseProxy::handle_cx_once(unsigned char side, baseCom* xcom, baseHostCX* cx) {
+    if(! handle_cx_events(side,cx))
+        return false;
+
+    EXT_("%c: %d",side, cx->socket());
+    
+    // paused cx is subject to timeout only, no r/w is done on it ( it would return -1/0 anyway, so spare some cycles)
+    if(! cx->paused_read()) {
+        if(xcom->in_readset(cx->socket()) || cx->com()->forced_read_reset()) {
+
+            if(! handle_cx_read(side,cx)) {
+                return false;
+            }
+            
+            if(cx->com()->forced_write_on_read_reset()) {
+                DIA__("baseProxy::handle_cx_once[%d]: =%c= write on read enforced",cx->socket(),side);
+                if(! handle_cx_write(side,cx)) {
+                    return false;
+                }
+            }
+        }
+    }
+    if(! cx->paused_write()) {
+        if(xcom->in_writeset(cx->socket()) || cx->com()->forced_write_reset()) {
+            if(! handle_cx_write(side,cx)) {
+                return false;
+            }
+
+            if(cx->com()->forced_read_on_write_reset()) {
+                DIA__("baseProxy::handle_cx_once[%d]: =%c= read on write enforced",cx->socket(),side);
+                if(! handle_cx_read(side,cx)) {
+                    return false;
+                }
+            }
+            
+        }
+    }
+    
+    return false;
+};
+
+bool baseProxy::handle_cx_new(unsigned char side, baseCom* xcom, baseHostCX* cx) {
+    
+    sockaddr_in clientInfo;
+    socklen_t addrlen = sizeof(clientInfo);
+
+    int client = com()->accept(cx->socket(), (sockaddr*)&clientInfo, &addrlen);
+    
+    if(client < 0) {
+        DIA_("baseProxy::handle_cx_new[%d]:  =%c= bound socket accept failed: ",client,side,strerror(errno));
+        return true; // still, it's not the error which should break socket list iteration
+    }
+    
+    if(new_raw()) {
+        DEB_("baseProxy::handle_cx_new[%d]:  =%c= raw processing",client,side);
+             if(side == 'l') { on_left_new_raw(client); }
+        else if(side == 'r') { on_right_new_raw(client); }
+    }
+    else {
+        baseHostCX* cx = new_cx(client);
+        
+        // propagate nonlocal setting
+        // FIXME: this call is a bit strange, is it?
+        // cx->com()->nonlocal_dst(cx->com()->nonlocal_dst());
+        
+        if(!cx->paused_read()) {
+            DIA_("baseProxy::handle_cx_new[%d]: unpaused, adding to =%c= sockets",client,side);
+            
+            cx->on_accept_socket(client);
+            //  DON'T: you don't know if this proxy does have child proxy, or wants to handle situation different way.
+            //        if(side == 'l') { ladd(cx); }
+            //   else if(side == 'r') { radd(cx); }
+            
+        } else {
+            DIA_("baseProxy::handle_cx_new[%d]: paused, adding to =%c= delayed sockets",client,side);
+            
+            cx->on_delay_socket(client);
+            //  DON'T: you don't know if this proxy does have child proxy, or wants to handle situation different way.
+            //      if(side == 'l') { ldaadd(cx); }
+            // else if(side == 'r') { rdaadd(cx); }
+        }
+        
+             if(side == 'l') { on_left_new(cx); }
+        else if(side == 'r') { on_right_new(cx); }
+    }
+    
+    handle_last_status |= HANDLE_LEFT_NEW;
+    
+    return true;
+};
+
+
 int baseProxy::handle_sockets_once(baseCom* xcom) {
 
 	run_timers();
@@ -349,159 +533,15 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
         
 		if(left_sockets.size() > 0)
 		for(typename std::vector<baseHostCX*>::iterator i = left_sockets.begin(); i != left_sockets.end(); ++i) {
-			
-			// treat non-blocking still opening sockets 
-			if( (*i)->opening_timeout() ) {
-				DIA_("baseProxy::handle_sockets_once[%d]: opening timeout!",(*i)->socket());
-				(*i)->close();
-				on_left_error(*i);
-				break;
-			}
-            if( (*i)->idle_timeout() ) {
-                DIA_("baseProxy::handle_sockets_once[%d]: idle timeout!",(*i)->socket());
-                (*i)->close();
-                on_left_error(*i);
+			if(! handle_cx_once('l',xcom,*i)) {
                 break;
-            }
-            if( (*i)->error() ) {
-                DIA_("baseProxy::handle_sockets_once[%d]: error!",(*i)->socket());
-                (*i)->close();
-                on_left_error(*i);
-                break;
-            }
-            
-            //process new messages before paused check
-            if( (*i)->new_message() ) {
-                DIA_("baseProxy::handle_sockets_once[%d]: new message!",(*i)->socket());
-                on_left_message(*i);
-                break;
-            }
-
-            int s = (*i)->socket();
-            EXT_("L: %d",s);
-            
-			// paused cx is subject to timeout only, no r/w is done on it ( it would return -1/0 anyway, so spare some cycles)
-			if(! (*i)->paused_read()) {
-                if(xcom->in_readset(s) || (*i)->com()->forced_read_reset()) {
-                    EXT_("L in R fdset: %d",s);
-                    if ((*i)->readable()) {
-                        EXT_("L in R fdset and readable: %d",s)
-                        int red = (*i)->read();
-                        
-                        if (red == 0) {
-                            (*i)->close();
-                            //left_sockets.erase(i);
-                            handle_last_status |= HANDLE_LEFT_ERROR;
-                            
-                            error_on_read = true;
-                            on_left_error(*i);
-                            break;
-                        }
-                        
-                        if (red > 0) {
-                            meter_last_read += red;
-                            on_left_bytes(*i);
-                        }
-                    }
-                }
-            }
-            if(! (*i)->paused_write()) {
-                if(xcom->in_writeset(s) || (*i)->com()->forced_write_reset()) {
-                    EXT_("L in W fdset: %d",s);
-                    if ((*i)->writable()) {
-                        EXT_("L in W fdset and writable: %d",s)
-                        int wrt = (*i)->write();
-                        if (wrt < 0) {
-                            (*i)->close();
-                            //left_sockets.erase(i);
-                            handle_last_status |= HANDLE_LEFT_ERROR;
-                            
-                            error_on_write = true;
-                            on_left_error(*i);
-                            break;
-                        } else {
-                            meter_last_write += wrt;
-                        }
-                    }
-                }
             }
 		}
 		
 		if(right_sockets.size() > 0)
 		for(typename std::vector<baseHostCX*>::iterator j = right_sockets.begin(); j != right_sockets.end(); ++j) {
-
-			// treat non-blocking still opening sockets 
-			if( (*j)->opening_timeout() ) {
-				DIA_("baseProxy::handle_sockets_once[%d]: opening timeout!",(*j)->socket());
-				(*j)->close();
-				on_right_error(*j);
-				break;
-			}			
-            if( (*j)->idle_timeout() ) {
-                DIA_("baseProxy::handle_sockets_once[%d]: idle timeout!",(*j)->socket());
-                (*j)->close();
-                on_right_error(*j);
+            if(! handle_cx_once('r',xcom,*j)) {
                 break;
-            }
-            if( (*j)->error() ) {
-                DIA_("baseProxy::handle_sockets_once[%d]: error!",(*j)->socket());
-                (*j)->close();
-                on_right_error(*j);
-                break;
-            }
-
-            //process new messages before paused check
-            if( (*j)->new_message() ) {
-                DIA_("baseProxy::handle_sockets_once[%d]: new message!",(*j)->socket());
-                on_right_message(*j);
-            }
-            
-			
-			int s = (*j)->socket();
-            EXT_("R: %d",s);
-            
-            // paused cx is subject to timeout only, no r/w is done on it ( it would return -1/0 anyway, so spare some cycles)
-            if( ! (*j)->paused_read()) {
-                if(xcom->in_readset(s) || (*j)->com()->forced_read_reset()) {
-                    EXT_("R in R fdset: %d",s);
-                    if ((*j)->readable()) {
-                        EXT_("R in R fdset and readable: %d",s);
-                        int red = (*j)->read();
-                        if (red == 0) {
-                            (*j)->close();
-                            //right_sockets.erase(j);
-                            handle_last_status |= HANDLE_RIGHT_ERROR;
-                            
-                            error_on_read = true;
-                            on_right_error(*j);
-                            break;
-                        }
-                        if (red > 0) {
-                            meter_last_read += red;
-                            on_right_bytes(*j);
-                        }
-                    }
-                }
-            }
-            if( ! (*j)->paused_write()) {
-                if(xcom->in_writeset(s) || (*j)->com()->forced_write_reset()) {
-                    EXT_("R in W fdset: %d",s);
-                    if ((*j)->writable()) {
-                        EXT_("R in W fdset and writable: %d",s);
-                        int wrt = (*j)->write();
-                        if (wrt < 0) {
-                            (*j)->close();
-                            //right_sockets.erase(j);
-                            handle_last_status |= HANDLE_RIGHT_ERROR;
-                            
-                            error_on_write = true;
-                            on_right_error(*j);
-                            break;
-                        } else {
-                            meter_last_write += wrt;
-                        }					
-                    }	
-                }
             }
 		}
 
@@ -721,33 +761,7 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
             for(typename std::vector<baseHostCX*>::iterator ii = left_bind_sockets.begin(); ii != left_bind_sockets.end(); ++ii) {
                 int s = (*ii)->socket();
                 if (xcom->in_readset(s)) {
-                    sockaddr_in clientInfo;
-                    socklen_t addrlen = sizeof(clientInfo);
-
-                    int client = com()->accept(s, (sockaddr*)&clientInfo, &addrlen);
-                    
-                    if(new_raw()) {
-                        on_left_new_raw(client);
-                    }
-                    else {
-                        baseHostCX* cx = new_cx(client);
-                        
-                        // propagate nonlocal setting
-                        cx->com()->nonlocal_dst((*ii)->com()->nonlocal_dst());
-                        
-                        if(!cx->paused_read()) {
-                            cx->on_accept_socket(client);
-                        } else {
-                            cx->on_delay_socket(client);
-                            DEB_("baseProxy::handle_sockets_once[%d]: adding to left delayed sockets",client);
-                            // dealayed accept in effect -- carrier is accepted, but we will postpone higher level accept_socket
-                            ldaadd(cx);
-                            
-                        }
-                        on_left_new(cx);
-                    }
-                    
-                    handle_last_status |= HANDLE_LEFT_NEW;
+                        handle_cx_new('l',xcom,(*ii));
                 }
             }
             

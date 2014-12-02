@@ -186,6 +186,16 @@ public:
 	
 	virtual int run();
     virtual int prepare_sockets(baseCom*);   // which Com should be set: typically it should be the parent's proxy's Com
+    
+    // normal sockets (proxying data)
+    virtual bool handle_cx_events(unsigned char side, baseHostCX* cx); // return false to break socket loop. Always call this one in your overide.
+    virtual bool handle_cx_read(unsigned char side, baseHostCX* cx);   // return false to break socket loop. Always call this one in your overide.
+    virtual bool handle_cx_write(unsigned char side, baseHostCX* cx);  // return false to break socket loop. Always call this one in your overide.
+    virtual bool handle_cx_once(unsigned char side, baseCom* xcom, baseHostCX* cx);
+    
+    //bound sockets
+    bool handle_cx_new(unsigned char side, baseCom* xcom, baseHostCX* cx);
+    
     virtual int handle_sockets_once(baseCom*);
 
     inline bool pollroot() { return pollroot_; };
@@ -230,7 +240,12 @@ protected:
 	void set_clock();
 	bool run_timer(baseHostCX*);
 	void reset_timer();
-	
+
+// implement double __ logging
+public:
+    static int& log_level_ref() { return log_level; }
+private:
+    static int log_level;    
 };
 
 #endif
