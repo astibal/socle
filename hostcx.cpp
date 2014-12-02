@@ -208,9 +208,9 @@ std::string& baseHostCX::name() {
             }
             
             if(socket_in_name) {
-                name__ = string_format("%d::%s_%s:%s",socket(), com()->name() , host().c_str(),port().c_str());
+                name__ = string_format("%d::%s/%s:%s",socket(), com()->name() , host().c_str(),port().c_str());
             } else {
-                name__ = string_format("%s_%s:%s",com()->name() , host().c_str(),port().c_str());
+                name__ = string_format("%s/%s:%s",com()->name() , host().c_str(),port().c_str());
             }
             
 			//name__ = string_format("%d:<reduced>",socket());
@@ -225,9 +225,9 @@ std::string& baseHostCX::name() {
         }
         
         if(socket_in_name) {
-            name__ = string_format("%d::%s_%s:%s",socket(), com()->name() ,host().c_str(),port().c_str());
+            name__ = string_format("%d::%s/%s:%s",socket(), com()->name() ,host().c_str(),port().c_str());
         } else {
-            name__ = string_format("%s_%s:%s",com()->name() ,host().c_str(),port().c_str());
+            name__ = string_format("%s/%s:%s",com()->name() ,host().c_str(),port().c_str());
         }
 	}
 

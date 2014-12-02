@@ -55,6 +55,9 @@
 
 #define _FILE_ (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
 	
+	
+/* Define macros that log without any extra checks in the object */
+	
 #define LOG_(lev,x,...) \
     if(lout.level() >= lev) { \
         if( ( lout.print_srcline() && lout.level() > INF ) || lout.print_srcline_always()) { \
@@ -86,6 +89,9 @@
             LOGS_(lev,x); \
         } \
     }
+	
+	
+/* Define macros that log in some cases also source file and line number enabling object log_level atribute check */
 	
 #define L_LOG_(lev,x,...) \
     if(log_level >= lev || lout.level() >= lev) { \
@@ -128,7 +134,53 @@
         } \
     }
 
-	
+    
+/* Define macros that log objects with hr() function */    
+    
+#define LN_LOG_(lev,x,...) \
+    if(log_level >= lev || lout.level() >= lev) { \
+        lout.force(log_level >= lev); \
+        if( ( lout.print_srcline() && lout.level() > INF ) || ( lout.print_srcline() && log_level > INF ) || lout.print_srcline_always()) { \
+            lout.log2_w_name(lev,_FILE_,__LINE__,(hr()),(x),__VA_ARGS__); \
+        } else { \
+            lout.log_w_name(lev,(hr()),(x),__VA_ARGS__); \
+        } \
+    }
+
+#define LN_LOGS_(lev,x) \
+    if(log_level >= lev || lout.level() >= lev) { \
+        lout.force(log_level >= lev); \
+        if( ( lout.print_srcline() && lout.level() > INF ) || ( lout.print_srcline() && log_level > INF ) || lout.print_srcline_always()) { \
+            lout.log2_w_name(lev,_FILE_,__LINE__,(hr()),(x)); \
+        } else { \
+            lout.log_w_name(lev,(hr()),(x)); \
+        } \
+    }    
+    
+        
+#define T_LN_LOG_(name,interval,lev,x,...) \
+    if(this->log_level >= lev || lout.level() >= lev) { \
+        lout.force(log_level >= lev); \
+        if( ( lout.print_srcline() && lout.level() > INF ) || ( lout.print_srcline() && log_level > INF ) || lout.print_srcline_always()) { \
+            if(lout.click_timer(name,interval)) { \
+                LN_LOG_(lev,x,__VA_ARGS__); \
+            } \
+        }\
+    }
+
+#define T_LN_LOGS_(name,interval,lev,x) \
+    if(this->log_level >= lev || lout.level() >= lev) { \
+        lout.force(log_level >= lev); \
+        if( ( lout.print_srcline() && lout.level() > INF ) || ( lout.print_srcline() && log_level > INF ) || lout.print_srcline_always()) { \
+            if(lout.click_timer(name,interval)) { \
+                LN_LOGS_(lev,x); \
+            } \
+        } \
+    }
+    
+
+/* short names for macros without object attribute check */
+    
 #define EXT_(x,...) LOG_(EXT,(x),__VA_ARGS__)
 #define EXTS_(x,...) LOGS_(EXT,(x))
 #define T_EXT_(n,i,x,...) T_LOG_(n,i,EXT,(x),__VA_ARGS__)
@@ -193,6 +245,7 @@
 #define T_NONS_(n,i,x) T_LOGS_(n,i,NON,(x))
 
 
+/* Macros with 'log_level' attribute support */
 
 #define EXT__(x,...) L_LOG_(EXT,(x),__VA_ARGS__)
 #define EXTS__(x,...) L_LOGS_(EXT,(x))
@@ -258,10 +311,90 @@
 #define T_NONS__(n,i,x) T_L_LOGS_(n,i,NON,(x))
 
 
+/* Macros with support of both 'log_level' and hr() call */
+
+#define EXT___(x,...) LN_LOG_(EXT,(x),__VA_ARGS__)
+#define EXTS___(x,...) LN_LOGS_(EXT,(x))
+#define T_EXT___(n,i,x,...) T_LN_LOG_(n,i,EXT,(x),__VA_ARGS__)
+#define T_EXTS___(n,i,x) T_LN_LOGS_(n,i,EXT,(x))
+
+#define DUM___(x,...) LN_LOG_(DUM,(x),__VA_ARGS__)
+#define DUMS___(x,...) LN_LOGS_(DUM,(x))
+#define T_DUM___(n,i,x,...) T_LN_LOG_(n,i,DUM,(x),__VA_ARGS__)
+#define T_DUMS___(n,i,x) T_LN_LOGS_(n,i,DUM,(x))
+        
+#define DEB___(x,...) LN_LOG_(DEB,(x),__VA_ARGS__)
+#define DEBS___(x,...) LN_LOGS_(DEB,(x))
+#define T_DEB___(n,i,x,...) T_LN_LOG_(n,i,DEB,(x),__VA_ARGS__)
+#define T_DEBS___(n,i,x) T_LN_LOGS_(n,i,DEB,(x))
+
+
+#define DIA___(x,...) LN_LOG_(DIA,(x),__VA_ARGS__)
+#define DIAS___(x,...) LN_LOGS_(DIA,(x))
+#define T_DIA___(n,i,x,...) T_LN_LOG_(n,i,DIA,(x),__VA_ARGS__)
+#define T_DIAS___(n,i,x) T_LN_LOGS_(n,i,DIA,(x))
+
+
+#define INF___(x,...) LN_LOG_(INF,(x),__VA_ARGS__)
+#define INFS___(x,...) LN_LOGS_(INF,(x))
+#define T_INF___(n,i,x,...) T_LN_LOG_(n,i,INF,(x),__VA_ARGS__)
+#define T_INFS___(n,i,x) T_LN_LOGS_(n,i,INF,(x))
+
+
+#define NOT___(x,...) LN_LOG_(NOT,(x),__VA_ARGS__)
+#define NOTS___(x,...) LN_LOGS_(NOT,(x))
+#define T_NOT___(n,i,x,...) T_LN_LOG_(n,i,NOT,(x),__VA_ARGS__)
+#define T_NOTS___(n,i,x) T_LN_LOGS_(n,i,NOT,(x))
+
+
+#define WAR___(x,...) LN_LOG_(WAR,(x),__VA_ARGS__)
+#define WARS___(x,...) LN_LOGS_(WAR,(x))
+#define T_WAR___(n,i,x,...) T_LN_LOG_(n,i,WAR,(x),__VA_ARGS__)
+#define T_WARS___(n,i,x) T_LN_LOGS_(n,i,WAR,(x))
+
+
+#define ERR___(x,...) LN_LOG_(ERR,(x),__VA_ARGS__)
+#define ERRS___(x,...) LN_LOGS_(ERR,(x))
+#define T_ERR___(n,i,x,...) T_LN_LOG_(n,i,ERR,(x),__VA_ARGS__)
+#define T_ERRS___(n,i,x) T_LN_LOGS_(n,i,ERR,(x))
+
+
+#define FAT___(x,...) LN_LOG_(FAT,(x),__VA_ARGS__)
+#define FATS___(x,...) LN_LOGS_(FAT,(x))
+#define T_FAT___(n,i,x,...) T_LN_LOG_(n,i,FAT,(x),__VA_ARGS__)
+#define T_FATS___(n,i,x) T_LN_LOGS_(n,i,FAT,(x))
+
+
+#define NON___(x,...) LN_LOG_(NON,(x),__VA_ARGS__)
+#define NONS___(x,...) LN_LOGS_(NON,(x))
+#define T_NON___(n,i,x,...) T_LN_LOG_(n,i,NON,(x),__VA_ARGS__)
+#define T_NONS___(n,i,x) T_LN_LOGS_(n,i,NON,(x))
 
 
 #define PERIOD_START(interval) lout.periodic_start(interval);
 #define PERIOD_END lout.periodic_end();
+
+// process valist, and fill std::string
+#define PROCESS_VALIST(str,fmt)     \
+    int size = 1024;                \
+    va_list ap;                     \
+    while (1) {                     \
+        str.resize(size);           \
+        va_start(ap, fmt);          \
+        int n = vsnprintf((char *)str.c_str(), size, fmt.c_str(), ap);  \
+        va_end(ap);                 \
+                                    \
+        if (n > -1 && n < size) {   \
+            str.resize(n);          \
+                break;              \
+        }                           \
+                                    \
+        if (n > -1)                 \
+            size = n + 1;           \
+        else                        \
+            size *= 2;              \
+    }                               \
+
 
 struct timer {
 	time_t last;
@@ -306,9 +439,9 @@ public:
     inline bool dup2_cout() { return dup_to_cout_; }
 
     inline void print_srcline(bool b) { print_srcline_ = b; }
-    inline bool print_srcline() { return print_srcline_; }
+    inline bool& print_srcline() { return print_srcline_; }
     inline void print_srcline_always(bool b) { print_srcline_always_ = b; }
-    inline bool print_srcline_always() { return print_srcline_always_; }
+    inline bool& print_srcline_always() { return print_srcline_always_; }
 	
 	bool click_timer(std::string, int);
 	
@@ -316,8 +449,12 @@ public:
  	std::ostream* target() { return target_; }
  	void target(std::ostream* o) { target_ = o; }
 	
-	void log(unsigned int, const std::string&, ...);
-    void log2(unsigned int, const char*, int , const std::string&, ...);
+	void log(unsigned int l, const std::string& fmt, ...);
+    void log_w_name(unsigned int l, const char* n, const std::string& fmt, ...);
+    
+    void log2(unsigned int l, const char* f, int li, const std::string& fmt, ...);
+    void log2_w_name(unsigned int l, const char* f, int li, const char* n, const std::string& fmt, ...);
+    
     void force(bool b) { forced_ = b; }
 	
 	inline unsigned int period() { return period_; }

@@ -82,27 +82,9 @@ void logger::log(unsigned int l, const std::string& fmt, ...) {
 
 	
 	int date_len = std::strftime(date,sizeof(date),"%y-%m-%d %H:%M:%S",tmp);
-	
-    int size = 512;
-    std::string str;
-    va_list ap;
-    while (1) {
-        str.resize(size);
-        va_start(ap, fmt);
-        int n = vsnprintf((char *)str.c_str(), size, fmt.c_str(), ap);
-        va_end(ap);
 
-		if (n > -1 && n < size) {
-            str.resize(n);
-				break;
-        }
-        
-        if (n > -1)
-            size = n + 1;
-        else
-            size *= 2;
-    }
-    
+    std::string str;    
+    PROCESS_VALIST(str,fmt);
     
     
     std::string desc = std::string(level_table[0]);
@@ -135,32 +117,44 @@ void logger::log(unsigned int l, const std::string& fmt, ...) {
 };
 
 
+
 void logger::log2(unsigned int l, const char* src, int line, const std::string& fmt, ...) {
-    std::string src_info = string_format("%20s:%-4d",src,line);
+    std::string src_info = string_format("%20s:%-4d: ",src,line);
 
-
-    int size = 512;
     std::string str;
-    va_list ap;
-    while (1) {
-        str.resize(size);
-        va_start(ap, fmt);
-        int n = vsnprintf((char *)str.c_str(), size, fmt.c_str(), ap);
-        va_end(ap);
 
-        if (n > -1 && n < size) {
-            str.resize(n);
-                break;
-        }
-        
-        if (n > -1)
-            size = n + 1;
-        else
-            size *= 2;
-    }    
+    PROCESS_VALIST(str,fmt);
     
-    log(l,src_info + ": " + str);
+    log(l,src_info + str);
 }
+
+
+void logger::log_w_name(unsigned int l, const char* name, const std::string& fmt, ...) {
+
+    const char* n = "(null)";
+    if (name != nullptr) {
+        n = name;
+    }
+    
+    std::string  str;
+    PROCESS_VALIST(str,fmt);
+    log(l,string_format("[%s]: ",n)+str);
+}
+
+void logger::log2_w_name(unsigned int l, const char* f, int li, const char* name, const std::string& fmt, ...) {
+    const char* n = "(null)";
+    if (name != nullptr) {
+        n = name;
+    }
+
+    std::string src_info = string_format("%20s:%-4d: ",f,li);
+    std::string c_name = string_format("[%s]: ",n);
+    
+    std::string str;  
+    PROCESS_VALIST(str,fmt);
+    log(l,src_info+c_name+str);
+}
+
 
 
 bool logger::click_timer ( std::string xname , int interval) {

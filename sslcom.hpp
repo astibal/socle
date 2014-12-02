@@ -142,6 +142,8 @@ public:
 	virtual void init(baseHostCX* owner);
     virtual baseCom* replicate() { return new SSLCom(); } ;
     virtual const char* name() { return "ssl"; };
+    virtual const char* hr();
+    std::string hr_;
     
 	virtual void init_client();
 	int upgrade_client_socket(int s);
