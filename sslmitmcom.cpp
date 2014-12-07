@@ -34,17 +34,22 @@ bool SSLMitmCom::check_cert(const char* peer_name) {
         p->sslcom_server = true;
         
         if(p->sslcom_server) {
-            DEB__("SSLMitmCom::check_cert[%x]: calling to spoof peer certificate",this);
-            r = p->spoof_cert(cert);
-            if (r) {
-                // this is inefficient: many SSLComs are already initialized, this is running it once 
-                // more ...
-                // check if is waiting would help
-                if (p->sslcom_waiting) {
-                    p->init_server();
-                } else {
-                    WARS__("FIXME: Trying to init SSL server while it's already running!");
-                } 
+            
+            if(! sslcom_peer_sni_shortcut) {
+                DEB__("SSLMitmCom::check_cert[%x]: slow-path, calling to spoof peer certificate",this);
+                r = p->spoof_cert(cert);
+                if (r) {
+                    // this is inefficient: many SSLComs are already initialized, this is running it once 
+                    // more ...
+                    // check if is waiting would help
+                    if (p->sslcom_waiting) {
+                        p->init_server();
+                    } else {
+                        WARS__("FIXME: Trying to init SSL server while it's already running!");
+                    } 
+                }
+            } else {
+                DEB__("SSLMitmCom::check_cert[%x]: fast-path, spoof not necessary",this);
             }
         } else {
             WAR__("SSLMitmCom::check_cert[%x]: cannot spoof, peer is not SSL server",this);

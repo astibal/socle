@@ -225,8 +225,10 @@ public:
 	virtual void on_left_new_raw(int sock) {};
 	virtual void on_right_new_raw(int sock) {};
 	
-	std::string hr(void);
+	const char* hr(void);
 protected:
+    std::string hr_;
+    
 	// internal functions which should not be used directly
 	void run_timers(void);
     int read_socket(int,char);

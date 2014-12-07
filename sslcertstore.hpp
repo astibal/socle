@@ -46,6 +46,7 @@
 
 typedef std::pair<EVP_PKEY*,X509*> X509_PAIR;
 typedef std::map<std::string,X509_PAIR*> X509_CACHE;
+typedef std::map<std::string,std::string> FQDN_CACHE;
 
 
 class SSLCertStore {
@@ -76,6 +77,7 @@ public:
     void destroy();
     
      X509_CACHE cache_;
+     FQDN_CACHE fqdn_cache_;
      std::mutex mutex_cache_write_;
 
      // our killer feature here 
@@ -83,11 +85,13 @@ public:
      
      static int convert_ASN1TIME(ASN1_TIME*, char*, size_t);
      static std::string print_cert(X509*);
+     static std::string cert_get_cn(X509*);
      
      bool add(std::string& subject, EVP_PKEY* cert_privkey,X509* cert,X509_REQ* req=NULL);
      bool add(std::string& subject, X509_PAIR* p,X509_REQ* req=NULL);
      
-     X509_PAIR* find(std::string& subject);
+     X509_PAIR*  find(std::string& subject);
+     std::string find_subject_by_fqdn(std::string& fqdn);
      void erase(std::string& subject);
      
      virtual ~SSLCertStore();

@@ -41,7 +41,8 @@
 #define DUM 9
 #define EXT 10
 
-#define D_(x) if(lout.level() >= DEB) { (x); }
+#define DEB_DO_(x) if(lout.level() >= DEB) { (x); }
+#define LEV_(x) (lout.level() >= (x) ? true : false ) 
 
 #define O_LOG_(lev,x,...) \
 	if(lout.level() >= lev) { \

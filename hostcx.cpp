@@ -208,9 +208,9 @@ std::string& baseHostCX::name() {
             }
             
             if(socket_in_name) {
-                name__ = string_format("%d::%s/%s:%s",socket(), com()->name() , host().c_str(),port().c_str());
+                name__ = string_format("%d::%s_%s:%s",socket(), com()->name() , host().c_str(),port().c_str());
             } else {
-                name__ = string_format("%s/%s:%s",com()->name() , host().c_str(),port().c_str());
+                name__ = string_format("%s_%s:%s",com()->name() , host().c_str(),port().c_str());
             }
             
 			//name__ = string_format("%d:<reduced>",socket());
@@ -225,9 +225,9 @@ std::string& baseHostCX::name() {
         }
         
         if(socket_in_name) {
-            name__ = string_format("%d::%s/%s:%s",socket(), com()->name() ,host().c_str(),port().c_str());
+            name__ = string_format("%d::%s_%s:%s",socket(), com()->name() ,host().c_str(),port().c_str());
         } else {
-            name__ = string_format("%s/%s:%s",com()->name() ,host().c_str(),port().c_str());
+            name__ = string_format("%s_%s:%s",com()->name() ,host().c_str(),port().c_str());
         }
 	}
 
@@ -465,11 +465,8 @@ void baseHostCX::on_delay_socket(int fd) {
 
 std::string baseHostCX::hr() {
 	std::string r;
-	r+= this->name() + " " + string_format("R:%d/%d W:%d/%d",meter_read_count,meter_read_bytes,
-								meter_write_count,meter_write_bytes) + " " 
-					 + string_format("Rb:%d Wb:%d",readbuf()->size(),writebuf()->size())
-					 + string_format(" %p",this);
-					 
+	r+= this->name() + " " + string_format("%d:%d-%d:%d",meter_read_count,meter_read_bytes,
+                                                meter_write_count,meter_write_bytes);
 	return r;
 }
 
@@ -492,15 +489,15 @@ std::string baseHostCX::full_name(unsigned char side) {
 //         p_p =  "pport";
         
     } else {
-        return string_format("%s/%s:%s",t_c,t,t_p);
+        return string_format("%s_%s:%s",t_c,t,t_p);
     }
 
     if ( (side == 'l') || ( side == 'L') ) {
-        return string_format("%s/%s:%s to %s/%s:%s",t_c,t,t_p,p_c,p,p_p);
+        return string_format("%s_%s:%s to %s_%s:%s",t_c,t,t_p,p_c,p,p_p);
     } 
 
     //else
-    return string_format("%s/%s:%s to %s/%s:%s",p_c,p,p_p,t_c,t,t_p);
+    return string_format("%s_%s:%s to %s_%s:%s",p_c,p,p_p,t_c,t,t_p);
 
 }
 

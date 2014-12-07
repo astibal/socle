@@ -117,6 +117,11 @@ protected:
     
     bool sslcom_peer_hello_received = false;
     unsigned char sslcom_peer_hello_buffer[1500];
+    std::string sslcom_peer_hello_sni;
+    
+    bool enforce_peer_cert_from_cache(std::string & subj);
+    bool sslcom_peer_sni_shortcut = false;
+    
     
     // is the socket up or not
     bool sslcom_status_ = false;

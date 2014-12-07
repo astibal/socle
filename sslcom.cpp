@@ -359,9 +359,11 @@ void SSLCom::init_server() {
 	DEBS___("SSLCom::init_server");
 	
     if(sslcom_ctx) {
+        DEBS___("SSLCom::init_server: freeing old sslcom_ctx");
         SSL_CTX_free(sslcom_ctx);
     }
     if(sslcom_ssl) {
+        DEBS___("SSLCom::init_server: freeing old sslcom_ssl");
         SSL_free(sslcom_ssl);
     }
     
@@ -417,8 +419,8 @@ bool SSLCom::check_cert (const char* host) {
     X509 *peer;
     char peer_CN[256];
 
-    if ( SSL_get_verify_result ( sslcom_ssl ) !=X509_V_OK ) {
-        DIAS___( "check_cert: certificate doesn't verify" );
+    if ( !sslcom_server && SSL_get_verify_result ( sslcom_ssl ) !=X509_V_OK ) {
+        DIAS___( "check_cert: ssl client: target server's certificate cannot be verified!" );
     }
 
     /*Check the cert chain. The chain length
@@ -508,19 +510,20 @@ bool SSLCom::writable(int s) {
 
 void SSLCom::accept_socket ( int sockfd )  {
 
-	DIA___("SSLCom::accept_socket: %d",sockfd)
+	DIA___("SSLCom::accept_socket[%d]: attempt %d",sockfd,prof_accept_cnt);
 	
 	TCPCom::accept_socket(sockfd);
 	
     upgrade_server_socket(sockfd);
     
     ERR_clear_error();
-    if (SSL_accept (sslcom_ssl) > 0) {
-        DUM___("SSLCom::accept_socket[%d]: success at 1st attempt.",sockfd);
+    int r = SSL_accept (sslcom_ssl);
+    if (r > 0) {
+        DIA___("SSLCom::accept_socket[%d]: success at 1st attempt.",sockfd);
         prof_accept_ok++;
         sslcom_waiting = false;
     } else {
-        DUM___("SSLCom::accept_socket[%d]: need to call later.",sockfd);
+        DIA___("SSLCom::accept_socket[%d]: ret %d, need to call later.",sockfd,r);
     }
     prof_accept_cnt++;
 }
@@ -597,10 +600,10 @@ int SSLCom::waiting() {
 	}
 		
 
-	if (r == -1) {
+	if (r < 0) {
 		int err = SSL_get_error(sslcom_ssl,r);
 		if (err == SSL_ERROR_WANT_READ) {
-			DUM___("SSL_%s: want read",op);
+			DUM___("SSLCom::waiting: SSL_%s: want read",op);
 			
  			sslcom_waiting = true;
             prof_want_read_cnt++;
@@ -609,7 +612,7 @@ int SSLCom::waiting() {
  			return 1;
 		}
 		else if (err == SSL_ERROR_WANT_WRITE) {
-			DUM___("SSL_%s: want write",op);
+			DUM___("SSLCom::waiting: SSL_%s: want write",op);
 			
  			sslcom_waiting = true;
             prof_want_write_cnt++;
@@ -618,12 +621,14 @@ int SSLCom::waiting() {
  			return 1;
 		}
 		else {
-            DIA___("SSL_%s: error: %d",op,err);
+            DIA___("SSLCom::waiting: SSL_%s: error: %d",op,err);
             
             long err2 = ERR_get_error();
             do {
-                DIA___("  error code: %s",ERR_error_string(err2,nullptr));
-                err2 = ERR_get_error();
+                if(err2 != 0 || LEV_(DEB)) {
+                    DIA___("SSLCom::waiting:   error code: %s",ERR_error_string(err2,nullptr));
+                    err2 = ERR_get_error();
+                }
             } while (err2 != 0);
             
             
@@ -632,17 +637,24 @@ int SSLCom::waiting() {
 		}
  
 		
-	} else if (r < -1) {
-		DIA___("SSL failed: %s",op);
-		
-		//unclean shutdown
-		sslcom_waiting = false;
-		SSL_shutdown(sslcom_ssl);
-		return -1;
+// 	} else if (r < -1) {
+// 		DIA___("SSLCom::waiting: SSL failed: %s, ret %d",op,r);
+//         
+//         long err2 = ERR_get_error();
+//         DIA___("SSLCom::waiting:   error code: %s",ERR_error_string(err2,nullptr));
+// 		
+// 		//unclean shutdown
+// 		sslcom_waiting = false;
+// 		SSL_shutdown(sslcom_ssl);
+// 		return -1;
 		
 	} else if (r == 0) {
-		DIA___("SSL failed: %s",op);
-		// shutdown OK, but connection failed
+		DIA___("SSLCom::waiting: SSL failed: %s, ret %d",op ,r);
+
+        long err2 = ERR_get_error();
+        DIA___("SSLCom::waiting:   error code: %s",ERR_error_string(err2,nullptr));
+
+        // shutdown OK, but connection failed
 		sslcom_waiting = false;		
 		return -1;
 	}
@@ -653,7 +665,7 @@ int SSLCom::waiting() {
         prof_accept_ok++;
     }
 	
-	DEB___("SSLCom::ssl_waiting: operation succeeded: %s", op);
+	DEB___("SSLCom::waiting: operation succeeded: %s", op);
 	sslcom_waiting = false;	
 
 	if(!sslcom_server) {
@@ -684,10 +696,26 @@ bool SSLCom::waiting_peer_hello()
                 int red = ::recv(p->sslcom_fd,sslcom_peer_hello_buffer,1500,MSG_PEEK);
                 if (red > 0) {
                     DIA___("SSLCom::waiting_peer_hello: %d bytes in buffer for hello analysis",red);
-                    sslcom_peer_hello_received = true;
-                    DEB___("SSLCom::waiting_peer_hello: ClientHello data:\n%s",hex_dump(sslcom_peer_hello_buffer,red).c_str());
+                    DUM___("SSLCom::waiting_peer_hello: ClientHello data:\n%s",hex_dump(sslcom_peer_hello_buffer,red).c_str());
                     
-                    parse_peer_hello(sslcom_peer_hello_buffer,red);
+                    if (! parse_peer_hello(sslcom_peer_hello_buffer,red)) {
+                        DIA___("SSLCom::waiting_peer_hello: analysis failed",red);
+                        return false;
+                    }
+                    sslcom_peer_hello_received = true;
+
+                    
+                    if(sslcom_peer_hello_sni.size() > 0) {
+                        std::string subj = certstore()->find_subject_by_fqdn(sslcom_peer_hello_sni);
+                        if(subj.size() > 0) {
+                            DIA___("SSLCom::waiting_peer_hello: peer's SNI found in subject cache: '%s'",subj.c_str());
+                            if(! enforce_peer_cert_from_cache(subj));
+
+                            
+                        } else {
+                            DIAS___("Peer's SNI NOT found in certstore, no shortcuts possible.");
+                        } 
+                    }
                     
                 } else {
                     DIA___("SSLCom::waiting_peer_hello: peek returns %d, readbuf=%d",red,owner_cx()->readbuf()->size());
@@ -705,6 +733,44 @@ bool SSLCom::waiting_peer_hello()
     
     return sslcom_peer_hello_received;
 }
+
+
+bool SSLCom::enforce_peer_cert_from_cache(std::string & subj) {
+    if(peer() != nullptr) {
+        
+        if(peer()->owner_cx() != nullptr) {
+            DIAS___("SSLCom::enforce_peer_cert_from_cache: about to force peer's side to use cached certificate");
+            
+            X509_PAIR* parek = certstore()->find(subj);
+            if (parek != nullptr) {
+                DIA___("Found cached certificate %s based on fqdn search.",subj.c_str());
+                SSLCom* p = dynamic_cast<SSLCom*>(peer());
+                if(p != nullptr) {
+                    
+                    if(p->sslcom_waiting) {
+                        p->sslcom_pref_cert = parek->second;
+                        p->sslcom_pref_key = parek->first;
+                        p->init_server();
+                        p->owner_cx()->paused(false);
+                        DIAS___("SSLCom::enforce_peer_cert_from_cache: peer certs replaced by SNI lookup, peer was unpaused.");
+                        sslcom_peer_sni_shortcut = true;
+                        
+                        return true;
+                    } else {
+                        DIAS_("SSLCom::enforce_peer_cert_from_cache: cannot modify non-waiting peer!");
+                    }
+                } else {
+                    DIAS___("SSLCom::enforce_peer_cert_from_cache: failed to update peer:  it's not SSLCom* type!");
+                }
+            } else {
+                DIAS___("SSLCom::enforce_peer_cert_from_cache: failed to update initiator with cached certificate: certificate was not found.!");
+            }
+        }
+    }    
+    
+    return false;
+}
+
 
 bool SSLCom::parse_peer_hello(unsigned char* ptr, unsigned int len) {
 
@@ -724,7 +790,11 @@ bool SSLCom::parse_peer_hello(unsigned char* ptr, unsigned int len) {
         unsigned short message_length = ntohs(b.get_at<unsigned short>(curpos)); curpos+=sizeof(unsigned short);
         
         
-        DIA___("SSLCom::parse_peer_hello: received message type %d, version %d.%d, length %d",message_type,version_maj, version_min, message_length);
+        DIA___("SSLCom::parse_peer_hello: buffer size %d, received message type %d, version %d.%d, length %d",len,message_type,version_maj, version_min, message_length);
+        if(len != (unsigned int)message_length + 5) {
+            DIAS___("SSLCom::parse_peer_hello: incomplete message received");
+            return false;
+        }
         
         if(message_type == 22) {
             
@@ -796,6 +866,8 @@ unsigned short SSLCom::parse_peer_hello_extensions(buffer& b, unsigned int curpo
                 s.append((const char*)b.data()+curpos,(size_t)sn_hostname_length);
                 
                 DIA___("SSLCom::parse_peer_hello_extensions:    SNI hostname: %s",s.c_str());
+                
+                sslcom_peer_hello_sni = s;
                 SSL_set_tlsext_host_name(sslcom_ssl,s.c_str());
             }
             
@@ -811,9 +883,6 @@ unsigned short SSLCom::parse_peer_hello_extensions(buffer& b, unsigned int curpo
 #pragma GCC diagnostic push
 
 int SSLCom::read ( int __fd, void* __buf, size_t __n, int __flags )  {
-	
-	//this one will be much trickier than just single call of SSL_read
-	//return SSL_read (sslcom_ssl,__buf,__n);
 	
 	int total_r = 0;
     int rounds = 0;
@@ -867,7 +936,7 @@ int SSLCom::read ( int __fd, void* __buf, size_t __n, int __flags )  {
 //         sslcom_read_blocked_on_write=0;
 //         sslcom_read_blocked=0;
 
-        DUM___("SSLCom::read[%d]: about to read  max %4d bytes",__fd,__n);
+        DEB___("SSLCom::read[%d]: about to read  max %4d bytes",__fd,__n);
         
         ERR_clear_error();
         int r = SSL_read (sslcom_ssl,__buf+total_r,__n-total_r);
@@ -941,7 +1010,7 @@ int SSLCom::read ( int __fd, void* __buf, size_t __n, int __flags )  {
 				sslcom_read_blocked_on_write=1;
                 
                 //forced_write(true);  // we can opportinistically enforce write operation regardless of select result
-                forced_write_on_read(true);
+                forced_read_on_write(true);
                 
 				if(total_r > 0) return total_r;
 				return r;
@@ -1074,7 +1143,7 @@ int SSLCom::write ( int __fd, const void* __buf, size_t __n, int __flags )  {
 			sslcom_write_blocked_on_read=1;
 //             forced_read(true);
             
-            forced_read_on_write(true);
+            forced_write_on_read(true);
 			break;
 
 			/* Some other error */
@@ -1097,9 +1166,9 @@ void SSLCom::cleanup()  {
 
 	TCPCom::cleanup();
 
-    DEB___("  prof_accept %d, prof_connect %d, prof_peek %d, prof_read %d, prof_want_read %d, prof_want_write %d, prof_write %d",
+    DIA___("  prof_accept %d, prof_connect %d, prof_peek %d, prof_read %d, prof_want_read %d, prof_want_write %d, prof_write %d",
         prof_accept_cnt   , prof_connect_cnt   , prof_peek_cnt   , prof_read_cnt   , prof_want_read_cnt   , prof_want_write_cnt   , prof_write_cnt);
-    DEB___("   prof_accept_ok %d, prof_connect_ok %d",prof_accept_ok, prof_connect_ok);
+    DIA___("   prof_accept_ok %d, prof_connect_ok %d",prof_accept_ok, prof_connect_ok);
     
 //     if(sslcom_sbio) {
 //         BIO_free(sslcom_sbio); // produces Invalid read of size 8: at 0x539D840: BIO_free (in /usr/lib/x86_64-linux-gnu/libcrypto.so.1.0.0)
@@ -1219,9 +1288,9 @@ bool SSLCom::com_status() {
         // T_DIA___("sslcom_status_ok",1,"SSLCom::com_status: returning %d",r);
         
         if(r) {
-            DIAS___("SSLCom::com_status: transport layer OK")
+            DIAS___("SSLCom::com_status: L4 and SSL layers OK")
         } else {
-            DEBS___("SSLCom::com_status: SSL layer not ready.")
+            DEBS___("SSLCom::com_status: L4 OK, but SSL layer not ready.")
         }
         
         DEB___("SSLCom::com_status: returning %d",r);
@@ -1229,6 +1298,6 @@ bool SSLCom::com_status() {
     }
     
     // T_DIAS___("sslcom_status_nok",1,"SSLCom::com_status: returning 0");
-    DEBS___("SSLCom::com_status: lower transport layer not ready, returning 0");
+    DEBS___("SSLCom::com_status: L4 layer not ready, returning 0");
     return false;
 }

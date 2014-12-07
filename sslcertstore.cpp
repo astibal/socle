@@ -18,6 +18,7 @@
 
 #include <cstdio>
 #include <ctime>
+#include <regex>
 
 #include <display.hpp>
 #include <sslcertstore.hpp>
@@ -190,7 +191,7 @@ bool SSLCertStore::add(std::string& subject,EVP_PKEY* cert_privkey, X509* cert, 
     X509_PAIR* parek = new X509_PAIR(cert_privkey,cert);
     
     if (cert_privkey == NULL || cert == NULL || parek == NULL) {
-        DIA__("SSLCertStore::add[x]: one of about to be stored componet is NULL",this);
+        DIA__("SSLCertStore::add[%x]: one of about to be stored componet is NULL",this);
         return false;
     }
     
@@ -206,10 +207,15 @@ bool SSLCertStore::add(std::string& subject,X509_PAIR* parek, X509_REQ* req) {
         // lock, don't mess with cache_, I will write into it now
         mutex_cache_write_.lock();
         cache_[subject] = parek;
+        DIA__("SSLCertStore::add[%x] cert %s",this,subject.c_str());
+        
+        std::string cn = cert_get_cn(parek->second);
+        fqdn_cache_[cn] = subject;
+        DIA__("SSLCertStore::add[%x] fqdn %s -> %s",this,cn.c_str(), subject.c_str());
     }
     catch (std::exception& e) {
         op_status = false;
-        DIA__("SSLCertStore::add[x] - exception caught: %s",this,e.what());
+        DIA__("SSLCertStore::add[%x] - exception caught: %s",this,e.what());
     }
     
     // now you can write too
@@ -238,6 +244,29 @@ X509_PAIR* SSLCertStore::find(std::string& subject) {
     return NULL;
 }
 
+std::string SSLCertStore::find_subject_by_fqdn(std::string& fqdn) {
+     FQDN_CACHE::iterator entry = fqdn_cache_.find(fqdn);
+     if (entry == fqdn_cache_.end()) {
+        DEB__("SSLCertStore::find_subject_by_fqdn[%x]: NOT cached '%s'",this, fqdn.c_str());
+     } else {
+        DEB__("SSLCertStore::find_subject_by_fqdn[%x]: found cached '%s'->'%s'",this,fqdn.c_str(),(*entry).second.c_str());
+        return (*entry).second;
+     }
+
+     std::regex hostname_re("^[a-zA-Z0-9-]+\.");
+     std::string wildcard_fqdn = std::regex_replace(fqdn,hostname_re,"*.");
+     
+     entry = fqdn_cache_.find(wildcard_fqdn);
+     if (entry == fqdn_cache_.end()) {
+        DEB__("SSLCertStore::find_subject_by_fqdn[%x]: wildcard NOT cached '%s'",this, wildcard_fqdn.c_str());
+     } else {
+        DEB__("SSLCertStore::find_subject_by_fqdn[%x]: found cached wildcard '%s'->'%s'",this,fqdn.c_str(),(*entry).second.c_str());
+        return (*entry).second;
+     }     
+     
+     
+     return "";     
+}
 
 //don't call erase for now, it can delete cert/key while being used by different threads!!!
 //FIXME: either duplicates should be returned, or each pair should contain some reference checking/delete flag to kill themselves
@@ -257,6 +286,8 @@ void SSLCertStore::erase(std::string& subject) {
             
             delete p;
         }
+        
+        mutex_cache_write_.unlock();
     }
     catch(std::exception& e) {
         op_status = false;
@@ -266,7 +297,7 @@ void SSLCertStore::erase(std::string& subject) {
         ERR__("Error to remove certificate '%s' from cache",subject.c_str());
     }
     
-    mutex_cache_write_.unlock();
+    
 }
 
 X509_PAIR* SSLCertStore::spoof(X509* cert_orig) {
@@ -519,6 +550,18 @@ int SSLCertStore::convert_ASN1TIME(ASN1_TIME *t, char* buf, size_t len) {
     }
     BIO_free(b);
     return EXIT_SUCCESS;
+}
+
+
+std::string SSLCertStore::cert_get_cn(X509* x) {
+    char tmp[512];
+    std::string s;
+
+    // get info from the peer certificate
+    X509_NAME_get_text_by_NID(X509_get_subject_name(x),NID_commonName, tmp,512);
+    s.append(tmp);
+    
+    return s;
 }
 
 std::string SSLCertStore::print_cert(X509* x) {
