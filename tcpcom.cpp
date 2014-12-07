@@ -56,7 +56,7 @@ int TCPCom::connect(const char* host, const char* port, bool blocking) {
         // Keep it here: would be good if we can do something like this in the future
         
         if(nonlocal_src()) {
-            DEB_("TCPCom::connect[%s:%s]: About to name socket[%d] after: %s:%d",host,port,sfd,nonlocal_src_host().c_str(),nonlocal_src_port());
+            DEB_("TCPCom::connect[%s:%s]: about to name socket[%d] after: %s:%d",host,port,sfd,nonlocal_src_host().c_str(),nonlocal_src_port());
             int bind_status = namesocket(sfd,nonlocal_src_host(),nonlocal_src_port());
             if (bind_status != 0) {
                     WAR_("cannot bind this port: %s",strerror(bind_status));
@@ -69,7 +69,7 @@ int TCPCom::connect(const char* host, const char* port, bool blocking) {
         
         
         if (sfd == -1) {
-            DEBS_("failed to create socket");
+            DEB_("TCPCom::connect[%s:%s]: socket[%d]: failed to create socket",host,port,sfd);
             continue;
         }
         
@@ -78,11 +78,11 @@ int TCPCom::connect(const char* host, const char* port, bool blocking) {
 
             if (::connect(sfd, rp->ai_addr, rp->ai_addrlen) < 0) {
                 if ( errno == EINPROGRESS ) {
-                    DUMS_("socket connnected with EINPROGRESS");
+                    DEB_("TCPCom::connect[%s:%s]: socket[%d]: connnect errno: EINPROGRESS",host,port,sfd);
                     break;
                     
                 } else {
-                    INF_("socket connnected with %d", errno);
+                    NOT_("TCPCom::connect[%s:%s]: socket[%d]: connnect errno: %s",host,port,sfd,strerror(errno));
                 }
             } 
             close(sfd);

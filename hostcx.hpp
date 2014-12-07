@@ -231,10 +231,12 @@ public:
 	inline bool error() { return error_; }
 	inline void error(bool b) { error_ = b; }
 	void socket(int s) {
-		if (s > 0) {
+		if (s != 0) {
 			fds_ = s;
 		}
 	};
+    inline void remove_socket() { fds_ = 0; };
+    
 	int socket() const { return fds_; };
     bool is_connected();
 	
