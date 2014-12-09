@@ -74,7 +74,7 @@ protected:
 	unsigned short nonlocal_dst_port_;
 	struct sockaddr_storage nonlocal_dst_peer_info_;
     
-    bool nonlocal_src_ = true;
+    bool nonlocal_src_ = false;
     std::string nonlocal_src_host_;
     unsigned short nonlocal_src_port_;
     

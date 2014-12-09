@@ -375,9 +375,11 @@
 #define PERIOD_START(interval) lout.periodic_start(interval);
 #define PERIOD_END lout.periodic_end();
 
+
+#define VA_BUFFSIZE 1024
 // process valist, and fill std::string
 #define PROCESS_VALIST(str,fmt)     \
-    int size = 1024;                \
+    int size = VA_BUFFSIZE;         \
     va_list ap;                     \
     while (1) {                     \
         str.resize(size);           \

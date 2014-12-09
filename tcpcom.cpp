@@ -81,13 +81,16 @@ int TCPCom::connect(const char* host, const char* port, bool blocking) {
                     DEB_("TCPCom::connect[%s:%s]: socket[%d]: connnect errno: EINPROGRESS",host,port,sfd);
                     break;
                     
+                    
                 } else {
                     NOT_("TCPCom::connect[%s:%s]: socket[%d]: connnect errno: %s",host,port,sfd,strerror(errno));
                 }
+
+                close(sfd);
+                sfd = 0;
+                DUMS_("new attempt, socket reset");
+                
             } 
-            close(sfd);
-            sfd = -1;
-            DUMS_("new attempt, socket reset");
         } else {
             if (::connect(sfd, rp->ai_addr, rp->ai_addrlen) != 0) {
                 continue;
@@ -98,12 +101,12 @@ int TCPCom::connect(const char* host, const char* port, bool blocking) {
     }
 
     
-    if(sfd <= 0) {
-        ERRS_("connect failed");
+    if(sfd == 0) {
+        ERRS_("TCPCom::connect[%s:%s]: socket[%d]: connect failed",host,port,sfd);
     }
     
     if (rp == NULL) {
-        ERRS_("Could not connect");
+        ERRS_("TCPCom::connect[%s:%s]: socket[%d]: connect failed",host,port,sfd);
         return -2;
     }
 

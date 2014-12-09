@@ -1023,8 +1023,10 @@ const char* baseProxy::hr() {
 
 	int lb = left_bind_sockets.size();
 	int ls = left_sockets.size();
+    int la = left_delayed_accepts.size();
 	int lp = left_pc_cx.size();
 	int rb = right_bind_sockets.size();
+    int ra = right_delayed_accepts.size();
 	int rs = right_sockets.size();
 	int rp = right_pc_cx.size();
 
@@ -1038,6 +1040,10 @@ const char* baseProxy::hr() {
 		for(typename std::vector<baseHostCX*>::iterator ii = left_sockets.begin(); ii != left_sockets.end(); ++ii) { hr_ += ("l:" + (*ii)->hr() + " "); };
 		empty = false;	
 	}
+    if(la > 0) {
+        for(typename std::vector<baseHostCX*>::iterator ii = left_delayed_accepts.begin(); ii != left_delayed_accepts.end(); ++ii) { hr_ += ("*l:" + (*ii)->hr() + " "); };
+        empty = false;  
+    }
 	if(lp > 0) {
 		for(typename std::vector<baseHostCX*>::iterator ii = left_pc_cx.begin(); ii != left_pc_cx.end(); ++ii) { hr_ += ("x:" + (*ii)->hr() + " "); };
 		empty = false;	
@@ -1050,6 +1056,10 @@ const char* baseProxy::hr() {
 		for(typename std::vector<baseHostCX*>::iterator ii = right_sockets.begin(); ii != right_sockets.end(); ++ii) { hr_ += ("r:" + (*ii)->hr() + " "); };
 		empty = false;	
 	}
+    if(ra > 0) {
+        for(typename std::vector<baseHostCX*>::iterator ii = right_delayed_accepts.begin(); ii != right_delayed_accepts.end(); ++ii) { hr_ += ("*r:" + (*ii)->hr() + " "); };
+        empty = false;  
+    }
 	if(rp > 0) {
 		for(typename std::vector<baseHostCX*>::iterator ii = right_pc_cx.begin(); ii != right_pc_cx.end(); ++ii) { hr_ += ("y:" + (*ii)->hr() + " "); };
 		empty = false;	
