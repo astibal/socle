@@ -26,7 +26,8 @@
 
 #include <thread>
 #include <mutex>
-
+#include <vector>
+#include <list>
 #include <map>
 
 #define NON 0
@@ -45,20 +46,20 @@
 #define LEV_(x) (lout.level() >= (x) ? true : false ) 
 
 #define O_LOG_(lev,x,...) \
-	if(lout.level() >= lev) { \
-		lout.log(lev,(x),__VA_ARGS__); \
-	}
+    if(lout.level() >= lev) { \
+        lout.log(lev,(x),__VA_ARGS__); \
+    }
 
 #define O_LOGS_(lev,x) \
-	if(lout.level() >= lev) { \
-		lout.log(lev,(x)); \
-	}
+    if(lout.level() >= lev) { \
+        lout.log(lev,(x)); \
+    }
 
 #define _FILE_ (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
-	
-	
+
+
 /* Define macros that log without any extra checks in the object */
-	
+
 #define LOG_(lev,x,...) \
     if(lout.level() >= lev) { \
         if( ( lout.print_srcline() && lout.level() > INF ) || lout.print_srcline_always()) { \
@@ -90,10 +91,10 @@
             LOGS_(lev,x); \
         } \
     }
-	
-	
+
+
 /* Define macros that log in some cases also source file and line number enabling object log_level atribute check */
-	
+
 #define L_LOG_(lev,x,...) \
     if(log_level >= lev || lout.level() >= lev) { \
         lout.force(log_level >= lev); \
@@ -114,7 +115,7 @@
         } \
     }    
     
-	
+
 #define _T_L_LOG_(name,interval,lev,x,...) \
     if(this->log_level >= lev || lout.level() >= lev) { \
         lout.force(log_level >= lev); \
@@ -400,18 +401,21 @@
 
 
 struct timer {
-	time_t last;
-	unsigned int timeout;
+    time_t last;
+    unsigned int timeout;
 };
 
 typedef struct timer timer_tt;
 
-class logger {
-protected:
-	unsigned int level_;
-	unsigned int period_ = 5;
-	time_t last_period = 0;
-	bool last_period_status = false;
+
+class logger_profile {
+
+public:  
+    virtual ~logger_profile();    
+    unsigned int level_;
+    unsigned int period_ = 5;
+    time_t last_period = 0;
+    bool last_period_status = false;
     
     //if target is set, should we write also to std::cout?
     bool dup_to_cout_ = true;
@@ -425,18 +429,29 @@ protected:
     // next print output will be forced => printed regardless of it's level
     bool forced_ = false;
     
-	mutable std::mutex mtx_lout;
-	
-	std::map<std::string,timer_tt> timers;
-	mutable std::mutex mtx_timers;
-	
-     std::ostream* target_ = nullptr;
+    // where to log?
+    std::list<std::ostream*> targets_;
+    std::list<int> remote_targets_;
+};
+
+// inherit default setting from logger_profile
+class logger : public logger_profile {
+protected:
+
+    
+    mutable std::mutex mtx_lout;
+    std::map<std::string,timer_tt> timers;
+    mutable std::mutex mtx_timers;
+
+
+    std::map<uint64_t,logger_profile*> target_profiles_;
+    
 public:
-	logger() { level_=0; period_ =5; };
-    ~logger() { if(target_) { target()->flush(); delete target_; } };
-	
-	inline void level(unsigned int l) { level_ = l; };
-	inline unsigned int level(void) const { return level_; };
+    logger() { level_=0; period_ =5; };
+    virtual ~logger() {};
+
+    inline void level(unsigned int l) { level_ = l; };
+    inline unsigned int level(void) const { return level_; };
     
     inline void dup2_cout(bool b) { dup_to_cout_ = b; }
     inline bool dup2_cout() { return dup_to_cout_; }
@@ -445,26 +460,31 @@ public:
     inline bool& print_srcline() { return print_srcline_; }
     inline void print_srcline_always(bool b) { print_srcline_always_ = b; }
     inline bool& print_srcline_always() { return print_srcline_always_; }
-	
-	bool click_timer(std::string, int);
-	
-	
- 	std::ostream* target() { return target_; }
- 	void target(std::ostream* o) { target_ = o; }
-	
-	void log(unsigned int l, const std::string& fmt, ...);
+
+    bool click_timer(std::string, int);
+
+
+    std::list<std::ostream*>& targets() { return targets_; }
+    void targets(std::ostream* o) { targets_.push_back(o); }
+
+    std::list<int>& remote_targets() { return remote_targets_; }
+    void remote_targets(int s) { remote_targets_.push_back(s); }
+
+    void log(unsigned int l, const std::string& fmt, ...);
     void log_w_name(unsigned int l, const char* n, const std::string& fmt, ...);
     
     void log2(unsigned int l, const char* f, int li, const std::string& fmt, ...);
     void log2_w_name(unsigned int l, const char* f, int li, const char* n, const std::string& fmt, ...);
     
+    std::map<uint64_t,logger_profile*>& target_profiles() { return target_profiles_; }
+    
     void force(bool b) { forced_ = b; }
-	
-	inline unsigned int period() { return period_; }
-	inline void period(unsigned int p) { period_ = p; }
-	
+
+    inline unsigned int period() { return period_; }
+    inline void period(unsigned int p) { period_ = p; }
+
     bool periodic_start(unsigned int s);	
-	bool periodic_end();
+    bool periodic_end();
 };
 
 extern logger lout;

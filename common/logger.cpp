@@ -31,11 +31,22 @@
 #include "logger.hpp"
 
 #include <sys/time.h>
+#include <sys/socket.h>
 
 logger lout;
 
 static  std::string level_table[] = {"None    ","Fatal   ","Critical","Error   ","Warning ","Notify  ","Informat","Diagnose","Debug   ","Dumpit  ","Extreme "};
 
+
+logger_profile::~logger_profile() { 
+    for(std::list<std::ostream*>::iterator i = targets_.begin(); i != targets_.end(); ++i) {  
+        if(*i != nullptr) { 
+                (*i)->flush(); 
+                delete *i; 
+            
+        } 
+    }
+}
 
 bool logger::periodic_start(unsigned int s) {
 	time_t now = time(NULL);
@@ -64,24 +75,24 @@ bool logger::periodic_end() {
 
 void logger::log(unsigned int l, const std::string& fmt, ...) {
 
-	std::lock_guard<std::mutex> lck(mtx_lout);
+    std::lock_guard<std::mutex> lck(mtx_lout);
 
     if (l > level() && ! forced_) return;
     forced_ = false;
-    
-	struct timeval tv;
-	struct timezone tz;
-	
-	gettimeofday(&tv,&tz);
-	
-	time_t *now = &tv.tv_sec;
-	time(now);
-	struct tm *tmp;
-	tmp = localtime(now);	
-	char date[64];
 
-	
-	int date_len = std::strftime(date,sizeof(date),"%y-%m-%d %H:%M:%S",tmp);
+    struct timeval tv;
+    struct timezone tz;
+
+    gettimeofday(&tv,&tz);
+
+    time_t *now = &tv.tv_sec;
+    time(now);
+    struct tm *tmp;
+    tmp = localtime(now);	
+    char date[64];
+
+
+    int date_len = std::strftime(date,sizeof(date),"%y-%m-%d %H:%M:%S",tmp);
 
     std::string str;    
     PROCESS_VALIST(str,fmt);
@@ -92,27 +103,38 @@ void logger::log(unsigned int l, const std::string& fmt, ...) {
 		desc = string_format("%d",l);
 	} else {
 		desc = level_table[l];
-	}
-	
-	std::ostream *o = &std::cout;
-    if( l <= ERR) {
-        o = &std::cerr;
-    }
+	}    
     
-    if(target() != nullptr) {
-        o = target();
+    for(std::list<std::ostream*>::iterator i = targets().begin(); i != targets().end(); ++i) {
+        if(target_profiles().find((uint64_t)*i) != target_profiles().end()) 
+            if(target_profiles()[(uint64_t)*i]->level_ < l) 
+                continue;
+        *(*i) << std::string(date,date_len) << "." << string_format("%06d",tv.tv_usec) << " <" << std::hex << std::this_thread::get_id() << "> " << desc << " - " << str << std::endl;
     }
 
-    *o << std::string(date,date_len) << "." << string_format("%06d",tv.tv_usec) << " <" << std::hex << std::this_thread::get_id() << "> " << desc << " - " << str << std::endl;
+    for(std::list<int>::iterator i = remote_targets().begin(); i != remote_targets().end(); ++i) {
+        
+        if(target_profiles().find((uint64_t)*i) != target_profiles().end()) 
+            if(target_profiles()[(uint64_t)*i]->level_ < l) 
+                continue;
+            
+        std::stringstream  s;
+        s << std::string(date,date_len) << "." << string_format("%06d",tv.tv_usec) << " <" << std::hex << std::this_thread::get_id() << "> " << desc << " - " << str <<  "\r\n";
+        std::string a = s.str();
+        
+        if(::send(*i,a.c_str(),a.size(),0) < 0) {
+            std::cerr << string_format("Error: cannot write remote socket: %d",*i);
+        }
+    }
     
-    // log extra to stdout, despite we have target set
-    if(target() != nullptr && dup2_cout()) {
-        o = &std::cout;
+    // if set, log extra to stdout/stderr
+    if(dup2_cout()) {
+        std::ostream* o = &std::cout;
 
         if( l <= ERR) {
             o = &std::cerr;
         }
-        std::cout << std::string(date,date_len) << "." << string_format("%06d",tv.tv_usec) << " <" << std::hex << std::this_thread::get_id() << "> " << desc << " - " << str << std::endl;
+        *o << std::string(date,date_len) << "." << string_format("%06d",tv.tv_usec) << " <" << std::hex << std::this_thread::get_id() << "> " << desc << " - " << str << std::endl;
     }
 };
 
