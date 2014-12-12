@@ -709,9 +709,9 @@ bool SSLCom::waiting_peer_hello()
                         std::string subj = certstore()->find_subject_by_fqdn(sslcom_peer_hello_sni);
                         if(subj.size() > 0) {
                             DIA___("SSLCom::waiting_peer_hello: peer's SNI found in subject cache: '%s'",subj.c_str());
-                            if(! enforce_peer_cert_from_cache(subj));
-
-                            
+                            if(! enforce_peer_cert_from_cache(subj)) {
+                                DIAS___("SSLCom::waiting_peer_hello: fallback to slow-path");
+                            }
                         } else {
                             DIAS___("Peer's SNI NOT found in certstore, no shortcuts possible.");
                         } 
@@ -842,6 +842,8 @@ bool SSLCom::parse_peer_hello(unsigned char* ptr, unsigned int len) {
         }
     }
     
+    
+    DIA___("SSLCom::waiting_peer_hello: return status %s",ret ? "true" : "false");
     return ret;
 }
 
