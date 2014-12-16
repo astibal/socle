@@ -105,36 +105,50 @@ void logger::log(unsigned int l, const std::string& fmt, ...) {
 		desc = level_table[l];
 	}    
     
+    bool really_dup = dup2_cout();
+    
+    std::stringstream ss;
+    ss << std::string(date,date_len) << "." << string_format("%06d",tv.tv_usec) << " <" << std::hex << std::this_thread::get_id() << "> " << desc << " - " << str;
+    std::string sss = ss.str();
+    
     for(std::list<std::ostream*>::iterator i = targets().begin(); i != targets().end(); ++i) {
         if(target_profiles().find((uint64_t)*i) != target_profiles().end()) 
-            if(target_profiles()[(uint64_t)*i]->level_ < l) 
+            if(target_profiles()[(uint64_t)*i]->level_ < l && ! forced_) 
                 continue;
-        *(*i) << std::string(date,date_len) << "." << string_format("%06d",tv.tv_usec) << " <" << std::hex << std::this_thread::get_id() << "> " << desc << " - " << str << std::endl;
+            if(forced_ && target_profiles()[(uint64_t)*i]->level_ < INF)
+                continue;
+            
+        *(*i) << sss << std::endl;
+        if(target_profiles()[(uint64_t)*i]->dup_to_cout_) really_dup = true;
     }
 
     for(std::list<int>::iterator i = remote_targets().begin(); i != remote_targets().end(); ++i) {
         
         if(target_profiles().find((uint64_t)*i) != target_profiles().end()) 
-            if(target_profiles()[(uint64_t)*i]->level_ < l) 
+            if(target_profiles()[(uint64_t)*i]->level_ < l && ! forced_ ) 
+                continue;
+            if(forced_ && target_profiles()[(uint64_t)*i]->level_ < INF)
                 continue;
             
         std::stringstream  s;
-        s << std::string(date,date_len) << "." << string_format("%06d",tv.tv_usec) << " <" << std::hex << std::this_thread::get_id() << "> " << desc << " - " << str <<  "\r\n";
+        s << sss <<  "\r\n";
         std::string a = s.str();
         
         if(::send(*i,a.c_str(),a.size(),0) < 0) {
             std::cerr << string_format("Error: cannot write remote socket: %d",*i);
         }
+        
+        if(target_profiles()[(uint64_t)*i]->dup_to_cout_) really_dup = true;
     }
     
     // if set, log extra to stdout/stderr
-    if(dup2_cout()) {
+    if(really_dup) {
         std::ostream* o = &std::cout;
 
         if( l <= ERR) {
             o = &std::cerr;
         }
-        *o << std::string(date,date_len) << "." << string_format("%06d",tv.tv_usec) << " <" << std::hex << std::this_thread::get_id() << "> " << desc << " - " << str << std::endl;
+        *o << sss << std::endl;
     }
 };
 

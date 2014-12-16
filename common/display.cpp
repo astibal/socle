@@ -24,7 +24,7 @@
 #include "stdio.h"
 
 std::string string_format(const std::string& fmt, ...) {
-    int size = 256;
+    int size = 512;
     std::string str;
     va_list ap;
     while (1) {

@@ -412,7 +412,7 @@ class logger_profile {
 
 public:  
     virtual ~logger_profile();    
-    unsigned int level_;
+    unsigned int level_ = 6;
     unsigned int period_ = 5;
     time_t last_period = 0;
     bool last_period_status = false;
@@ -445,9 +445,10 @@ protected:
 
 
     std::map<uint64_t,logger_profile*> target_profiles_;
+    std::map<uint64_t,std::string> target_names_;
     
 public:
-    logger() { level_=0; period_ =5; };
+    logger() { level_=0; period_ =5; target_names_[0]="unknown";};
     virtual ~logger() {};
 
     inline void level(unsigned int l) { level_ = l; };
@@ -465,10 +466,10 @@ public:
 
 
     std::list<std::ostream*>& targets() { return targets_; }
-    void targets(std::ostream* o) { targets_.push_back(o); }
+    void targets(std::string name, std::ostream* o) { targets_.push_back(o); target_names_[(uint64_t)o] = name; }
 
     std::list<int>& remote_targets() { return remote_targets_; }
-    void remote_targets(int s) { remote_targets_.push_back(s); }
+    void remote_targets(std::string name, int s) { remote_targets_.push_back(s); target_names_[s] = name; }
 
     void log(unsigned int l, const std::string& fmt, ...);
     void log_w_name(unsigned int l, const char* n, const std::string& fmt, ...);
@@ -477,6 +478,15 @@ public:
     void log2_w_name(unsigned int l, const char* f, int li, const char* n, const std::string& fmt, ...);
     
     std::map<uint64_t,logger_profile*>& target_profiles() { return target_profiles_; }
+    std::map<uint64_t,std::string>& target_names() { return target_names_; }
+    const char* target_name(uint64_t k) {
+        auto it = target_names().find(k);
+        if(it != target_names().end()) {
+            std::string& r = target_names()[k];
+            return r.c_str();
+        }
+        else return target_name(0);
+    }
     
     void force(bool b) { forced_ = b; }
 

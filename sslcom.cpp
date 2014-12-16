@@ -1100,6 +1100,11 @@ int SSLCom::write ( int __fd, const void* __buf, size_t __n, int __flags )  {
     /* Try to write */
     ERR_clear_error();
     int r = SSL_write (sslcom_ssl,ptr,normalized__n);
+    
+    if(r >= normalized__n) {
+        forced_write(true);
+    }
+    
     prof_write_cnt++;
 
 // 	if (r > 0) return r;
