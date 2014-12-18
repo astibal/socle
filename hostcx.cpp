@@ -282,19 +282,73 @@ int baseHostCX::read() {
 	if (auto_finish()) {
 		finish();
 	}
+
+    ssize_t l = 0;
+    
+    while(1) {	
 	
-	// append-like behavior: append to the end of the buffer, don't exceed max. capacity!
-	void *ptr = &(readbuf_.data()[readbuf_.size()]);
-	size_t max_len = readbuf_.capacity()-readbuf_.size();
-	
-	if (max_len > next_read_limit_ && next_read_limit_ > 0) {
-        DUM_("HostCX::read[%s]: read buffer limiter: %d",c_name(), next_read_limit_);
-        max_len = next_read_limit_;
-	}
-	
-	DUM_("HostCX::read[%s]: readbuf_ base=%x, wr at=%x, maximum to write=%d",c_name(),readbuf_.data(),ptr,max_len);
-	
-	ssize_t l = com()->read(socket(), ptr, max_len, 0);
+        // append-like behavior: append to the end of the buffer, don't exceed max. capacity!
+        void *ptr = &(readbuf_.data()[readbuf_.size()]);
+        
+        size_t max_len = readbuf_.capacity()-readbuf_.size();    
+
+        if (max_len > next_read_limit_ && next_read_limit_ > 0) {
+            DUM_("HostCX::read[%s]: read buffer limiter: %d",c_name(), next_read_limit_);
+            max_len = next_read_limit_;
+        }
+        
+        DUM_("HostCX::read[%s]: readbuf_ base=%x, wr at=%x, maximum to write=%d",c_name(),readbuf_.data(),ptr,max_len);
+
+
+        //read on last position in buffer
+        int cur_l = com()->read(socket(), ptr, max_len, 0);
+        
+        // no data to read!
+        if(cur_l < 0) {
+            
+            // if this is first attempt, l is still zero. Fix it.
+            if(l == 0) {
+               l = -1; 
+            }
+            break;
+        }
+        
+        // change size of the buffer accordingly
+        readbuf_.size(readbuf_.size()+cur_l);        
+
+        //increment read counter
+        l += cur_l;
+        
+        if(next_read_limit_ > 0 &&  l >= next_read_limit_) {
+            INF_("HostCX::read[%s]: read limiter hit on %d bytes.",c_name(),l);
+            break;
+        }
+        
+        // if buffer is full, let's reallocate it and try read again (to save system resources)
+        
+        if(readbuf_.size() >= readbuf_.capacity()) {
+            INF_("HostCX::read[%s]: read buffer reached it's current capacity %d/%d bytes",c_name(),readbuf_.size(),readbuf_.capacity());
+            if(readbuf_.capacity() + HOSTCX_BUFFSIZE <= HOSTCX_BUFFMAXSIZE) {
+
+                if (readbuf_.capacity(readbuf_.capacity() + HOSTCX_BUFFSIZE)) {
+                    INF_("HostCX::read[%s]: read buffer resized capacity %d/%d bytes",c_name(),readbuf_.size(),readbuf_.capacity());
+                    continue;
+                    
+                } else {
+                    NOT_("HostCX::read[%s]: memory tension: read buffer cannot be resized!",c_name());
+                }
+            } 
+            else {
+                INF_("HostCX::read[%s]: buffer already reached it's maximum capacity.",c_name());
+            }
+        }
+        
+        // reaching code here means that we don't want other iterations
+        break;
+        
+    }
+    
+    //int l = com()->read(socket(), ptr, max_len, 0);
 	//int l = recv(socket(), ptr, max_len, MSG_PEEK);
 
 	
@@ -310,8 +364,7 @@ int baseHostCX::read() {
 			opening(false);
 		}
 		
-		// change size of the buffer accordingly
-		readbuf_.size(readbuf_.size()+l);
+
 		
 		// DEB_("HostCX::read[%s]: readbuf_ read %d bytes",c_name(),l);
 		

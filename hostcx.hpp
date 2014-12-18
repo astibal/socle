@@ -36,6 +36,7 @@
 #include <display.hpp>
 
 #define HOSTCX_BUFFSIZE 20480
+#define HOSTCX_BUFFMAXSIZE (100*HOSTCX_BUFFSIZE)
 
 //! Basic Host structure class
 /*! 
