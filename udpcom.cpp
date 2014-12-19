@@ -17,6 +17,7 @@
 */
 
 #include <udpcom.hpp>
+#include <display.hpp>
 
 std::map<uint64_t,Datagram> DatagramCom::datagrams_received;
 std::mutex DatagramCom::lock;
@@ -375,9 +376,10 @@ bool UDPCom::resolve_socket(bool source, int s, std::string* target_host, std::s
 }
 
 
-void UDPCom::close(int __fd) {
+void UDPCom::shutdown(int __fd) {
     if(__fd > 0) {
-        ::close(__fd);
+        int r = ::shutdown(__fd,SHUT_RDWR);
+        if(r > 0) DIA_("UDPCom::close[%d]: %s",__fd,string_error().c_str());
     } else {
         
         std::lock_guard<std::mutex> l(DatagramCom::lock);

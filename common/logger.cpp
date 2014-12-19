@@ -75,7 +75,7 @@ bool logger::periodic_end() {
 
 void logger::log(unsigned int l, const std::string& fmt, ...) {
 
-    std::lock_guard<std::mutex> lck(mtx_lout);
+    std::lock_guard<std::recursive_mutex> lck(mtx_lout);
 
     if (l > level() && ! forced_) return;
     forced_ = false;

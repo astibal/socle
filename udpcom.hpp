@@ -80,7 +80,7 @@ public:
     virtual int write(int __fd, const void* __buf, size_t __n, int __flags);
     virtual int write_to_pool(int __fd, const void* __buf, size_t __n, int __flags);
     
-    virtual void close(int __fd);
+    virtual void shutdown(int __fd);
     
     virtual void cleanup() {};  
     

@@ -51,11 +51,11 @@ public:
             flow_.push_back(t);
         }
         else if (flow_.back().first == src) {
-            DEB_("Appending to side: %c: data:\n%s",src,hex_dump((unsigned char*)data,len).c_str());
+            DEB_("Appending to side: %c: data:\n%s",src,hex_dump((unsigned char*)data,  len > 128 ? 128 : len ).c_str());
             flow_.back().second->append(data,len);
         }
         else if (flow_.back().first != src) {
-            DEB_("New side: %c: data:\n%s",src,hex_dump((unsigned char*)data,len).c_str());
+            DEB_("New side: %c: data:\n%s",src,hex_dump((unsigned char*)data,len > 128 ? 128 : len ).c_str());
             auto b = new buffer(data,len);
             // src initialized by value, buffer is pointer
             std::pair<SourceType,buffer*> t(src,b);
@@ -133,7 +133,7 @@ public:
     virtual range search_function(std::string &expr, std::string &str) { 
         int where = str.find(expr);
 
-        DEB_("simpleMatch::search_function: \nexpr:\n%s\ndata:\n%s",expr.c_str(),str.c_str());
+        DEB_("simpleMatch::search_function: \nexpr:\n%s\ndata:\n%s",expr.c_str(),hex_dump((unsigned char*)str.c_str(), str.size() > 128 ? 128 : str.size() ).c_str());
         
         if (where < 0) {
             return NULLRANGE;

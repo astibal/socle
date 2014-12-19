@@ -34,6 +34,7 @@
 
 #include <logger.hpp>
 #include <basecom.hpp>
+#include <display.hpp>
 
 class TCPCom : public baseCom {
 public:
@@ -48,7 +49,7 @@ public:
     virtual int read(int __fd, void* __buf, size_t __n, int __flags) { return ::recv(__fd,__buf,__n,__flags); };
     virtual int peek(int __fd, void* __buf, size_t __n, int __flags) { return read(__fd,__buf,__n, __flags | MSG_PEEK );};
     virtual int write(int __fd, const void* __buf, size_t __n, int __flags)  { return ::send(__fd,__buf,__n,__flags); };
-    virtual void close(int __fd) { ::close(__fd); };
+    virtual void shutdown(int __fd) { int r = ::shutdown(__fd,SHUT_RDWR); if(r > 0) DIA_("TCPCom::close[%d]: %s",__fd,string_error().c_str()); };
     
     virtual void cleanup() {};  
     

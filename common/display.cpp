@@ -22,6 +22,7 @@
 #include "string.h"
 #include "stdarg.h"
 #include "stdio.h"
+#include "errno.h"
 
 std::string string_format(const std::string& fmt, ...) {
     int size = 512;
@@ -123,4 +124,9 @@ std::string hex_dump(unsigned char *data, int size,unsigned int ltrim, unsigned 
     }
     
     return ret;
+}
+
+std::string string_error() {
+    int e = errno;
+    return string_format("error %d: %s",e,strerror(e));
 }

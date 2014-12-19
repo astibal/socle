@@ -439,7 +439,7 @@ class logger : public logger_profile {
 protected:
 
     
-    mutable std::mutex mtx_lout;
+    mutable std::recursive_mutex mtx_lout;
     std::map<std::string,timer_tt> timers;
     mutable std::mutex mtx_timers;
 

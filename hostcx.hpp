@@ -117,6 +117,7 @@ class baseHostCX : public Host
 	std::string name__; //!< human friendly name
 
 	int fds_ = 0;			//!< socket/file descriptor itself
+	int closing_fds_ = 0;   // to close com we call shutdown() which actually don't close fds_. We have to store it and close on very object destruction.
 	bool error_ = false;//!< indicates that the last read operation on socket returned 0
 	
 	
@@ -227,7 +228,7 @@ public:
 	inline void down(bool b) { status(!b); }
 		
 	
-	void close();
+	void shutdown();
 	inline bool valid() { return ( fds_ > 0 && !error() ); };
 	inline bool error() { return error_; }
 	inline void error(bool b) { error_ = b; }
@@ -307,6 +308,7 @@ public:
     
     // debug options
     static bool socket_in_name;
+    static bool online_name;
 };
 
 #endif

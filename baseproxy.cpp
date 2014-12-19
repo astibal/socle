@@ -132,16 +132,21 @@ void baseProxy::left_shutdown() {
 	
 	int ld = left_delayed_accepts.size();
 	
-	for(typename std::vector<baseHostCX*>::iterator ii = left_bind_sockets.begin(); ii != left_bind_sockets.end(); ++ii) { (*ii)->close(); delete(*ii); };
-	left_bind_sockets.clear();
-	for(typename std::vector<baseHostCX*>::iterator ii = left_sockets.begin(); ii != left_sockets.end(); ++ii) { (*ii)->close(); delete(*ii); };
-	left_sockets.clear();
-	for(typename std::vector<baseHostCX*>::iterator ii = left_pc_cx.begin(); ii != left_pc_cx.end(); ++ii) { (*ii)->close(); delete(*ii); };
-	left_pc_cx.clear();
+	for(typename std::vector<baseHostCX*>::iterator ii = left_bind_sockets.begin(); ii != left_bind_sockets.end(); ++ii) { (*ii)->shutdown(); };
+	for(typename std::vector<baseHostCX*>::iterator ii = left_sockets.begin(); ii != left_sockets.end(); ++ii) { (*ii)->shutdown();  };
+	for(typename std::vector<baseHostCX*>::iterator ii = left_pc_cx.begin(); ii != left_pc_cx.end(); ++ii) { (*ii)->shutdown(); };
+    for(typename std::vector<baseHostCX*>::iterator ii = left_delayed_accepts.begin(); ii != left_delayed_accepts.end(); ++ii) { (*ii)->shutdown(); };
 
-    for(typename std::vector<baseHostCX*>::iterator ii = left_delayed_accepts.begin(); ii != left_delayed_accepts.end(); ++ii) { (*ii)->close(); delete(*ii); };
-    left_delayed_accepts.clear();	
-	
+    
+    for(typename std::vector<baseHostCX*>::iterator ii = left_bind_sockets.begin(); ii != left_bind_sockets.end(); ++ii) { delete(*ii); };
+    left_bind_sockets.clear();
+    for(typename std::vector<baseHostCX*>::iterator ii = left_sockets.begin(); ii != left_sockets.end(); ++ii) {  delete(*ii); };
+    left_sockets.clear();
+    for(typename std::vector<baseHostCX*>::iterator ii = left_pc_cx.begin(); ii != left_pc_cx.end(); ++ii) {  delete(*ii); };
+    left_pc_cx.clear();
+    for(typename std::vector<baseHostCX*>::iterator ii = left_delayed_accepts.begin(); ii != left_delayed_accepts.end(); ++ii) { delete(*ii); };
+    left_delayed_accepts.clear();       
+    
  	DEB___("baseProxy::left_shutdown: bind=%d(delayed=%d), sock=%d, perm=%d",lb,ld,ls,lp);
 }
 
@@ -153,16 +158,22 @@ void baseProxy::right_shutdown() {
     
     int rd = right_delayed_accepts.size();
 	
-	for(typename std::vector<baseHostCX*>::iterator ii = right_bind_sockets.begin(); ii != right_bind_sockets.end(); ++ii) { (*ii)->close(); delete(*ii); };
-	right_bind_sockets.clear();
-	for(typename std::vector<baseHostCX*>::iterator ii = right_sockets.begin(); ii != right_sockets.end(); ++ii) { (*ii)->close(); delete(*ii); };
-	right_sockets.clear();
-	for(typename std::vector<baseHostCX*>::iterator ii = right_pc_cx.begin(); ii != right_pc_cx.end(); ++ii) { (*ii)->close(); delete(*ii); };
-	right_pc_cx.clear();
+	for(typename std::vector<baseHostCX*>::iterator ii = right_bind_sockets.begin(); ii != right_bind_sockets.end(); ++ii) { (*ii)->shutdown(); };
+	for(typename std::vector<baseHostCX*>::iterator ii = right_sockets.begin(); ii != right_sockets.end(); ++ii) { (*ii)->shutdown(); };
+	for(typename std::vector<baseHostCX*>::iterator ii = right_pc_cx.begin(); ii != right_pc_cx.end(); ++ii) { (*ii)->shutdown();  };
+    for(typename std::vector<baseHostCX*>::iterator ii = right_delayed_accepts.begin(); ii != right_delayed_accepts.end(); ++ii) { (*ii)->shutdown(); };
 
-    for(typename std::vector<baseHostCX*>::iterator ii = right_delayed_accepts.begin(); ii != right_delayed_accepts.end(); ++ii) { (*ii)->close(); delete(*ii); };
-    right_delayed_accepts.clear();   	
-	
+    
+    for(typename std::vector<baseHostCX*>::iterator ii = right_bind_sockets.begin(); ii != right_bind_sockets.end(); ++ii) {  delete(*ii); };
+    right_bind_sockets.clear();
+    for(typename std::vector<baseHostCX*>::iterator ii = right_sockets.begin(); ii != right_sockets.end(); ++ii) {  delete(*ii); };
+    right_sockets.clear();
+    for(typename std::vector<baseHostCX*>::iterator ii = right_pc_cx.begin(); ii != right_pc_cx.end(); ++ii) { delete(*ii); };
+    right_pc_cx.clear();
+    for(typename std::vector<baseHostCX*>::iterator ii = right_delayed_accepts.begin(); ii != right_delayed_accepts.end(); ++ii) {  delete(*ii); };
+    right_delayed_accepts.clear();      
+    
+    
 	DEB___("baseProxy::right_shutdown: bind=%d(delayed=%d), sock=%d, perm=%d",rb,rd,rs,rp);
 }
 
@@ -340,7 +351,7 @@ bool baseProxy::handle_cx_events(unsigned char side, baseHostCX* cx) {
         // treat non-blocking still opening sockets 
         if( cx->opening_timeout() ) {
             DIA___("baseProxy::handle_sockets_once[%d]: opening timeout!",cx->socket());
-            cx->close();
+            cx->shutdown();
             
                  if(side == 'l')  { on_left_error(cx);  }
             else if(side == 'r')  { on_right_error(cx); }
@@ -350,7 +361,7 @@ bool baseProxy::handle_cx_events(unsigned char side, baseHostCX* cx) {
         }
         if( cx->idle_timeout() ) {
             DIA___("baseProxy::handle_sockets_once[%d]: idle timeout!",cx->socket());
-            cx->close();
+            cx->shutdown();
 
                  if(side == 'l')  { on_left_error(cx);  }
             else if(side == 'r')  { on_right_error(cx); }
@@ -360,7 +371,7 @@ bool baseProxy::handle_cx_events(unsigned char side, baseHostCX* cx) {
         }
         if( cx->error() ) {
             DIA___("baseProxy::handle_sockets_once[%d]: error!",cx->socket());
-            cx->close();
+            cx->shutdown();
 
                  if(side == 'l')  { on_left_error(cx);  }
             else if(side == 'r')  { on_right_error(cx); }
@@ -385,12 +396,19 @@ bool baseProxy::handle_cx_events(unsigned char side, baseHostCX* cx) {
 bool baseProxy::handle_cx_read(unsigned char side, baseHostCX* cx) {
     
     EXT___("%c in R fdset: %d", side, cx->socket());
-    if (cx->readable()) {
+    
+    bool proceed = cx->readable();
+    if(cx->com()->forced_read_on_write_reset()) {
+        DIA___("baseProxy::handle_cx_read[%c]: read overriden on write socket event",side);
+        proceed = true;
+    }
+    
+    if (proceed) {
         EXT___("%c in R fdset and readable: %d", side, cx->socket())
         int red = cx->read();
         
         if (red == 0) {
-            cx->close();
+            cx->shutdown();
             //left_sockets.erase(i);
             handle_last_status |= HANDLE_LEFT_ERROR;
             
@@ -420,12 +438,20 @@ bool baseProxy::handle_cx_read(unsigned char side, baseHostCX* cx) {
 }
 
 bool baseProxy::handle_cx_write(unsigned char side, baseHostCX* cx) {
+    
     EXT___("baseProxy::handle_cx_write[%c]: in write fdset: %d",side, cx->socket());
-    if (cx->writable()) {
+    
+    bool proceed = cx->writable();
+    if(cx->com()->forced_write_on_read_reset()) {
+        DIA___("baseProxy::handle_cx_read[%c]: write overriden on read socket event",side)
+        proceed = true;
+    }
+    
+    if (proceed) {
         EXT___("baseProxy::handle_cx_write[%c]: writable: %d",side, cx->socket())
         int wrt = cx->write();
         if (wrt < 0) {
-            cx->close();
+            cx->shutdown();
             //left_sockets.erase(i);
             handle_last_status |= HANDLE_LEFT_ERROR;
             
@@ -463,7 +489,7 @@ bool baseProxy::handle_cx_once(unsigned char side, baseCom* xcom, baseHostCX* cx
                 return false;
             }
             
-            if(cx->com()->forced_write_on_read_reset()) {
+            if(cx->com()->forced_write_on_read()) {
                 DIA___("baseProxy::handle_cx_once[%c]: write on read enforced on socket %d",side,cx->socket());
                 if(! handle_cx_write(side,cx)) {
                     return false;
@@ -477,7 +503,7 @@ bool baseProxy::handle_cx_once(unsigned char side, baseCom* xcom, baseHostCX* cx
                 return false;
             }
 
-            if(cx->com()->forced_read_on_write_reset()) {
+            if(cx->com()->forced_read_on_write()) {
                 DIA___("baseProxy::handle_cx_once[%c]: read on write enforced on socket %d",side,cx->socket());
                 if(! handle_cx_read(side,cx)) {
                     return false;

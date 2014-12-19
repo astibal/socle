@@ -325,6 +325,10 @@ inline bool buffer::capacity (size_type c)
 
   unsigned char* d (new unsigned char[c]);
 
+  if(d == nullptr) {
+      return false;
+  }
+
   if (size_ != 0)
     std::memcpy (d, data_, size_);
 

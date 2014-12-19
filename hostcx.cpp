@@ -24,6 +24,7 @@
 extern logger lout;
 
 bool baseHostCX::socket_in_name = false;
+bool baseHostCX::online_name = false;
 
 baseHostCX::baseHostCX(baseCom* c, const char* h, const char* p): Host(h, p) {
 
@@ -88,7 +89,8 @@ baseHostCX::baseHostCX(baseCom* c, unsigned int s) {
 
 baseHostCX::~baseHostCX() {
     com()->cleanup();
-    delete com_;
+    com()->close(closing_fds_);
+    delete com_;   
 }
 
 
@@ -161,7 +163,7 @@ bool baseHostCX::paused_write() {
 
     if(paused_write_ && peercom()) {
         if(peercom()->com_status()) {
-            DIAS_("Peer's Com status is OK, unpausing");
+            DIAS_("baseHostCX::paused_write[%s]: peer's com status ok, unpausing write",c_name());
             paused_write(false);
         }
     }
@@ -182,14 +184,15 @@ bool baseHostCX::is_connected() {
     return status;
 }
 
-void baseHostCX::close() {
+void baseHostCX::shutdown() {
 	
  if(fds_ != 0) {
-	com()->close(fds_); 
-	DEB_("HostCX::close[%s]: socket closed",c_name());
+	com()->shutdown(fds_); 
+	DEB_("HostCX::shutdown[%s]: socket shutdown",c_name());
+    closing_fds_ = fds_;
 	fds_ = 0; 
  } else {
-	 DEB_("HostCX::close[%s]: no-op, cannot be closed",c_name());
+	 DEB_("HostCX::shutdown[%s]: no-op, cannot be shutdown",c_name());
  }
 }
 
@@ -220,7 +223,7 @@ std::string& baseHostCX::name() {
         }
 		
 	} else {
-        if(name__.size() > 0) {
+        if(name__.size() > 0 && ! online_name) {
             return name__;
         }
         
@@ -243,7 +246,7 @@ const char* baseHostCX::c_name() {
 bool baseHostCX::reconnect(int delay) {
 
 	if (should_reconnect_now() and permanent()) {
-		close();
+		shutdown();
 		connect();
 		
 		DEB_("HostCX::reconnect[%s]: reconnect attempt (previous at %u)",c_name(),last_reconnect_);
@@ -526,31 +529,42 @@ std::string baseHostCX::hr() {
 std::string baseHostCX::full_name(unsigned char side) {
     const char* t = host().c_str();
     const char* t_p = port().c_str();
+    int t_s = socket();
+    std::string  t_ss;
+    if(socket_in_name) t_ss  = string_format("::%d:",t_s);
     const char* t_c = "";
     if (com() != nullptr)  t_c = com()->name();
     
-    const char* p = "";
-    const char*  p_p = "";
-    const char*  p_c = "";
-
+    const char* p = "?";
+    const char*  p_p = "?";
+    int          p_s = 0;
+    const char*  p_c = "?";
+    std::string  p_ss;
+    
     if (peer() != nullptr) {
          p =  peer()->host().c_str();
          p_p =  peer()->port().c_str();
+         p_s = peer()->socket();
+         if(socket_in_name) p_ss  = string_format("::%d:",p_s);
     
-         if (peer()->com() != nullptr)  p_c = peer()->com()->name();
+         if (peer()->com() != nullptr) { 
+              if(peer()->com() != nullptr) {
+                p_c = peer()->com()->name();
+              }
+         }
 //         p =  "peerip";
 //         p_p =  "pport";
         
     } else {
-        return string_format("%s_%s:%s",t_c,t,t_p);
+        return string_format("%s_%s%s:%s",t_c,t_ss.c_str(),t,t_p);
     }
 
     if ( (side == 'l') || ( side == 'L') ) {
-        return string_format("%s_%s:%s to %s_%s:%s",t_c,t,t_p,p_c,p,p_p);
+        return string_format("%s_%s%s:%s to %s_%s%s:%s",t_c,t_ss.c_str(),t,t_p,p_c,p_ss.c_str(),p,p_p);
     } 
 
     //else
-    return string_format("%s_%s:%s to %s_%s:%s",p_c,p,p_p,t_c,t,t_p);
+    return string_format("%s_%s%s:%s to %s_%s%s:%s",p_c,p_ss.c_str(),p,p_p,t_c,t_ss.c_str(),t,t_p);
 
 }
 

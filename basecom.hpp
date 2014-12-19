@@ -111,6 +111,9 @@ public:
 
     void forced_read_on_write(bool b)  { forced_read_on_write_ = b; }
     void forced_write_on_read(bool b) { forced_write_on_read_ = b; }    
+    bool forced_read_on_write(void)  { return forced_read_on_write_; }
+    bool forced_write_on_read(void) { return forced_write_on_read_; }    
+    
     bool forced_read_on_write_reset() { bool r = forced_read_on_write_; forced_read_on_write_= false;  return r; }
     bool forced_write_on_read_reset() { bool r = forced_write_on_read_; forced_write_on_read_ = false;  return r; }
 
@@ -140,7 +143,8 @@ public:
     virtual int read(int __fd, void* __buf, size_t __n, int __flags) = 0;
     virtual int peek(int __fd, void* __buf, size_t __n, int __flags) = 0;
 	virtual int write(int __fd, const void* __buf, size_t __n, int __flags) = 0;
-	virtual void close(int __fd) = 0;
+	virtual void shutdown(int __fd) = 0;
+    virtual void close(int __fd); 
 	virtual int bind(unsigned short __port) = 0;
 	
 	// syscall wrapper 

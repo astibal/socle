@@ -111,11 +111,14 @@ protected:
 	
 	char* ssl_waiting_host = NULL;
 	
+    inline bool sslcom_peer_hello_received() { return sslcom_peer_hello_received_; }
+    void sslcom_peer_hello_received(bool b) { sslcom_peer_hello_received_ = b; }
+    
     bool waiting_peer_hello();
     bool parse_peer_hello(unsigned char* ptr, unsigned int len);
     unsigned short parse_peer_hello_extensions(buffer& b, unsigned int curpos);
     
-    bool sslcom_peer_hello_received = false;
+    bool sslcom_peer_hello_received_ = false;
     unsigned char sslcom_peer_hello_buffer[1500];
     std::string sslcom_peer_hello_sni;
     
@@ -168,7 +171,6 @@ public:
     virtual void delay_socket ( int sockfd );
     
     virtual int connect ( const char* host, const char* port, bool blocking = false );
-	
 	virtual int read ( int __fd, void* __buf, size_t __n, int __flags );
 	virtual int write ( int __fd, const void* __buf, size_t __n, int __flags );
 	
