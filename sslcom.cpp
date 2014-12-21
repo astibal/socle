@@ -42,7 +42,7 @@ SSLCertStore*  SSLCom::sslcom_certstore_;
 
 int SSLCom::counter_ssl_connect = 0;
 int SSLCom::counter_ssl_accept = 0;
-int SSLCom::log_level = NON;
+unsigned int SSLCom::log_level = NON;
 
 void locking_function ( int mode, int n, const char * file, int line )  {
 	
@@ -310,6 +310,20 @@ void SSLCom::ssl_msg_callback(int write_p, int version, int content_type, const 
 }
 
 
+long int SSLCom::log_if_error(unsigned int level, const char* prefix) {
+    
+    long err2 = ERR_get_error();
+    do {
+        if(err2 != 0) {
+            LOGS___(level, string_format("%s: error code:%u:%s",prefix, err2,ERR_error_string(err2,nullptr)).c_str());
+            err2 = ERR_get_error();
+        }
+    } while (err2 != 0);
+    
+    return err2;
+}
+
+
 
 void SSLCom::init_client() {
 	
@@ -321,6 +335,7 @@ void SSLCom::init_client() {
 
 	if (!sslcom_ctx) {
 		ERRS___("Client: Error creating SSL context!");
+        log_if_error(ERR,"SSLCom::init_client");
 		exit(2);
 	}
 
@@ -352,6 +367,12 @@ void SSLCom::init_client() {
 	}	
 
     sslcom_ssl = SSL_new(sslcom_ctx);
+    
+    if(!sslcom_ssl) {
+        ERRS___("Client: Error creating SSL context!");
+        log_if_error(ERR,"SSLCom::init_client");
+    }
+    
     SSL_set_session(sslcom_ssl, NULL);
     SSL_set_mode(sslcom_ssl, SSL_MODE_ENABLE_PARTIAL_WRITE|SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
 }
@@ -559,7 +580,7 @@ int SSLCom::upgrade_server_socket(int sockfd) {
 //     
 //     SSL_set_bio(sslcom_ssl,sslcom_sbio,sslcom_sbio);
 
-    
+    upgraded(true);
     return sockfd;
 }
 
@@ -574,10 +595,9 @@ int SSLCom::waiting() {
 	
 	const char* op = op_unknown;
 	
-	if (sslcom_ssl == NULL) {
+	if (sslcom_ssl == NULL and ! auto_upgrade()) {
 		WARS___("SSLCom::ssl_waiting: sslcom_ssl = NULL");
-		exit(1);
-		return 0;
+        return -1;
 	}
 	
 	int r = 0;
@@ -588,16 +608,23 @@ int SSLCom::waiting() {
         if(!sslcom_peer_hello_received()) {
             
             if(! waiting_peer_hello()) {
-                // nope, wait further
+                // nope, still nothing. Wait further
                 return 0;
             }
             
-            // if we got here, upgrade client socket prior SSL_connect!
-            upgrade_client_socket(sslcom_fd);
+            // if we got here, upgrade client socket prior SSL_connect! Keep it here, it has to be just once!
+            if(auto_upgrade()) {
+                DIA___("SSLCom::waiting[%d]: executing client auto upgrade",sslcom_fd);
+                if(owner_cx() != nullptr && sslcom_fd == 0) {
+                    sslcom_fd = owner_cx()->socket();
+                    DIA___("SSLCom::waiting[%d]: socket 0 has been auto-upgraded to owner's socket %d",sslcom_fd);
+                }
+                upgrade_client_socket(sslcom_fd);
+            }
         } 
-        // we have client hello, and we already called connect, but unsuccessfuly
-        // try again
-        else {
+        
+        // we have client hello
+        if(sslcom_peer_hello_received()){
 
             DEBS___("SSLCom::waiting: before SSL_connect");
             
@@ -611,6 +638,12 @@ int SSLCom::waiting() {
 		op = op_connect;
 	} 
 	else if(sslcom_server) {
+        
+        if(auto_upgrade() && !upgraded()) {
+            DIAS___("SSLCom::waiting: server auto upgrade");
+            upgrade_server_socket(sslcom_fd);
+        }
+        
         ERR_clear_error();
 		r = SSL_accept(sslcom_ssl);
         prof_accept_cnt++;
@@ -712,7 +745,7 @@ bool SSLCom::waiting_peer_hello()
         SSLCom *p = static_cast<SSLCom*>(peer());
         if(p != nullptr) {
             if(p->sslcom_fd > 0) {
-                DIA___("SSLCom::waiting_peer_hello: reading max %d bytes from peer socket %d",2048,p->sslcom_fd);
+                DIA___("SSLCom::waiting_peer_hello: peek max %d bytes from peer socket %d",2048,p->sslcom_fd);
                 
                 int red = ::recv(p->sslcom_fd,sslcom_peer_hello_buffer,1500,MSG_PEEK);
                 if (red > 0) {
@@ -720,7 +753,8 @@ bool SSLCom::waiting_peer_hello()
                     DUM___("SSLCom::waiting_peer_hello: ClientHello data:\n%s",hex_dump(sslcom_peer_hello_buffer,red).c_str());
                     
                     if (! parse_peer_hello(sslcom_peer_hello_buffer,red)) {
-                        DIA___("SSLCom::waiting_peer_hello: analysis failed",red);
+                        DIAS___("SSLCom::waiting_peer_hello: analysis failed");
+                        DIA___("SSLCom::waiting_peer_hello: failed ClientHello data:\n%s",hex_dump(sslcom_peer_hello_buffer,red).c_str());
                         return false;
                     }
                     sslcom_peer_hello_received_ = true;
@@ -739,6 +773,7 @@ bool SSLCom::waiting_peer_hello()
                     
                 } else {
                     DIA___("SSLCom::waiting_peer_hello: peek returns %d, readbuf=%d",red,owner_cx()->readbuf()->size());
+                    DIA___("SSLCom::waiting_peer_hello: peek errno: %s",string_error().c_str());
                 }
                 
             } else {
@@ -1234,6 +1269,8 @@ void SSLCom::cleanup()  {
 
 int SSLCom::upgrade_client_socket(int sock) {
 
+    sslcom_fd = sock;
+    
     bool ch = waiting_peer_hello();
     
     if(ch) {
@@ -1241,17 +1278,18 @@ int SSLCom::upgrade_client_socket(int sock) {
         init_client();
         
         if(sslcom_ssl == NULL) {
-            ERRS___("Failed to create SSL structure!");
+            ERR___("SSLCom::upgrade_client_socket[%d]: failed to create SSL structure!",sock);
         }
     //  SSL_set_fd (sslcom_ssl, sock);
         
         if(sslcom_peer_hello_sni.size() > 0) {
+            DIA_("SSLCom::upgrade_client_socket[%d]: set sni extension to: %s",sock, sslcom_peer_hello_sni.c_str());
             SSL_set_tlsext_host_name(sslcom_ssl, sslcom_peer_hello_sni.c_str());
         }
         
         sslcom_sbio = BIO_new_socket(sock,BIO_NOCLOSE);
         if (sslcom_sbio == NULL) {
-            ERR___("BIO allocation failed for socket %d",sock)
+            ERR___("SSLCom::upgrade_client_socket[%d]: BIO allocation failed! ",sock)
         }
         
         SSL_set_bio(sslcom_ssl,sslcom_sbio,sslcom_sbio);          
@@ -1286,9 +1324,8 @@ int SSLCom::upgrade_client_socket(int sock) {
         
         prof_connect_ok++;
         
-        DEBS___("connection succeeded");  
+        DEB___("SSLCom::upgrade_client_socket[%d]: connection succeeded",sock);  
         sslcom_waiting = false;
-        sslcom_fd = sock;
         
         //ssl_waiting_host = (char*)host;    
         check_cert(nullptr);
@@ -1296,6 +1333,7 @@ int SSLCom::upgrade_client_socket(int sock) {
         forced_read(true);
         forced_write(true);
         
+        upgraded(true);
     }
     
    
@@ -1314,7 +1352,15 @@ int SSLCom::connect ( const char* host, const char* port, bool blocking )  {
 // 
 // 		ERRS___("Setting session ID context failed!");
 // 	}
-	return upgrade_client_socket(sock);
+   
+    DIA___("SSLCom::connect[%d]: tcp connected",sock);
+    sock = upgrade_client_socket(sock);
+
+    if(upgraded()) {
+        DIA___("SSLCom::connect[%d]: socket upgraded at 1st attempt!",sock);
+    }
+    
+    return sock;
 }
 
 

@@ -108,7 +108,10 @@ protected:
 	bool sslcom_server=false;
 	int sslcom_fd=0;
 	int waiting();
-	
+
+    bool auto_upgrade_ = true;
+    bool auto_upgraded_ = false;
+    
 	char* ssl_waiting_host = NULL;
 	
     inline bool sslcom_peer_hello_received() { return sslcom_peer_hello_received_; }
@@ -161,6 +164,7 @@ public:
 
     static void ssl_msg_callback(int write_p, int version, int content_type, const void *buf, size_t len, SSL *ssl, void *arg);
     static void ssl_info_callback(const SSL *s, int where, int ret);
+    long log_if_error(unsigned int level, const char* prefix);
     
 	virtual bool check_cert(const char*);
 	
@@ -169,6 +173,11 @@ public:
 	
 	virtual void accept_socket ( int sockfd	);
     virtual void delay_socket ( int sockfd );
+    
+    bool auto_upgrade() { return auto_upgrade_; }
+    void auto_upgrade(bool b) { auto_upgrade_ = b; }
+    bool upgraded() { return auto_upgraded_; }
+    void upgraded(bool b) { if(upgraded() && b == true) { NOTS___("double upgrade detected"); } auto_upgraded_ = b; }
     
     virtual int connect ( const char* host, const char* port, bool blocking = false );
 	virtual int read ( int __fd, void* __buf, size_t __n, int __flags );
@@ -194,9 +203,9 @@ public:
     int prof_connect_ok=0;
 
 public:
-    static int& log_level_ref() { return log_level; }
+    static unsigned int& log_level_ref() { return log_level; }
 private:
-    static int log_level;
+    static unsigned int log_level;
 };
 
 #endif

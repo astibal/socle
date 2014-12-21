@@ -89,7 +89,10 @@ baseHostCX::baseHostCX(baseCom* c, unsigned int s) {
 
 baseHostCX::~baseHostCX() {
     com()->cleanup();
-    com()->close(closing_fds_);
+    
+    if(closing_fds_ > 0) {
+        com()->close(closing_fds_); 
+    }
     delete com_;   
 }
 

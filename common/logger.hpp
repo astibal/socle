@@ -315,6 +315,9 @@
 
 /* Macros with support of both 'log_level' and hr() call */
 
+#define LOG___(lev,x,...) LN_LOG_((lev),(x),__VA_ARGS__)
+#define LOGS___(lev,x) LN_LOGS_((lev),(x))
+
 #define EXT___(x,...) LN_LOG_(EXT,(x),__VA_ARGS__)
 #define EXTS___(x,...) LN_LOGS_(EXT,(x))
 #define T_EXT___(n,i,x,...) T_LN_LOG_(n,i,EXT,(x),__VA_ARGS__)

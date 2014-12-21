@@ -128,5 +128,7 @@ std::string hex_dump(unsigned char *data, int size,unsigned int ltrim, unsigned 
 
 std::string string_error() {
     int e = errno;
-    return string_format("error %d: %s",e,strerror(e));
+    char msg[255];
+    memset(msg,0,255);
+    return string_format("error %d: %s",e,strerror_r(e,msg,255));
 }

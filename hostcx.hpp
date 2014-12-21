@@ -237,7 +237,7 @@ public:
 			fds_ = s;
 		}
 	};
-    inline void remove_socket() { fds_ = 0; };
+    inline void remove_socket() { fds_ = 0; closing_fds_ = 0; };
     
 	int socket() const { return fds_; };
     bool is_connected();
