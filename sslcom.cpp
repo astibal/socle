@@ -580,7 +580,7 @@ int SSLCom::waiting() {
             prof_want_read_cnt++;
 //             forced_read(true);
 // 			sslcom_waiting_read = true;
- 			return 1;
+ 			return 0;
 		}
 		else if (err == SSL_ERROR_WANT_WRITE) {
 			DUM_("SSL_%s: want write",op);
@@ -589,7 +589,7 @@ int SSLCom::waiting() {
             prof_want_write_cnt++;
 //             forced_write(true);
 // 			    sslcom_waiting_write = true;
- 			return 1;
+ 			return 0;
 		}
 		else {
             DIA_("SSL_%s: error: %d",op,err);
