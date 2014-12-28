@@ -375,7 +375,7 @@ inline unsigned char buffer::operator[] (size_type i) const
 inline unsigned char& buffer::at (size_type i)
 {
   if (i >= size_)
-    throw std::out_of_range ("index out of range");
+    throw std::out_of_range ("buffer: index out of range: " + std::to_string((int)i) + " of " + std::to_string(size_));
 
   return data_[i];
 }
@@ -383,7 +383,7 @@ inline unsigned char& buffer::at (size_type i)
 inline unsigned char buffer::at (size_type i) const
 {
   if (i >= size_)
-    throw std::out_of_range ("index out of range");
+    throw std::out_of_range ("buffer: index out of range: " + std::to_string((int)i) + " of " + std::to_string(size_));
 
   return data_[i];
 }
@@ -392,7 +392,7 @@ template <typename T>
 T buffer::get_at(int idx)
 {
     if(idx + sizeof(T) - 1 >= size_)
-        throw std::out_of_range ("index out of range");
+        throw std::out_of_range ("buffer: index out of range: " + std::to_string((int)idx) + " of " + std::to_string(size_));
     
     return *((T*)(&data_[idx]));
 }
@@ -459,7 +459,7 @@ inline void buffer::flush(buffer::size_type b) {
         }
 		size_-=bytes;
 	} else {
-		throw std::out_of_range ("index out of range: too many bytes to cut");
+		throw std::out_of_range ("index out of range: too many bytes to flush: " + std::to_string((int)b) + " of " + std::to_string(size_));
 	}
 
 }

@@ -298,9 +298,9 @@ int baseHostCX::read() {
         
         size_t max_len = readbuf_.capacity()-readbuf_.size();    
 
-        if (max_len > next_read_limit_ && next_read_limit_ > 0) {
-            DUM_("HostCX::read[%s]: read buffer limiter: %d",c_name(), next_read_limit_);
-            max_len = next_read_limit_;
+        if (max_len > next_read_limit_ -l && next_read_limit_ > 0) {
+            DUM_("HostCX::read[%s]: read buffer limiter: %d",c_name(), next_read_limit_ - l);
+            max_len = next_read_limit_ - l;
         }
         
         DUM_("HostCX::read[%s]: readbuf_ base=%x, wr at=%x, maximum to write=%d",c_name(),readbuf_.data(),ptr,max_len);
@@ -317,20 +317,34 @@ int baseHostCX::read() {
                l = -1; 
             }
             break;
+        } 
+        else if(cur_l == 0) {
+            INF_("HostCX::read[%s]: error while reading. %d bytes read.",c_name(),l);
+            error(true);
+            
+            break;
         }
+        
         
         // change size of the buffer accordingly
         readbuf_.size(readbuf_.size()+cur_l);        
 
         //increment read counter
         l += cur_l;
-        
+                
         if(next_read_limit_ > 0 &&  l >= next_read_limit_) {
             INF_("HostCX::read[%s]: read limiter hit on %d bytes.",c_name(),l);
             break;
         }
         
+        // in case next_read_limit_ is large and we read less bytes than it, we need to decrement also next_read_limit_
+        
+        next_read_limit_ -= cur_l;
+        
         // if buffer is full, let's reallocate it and try read again (to save system resources)
+        
+        // testing break
+        break;
         
         if(readbuf_.size() >= readbuf_.capacity()) {
             INF_("HostCX::read[%s]: read buffer reached it's current capacity %d/%d bytes",c_name(),readbuf_.size(),readbuf_.capacity());

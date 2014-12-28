@@ -476,8 +476,8 @@ bool baseProxy::handle_cx_write(unsigned char side, baseHostCX* cx) {
 }
 
 bool baseProxy::handle_cx_once(unsigned char side, baseCom* xcom, baseHostCX* cx) {
-    if(! handle_cx_events(side,cx))
-        return false;
+
+    bool ret = true;
 
     EXT___("%c: %d",side, cx->socket());
     
@@ -486,13 +486,15 @@ bool baseProxy::handle_cx_once(unsigned char side, baseCom* xcom, baseHostCX* cx
         if(xcom->in_readset(cx->socket()) || cx->com()->forced_read_reset()) {
 
             if(! handle_cx_read(side,cx)) {
-                return false;
+                ret = false;
+                goto failure;
             }
             
             if(cx->com()->forced_write_on_read()) {
                 DIA___("baseProxy::handle_cx_once[%c]: write on read enforced on socket %d",side,cx->socket());
                 if(! handle_cx_write(side,cx)) {
-                    return false;
+                    ret = false;
+                    goto failure;
                 }
             }
         }
@@ -500,20 +502,29 @@ bool baseProxy::handle_cx_once(unsigned char side, baseCom* xcom, baseHostCX* cx
     if(! cx->paused_write()) {
         if(xcom->in_writeset(cx->socket()) || cx->com()->forced_write_reset()) {
             if(! handle_cx_write(side,cx)) {
-                return false;
+                ret = false;
+                goto failure;
             }
 
             if(cx->com()->forced_read_on_write()) {
                 DIA___("baseProxy::handle_cx_once[%c]: read on write enforced on socket %d",side,cx->socket());
                 if(! handle_cx_read(side,cx)) {
-                    return false;
+                    ret = false;
+                    goto failure;
                 }
             }
             
         }
     }
+
+    // on failure, skip all operations and go here
+    failure:
     
-    return false;
+    // errors are proucts of operations above. Act on them.
+    if(! handle_cx_events(side,cx))
+        ret = false;    
+    
+    return ret;
 };
 
 bool baseProxy::handle_cx_new(unsigned char side, baseCom* xcom, baseHostCX* cx) {

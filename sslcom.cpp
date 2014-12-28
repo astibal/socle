@@ -833,6 +833,8 @@ bool SSLCom::parse_peer_hello(unsigned char* ptr, unsigned int len) {
     
     uint8_t content_type = 0;
     
+    try {
+    
     if(len >= 34) {
         buffer b = buffer(ptr,len);
         buffer session_id = buffer();
@@ -901,7 +903,14 @@ bool SSLCom::parse_peer_hello(unsigned char* ptr, unsigned int len) {
     
     
     DIA___("SSLCom::parse_peer_hello: return status %s",ret ? "true" : "false");
-    return ret;
+
+    
+    }
+    catch (std::out_of_range e) {
+        DIAS___(string_format("SSLCom::parse_peer_hello: failed to parse hello: %s",e.what()).c_str());
+    }
+    
+    return ret;    
 }
 
 unsigned short SSLCom::parse_peer_hello_extensions(buffer& b, unsigned int curpos) {
@@ -975,7 +984,7 @@ int SSLCom::read ( int __fd, void* __buf, size_t __n, int __flags )  {
         if(peek_r > 0) {
             DIA___("SSLCom::read[%d]: peek returned %d",__fd, peek_r);
         } else {
-            DIA___("SSLCom::read[%d]: peek returned %d",__fd, peek_r);
+            DUM___("SSLCom::read[%d]: peek returned %d",__fd, peek_r);
         } 
         
         return peek_r;
@@ -1001,7 +1010,7 @@ int SSLCom::read ( int __fd, void* __buf, size_t __n, int __flags )  {
 //         sslcom_read_blocked_on_write=0;
 //         sslcom_read_blocked=0;
 
-        DEB___("SSLCom::read[%d]: about to read  max %4d bytes",__fd,__n);
+        EXT___("SSLCom::read[%d]: about to read  max %4d bytes",__fd,__n);
         
         ERR_clear_error();
         int r = SSL_read (sslcom_ssl,__buf+total_r,__n-total_r);
@@ -1025,6 +1034,8 @@ int SSLCom::read ( int __fd, void* __buf, size_t __n, int __flags )  {
 				DIA___("SSLCom::read [%d]: %4d bytes read:%d from ssl socket %s, %X",__fd,r,rounds,(r == (signed int)__n) ? "(max)" : "",
                                 debug_log_data_crc ? socle_crc32(0,__buf,r) : 0
                 );
+                
+                if(r > 0)
 				total_r += r;
 				
 				sslcom_read_blocked_on_write=0;
@@ -1038,10 +1049,10 @@ int SSLCom::read ( int __fd, void* __buf, size_t __n, int __flags )  {
 				
 			case SSL_ERROR_WANT_READ:
 				if(r == -1){
-					DIA___("SSLCom::read[%d]: want read: err=%d,read_now=%4d,total=%4d",__fd,err,r,total_r);
+					DEB___("SSLCom::read[%d]: want read: err=%d,read_now=%4d,total=%4d",__fd,err,r,total_r);
 				}
 				else {
-					DIA___("SSLCom::read[%d]: want read: err=%d,read_now=%4d,total=%4d",__fd,err,r,total_r);
+					DEB___("SSLCom::read[%d]: want read: err=%d,read_now=%4d,total=%4d",__fd,err,r,total_r);
 				}
 				sslcom_read_blocked=1;
                 forced_read(true);
@@ -1071,7 +1082,7 @@ int SSLCom::read ( int __fd, void* __buf, size_t __n, int __flags )  {
 				
 				
 			case SSL_ERROR_WANT_WRITE:
-				DIA___("SSLCom::read[%d]: want write, last read retured %d, total read %4d",__fd,r,total_r);
+				DEB___("SSLCom::read[%d]: want write, last read retured %d, total read %4d",__fd,r,total_r);
 				sslcom_read_blocked_on_write=1;
                 
                 //forced_write(true);  // we can opportinistically enforce write operation regardless of select result

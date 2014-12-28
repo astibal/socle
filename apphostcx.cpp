@@ -192,7 +192,7 @@ void AppHostCX::pre_read() {
             if(behind_read && __behind_read_warn) {
                 WAR_("AppHostCX::pre_read[%s]: peek returns %d bytes",c_name(),l);
             } else {
-                DEB_("AppHostCX::pre_read[%s]: peek returns %d bytes",c_name(),l);
+                LOG_((unsigned int)l > 0 ? DEB : EXT,"AppHostCX::pre_read[%s]: peek returns %d bytes",c_name(),l);
             }
             
             if(l > 0) {

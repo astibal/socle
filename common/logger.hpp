@@ -46,12 +46,12 @@
 #define LEV_(x) (lout.level() >= (x) ? true : false ) 
 
 #define O_LOG_(lev,x,...) \
-    if(lout.level() >= lev) { \
+    if(lout.level() >= (lev)) { \
         lout.log(lev,(x),__VA_ARGS__); \
     }
 
 #define O_LOGS_(lev,x) \
-    if(lout.level() >= lev) { \
+    if(lout.level() >= (lev)) { \
         lout.log(lev,(x)); \
     }
 
@@ -61,7 +61,7 @@
 /* Define macros that log without any extra checks in the object */
 
 #define LOG_(lev,x,...) \
-    if(lout.level() >= lev) { \
+    if(lout.level() >= (lev)) { \
         if( ( lout.print_srcline() && lout.level() > INF ) || lout.print_srcline_always()) { \
             lout.log2(lev,_FILE_,__LINE__,(x),__VA_ARGS__); \
         } else { \
@@ -70,7 +70,7 @@
     }
 
 #define LOGS_(lev,x) \
-    if(lout.level() >= lev) { \
+    if(lout.level() >= (lev)) { \
         if( ( lout.print_srcline() && lout.level() > INF ) || lout.print_srcline_always()) { \
             lout.log2(lev,_FILE_,__LINE__,(x)); \
         } else { \
@@ -79,14 +79,14 @@
     }
 	
 #define T_LOG_(name,interval,lev,x,...) \
-    if(lout.level() >= lev) { \
+    if(lout.level() >= (lev)) { \
         if(lout.click_timer(name,interval)) { \
             LOG_(lev,x,__VA_ARGS__); \
         } \
     }
 
 #define T_LOGS_(name,interval,lev,x) \
-    if(lout.level() >= lev) { \
+    if(lout.level() >= (lev)) { \
         if(lout.click_timer(name,interval)) { \
             LOGS_(lev,x); \
         } \
