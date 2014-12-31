@@ -18,6 +18,10 @@
 #include <stdexcept> // std::out_of_range, std::invalid_argument
 #include <string>
 
+
+#include <display.hpp>
+
+
 class buffer
 {
 public:
@@ -459,7 +463,7 @@ inline void buffer::flush(buffer::size_type b) {
         }
 		size_-=bytes;
 	} else {
-		throw std::out_of_range ("index out of range: too many bytes to flush: " + std::to_string((int)b) + " of " + std::to_string(size_));
+		throw std::out_of_range ("index out of range: too many bytes to flush: " + std::to_string((int)b) + " of " + std::to_string(size_) + "\n" + bt());
 	}
 
 }

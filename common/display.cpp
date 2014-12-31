@@ -17,6 +17,8 @@
 */
 
 #include <string>
+#include <execinfo.h>
+
 #include "display.hpp"
 
 #include "string.h"
@@ -131,4 +133,33 @@ std::string string_error() {
     char msg[255];
     memset(msg,0,255);
     return string_format("error %d: %s",e,strerror_r(e,msg,255));
+}
+
+
+
+std::string bt() {
+    std::string s;
+    s += "\n Backtrace:";
+
+    void *trace[64];
+    size_t size, i;
+    char **strings;
+
+    size    = backtrace( trace, 64 );
+    strings = backtrace_symbols( trace, size );
+
+    if (strings == NULL) {
+        s += "\n failure: backtrace_symbols";
+        exit(EXIT_FAILURE);
+    }
+    
+    
+    for( i = 0; i < size; i++ ) {
+        s += "\n";
+        s += strings[i];
+    }
+    
+    s += "--";
+    
+    return s;
 }

@@ -91,6 +91,9 @@ struct CRYPTO_dynlock_value
 
 class SSLCom : public TCPCom {
 
+public:
+    SSLCom();
+    
 protected:
 	SSL_CTX* sslcom_ctx = NULL;
 	SSL*     sslcom_ssl = NULL;
@@ -118,11 +121,11 @@ protected:
     void sslcom_peer_hello_received(bool b) { sslcom_peer_hello_received_ = b; }
     
     bool waiting_peer_hello();
-    bool parse_peer_hello(unsigned char* ptr, unsigned int len);
+    bool parse_peer_hello();
     unsigned short parse_peer_hello_extensions(buffer& b, unsigned int curpos);
     
     bool sslcom_peer_hello_received_ = false;
-    unsigned char sslcom_peer_hello_buffer[1500];
+    buffer sslcom_peer_hello_buffer;
     std::string sslcom_peer_hello_sni;
     
     bool enforce_peer_cert_from_cache(std::string & subj);

@@ -24,5 +24,6 @@
 std::string string_format(const std::string& fmt, ...);
 std::string hex_dump(unsigned char *data, int size, unsigned int=0,unsigned char=0);
 std::string string_error();
+std::string bt();
 
 #endif

@@ -147,6 +147,11 @@ int THREAD_cleanup ( void ) {
 
 
 
+SSLCom::SSLCom() {
+    sslcom_peer_hello_buffer.capacity(1500);
+}
+
+
 void SSLCom::static_init() {
 
     baseCom::static_init();
@@ -345,17 +350,7 @@ void SSLCom::init_client() {
     SSL_CTX_set_msg_callback_arg(sslcom_ctx,(void*)this);
     SSL_CTX_set_info_callback(sslcom_ctx,ssl_info_callback);
     SSL_CTX_set_options(sslcom_ctx,SSL_OP_NO_TICKET);
-	
-    
-    
-// 	if (SSL_CTX_use_certificate_file(sslcom_ctx, CL_CERTF, SSL_FILETYPE_PEM) <= 0) {
-// 		ERRS___("Client: Error loading certificate!");
-// 		exit(3);
-// 	}
-// 	if (SSL_CTX_use_PrivateKey_file(sslcom_ctx, CL_KEYF, SSL_FILETYPE_PEM) <= 0) {
-// 		ERRS___("Client: Error loading private key!");
-// 		exit(4);
-// 	}
+
 
     DIA___("SSLCom::init_client[%x]: loading default key/cert",this);
     SSL_CTX_use_PrivateKey(sslcom_ctx,certstore()->def_cl_key);
@@ -399,15 +394,6 @@ void SSLCom::init_server() {
 		ERRS___("Server: Error creating SSL context!");
 		exit(2);
 	}
-	
-// 	if (SSL_CTX_use_certificate_file(sslcom_ctx, SR_CERTF, SSL_FILETYPE_PEM) <= 0) {
-// 		ERRS___("Server: Error loading certificate!");
-// 		exit(3);
-// 	}
-// 	if (SSL_CTX_use_PrivateKey_file(sslcom_ctx, SR_KEYF, SSL_FILETYPE_PEM) <= 0) {
-// 		ERRS___("Server: Error loading private key!");
-// 		exit(4);
-// 	}
 
     SSL_CTX_set_cipher_list(sslcom_ctx,"ALL:!ADH:!LOW:!EXP:!MD5:@STRENGTH");
     //SSL_CTX_set_cipher_list(sslcom_ctx,"RC4-SHA");
@@ -617,7 +603,7 @@ int SSLCom::waiting() {
                 DIA___("SSLCom::waiting[%d]: executing client auto upgrade",sslcom_fd);
                 if(owner_cx() != nullptr && sslcom_fd == 0) {
                     sslcom_fd = owner_cx()->socket();
-                    DIA___("SSLCom::waiting[%d]: socket 0 has been auto-upgraded to owner's socket %d",sslcom_fd);
+                    DIA___("SSLCom::waiting[%d]: socket 0 has been auto-upgraded to owner's socket",sslcom_fd);
                 }
                 upgrade_client_socket(sslcom_fd);
             }
@@ -745,16 +731,18 @@ bool SSLCom::waiting_peer_hello()
         SSLCom *p = static_cast<SSLCom*>(peer());
         if(p != nullptr) {
             if(p->sslcom_fd > 0) {
-                DIA___("SSLCom::waiting_peer_hello: peek max %d bytes from peer socket %d",2048,p->sslcom_fd);
+                DIA___("SSLCom::waiting_peer_hello: peek max %d bytes from peer socket %d",sslcom_peer_hello_buffer.capacity(),p->sslcom_fd);
                 
-                int red = ::recv(p->sslcom_fd,sslcom_peer_hello_buffer,1500,MSG_PEEK);
+                int red = ::recv(p->sslcom_fd,sslcom_peer_hello_buffer.data(),sslcom_peer_hello_buffer.capacity(),MSG_PEEK);
                 if (red > 0) {
-                    DIA___("SSLCom::waiting_peer_hello: %d bytes in buffer for hello analysis",red);
-                    DUM___("SSLCom::waiting_peer_hello: ClientHello data:\n%s",hex_dump(sslcom_peer_hello_buffer,red).c_str());
+                    sslcom_peer_hello_buffer.size(red);
                     
-                    if (! parse_peer_hello(sslcom_peer_hello_buffer,red)) {
+                    DIA___("SSLCom::waiting_peer_hello: %d bytes in buffer for hello analysis",red);
+                    DUM___("SSLCom::waiting_peer_hello: ClientHello data:\n%s",hex_dump(sslcom_peer_hello_buffer.data(),sslcom_peer_hello_buffer.size()).c_str());
+                    
+                    if (! parse_peer_hello()) {
                         DIAS___("SSLCom::waiting_peer_hello: analysis failed");
-                        DIA___("SSLCom::waiting_peer_hello: failed ClientHello data:\n%s",hex_dump(sslcom_peer_hello_buffer,red).c_str());
+                        DIA___("SSLCom::waiting_peer_hello: failed ClientHello data:\n%s",hex_dump(sslcom_peer_hello_buffer.data(),sslcom_peer_hello_buffer.size()).c_str());
                         return false;
                     }
                     sslcom_peer_hello_received_ = true;
@@ -827,16 +815,17 @@ bool SSLCom::enforce_peer_cert_from_cache(std::string & subj) {
 }
 
 
-bool SSLCom::parse_peer_hello(unsigned char* ptr, unsigned int len) {
+bool SSLCom::parse_peer_hello() {
 
     bool ret = false;
     
     uint8_t content_type = 0;
     
     try {
-    
-    if(len >= 34) {
-        buffer b = buffer(ptr,len);
+
+    buffer& b = sslcom_peer_hello_buffer;        
+    if(b.size() >= 34) {
+
         buffer session_id = buffer();
         unsigned int curpos = 0;
         
@@ -847,8 +836,8 @@ bool SSLCom::parse_peer_hello(unsigned char* ptr, unsigned int len) {
         unsigned short message_length = ntohs(b.get_at<unsigned short>(curpos)); curpos+=sizeof(unsigned short);
         
         
-        DIA___("SSLCom::parse_peer_hello: buffer size %d, received message type %d, version %d.%d, length %d",len,message_type,version_maj, version_min, message_length);
-        if(len != (unsigned int)message_length + 5) {
+        DIA___("SSLCom::parse_peer_hello: buffer size %d, received message type %d, version %d.%d, length %d",b.size(),message_type,version_maj, version_min, message_length);
+        if(b.size() != (unsigned int)message_length + 5) {
             DIAS___("SSLCom::parse_peer_hello: incomplete message received");
             return false;
         }
@@ -898,7 +887,7 @@ bool SSLCom::parse_peer_hello(unsigned char* ptr, unsigned int len) {
             }
         }
     } else {
-        DIA___("SSLCom::parse_peer_hello: only %d bytes in peek:\n%s",len,hex_dump(ptr,len).c_str());
+        DIA___("SSLCom::parse_peer_hello: only %d bytes in peek:\n%s",b.size(),hex_dump(b.data(),b.size()).c_str());
     }
     
     
