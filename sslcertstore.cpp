@@ -209,7 +209,7 @@ bool SSLCertStore::add(std::string& subject,X509_PAIR* parek, X509_REQ* req) {
         cache_[subject] = parek;
         DIA__("SSLCertStore::add[%x] cert %s",this,subject.c_str());
         
-        std::string cn = cert_get_cn(parek->second);
+        std::string cn = print_cn(parek->second);
         fqdn_cache_[cn] = subject;
         DIA__("SSLCertStore::add[%x] fqdn %s -> %s",this,cn.c_str(), subject.c_str());
     }
@@ -553,29 +553,63 @@ int SSLCertStore::convert_ASN1TIME(ASN1_TIME *t, char* buf, size_t len) {
 }
 
 
-std::string SSLCertStore::cert_get_cn(X509* x) {
-    char tmp[512];
+std::string SSLCertStore::print_cn(X509* x) {
+    char tmp[SSLCERTSTORE_BUFSIZE];
     std::string s;
 
     // get info from the peer certificate
-    X509_NAME_get_text_by_NID(X509_get_subject_name(x),NID_commonName, tmp,512);
+    X509_NAME_get_text_by_NID(X509_get_subject_name(x),NID_commonName, tmp,SSLCERTSTORE_BUFSIZE-1);
+    s.append(tmp);
+    
+    return s;
+}
+
+std::string SSLCertStore::print_issuer(X509* x) {
+    char tmp[SSLCERTSTORE_BUFSIZE];
+    std::string s;
+
+    // get info from the peer certificate
+    X509_NAME_get_text_by_NID(X509_get_issuer_name(x),NID_commonName, tmp,SSLCERTSTORE_BUFSIZE-1);
+    s.append(tmp);
+    
+    return s;
+}
+
+std::string SSLCertStore::print_not_before(X509* x) {
+    char tmp[SSLCERTSTORE_BUFSIZE];
+    std::string s;
+    ASN1_TIME *not_before = X509_get_notBefore(x);
+    
+    convert_ASN1TIME(not_before, tmp, SSLCERTSTORE_BUFSIZE-1); 
+    s.append(tmp);
+    
+    return s;
+}
+
+
+std::string SSLCertStore::print_not_after(X509* x) {
+    char tmp[SSLCERTSTORE_BUFSIZE];
+    std::string s;
+    ASN1_TIME *not_after = X509_get_notAfter(x);
+    
+    convert_ASN1TIME(not_after, tmp, SSLCERTSTORE_BUFSIZE-1); 
     s.append(tmp);
     
     return s;
 }
 
 std::string SSLCertStore::print_cert(X509* x) {
-    char tmp[512];
+    char tmp[SSLCERTSTORE_BUFSIZE];
     std::string s;
 
     // get info from the peer certificate
-    X509_NAME_get_text_by_NID(X509_get_subject_name(x),NID_commonName, tmp,512);
+    X509_NAME_get_text_by_NID(X509_get_subject_name(x),NID_commonName, tmp,SSLCERTSTORE_BUFSIZE-1);
     s.append("Common Name: ");
     s.append(tmp);
     s.append("\n ");
     
 
-    X509_NAME_oneline(X509_get_subject_name(x), tmp, 512);
+    X509_NAME_oneline(X509_get_subject_name(x), tmp, SSLCERTSTORE_BUFSIZE-1);
     s.append("Subject: ");
     s.append(tmp);
     s.append("\n ");
@@ -584,7 +618,7 @@ std::string SSLCertStore::print_cert(X509* x) {
     if(!issuer) {
     s.append("# Issuer: <unable to obtain issuer from certificate> \n ");
     } else {
-        X509_NAME_oneline(issuer,tmp,512);
+        X509_NAME_oneline(issuer,tmp,SSLCERTSTORE_BUFSIZE-1);
         s.append(string_format("Issuer: '%s'\n ",tmp));
         s.append("\n ");
         
@@ -599,11 +633,11 @@ std::string SSLCertStore::print_cert(X509* x) {
     ASN1_TIME *not_before = X509_get_notBefore(x);
     ASN1_TIME *not_after = X509_get_notAfter(x);            
     
-    convert_ASN1TIME(not_before, tmp, 512);    
+    convert_ASN1TIME(not_before, tmp, SSLCERTSTORE_BUFSIZE-1);    
     s.append("Valid from: ");
     s.append(tmp);
     s.append("\n ");
-    convert_ASN1TIME(not_after, tmp, 512);
+    convert_ASN1TIME(not_after, tmp, SSLCERTSTORE_BUFSIZE-1);
     s.append("Valid to: ");
     s.append(tmp);
     s.append("\n ");

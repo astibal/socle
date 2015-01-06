@@ -49,6 +49,8 @@ typedef std::map<std::string,X509_PAIR*> X509_CACHE;
 typedef std::map<std::string,std::string> FQDN_CACHE;
 
 
+#define SSLCERTSTORE_BUFSIZE 512
+
 class SSLCertStore {
    
 public:
@@ -85,7 +87,10 @@ public:
      
      static int convert_ASN1TIME(ASN1_TIME*, char*, size_t);
      static std::string print_cert(X509*);
-     static std::string cert_get_cn(X509*);
+     static std::string print_cn(X509*);
+     static std::string print_issuer(X509* x);
+     static std::string print_not_after(X509* x);
+     static std::string print_not_before(X509* x);
      
      bool add(std::string& subject, EVP_PKEY* cert_privkey,X509* cert,X509_REQ* req=NULL);
      bool add(std::string& subject, X509_PAIR* p,X509_REQ* req=NULL);

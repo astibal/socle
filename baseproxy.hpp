@@ -250,4 +250,6 @@ private:
     static int log_level;    
 };
 
+typedef std::vector<baseHostCX*>::iterator cx_iterator;
+
 #endif

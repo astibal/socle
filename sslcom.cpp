@@ -23,12 +23,14 @@
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 #include <openssl/tls1.h>
+#include <openssl/x509_vfy.h>
 
 #include <sslcom.hpp>
 #include <logger.hpp>
 
 
 #include <cstdio>
+#include <functional>
 
 #include <crc32.hpp>
 #include <display.hpp>
@@ -39,6 +41,7 @@ std::once_flag SSLCom::openssl_thread_setup_done;
 std::once_flag SSLCom::certstore_setup_done;
 SSLCertStore*  SSLCom::sslcom_certstore_;
 
+int SSLCom::sslcom_ssl_extdata_index = -1;
 
 int SSLCom::counter_ssl_connect = 0;
 int SSLCom::counter_ssl_accept = 0;
@@ -315,6 +318,97 @@ void SSLCom::ssl_msg_callback(int write_p, int version, int content_type, const 
 }
 
 
+
+int SSLCom::ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx) {
+    
+    X509 * err_cert = X509_STORE_CTX_get_current_cert(ctx);
+    int err =   X509_STORE_CTX_get_error(ctx);
+    int depth = X509_STORE_CTX_get_error_depth(ctx);
+    int idx = SSL_get_ex_data_X509_STORE_CTX_idx();
+    int ret = ok;
+    
+    DEB__("SSLCom::ssl_client_vrfy_callback: data index = %d, ok = %d, depth = %d",idx,ok,depth);
+
+    SSL* ssl = static_cast<SSL*>(X509_STORE_CTX_get_ex_data(ctx, SSL_get_ex_data_X509_STORE_CTX_idx()));
+    void* data = SSL_get_ex_data(ssl, sslcom_ssl_extdata_index);
+    const char *name = "unknown_cx";
+    
+    SSLCom* com = static_cast<SSLCom*>(data);
+    if(com != nullptr) {
+        const char* n = com->hr();
+        if(n != nullptr) {
+            name = n;
+        }
+    }    
+    
+
+    if (!ok) {
+        if (err_cert) {
+            DIA__("[%s]: SSLCom::ssl_client_vrfy_callback: '%s' issued by '%s'",name,SSLCertStore::print_cn(err_cert).c_str(),
+                                                                                    SSLCertStore::print_issuer(err_cert).c_str());
+        }
+        else {
+            DIA__("[%s]: SSLCom::ssl_client_vrfy_callback: no server certificate",name);
+        }        
+        DIA__("[%s]: SSLCom::ssl_client_vrfy_callback: %d:%s",name, err, X509_verify_cert_error_string(err));
+    }
+    
+    switch (err)
+    {
+        case X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY:
+        case X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT:
+        case X509_V_ERR_SELF_SIGNED_CERT_IN_CHAIN:
+        case X509_V_ERR_CERT_UNTRUSTED:
+            //INF__("[%s]: SSLCom::ssl_client_vrfy_callback: issuer: %s", name, SSLCertStore::print_issuer(err_cert).c_str());
+            if(com != nullptr) 
+            if(com->opt_allow_unknown_issuer || com->opt_allow_self_signed_chain) {
+                ret = 1;
+            }
+            
+            break;
+        case X509_V_ERR_DEPTH_ZERO_SELF_SIGNED_CERT:
+            if(com != nullptr) 
+            if(com->opt_allow_self_signed_cert) {
+                ret = 1;
+            }
+            break;
+            
+        case X509_V_ERR_CERT_NOT_YET_VALID:
+        case X509_V_ERR_ERROR_IN_CERT_NOT_BEFORE_FIELD:
+            DIA__("[%s]: SSLCom::ssl_client_vrfy_callback: not before: %s",name, SSLCertStore::print_not_before(err_cert).c_str());
+            if(com != nullptr) 
+            if(com->opt_allow_not_valid_cert) {
+                ret = 1;
+            }
+            
+            break;
+        case X509_V_ERR_CERT_HAS_EXPIRED:
+        case X509_V_ERR_ERROR_IN_CERT_NOT_AFTER_FIELD:
+            DIA__("[%s]: SSLCom::ssl_client_vrfy_callback: not after: %s",name, SSLCertStore::print_not_after(err_cert).c_str());
+            if(com != nullptr) 
+            if(com->opt_allow_not_valid_cert) {
+                ret = 1;
+            }
+
+            break;
+        case X509_V_ERR_NO_EXPLICIT_POLICY:
+            INF__("[%s]: SSLCom::ssl_client_vrfy_callback: no explicit policy",name);
+            break;
+    }
+    if (err == X509_V_OK && ok == 2) {
+        DIA__("[%s]: SSLCom::ssl_client_vrfy_callback: explicit policy", name);
+    }
+    
+    
+    DIA__("[%s]: SSLCom::ssl_client_vrfy_callback[%d]: returning %s (pre-verify %d)",name,depth,(ret > 0 ? "ok" : "failed" ),ok);
+    if(ret <= 0) {
+        NOT__("[%s]: target server ssl certificate check failed: %s",name, X509_verify_cert_error_string(err));   
+    }
+    
+    return ret;
+}
+
+
 long int SSLCom::log_if_error(unsigned int level, const char* prefix) {
     
     long err2 = ERR_get_error();
@@ -349,6 +443,7 @@ void SSLCom::init_client() {
     SSL_CTX_set_msg_callback(sslcom_ctx,ssl_msg_callback);
     SSL_CTX_set_msg_callback_arg(sslcom_ctx,(void*)this);
     SSL_CTX_set_info_callback(sslcom_ctx,ssl_info_callback);
+    SSL_CTX_set_verify(sslcom_ctx,SSL_VERIFY_PEER,&ssl_client_vrfy_callback);
     SSL_CTX_set_options(sslcom_ctx,SSL_OP_NO_TICKET);
 
 
@@ -360,7 +455,7 @@ void SSLCom::init_client() {
 		ERRS___("Client: Private key does not match the certificate public key\n");
 		exit(5);
 	}	
-
+	
     sslcom_ssl = SSL_new(sslcom_ctx);
     
     if(!sslcom_ssl) {
@@ -370,6 +465,12 @@ void SSLCom::init_client() {
     
     SSL_set_session(sslcom_ssl, NULL);
     SSL_set_mode(sslcom_ssl, SSL_MODE_ENABLE_PARTIAL_WRITE|SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
+
+    // add this pointer to ssl external data
+    if(sslcom_ssl_extdata_index < 0) {
+        sslcom_ssl_extdata_index = SSL_get_ex_new_index(0, (void*) "sslcom object", nullptr, nullptr, nullptr);
+    }
+    SSL_set_ex_data(sslcom_ssl,sslcom_ssl_extdata_index,(void*)this);    
 }
 
 
@@ -419,19 +520,27 @@ void SSLCom::init_server() {
 		exit(5);
 	}	
 
+	
 	sslcom_ssl = SSL_new(sslcom_ctx);
     SSL_set_session(sslcom_ssl, NULL);
     SSL_set_mode(sslcom_ssl, SSL_MODE_ENABLE_PARTIAL_WRITE|SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
 	
 	SSL_set_fd (sslcom_ssl, sslcom_fd);
-	sslcom_server = true;
+	
+    is_server(true);
+
+    // add this pointer to ssl external data
+    if(sslcom_ssl_extdata_index < 0) {
+        sslcom_ssl_extdata_index = SSL_get_ex_new_index(0, (void*) "sslcom object", nullptr, nullptr, nullptr);
+    }
+    SSL_set_ex_data(sslcom_ssl,sslcom_ssl_extdata_index,(void*)this);   
 }
 
 bool SSLCom::check_cert (const char* host) {
     X509 *peer;
     char peer_CN[256];
 
-    if ( !sslcom_server && SSL_get_verify_result ( sslcom_ssl ) !=X509_V_OK ) {
+    if ( !is_server() && SSL_get_verify_result ( sslcom_ssl ) !=X509_V_OK ) {
         DIAS___( "check_cert: ssl client: target server's certificate cannot be verified!" );
     }
 
@@ -588,7 +697,7 @@ int SSLCom::waiting() {
 	
 	int r = 0;
 	
-	if (!sslcom_server) {
+	if (!is_server() ) {
 
         // if we still wait for client hello, try to fetch and enforce (first attempt not successful on connect())
         if(!sslcom_peer_hello_received()) {
@@ -623,7 +732,7 @@ int SSLCom::waiting() {
         }
 		op = op_connect;
 	} 
-	else if(sslcom_server) {
+	else if(is_server()) {
         
         if(auto_upgrade() && !upgraded()) {
             DIAS___("SSLCom::waiting: server auto upgrade");
@@ -699,7 +808,7 @@ int SSLCom::waiting() {
 		return -1;
 	}
 	
-	if(!sslcom_server) {
+	if(!is_server()) {
         prof_connect_ok++;
     } else {
         prof_accept_ok++;
@@ -708,7 +817,7 @@ int SSLCom::waiting() {
 	DEB___("SSLCom::waiting: operation succeeded: %s", op);
 	sslcom_waiting = false;	
 
-	if(!sslcom_server) {
+	if(!is_server()) {
 		check_cert(ssl_waiting_host);
 	}
 	
@@ -747,8 +856,8 @@ bool SSLCom::waiting_peer_hello()
                     }
                     sslcom_peer_hello_received_ = true;
                     
-                    if(sslcom_peer_hello_sni.size() > 0) {
-                        std::string subj = certstore()->find_subject_by_fqdn(sslcom_peer_hello_sni);
+                    if(sslcom_peer_hello_sni_.size() > 0) {
+                        std::string subj = certstore()->find_subject_by_fqdn(sslcom_peer_hello_sni_);
                         if(subj.size() > 0) {
                             DIA___("SSLCom::waiting_peer_hello: peer's SNI found in subject cache: '%s'",subj.c_str());
                             if(! enforce_peer_cert_from_cache(subj)) {
@@ -924,7 +1033,7 @@ unsigned short SSLCom::parse_peer_hello_extensions(buffer& b, unsigned int curpo
                 
                 DIA___("SSLCom::parse_peer_hello_extensions:    SNI hostname: %s",s.c_str());
                 
-                sslcom_peer_hello_sni = s;
+                sslcom_peer_hello_sni_ = s;
                 //SSL_set_tlsext_host_name(sslcom_ssl,s.c_str());
             }
             
@@ -1282,9 +1391,9 @@ int SSLCom::upgrade_client_socket(int sock) {
         }
     //  SSL_set_fd (sslcom_ssl, sock);
         
-        if(sslcom_peer_hello_sni.size() > 0) {
-            DIA_("SSLCom::upgrade_client_socket[%d]: set sni extension to: %s",sock, sslcom_peer_hello_sni.c_str());
-            SSL_set_tlsext_host_name(sslcom_ssl, sslcom_peer_hello_sni.c_str());
+        if(sslcom_peer_hello_sni_.size() > 0) {
+            DIA_("SSLCom::upgrade_client_socket[%d]: set sni extension to: %s",sock, sslcom_peer_hello_sni_.c_str());
+            SSL_set_tlsext_host_name(sslcom_ssl, sslcom_peer_hello_sni_.c_str());
         }
         
         sslcom_sbio = BIO_new_socket(sock,BIO_NOCLOSE);

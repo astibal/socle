@@ -31,9 +31,9 @@ bool SSLMitmCom::check_cert(const char* peer_name) {
     if(p) {
         
         // FIXME: this is not right, design another type of test
-        p->sslcom_server = true;
+        p->sslcom_server_ = true;
         
-        if(p->sslcom_server) {
+        if(p->sslcom_server_) {
             
             if(! sslcom_peer_sni_shortcut) {
                 DEB__("SSLMitmCom::check_cert[%x]: slow-path, calling to spoof peer certificate",this);

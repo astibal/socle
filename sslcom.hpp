@@ -99,6 +99,8 @@ protected:
 	SSL*     sslcom_ssl = NULL;
 	BIO*	 sslcom_sbio = NULL;
     
+    static int sslcom_ssl_extdata_index;
+    
     X509*     sslcom_pref_cert = NULL;
     EVP_PKEY* sslcom_pref_key  = NULL;
 	
@@ -108,7 +110,7 @@ protected:
 	int sslcom_read_blocked=0;
 	
 	bool sslcom_waiting=true;
-	bool sslcom_server=false;
+	bool sslcom_server_=false;
 	int sslcom_fd=0;
 	int waiting();
 
@@ -126,7 +128,7 @@ protected:
     
     bool sslcom_peer_hello_received_ = false;
     buffer sslcom_peer_hello_buffer;
-    std::string sslcom_peer_hello_sni;
+    std::string sslcom_peer_hello_sni_;
     
     bool enforce_peer_cert_from_cache(std::string & subj);
     bool sslcom_peer_sni_shortcut = false;
@@ -165,8 +167,14 @@ public:
     virtual void init_server();
     int upgrade_server_socket(int s);
 
+    bool is_server() { return sslcom_server_; }
+protected:
+    void is_server(bool b) { sslcom_server_ = b; }
+public:    
+
     static void ssl_msg_callback(int write_p, int version, int content_type, const void *buf, size_t len, SSL *ssl, void *arg);
     static void ssl_info_callback(const SSL *s, int where, int ret);
+    static int ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx);
     long log_if_error(unsigned int level, const char* prefix);
     
 	virtual bool check_cert(const char*);
@@ -205,6 +213,15 @@ public:
     int prof_accept_ok=0;
     int prof_connect_ok=0;
 
+    // unknown issuers
+    bool opt_allow_unknown_issuer = false;
+    bool opt_allow_self_signed_chain = false;
+    
+    // common mistakes/misconfigs
+    bool opt_allow_not_valid_cert = false;    //expired or not yet valid
+    bool opt_allow_self_signed_cert = false;  //for depth 0
+
+    
 public:
     static unsigned int& log_level_ref() { return log_level; }
 private:
