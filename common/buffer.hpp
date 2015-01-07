@@ -95,10 +95,10 @@ bool operator!= (const buffer&, const buffer&);
 //
 // Implementation.
 //
-inline buffer::~buffer ()
-{
-  if (free_)
-    delete[] data_;
+inline buffer::~buffer () {
+    if (free_ && capacity_ > 0) {
+        delete[] data_;
+    }
 }
 
 inline buffer::buffer (size_type s)
