@@ -356,6 +356,7 @@ int SSLCom::ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx) {
     switch (err)
     {
         case X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY:
+        case X509_V_ERR_UNABLE_TO_VERIFY_LEAF_SIGNATURE:
         case X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT:
         case X509_V_ERR_SELF_SIGNED_CERT_IN_CHAIN:
         case X509_V_ERR_CERT_UNTRUSTED:
@@ -1056,11 +1057,11 @@ int SSLCom::read ( int __fd, void* __buf, size_t __n, int __flags )  {
 	
 	// non-blocking socket can be still opening 
 	if( sslcom_waiting ) {
-        DIA___("SSLCom::read[%d]: still waiting for handshake to complete.",__fd);
+        DUM___("SSLCom::read[%d]: still waiting for handshake to complete.",__fd);
 		int c = waiting();
 
         if (c == 0) {
-            DIA___("SSLCom:: read[%d]: ssl_waiting() returned %d: still waiting",__fd,c);
+            DUM___("SSLCom:: read[%d]: ssl_waiting() returned %d: still waiting",__fd,c);
             return -1;
         } else 
         if (c < 0) {
