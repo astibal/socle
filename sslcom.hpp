@@ -150,6 +150,8 @@ public:
     static SSLCertStore* sslcom_certstore_;
     static void certstore_setup(void);
     static std::once_flag certstore_setup_done;    
+    static void client_ctx_setup();
+    static void server_ctx_setup();    
     
     static SSLCertStore* certstore() { return sslcom_certstore_; };
     static void certstore(SSLCertStore* c) { if (sslcom_certstore_ != NULL) { delete sslcom_certstore_; }  sslcom_certstore_ = c; };
@@ -160,6 +162,8 @@ public:
     virtual const char* name() { return "ssl"; };
     virtual const char* hr();
     std::string hr_;
+    
+    void init_ssl_callbacks();
     
 	virtual void init_client();
 	int upgrade_client_socket(int s);

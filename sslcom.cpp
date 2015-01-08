@@ -424,39 +424,33 @@ long int SSLCom::log_if_error(unsigned int level, const char* prefix) {
 }
 
 
+void SSLCom::init_ssl_callbacks() {
+    SSL_set_msg_callback(sslcom_ssl,ssl_msg_callback);
+    SSL_set_msg_callback_arg(sslcom_ssl,(void*)this);
+    SSL_set_info_callback(sslcom_ssl,ssl_info_callback);    
+    
+    // add this pointer to ssl external data
+    if(sslcom_ssl_extdata_index < 0) {
+        sslcom_ssl_extdata_index = SSL_get_ex_new_index(0, (void*) "sslcom object", nullptr, nullptr, nullptr);
+    }
+    SSL_set_ex_data(sslcom_ssl,sslcom_ssl_extdata_index,(void*)this);    
+    
+    if(! is_server()) {
+        SSL_set_verify(sslcom_ssl,SSL_VERIFY_PEER,&ssl_client_vrfy_callback);
+    }
+    
+}
+
 
 void SSLCom::init_client() {
-	
-	const SSL_METHOD *method;
-	
-	method = TLSv1_client_method();
 
-	sslcom_ctx = SSL_CTX_new (method);	
-
-	if (!sslcom_ctx) {
-		ERRS___("Client: Error creating SSL context!");
-        log_if_error(ERR,"SSLCom::init_client");
-		exit(2);
-	}
-
-    SSL_CTX_set_cipher_list(sslcom_ctx,"ALL:!ADH:!LOW:!EXP:!MD5:@STRENGTH");
-    //SSL_CTX_set_cipher_list(sslcom_ctx,"RC4-SHA");
-    SSL_CTX_set_msg_callback(sslcom_ctx,ssl_msg_callback);
-    SSL_CTX_set_msg_callback_arg(sslcom_ctx,(void*)this);
-    SSL_CTX_set_info_callback(sslcom_ctx,ssl_info_callback);
-    SSL_CTX_set_verify(sslcom_ctx,SSL_VERIFY_PEER,&ssl_client_vrfy_callback);
-    SSL_CTX_set_options(sslcom_ctx,SSL_OP_NO_TICKET);
-
-
-    DIA___("SSLCom::init_client[%x]: loading default key/cert",this);
-    SSL_CTX_use_PrivateKey(sslcom_ctx,certstore()->def_cl_key);
-    SSL_CTX_use_certificate(sslcom_ctx,certstore()->def_cl_cert);
-
-	if (!SSL_CTX_check_private_key(sslcom_ctx)) {
-		ERRS___("Client: Private key does not match the certificate public key\n");
-		exit(5);
-	}	
-	
+    if(sslcom_ssl) {
+        DEBS___("SSLCom::init_client: freeing old sslcom_ssl");
+        SSL_free(sslcom_ssl);
+    }
+    
+    
+    sslcom_ctx = certstore()->def_cl_ctx;
     sslcom_ssl = SSL_new(sslcom_ctx);
     
     if(!sslcom_ssl) {
@@ -467,62 +461,28 @@ void SSLCom::init_client() {
     SSL_set_session(sslcom_ssl, NULL);
     SSL_set_mode(sslcom_ssl, SSL_MODE_ENABLE_PARTIAL_WRITE|SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
 
-    // add this pointer to ssl external data
-    if(sslcom_ssl_extdata_index < 0) {
-        sslcom_ssl_extdata_index = SSL_get_ex_new_index(0, (void*) "sslcom object", nullptr, nullptr, nullptr);
-    }
-    SSL_set_ex_data(sslcom_ssl,sslcom_ssl_extdata_index,(void*)this);    
+
+    init_ssl_callbacks();
 }
 
 
 void SSLCom::init_server() {
 	
-	const SSL_METHOD *method;
-	
-	DEBS___("SSLCom::init_server");
-	
-    if(sslcom_ctx) {
-        DEBS___("SSLCom::init_server: freeing old sslcom_ctx");
-        SSL_CTX_free(sslcom_ctx);
-    }
     if(sslcom_ssl) {
         DEBS___("SSLCom::init_server: freeing old sslcom_ssl");
         SSL_free(sslcom_ssl);
     }
-    
-	method = TLSv1_server_method();
-	sslcom_ctx = SSL_CTX_new (method);	
-	if (!sslcom_ctx) {
-		ERRS___("Server: Error creating SSL context!");
-		exit(2);
-	}
 
-    SSL_CTX_set_cipher_list(sslcom_ctx,"ALL:!ADH:!LOW:!EXP:!MD5:@STRENGTH");
-    //SSL_CTX_set_cipher_list(sslcom_ctx,"RC4-SHA");
-
-    SSL_CTX_set_msg_callback(sslcom_ctx,ssl_msg_callback);
-    SSL_CTX_set_msg_callback_arg(sslcom_ctx,(void*)this);
-    SSL_CTX_set_info_callback(sslcom_ctx,ssl_info_callback);
-    SSL_CTX_set_options(sslcom_ctx,SSL_OP_NO_TICKET);
-
-    if (sslcom_pref_cert && sslcom_pref_key) {
-        DEB___("SSLCom::init_server[%x]: loading preferred key/cert",this);
-        SSL_CTX_use_PrivateKey(sslcom_ctx,sslcom_pref_key);
-        SSL_CTX_use_certificate(sslcom_ctx,sslcom_pref_cert);
-        
-    } else {
-        DEB___("SSLCom::init_server[%x]: loading default key/cert",this);
-        SSL_CTX_use_PrivateKey(sslcom_ctx,certstore()->def_sr_key);
-        SSL_CTX_use_certificate(sslcom_ctx,certstore()->def_sr_cert);
-    }
-        
-	if (!SSL_CTX_check_private_key(sslcom_ctx)) {
-		ERRS___("Server: Private key does not match the certificate public key\n");
-		exit(5);
-	}	
-
-	
+    sslcom_ctx = certstore()->def_sr_ctx;
 	sslcom_ssl = SSL_new(sslcom_ctx);
+    
+    if (sslcom_pref_cert && sslcom_pref_key) {
+        DEB__("SSLCom::init_server[%x]: loading preferred key/cert",this);
+        SSL_use_PrivateKey(sslcom_ssl,sslcom_pref_key);
+        SSL_use_certificate(sslcom_ssl,sslcom_pref_cert);
+        
+    }
+    
     SSL_set_session(sslcom_ssl, NULL);
     SSL_set_mode(sslcom_ssl, SSL_MODE_ENABLE_PARTIAL_WRITE|SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
 	
@@ -530,11 +490,7 @@ void SSLCom::init_server() {
 	
     is_server(true);
 
-    // add this pointer to ssl external data
-    if(sslcom_ssl_extdata_index < 0) {
-        sslcom_ssl_extdata_index = SSL_get_ex_new_index(0, (void*) "sslcom object", nullptr, nullptr, nullptr);
-    }
-    SSL_set_ex_data(sslcom_ssl,sslcom_ssl_extdata_index,(void*)this);   
+    init_ssl_callbacks();
 }
 
 bool SSLCom::check_cert (const char* host) {
@@ -829,19 +785,19 @@ int SSLCom::waiting() {
 bool SSLCom::waiting_peer_hello()
 {
     
-    DEBS___("SSLCom::waiting_peer_hello: start");
+    DUMS___("SSLCom::waiting_peer_hello: start");
     
     if(sslcom_peer_hello_received_) {
         DEBS___("SSLCom::waiting_peer_hello: already called, returning true");
         return true;
     }
     
-    DIAS___("SSLCom::waiting_peer_hello: called");
+    DUMS___("SSLCom::waiting_peer_hello: called");
     if(peer()) {
         SSLCom *p = static_cast<SSLCom*>(peer());
         if(p != nullptr) {
             if(p->sslcom_fd > 0) {
-                DIA___("SSLCom::waiting_peer_hello: peek max %d bytes from peer socket %d",sslcom_peer_hello_buffer.capacity(),p->sslcom_fd);
+                DUMS___("SSLCom::waiting_peer_hello: peek max %d bytes from peer socket %d",sslcom_peer_hello_buffer.capacity(),p->sslcom_fd);
                 
                 int red = ::recv(p->sslcom_fd,sslcom_peer_hello_buffer.data(),sslcom_peer_hello_buffer.capacity(),MSG_PEEK);
                 if (red > 0) {
@@ -870,8 +826,8 @@ bool SSLCom::waiting_peer_hello()
                     }
                     
                 } else {
-                    DIA___("SSLCom::waiting_peer_hello: peek returns %d, readbuf=%d",red,owner_cx()->readbuf()->size());
-                    DIA___("SSLCom::waiting_peer_hello: peek errno: %s",string_error().c_str());
+                    DUM___("SSLCom::waiting_peer_hello: peek returns %d, readbuf=%d",red,owner_cx()->readbuf()->size());
+                    DUM___("SSLCom::waiting_peer_hello: peek errno: %s",string_error().c_str());
                 }
                 
             } else {
@@ -1240,11 +1196,11 @@ int SSLCom::write ( int __fd, const void* __buf, size_t __n, int __flags )  {
 
 // 	// non-blocking socket can be still opening 
 	if( sslcom_waiting ) {
-        DIA___("SSLCom::write[%d]: still waiting for handshake to complete.",__fd);
+        DUM___("SSLCom::write[%d]: still waiting for handshake to complete.",__fd);
         
 		int c = waiting();
 		if (c == 0) {
-			DEB___("SSLCom::write[%d]: ssl_waiting() returned %d: still waiting",__fd,c);
+			DUM___("SSLCom::write[%d]: ssl_waiting() returned %d: still waiting",__fd,c);
 			return 0;
 		} else 
         if (c < 0) {
@@ -1368,10 +1324,10 @@ void SSLCom::cleanup()  {
         sslcom_ssl = nullptr;
     }
     
-	if (sslcom_ctx) {
-        SSL_CTX_free(sslcom_ctx);
-        sslcom_ctx = nullptr;
-    }
+// 	if (sslcom_ctx) {
+//         SSL_CTX_free(sslcom_ctx);
+//         sslcom_ctx = nullptr;
+//     }
     
     TCPCom::cleanup();    
 } 
@@ -1473,7 +1429,62 @@ int SSLCom::connect ( const char* host, const char* port, bool blocking )  {
     return sock;
 }
 
+void SSLCom::client_ctx_setup() {
+    const SSL_METHOD *method = TLSv1_client_method();
 
+    SSL_CTX* ctx = SSL_CTX_new (method);  
+
+    if (!ctx) {
+        ERRS__("SSLCom::client_ctx_setup: Error creating SSL context!");
+        //log_if_error(ERR,"SSLCom::init_client");
+        exit(2);
+    }
+
+    SSL_CTX_set_cipher_list(ctx,"ALL:!ADH:!LOW:!EXP:!MD5:@STRENGTH");
+    //SSL_CTX_set_cipher_list(sslcom_ctx,"RC4-SHA");
+
+    
+    SSL_CTX_set_options(ctx,SSL_OP_NO_TICKET);
+
+
+    DIAS__("SSLCom::client_ctx_setup: loading default key/cert");
+    SSL_CTX_use_PrivateKey(ctx,certstore()->def_cl_key);
+    SSL_CTX_use_certificate(ctx,certstore()->def_cl_cert);
+
+    if (!SSL_CTX_check_private_key(ctx)) {
+        ERRS__("SSLCom::client_ctx_setup: Private key does not match the certificate public key\n");
+        exit(5);
+    }   
+    
+    certstore()->def_cl_ctx = ctx;
+}
+
+
+void SSLCom::server_ctx_setup() {
+    const SSL_METHOD *method = TLSv1_server_method();
+    SSL_CTX* ctx = SSL_CTX_new (method);  
+    
+    if (!ctx) {
+        ERRS__("SSLCom::server_ctx_setup: Error creating SSL context!");
+        exit(2);
+    }
+
+    SSL_CTX_set_cipher_list(ctx,"ALL:!ADH:!LOW:!EXP:!MD5:@STRENGTH");
+    //SSL_CTX_set_cipher_list(ctx,"RC4-SHA");
+
+    SSL_CTX_set_options(ctx,SSL_OP_NO_TICKET);
+
+    DEBS__("SSLCom::server_ctx_setup: loading default key/cert");
+    SSL_CTX_use_PrivateKey(ctx,certstore()->def_sr_key);
+    SSL_CTX_use_certificate(ctx,certstore()->def_sr_cert);
+        
+    if (!SSL_CTX_check_private_key(ctx)) {
+        ERRS__("SSLCom::server_ctx_setup: private key does not match the certificate public key\n");
+        exit(5);
+    }
+ 
+    certstore()->def_sr_ctx = ctx;
+}
 
 void SSLCom::certstore_setup(void ) {
     
@@ -1488,6 +1499,13 @@ void SSLCom::certstore_setup(void ) {
     }
     
     DIAS__("SSLCom: loading central certification store: ok");
+    
+    client_ctx_setup();
+    DIAS__("SSLCom: default ssl client context: ok");
+
+    server_ctx_setup();
+    DIAS__("SSLCom: default ssl server context: ok");
+    
 }
 
 bool SSLCom::com_status() {

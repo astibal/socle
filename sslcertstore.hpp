@@ -62,9 +62,11 @@ public:
     
     X509*     def_sr_cert = nullptr; // default server certificate
     EVP_PKEY* def_sr_key = nullptr;  // default server key
+    SSL_CTX*  def_sr_ctx = nullptr;  // default server ctx
     
     X509*     def_cl_cert = nullptr;  // default client certificate
     EVP_PKEY* def_cl_key = nullptr;   // default client key
+    SSL_CTX*  def_cl_ctx = nullptr;   // default client ctx
 
     static std::string certs_path;
     static std::string password;
