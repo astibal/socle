@@ -319,7 +319,7 @@ int baseHostCX::read() {
             break;
         } 
         else if(cur_l == 0) {
-            INF_("HostCX::read[%s]: error while reading. %d bytes read.",c_name(),l);
+            DIA_("HostCX::read[%s]: error while reading. %d bytes read.",c_name(),l);
             error(true);
             
             break;
@@ -333,7 +333,7 @@ int baseHostCX::read() {
         l += cur_l;
                 
         if(next_read_limit_ > 0 &&  l >= next_read_limit_) {
-            INF_("HostCX::read[%s]: read limiter hit on %d bytes.",c_name(),l);
+            DIA_("HostCX::read[%s]: read limiter hit on %d bytes.",c_name(),l);
             break;
         }
         
@@ -347,11 +347,11 @@ int baseHostCX::read() {
         break;
         
         if(readbuf_.size() >= readbuf_.capacity()) {
-            INF_("HostCX::read[%s]: read buffer reached it's current capacity %d/%d bytes",c_name(),readbuf_.size(),readbuf_.capacity());
+            DIA_("HostCX::read[%s]: read buffer reached it's current capacity %d/%d bytes",c_name(),readbuf_.size(),readbuf_.capacity());
             if(readbuf_.capacity() + HOSTCX_BUFFSIZE <= HOSTCX_BUFFMAXSIZE) {
 
                 if (readbuf_.capacity(readbuf_.capacity() + HOSTCX_BUFFSIZE)) {
-                    INF_("HostCX::read[%s]: read buffer resized capacity %d/%d bytes",c_name(),readbuf_.size(),readbuf_.capacity());
+                    DIA_("HostCX::read[%s]: read buffer resized capacity %d/%d bytes",c_name(),readbuf_.size(),readbuf_.capacity());
                     continue;
                     
                 } else {
@@ -359,7 +359,7 @@ int baseHostCX::read() {
                 }
             } 
             else {
-                INF_("HostCX::read[%s]: buffer already reached it's maximum capacity.",c_name());
+                DIA_("HostCX::read[%s]: buffer already reached it's maximum capacity.",c_name());
             }
         }
         

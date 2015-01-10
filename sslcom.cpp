@@ -1429,7 +1429,9 @@ int SSLCom::connect ( const char* host, const char* port, bool blocking )  {
     return sock;
 }
 
-void SSLCom::client_ctx_setup() {
+SSL_CTX* SSLCom::client_ctx_setup(EVP_PKEY* priv, X509* cert, const char* ciphers) {
+//SSL_CTX* SSLCom::client_ctx_setup() {
+  
     const SSL_METHOD *method = TLSv1_client_method();
 
     SSL_CTX* ctx = SSL_CTX_new (method);  
@@ -1440,7 +1442,7 @@ void SSLCom::client_ctx_setup() {
         exit(2);
     }
 
-    SSL_CTX_set_cipher_list(ctx,"ALL:!ADH:!LOW:!EXP:!MD5:@STRENGTH");
+    ciphers == nullptr ? SSL_CTX_set_cipher_list(ctx,"ALL:!ADH:!LOW:!EXP:!MD5:@STRENGTH") : SSL_CTX_set_cipher_list(ctx,ciphers);
     //SSL_CTX_set_cipher_list(sslcom_ctx,"RC4-SHA");
 
     
@@ -1448,19 +1450,19 @@ void SSLCom::client_ctx_setup() {
 
 
     DIAS__("SSLCom::client_ctx_setup: loading default key/cert");
-    SSL_CTX_use_PrivateKey(ctx,certstore()->def_cl_key);
-    SSL_CTX_use_certificate(ctx,certstore()->def_cl_cert);
+    priv == nullptr ? SSL_CTX_use_PrivateKey(ctx,certstore()->def_cl_key) : SSL_CTX_use_PrivateKey(ctx,priv);
+    cert == nullptr ? SSL_CTX_use_certificate(ctx,certstore()->def_cl_cert) : SSL_CTX_use_certificate(ctx,cert);
 
     if (!SSL_CTX_check_private_key(ctx)) {
         ERRS__("SSLCom::client_ctx_setup: Private key does not match the certificate public key\n");
         exit(5);
     }   
     
-    certstore()->def_cl_ctx = ctx;
+    return ctx;
 }
 
-
-void SSLCom::server_ctx_setup() {
+SSL_CTX* SSLCom::server_ctx_setup(EVP_PKEY* priv, X509* cert, const char* ciphers) {
+//SSL_CTX* SSLCom::server_ctx_setup() {
     const SSL_METHOD *method = TLSv1_server_method();
     SSL_CTX* ctx = SSL_CTX_new (method);  
     
@@ -1469,21 +1471,22 @@ void SSLCom::server_ctx_setup() {
         exit(2);
     }
 
-    SSL_CTX_set_cipher_list(ctx,"ALL:!ADH:!LOW:!EXP:!MD5:@STRENGTH");
+    ciphers == nullptr ? SSL_CTX_set_cipher_list(ctx,"ALL:!ADH:!LOW:!EXP:!MD5:@STRENGTH") : SSL_CTX_set_cipher_list(ctx,ciphers);
     //SSL_CTX_set_cipher_list(ctx,"RC4-SHA");
 
     SSL_CTX_set_options(ctx,SSL_OP_NO_TICKET);
 
     DEBS__("SSLCom::server_ctx_setup: loading default key/cert");
-    SSL_CTX_use_PrivateKey(ctx,certstore()->def_sr_key);
-    SSL_CTX_use_certificate(ctx,certstore()->def_sr_cert);
+    priv == nullptr ? SSL_CTX_use_PrivateKey(ctx,certstore()->def_sr_key) : SSL_CTX_use_PrivateKey(ctx,priv);
+    cert == nullptr ? SSL_CTX_use_certificate(ctx,certstore()->def_sr_cert) : SSL_CTX_use_certificate(ctx,cert);
+
         
     if (!SSL_CTX_check_private_key(ctx)) {
         ERRS__("SSLCom::server_ctx_setup: private key does not match the certificate public key\n");
         exit(5);
     }
  
-    certstore()->def_sr_ctx = ctx;
+    return ctx;
 }
 
 void SSLCom::certstore_setup(void ) {
@@ -1500,10 +1503,10 @@ void SSLCom::certstore_setup(void ) {
     
     DIAS__("SSLCom: loading central certification store: ok");
     
-    client_ctx_setup();
+    certstore()->def_cl_ctx = client_ctx_setup();
     DIAS__("SSLCom: default ssl client context: ok");
 
-    server_ctx_setup();
+    certstore()->def_sr_ctx = server_ctx_setup();
     DIAS__("SSLCom: default ssl server context: ok");
     
 }

@@ -150,8 +150,9 @@ public:
     static SSLCertStore* sslcom_certstore_;
     static void certstore_setup(void);
     static std::once_flag certstore_setup_done;    
-    static void client_ctx_setup();
-    static void server_ctx_setup();    
+    //static SSL_CTX* client_ctx_setup();
+    static SSL_CTX* client_ctx_setup(EVP_PKEY* priv = nullptr, X509* cert = nullptr, const char* ciphers = nullptr);
+    static SSL_CTX* server_ctx_setup(EVP_PKEY* priv = nullptr, X509* cert = nullptr, const char* ciphers = nullptr);
     
     static SSLCertStore* certstore() { return sslcom_certstore_; };
     static void certstore(SSLCertStore* c) { if (sslcom_certstore_ != NULL) { delete sslcom_certstore_; }  sslcom_certstore_ = c; };
