@@ -181,6 +181,7 @@ public:
     static void ssl_info_callback(const SSL *s, int where, int ret);
     static int ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx);
     long log_if_error(unsigned int level, const char* prefix);
+    static long log_if_error2(unsigned int level, const char* prefix);
     
 	virtual bool check_cert(const char*);
 	

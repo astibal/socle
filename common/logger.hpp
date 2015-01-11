@@ -249,6 +249,9 @@
 
 /* Macros with 'log_level' attribute support */
 
+#define LOG__(lev,x,...) L_LOG_((lev),(x),__VA_ARGS__)
+#define LOGS__(lev,x) L_LOGS_((lev),(x))
+
 #define EXT__(x,...) L_LOG_(EXT,(x),__VA_ARGS__)
 #define EXTS__(x,...) L_LOGS_(EXT,(x))
 #define T_EXT__(n,i,x,...) T_L_LOG_(n,i,EXT,(x),__VA_ARGS__)

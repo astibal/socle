@@ -26,6 +26,8 @@
 
 std::string SSLCertStore::certs_path = "./certs/";
 std::string SSLCertStore::password = "password";
+std::string SSLCertStore::def_cl_capath;
+
 int SSLCertStore::log_level = NON;
 
 bool SSLCertStore::load() {

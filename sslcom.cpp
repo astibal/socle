@@ -424,6 +424,19 @@ long int SSLCom::log_if_error(unsigned int level, const char* prefix) {
 }
 
 
+long int SSLCom::log_if_error2(unsigned int level, const char* prefix) {
+    
+    long err2 = ERR_get_error();
+    do {
+        if(err2 != 0) {
+            LOGS__(level, string_format("%s: error code:%u:%s",prefix, err2,ERR_error_string(err2,nullptr)).c_str());
+            err2 = ERR_get_error();
+        }
+    } while (err2 != 0);
+    
+    return err2;
+}
+
 void SSLCom::init_ssl_callbacks() {
     SSL_set_msg_callback(sslcom_ssl,ssl_msg_callback);
     SSL_set_msg_callback_arg(sslcom_ssl,(void*)this);
@@ -1501,10 +1514,19 @@ void SSLCom::certstore_setup(void ) {
         exit(2);
     }
     
-    DIAS__("SSLCom: loading central certification store: ok");
-    
     certstore()->def_cl_ctx = client_ctx_setup();
     DIAS__("SSLCom: default ssl client context: ok");
+    
+    if(certstore()->def_cl_capath.size() > 0) {
+      int r = SSL_CTX_load_verify_locations(certstore()->def_cl_ctx,nullptr,certstore()->def_cl_capath.c_str());
+      DIA__("SSLCom: loading default certification store: %s", r > 0 ? "ok" : "failed");
+      if(r <= 0) {
+	log_if_error2(WAR,"SSLCom::certstore_setup");
+      }
+    } else {
+      WARS__("SSLCom: loading default certification store: path not set!");      
+    }
+    
 
     certstore()->def_sr_ctx = server_ctx_setup();
     DIAS__("SSLCom: default ssl server context: ok");

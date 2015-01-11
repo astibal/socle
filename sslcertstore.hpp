@@ -32,6 +32,7 @@
 #include <logger.hpp>
 
 #include <thread>
+#include <string>
 
 /* define HOME to be dir for key and cert files... */
 #define HOME "./certs/"
@@ -68,6 +69,8 @@ public:
     EVP_PKEY* def_cl_key = nullptr;   // default client key
     SSL_CTX*  def_cl_ctx = nullptr;   // default client ctx
 
+    static std::string def_cl_capath;
+    
     static std::string certs_path;
     static std::string password;
     
