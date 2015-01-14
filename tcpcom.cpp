@@ -102,11 +102,11 @@ int TCPCom::connect(const char* host, const char* port, bool blocking) {
 
     
     if(sfd == 0) {
-        ERRS_("TCPCom::connect[%s:%s]: socket[%d]: connect failed",host,port,sfd);
+        ERR_("TCPCom::connect[%s:%s]: socket[%d]: connect failed",host,port,sfd);
     }
     
     if (rp == NULL) {
-        ERRS_("TCPCom::connect[%s:%s]: socket[%d]: connect failed",host,port,sfd);
+        ERR_("TCPCom::connect[%s:%s]: socket[%d]: connect failed",host,port,sfd);
         return -2;
     }
 

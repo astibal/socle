@@ -99,8 +99,10 @@ protected:
 	SSL*     sslcom_ssl = NULL;
 	BIO*	 sslcom_sbio = NULL;
     
+    //SSL external data offset, used by openssl callbacks
     static int sslcom_ssl_extdata_index;
     
+    //preferred key/cert pair to be loaded, instead of default one
     X509*     sslcom_pref_cert = NULL;
     EVP_PKEY* sslcom_pref_key  = NULL;
 	
@@ -109,20 +111,35 @@ protected:
 	int sslcom_write_blocked_on_read=0;
 	int sslcom_read_blocked=0;
 	
+    //handshake pending flag
 	bool sslcom_waiting=true;
+    
+    //set if we are server/client
 	bool sslcom_server_=false;
+    
 	int sslcom_fd=0;
+    
+    //handhake handler called from read/write - you will not want to use it directly
 	int waiting();
 
+    //if enabled, upgreade_client_socket or upgreade_server_socket are called automatically
+    //during waiting().
     bool auto_upgrade_ = true;
     bool auto_upgraded_ = false;
     
+    //it's waiting for it's usage or removal
 	char* ssl_waiting_host = NULL;
 	
+    // return true if peer already received client hello. For server side only (currently). 
     inline bool sslcom_peer_hello_received() { return sslcom_peer_hello_received_; }
     void sslcom_peer_hello_received(bool b) { sslcom_peer_hello_received_ = b; }
     
+    //set to true if we should wait for peer's hello
+    bool should_wait_for_peer_hello_ = false;
+    //peeks peer socket for client_hello. For server side only (currently).
     bool waiting_peer_hello();
+    
+    //parses peer hello and stores interesing data (e.g. SNI information). For server side only (currently).
     bool parse_peer_hello();
     unsigned short parse_peer_hello_extensions(buffer& b, unsigned int curpos);
     
@@ -130,7 +147,10 @@ protected:
     buffer sslcom_peer_hello_buffer;
     std::string sslcom_peer_hello_sni_;
     
+    //try to set peer's key/certificate from cache (succeeds if peer haven't yet started ssl handhake and if there is cert in the cache).
+    //For server side only.
     bool enforce_peer_cert_from_cache(std::string & subj);
+    //it's set to true if we used cached cert
     bool sslcom_peer_sni_shortcut = false;
     
     
@@ -144,10 +164,12 @@ public:
     static int counter_ssl_connect;
     static int counter_ssl_accept;
     
+    //threading once flag to init essential SSL hooks and locks.
     static std::once_flag openssl_thread_setup_done;
     
     // certificate store common across all SSCom instances
     static SSLCertStore* sslcom_certstore_;
+    // init certstore and default CTX
     static void certstore_setup(void);
     static std::once_flag certstore_setup_done;    
     //static SSL_CTX* client_ctx_setup();
@@ -157,15 +179,21 @@ public:
     static SSLCertStore* certstore() { return sslcom_certstore_; };
     static void certstore(SSLCertStore* c) { if (sslcom_certstore_ != NULL) { delete sslcom_certstore_; }  sslcom_certstore_ = c; };
 	
+    //called just once
 	virtual void static_init();
+    
+    //com has to be init() before used
 	virtual void init(baseHostCX* owner);
     virtual baseCom* replicate() { return new SSLCom(); } ;
     virtual const char* name() { return "ssl"; };
     virtual const char* hr();
     std::string hr_;
     
+    
+    //initialize callbacks. Basically it sets external data for SSL object.
     void init_ssl_callbacks();
     
+    //free old SSL (if present), load default cert, set SSL options and set callbacks - no active communication.
 	virtual void init_client();
 	int upgrade_client_socket(int s);
     
@@ -195,6 +223,11 @@ public:
     void auto_upgrade(bool b) { auto_upgrade_ = b; }
     bool upgraded() { return auto_upgraded_; }
     void upgraded(bool b) { if(upgraded() && b == true) { NOTS___("double upgrade detected"); } auto_upgraded_ = b; }
+    
+    // set if waiting() should wait for peer hello.
+    bool should_wait_for_peer_hello() { return should_wait_for_peer_hello_; }
+    void should_wait_for_peer_hello(bool b) { should_wait_for_peer_hello_ = b; }
+    
     
     virtual int connect ( const char* host, const char* port, bool blocking = false );
 	virtual int read ( int __fd, void* __buf, size_t __n, int __flags );

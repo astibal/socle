@@ -36,7 +36,7 @@ bool SSLMitmCom::check_cert(const char* peer_name) {
         if(p->sslcom_server_) {
             
             if(! sslcom_peer_sni_shortcut) {
-                DEB__("SSLMitmCom::check_cert[%x]: slow-path, calling to spoof peer certificate",this);
+                DIA__("SSLMitmCom::check_cert[%x]: slow-path, calling to spoof peer certificate",this);
                 r = p->spoof_cert(cert);
                 if (r) {
                     // this is inefficient: many SSLComs are already initialized, this is running it once 
@@ -49,7 +49,7 @@ bool SSLMitmCom::check_cert(const char* peer_name) {
                     } 
                 }
             } else {
-                DEB__("SSLMitmCom::check_cert[%x]: fast-path, spoof not necessary",this);
+                DIA__("SSLMitmCom::check_cert[%x]: fast-path, spoof not necessary",this);
             }
         } else {
             WAR__("SSLMitmCom::check_cert[%x]: cannot spoof, peer is not SSL server",this);
