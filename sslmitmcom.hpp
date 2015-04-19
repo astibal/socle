@@ -43,10 +43,14 @@ static struct entry ext_ent[EXT_COUNT] = {
 
 #pragma GCC diagnostic pop
 
+struct SpoofOptions {
+  bool self_signed = false; // set to true if we should deliberately make a mistake
+};
+
 class SSLMitmCom : public SSLCom {
 public:
    virtual bool check_cert(const char*);
-   virtual bool spoof_cert(X509*);
+   virtual bool spoof_cert(X509* cert_orig, SpoofOptions& spo);
    virtual baseCom* replicate() { return new SSLMitmCom(); };
    virtual const char* name() { return "ssl+insp"; };
 

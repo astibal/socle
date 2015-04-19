@@ -29,15 +29,19 @@ bool SSLMitmCom::check_cert(const char* peer_name) {
     SSLMitmCom* p = dynamic_cast<SSLMitmCom*>(peer());
     
     if(p) {
-        
         // FIXME: this is not right, design another type of test
         p->sslcom_server_ = true;
+	
+	SpoofOptions spo;
+	if (status_client_verify != X509_V_OK) {
+	  spo.self_signed = true;
+	}
         
         if(p->sslcom_server_) {
             
             if(! sslcom_peer_sni_shortcut) {
                 DIA__("SSLMitmCom::check_cert[%x]: slow-path, calling to spoof peer certificate",this);
-                r = p->spoof_cert(cert);
+                r = p->spoof_cert(cert,spo);
                 if (r) {
                     // this is inefficient: many SSLComs are already initialized, this is running it once 
                     // more ...
@@ -62,7 +66,7 @@ bool SSLMitmCom::check_cert(const char* peer_name) {
     return r;
 }
 
-bool SSLMitmCom::spoof_cert(X509* cert_orig) {
+bool SSLMitmCom::spoof_cert(X509* cert_orig, SpoofOptions& spo) {
     char tmp[512];
     DEB__("SSLMitmCom::spoof_cert[%x]: about to spoof certificate!",this);
     
@@ -90,7 +94,7 @@ bool SSLMitmCom::spoof_cert(X509* cert_orig) {
   
     DIA__("SSLMitmCom::spoof_cert[%x]: NOT in my certstore '%s'",this,subject.c_str());    
     
-    parek = certstore()->spoof(cert_orig);
+    parek = certstore()->spoof(cert_orig,spo.self_signed);
     if(!parek) {
         WAR__("SSLMitmCom::spoof_cert[%x]: certstore failed to spoof '%d' - default will be used",this,subject.c_str()); 
         return false;

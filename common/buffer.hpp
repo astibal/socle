@@ -450,18 +450,19 @@ inline bool operator!= (const buffer& a, const buffer& b)
 inline void buffer::flush(buffer::size_type b) {
 	buffer::size_type bytes = b;
 	
-	if (b == 0) {
+	if (bytes == 0 || bytes >= size_) {
 		clear();
 		return;
 	}
 
-	if (bytes <= size_) {
-        if( 2*b < size_) {
-            memmove(data_,data_+bytes,size_-bytes);
-        } else {
-            memcpy(data_,data_+bytes,size_-bytes);
-        }
-		size_-=bytes;
+	if (bytes < size_) {
+	    if( 2*bytes < size_) {
+		memmove(data_,data_+bytes,size_-bytes);
+	    } else {
+		memcpy(data_,data_+bytes,size_-bytes);
+	    }
+
+	    size_-=bytes;
 	} else {
 		throw std::out_of_range ("index out of range: too many bytes to flush: " + std::to_string((int)b) + " of " + std::to_string(size_) + "\n" + bt());
 	}

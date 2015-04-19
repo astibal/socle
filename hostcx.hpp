@@ -162,6 +162,9 @@ class baseHostCX : public Host
     // You want to keep it true
     bool allow_com_unpause_ = true;
 
+    // after writing all data into the socket we should shutdown the socket
+    bool close_after_write_ = false;
+    
 protected:
     
     baseCom* com_;
@@ -258,7 +261,7 @@ public:
 	bool reconnect(int delay=5);
 	inline int reconnect_delay() { return reconnect_delay_; }
 	inline int idle_delay() { return idle_delay_; };
-    inline void idle_delay(int d) { idle_delay_ = d; };
+        inline void idle_delay(int d) { idle_delay_ = d; };
     
 	inline bool should_reconnect_now() { time_t now = time(NULL); return (now - last_reconnect_ > reconnect_delay() && !reduced()); }
 	
@@ -282,6 +285,8 @@ public:
 	
 	virtual void to_write(buffer b);
 	virtual void to_write(unsigned char* c, unsigned int l); 
+	inline bool close_after_write() { return close_after_write_; };
+	inline void close_after_write(bool b) { close_after_write_ = b; };
 	
 	virtual buffer to_read();
 	virtual ssize_t finish();
@@ -309,6 +314,7 @@ public:
     // debug options
     static bool socket_in_name;
     static bool online_name;
+
 };
 
 #endif

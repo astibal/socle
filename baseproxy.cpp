@@ -56,7 +56,7 @@ meter_last_write(0),
 handle_last_status(0)
 {
     com_ = c;
-	set_sleeptime(400000);
+	set_sleeptime(1000);
 	time(&last_tick_);
 };
 
@@ -955,13 +955,13 @@ void baseProxy::on_right_new(baseHostCX* cx) {
 // Infinite loop ... 
 
 int baseProxy::run(void) {
-	
-	timespec sl;
-	sl.tv_sec = 0;
-	sl.tv_nsec = get_sleeptime();
-	
-  
-	while(! dead() ) {
+    
+    timespec sl;
+    sl.tv_sec = 0;
+    sl.tv_nsec = get_sleeptime();
+    
+
+    while(! dead() ) {
         
         if(pollroot()) {
             
@@ -979,20 +979,31 @@ int baseProxy::run(void) {
         
         int r = handle_sockets_once(com());
         EXT___("baseProxy::handle_sockets_once: %d",r);
-        
-		if (r == 0) {
-			EXT___("Proxy going to sleep for %dus",sl.tv_nsec );
-			nanosleep(&sl, NULL);
-		} else {
-            DEB___("Proxy transferred %d bytes",r);
-        }
-	}
 
-	return 0;
+        if (r == 0) {
+            EXT___("Proxy going to sleep for %dus",sl.tv_nsec );
+            //nanosleep(&sl, NULL);
+	    sleep();
+        } else {
+            DEB___("Proxy transferred %d bytes",r);
+	    sleep_factor_ = 0;
+        }
+    }
+
+    return 0;
 };
 
 void baseProxy::sleep(void) {
-	usleep(sleep_time);
+  
+	unsigned int x_time = sleep_time;
+  
+	if(sleep_factor_ > 0 && sleep_factor_ < 10) {
+	  // do some progressive slowdown
+	  x_time = sleep_time*sleep_factor_;
+	}
+  
+	usleep(x_time);
+	sleep_factor_++;
 }
 
 

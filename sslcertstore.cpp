@@ -302,10 +302,13 @@ void SSLCertStore::erase(std::string& subject) {
     
 }
 
-X509_PAIR* SSLCertStore::spoof(X509* cert_orig) {
+X509_PAIR* SSLCertStore::spoof(X509* cert_orig, bool self_sign) {
     char tmp[2048];
     DEB__("SSLCertStore::spoof[%x]: about to spoof certificate!",this);
     
+    if(self_sign) {
+      INF__("SSLCertStore::spoof[%x]: about to spoof certificate (self-signed)!",this);
+    }
     
     // get info from the peer certificate
     X509_NAME_get_text_by_NID(X509_get_subject_name(cert_orig),NID_commonName, tmp,2048);
@@ -507,11 +510,17 @@ X509_PAIR* SSLCertStore::spoof(X509* cert_orig) {
         }
     }
     
+    EVP_PKEY* sign_key = ca_key;
+    if(self_sign) {
+      X509_set_issuer_name(cert, X509_get_subject_name(cert));
+      sign_key = def_sr_key;
+    }
+    
     // sign the certific ate with the CA private key 
-    if (EVP_PKEY_type(ca_key->type) == EVP_PKEY_DSA) {
+    if (EVP_PKEY_type(sign_key->type) == EVP_PKEY_DSA) {
         digest = EVP_dss1();
     }
-    else if (EVP_PKEY_type(ca_key->type) == EVP_PKEY_RSA ) {
+    else if (EVP_PKEY_type(sign_key->type) == EVP_PKEY_RSA ) {
         digest = EVP_sha1();
     }
     else {
@@ -519,7 +528,7 @@ X509_PAIR* SSLCertStore::spoof(X509* cert_orig) {
         return NULL;
     }
 
-    if (!(X509_sign(cert, ca_key, digest))) {
+    if (!(X509_sign(cert, sign_key, digest))) {
         ERR__("SSLCertStore::spoof[%x]: error signing certificate",this);
         return NULL;
     }

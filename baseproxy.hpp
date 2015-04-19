@@ -88,6 +88,7 @@ protected:
 	
 	//run() loop variables 
 	unsigned int sleep_time; // microseconds
+	unsigned int sleep_factor_ = 0; // how many times we slept already. Resets if we woke up.
 	
 	unsigned int meter_last_read;
 	unsigned int meter_last_write;

@@ -260,6 +260,7 @@ public:
     bool opt_allow_not_valid_cert = false;    //expired or not yet valid
     bool opt_allow_self_signed_cert = false;  //for depth 0
 
+    int status_client_verify = -1;	      // -1 never ever done, everything else is status of processed verification
     
 public:
     static unsigned int& log_level_ref() { return log_level; }

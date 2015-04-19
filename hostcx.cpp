@@ -452,7 +452,7 @@ int baseHostCX::write() {
 	if (l > 0) {
 		meter_write_bytes += l;
 		meter_write_count++;
-        time(&w_activity);
+		time(&w_activity);
 	
 		if (opening()) {
 			DEB_("HostCX::write[%s]: connection established",c_name());
@@ -467,11 +467,15 @@ int baseHostCX::write() {
 		DUM_("HostCX::write[%s]: calling post_write",c_name());
 		post_write();
 		
-        writebuf_.flush(l);
-        
-        if(com()->debug_log_data_crc) {
-            DEB_("HostCX::write[%s]: after: buffer crc = %X",c_name(), socle_crc32(0,writebuf()->data(),writebuf()->size()));
-        }
+		writebuf_.flush(l);
+		
+		if(com()->debug_log_data_crc) {
+		    DEB_("HostCX::write[%s]: after: buffer crc = %X",c_name(), socle_crc32(0,writebuf()->data(),writebuf()->size()));
+		}
+		
+		if(close_after_write() && writebuf()->size() == 0) {
+		    shutdown();
+		}
 	}
 	
 	return l;

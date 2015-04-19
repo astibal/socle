@@ -88,7 +88,7 @@ public:
      std::mutex mutex_cache_write_;
 
      // our killer feature here 
-     X509_PAIR* spoof(X509* cert);
+     X509_PAIR* spoof(X509* cert_orig, bool self_sign=false);
      
      static int convert_ASN1TIME(ASN1_TIME*, char*, size_t);
      static std::string print_cert(X509*);

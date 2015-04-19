@@ -403,7 +403,11 @@ int SSLCom::ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx) {
     
     DIA__("[%s]: SSLCom::ssl_client_vrfy_callback[%d]: returning %s (pre-verify %d)",name,depth,(ret > 0 ? "ok" : "failed" ),ok);
     if(ret <= 0) {
-        NOT__("[%s]: target server ssl certificate check failed: %s",name, X509_verify_cert_error_string(err));   
+        NOT__("[%s]: target server ssl certificate check failed:%d: %s",name, err,X509_verify_cert_error_string(err));   
+    }
+    
+    if(com != nullptr) {
+      com->status_client_verify = err;
     }
     
     return ret;
