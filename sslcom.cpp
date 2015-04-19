@@ -610,6 +610,11 @@ void SSLCom::accept_socket ( int sockfd )  {
 	TCPCom::accept_socket(sockfd);
 	
     upgrade_server_socket(sockfd);
+    if(opt_bypass) {
+	prof_accept_bypass_cnt++;
+	return;
+    }
+    
     
     ERR_clear_error();
     int r = SSL_accept (sslcom_ssl);
@@ -639,6 +644,11 @@ int SSLCom::upgrade_server_socket(int sockfd) {
     sslcom_fd = sockfd;
     sslcom_waiting = true;
     unblock(sslcom_fd);
+
+    if(opt_bypass) {
+	DIA___("SSLCom::upgrade_server_socket[%d]: bypassed",sockfd);
+	return sockfd;
+    }
     
     init_server();
 
@@ -1027,6 +1037,9 @@ int SSLCom::read ( int __fd, void* __buf, size_t __n, int __flags )  {
 	int total_r = 0;
     int rounds = 0;
 
+        if(opt_bypass) {
+	    return TCPCom::read(__fd,__buf,__n,__flags);
+	}
 	
 	// non-blocking socket can be still opening 
 	if( sslcom_waiting ) {
@@ -1207,6 +1220,11 @@ int SSLCom::write ( int __fd, const void* __buf, size_t __n, int __flags )  {
     } else {
         DEB___("SSLCom::write[%d]: called: about to write %d bytes",__fd,__n);	
     }
+    
+    
+    if(opt_bypass) {
+	return TCPCom::write(__fd,__buf,__n,__flags);
+    }
 	
 	//this one will be much trickier than just single call of SSL_read
 	// return SSL_write(sslcom_ssl, __buf, __n);
@@ -1358,6 +1376,12 @@ int SSLCom::upgrade_client_socket(int sock) {
     
     if(ch) {
 
+	if(opt_bypass) {
+	    DIA___("SSLCom::upgrade_client_socket[%d]: bypassed",sock);
+	    return sock;
+	}
+      
+      
         init_client();
         
         if(sslcom_ssl == NULL) {
@@ -1539,6 +1563,11 @@ void SSLCom::certstore_setup(void ) {
 
 bool SSLCom::com_status() {
     if(TCPCom::com_status()) {
+        if(opt_bypass) {
+	    DIAS___("SSLCom::com_status: L4 OK, bypassed")
+	    return true;
+	}
+      
         bool r = sslcom_status();
         // T_DIA___("sslcom_status_ok",1,"SSLCom::com_status: returning %d",r);
         

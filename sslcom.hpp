@@ -242,6 +242,7 @@ public:
    
 public:
     int prof_accept_cnt=0;
+    int prof_accept_bypass_cnt=0;
     int prof_connect_cnt=0;
     int prof_want_read_cnt=0;
     int prof_want_write_cnt=0;
@@ -252,6 +253,10 @@ public:
     int prof_accept_ok=0;
     int prof_connect_ok=0;
 
+    
+    // total bypass
+    bool opt_bypass = false;
+    
     // unknown issuers
     bool opt_allow_unknown_issuer = false;
     bool opt_allow_self_signed_chain = false;
