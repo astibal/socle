@@ -27,6 +27,7 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+#include <unistd.h>
 
 #include <string>
 
@@ -42,6 +43,8 @@ protected:
     unsigned int size_;
     unsigned int capacity_;
     
+    bool        attached_ = false;
+    
 public:
     shared_buffer() {}
 
@@ -49,8 +52,14 @@ public:
     unsigned int   size()    { return size_; }
     unsigned int   capacity(){ return capacity_; }
     
+    bool attached() { return attached_; }
     
     bool attach(const char* mem_name, const int mem_size, const char* sem_name) {
+        
+        if(attached()) {
+            return true;
+        }
+        
         semaphore_name = sem_name;
         memory_name = mem_name;
         memory_size = mem_size;
@@ -80,6 +89,7 @@ public:
         data_ = shared_memory;
         capacity_ = mem_size;
         size_ = capacity_;
+        attached_ = true;
         
         return true;
         fail:
@@ -88,22 +98,29 @@ public:
     }
     
     bool dettach() {
+        bool ret = true;
+        
         int rc = munmap(data_, (size_t)capacity_);
         if (rc) {
             printf("Unmapping the memory failed; errno is %d\n", errno);
+            ret = false;
         }        
         
         if(memory_fd > 0) {
             if (close(memory_fd) == -1) {
                 printf("Closing memory's file descriptor failed; errno is %d\n", errno);
+                ret = false;
             }
         }
         
         rc = sem_close(semaphore);
         if (rc) {
             printf("Closing the semaphore failed; errno is %d\n", errno);
+            ret = false;
         }            
-            
+        
+        attached_ = false;
+        return ret;
     }
     
     
@@ -123,6 +140,7 @@ public:
             printf("Acquiring the semaphore failed; errno is %d\n", errno);
         }
         
+        return rc;
     }
 };
 

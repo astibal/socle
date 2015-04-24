@@ -39,6 +39,7 @@ public:
       header_size = sizeof(struct shared_table_header);
       row_size = sizeof(RowType);
       memset(&cur_data_header,0,sizeof(struct shared_table_header));
+      cur_data_header.row_size = sizeof(RowType);
   };
   virtual ~shared_table() {}
   
@@ -62,6 +63,8 @@ public:
   std::vector<RowType>& entries() { return entries_; }
 
   int load() {
+      
+        read_header();
     
         if(seen_version() < header_version() || ( header_version() == 0 && seen_version() > 0)) {
             
@@ -70,7 +73,7 @@ public:
             seen_version(header_version());
 	    
 	    
-            printf("new table version available: %d\n",header_version());
+//             printf("new table version available: %d\n",header_version());
 //             printf("\"successfully authenticated users\" table:\n");
 //             printf("my row_size is %d\n",(int)sizeof(struct logon_info));
 //             printf("version %d: entries %d row_size: %d\n",header_version(), header_entries(),header_rowsize());
@@ -89,7 +92,7 @@ public:
             on_new_finished();
             return entries().size();
         } else {
-            //printf("same version %d:%d\n",seen_version_,header_version());
+//             printf("same version %d:%d\n",seen_version_,header_version());
         }    
         
         return 0;
@@ -127,7 +130,9 @@ public:
                 // try  to do auto-magic
                 curpos += sizeof(RowType);
           }
-      }      
+      }  
+      
+      return curpos - data();
   };
 
   virtual unsigned int on_write_entry(unsigned char* ptr, RowType& r) {
