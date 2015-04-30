@@ -54,7 +54,7 @@ public:
     
     bool attached() { return attached_; }
     
-    bool attach(const char* mem_name, const int mem_size, const char* sem_name) {
+    bool attach(const char* mem_name, const int mem_size, const char* sem_name, bool create_on_error=true) {
         
         if(attached()) {
             return true;
@@ -70,13 +70,29 @@ public:
         semaphore = sem_open(semaphore_name.c_str(),O_RDWR,0600);
         if(semaphore == nullptr) {
             printf("Getting a handle to the semaphore failed; errno is %d\n", errno);
-            goto fail;
+            if(create_on_error) {
+                semaphore = sem_open(semaphore_name.c_str(),O_CREAT | O_RDWR,0600);
+                if(semaphore == nullptr) {
+                    printf("Failed to create semaphore as a fallback; errno is %d\n", errno);
+                    goto fail;
+                }
+            } else {
+                goto fail;
+            }
         }
         
         memory_fd = shm_open(memory_name.c_str(), O_RDWR, 0600);
         if(memory_fd  == -1) {
             printf("Couldn't get a handle to the shared memory; errno is %d\n", errno);
-            goto fail;
+            if(create_on_error) {
+                memory_fd = shm_open(memory_name.c_str(), O_CREAT | O_RDWR, 0600);
+                if(memory_fd == -1) {
+                    printf("Failed to create new memory object; errno is %d\n", errno);
+                    goto fail;
+                }
+            } else {
+                goto fail;
+            }
         }
         
         shared_memory = (unsigned char*)mmap((void *)0, memory_size, PROT_READ | PROT_WRITE, MAP_SHARED, memory_fd, 0);
@@ -92,8 +108,9 @@ public:
         attached_ = true;
         
         return true;
+        
+
         fail:
-            
         return false;
     }
     
