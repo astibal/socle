@@ -180,11 +180,24 @@ public:
         map_entries()[get_row_key(r)] = *r;
         return true;
     }
+    virtual unsigned int on_write_entry(unsigned char* ptr, RowType& r) {
+        
+        KeyType row_key = get_row_key(&r);
+        auto iter = map_entries().find(row_key);
 
-    
+        if(iter != map_entries().end()) {
+            // we would the currently written entry in key map. OK.
+            return shared_table<RowType>::on_write_entry(ptr,r);
+        } else {
+            // this original entry is not in keys.. deleted/filtered on load.
+            // don't write it!
+            return 0;
+        }
+    }
+
     virtual KeyType get_row_key(RowType* r) = 0;
-    
-  
+
+
     std::unordered_map<KeyType,RowType>& map_entries() { return map_entries_; };
 protected:
     std::unordered_map<KeyType,RowType> map_entries_;
