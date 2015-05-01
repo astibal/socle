@@ -23,6 +23,8 @@
 
 #include <cstring>
 #include <vector>
+#include <unordered_map>
+
 #include <shmbuffer.hpp>
 
 struct shared_table_header {
@@ -62,17 +64,18 @@ public:
   
   std::vector<RowType>& entries() { return entries_; }
 
-  int load() {
-      
+    virtual int load() {
+
         read_header();
-    
+
         if(seen_version() < header_version() || ( header_version() == 0 && seen_version() > 0)) {
-            
-	    on_new_version(seen_version(),header_version());
-	    //entries().clear();
+
+            if (on_new_version(seen_version(),header_version())) {
+                entries().clear();
+            }
             seen_version(header_version());
-	    
-	    
+
+
 //             printf("new table version available: %d\n",header_version());
 //             printf("\"successfully authenticated users\" table:\n");
 //             printf("my row_size is %d\n",(int)sizeof(struct logon_info));
@@ -82,22 +85,22 @@ public:
             for (int n = 0 ; n < header_entries() ; n++) {
                 RowType* rec = (RowType*)records;
                 //printf("%s: %16s \t groups: %s\n",inet_ntoa(*(in_addr*)rec->ip),rec->username,rec->groups);
-                
-                on_new_entry(rec);
-                //entries().push_back(*rec);
-                    
+
+                if(on_new_entry(rec)) {
+                    entries().push_back(*rec);
+                }
+
                 records+=sizeof(RowType);
             }
-            
+
             on_new_finished();
             return entries().size();
         } else {
 //             printf("same version %d:%d\n",seen_version_,header_version());
-        }    
-        
+        }
+
         return 0;
-  }
-  
+    }
   
   unsigned int write_header(bool increase_version=false, int n_entries=-1) {
       
@@ -115,7 +118,7 @@ public:
       return sizeof(shared_table_header);
   }
   
-  int save(bool increase_version=false) {
+  virtual int save(bool increase_version=false) {
       
       write_header(increase_version);
       
@@ -126,9 +129,6 @@ public:
           
           if(s > 0) {
                 curpos += s;
-          } else {
-                // try  to do auto-magic
-                curpos += sizeof(RowType);
           }
       }  
       
@@ -140,13 +140,9 @@ public:
       return sizeof(RowType);
   }
   
-  virtual void on_new_version(int o, int n) {
-      entries().clear();
-  }
-  virtual void on_new_entry(RowType* r) {
-      entries().push_back(*r);
-  }
-  
+  // reuturn true if table should be cleared (yes!)
+  virtual bool on_new_version(int o, int n) { return true; }
+  virtual bool on_new_entry(RowType* r) { return true; }
   virtual void on_new_finished() {}
   
   
@@ -160,6 +156,38 @@ protected:
     
 private:
     shared_table_header cur_data_header;
+};
+
+
+
+
+
+
+
+template<class KeyType,class RowType>
+class shared_map : public shared_table<RowType> {
+
+public:
+    shared_map() : shared_table<RowType>() {
+    };
+    virtual ~shared_map() {}
+
+    virtual bool on_new_version(int o, int n) {
+        map_entries().clear();
+        return shared_table<RowType>::on_new_version(o,n);
+    }
+    virtual bool on_new_entry(RowType* r) {
+        map_entries()[get_row_key(r)] = *r;
+        return true;
+    }
+
+    
+    virtual KeyType get_row_key(RowType* r) = 0;
+    
+  
+    std::unordered_map<KeyType,RowType>& map_entries() { return map_entries_; };
+protected:
+    std::unordered_map<KeyType,RowType> map_entries_;
 };
 
 
