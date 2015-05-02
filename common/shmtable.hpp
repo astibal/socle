@@ -119,9 +119,8 @@ public:
   }
   
   virtual int save(bool increase_version=false) {
-      
-      write_header(increase_version);
-      
+
+      int n_written = 0;
       unsigned char* curpos = data() + sizeof(struct shared_table_header);
       for(typename std::vector<RowType>::iterator i = entries().begin(); i != entries().end() ; ++i) {
           RowType& r = (*i);
@@ -129,8 +128,12 @@ public:
           
           if(s > 0) {
                 curpos += s;
+                n_written++;
           }
       }  
+      
+      // we are writing header as the last, since we don't know how many entries we really wrote
+      write_header(increase_version,n_written);
       
       return curpos - data();
   };
