@@ -170,17 +170,19 @@ void SSLCertStore::destroy() {
     if(def_sr_key != NULL) EVP_PKEY_free(def_sr_key);
 
     for (auto i = cache_.begin(); i != cache_.end(); ++i ) {
-        auto key = (*i).first;
+        std::string key = (*i).first;
         
         X509_PAIR* parek = (*i).second;
         
-        DEB__("SSLCertStore::destroy cache: %s - private key",key.c_str());
+        DEB__("SSLCertStore::destroy cache: %s",key.c_str());
         EVP_PKEY_free(parek->first);
         
         X509* cert = parek->second;
 //         STACK_OF(X509_EXTENSION) *exts = cert->cert_info->extensions;
 //         sk_X509_EXTENSION_free(exts);
-        DEB__("SSLCertStore::destroy cache: %s - cert",key.c_str());
+
+//        Causes some mysterious locks:
+//        DEB__("SSLCertStore::destroy cache: %s - cert",key.c_str());
         X509_free(cert);
         delete parek;
     }

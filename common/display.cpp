@@ -17,6 +17,7 @@
 */
 
 #include <string>
+#include <mutex>
 #include <execinfo.h>
 
 #include "display.hpp"
@@ -26,7 +27,13 @@
 #include "stdio.h"
 #include "errno.h"
 
+std::recursive_mutex formatter_lock;
+
 std::string string_format(const std::string& fmt, ...) {
+    
+    // there could be more precious implemenatation of this in the future
+    std::lock_guard<std::recursive_mutex> l(formatter_lock);
+    
     int size = 512;
     std::string str;
     va_list ap;
@@ -56,6 +63,9 @@ std::string hex_dump(unsigned char *data, int size,unsigned int ltrim, unsigned 
      * (in a single line of course)
      */
 
+    // there could be more precious implemenatation of this in the future
+    std::lock_guard<std::recursive_mutex> l(formatter_lock);    
+    
     unsigned char *p = data;
 
     int n;
@@ -129,6 +139,9 @@ std::string hex_dump(unsigned char *data, int size,unsigned int ltrim, unsigned 
 }
 
 std::string string_error() {
+    // there could be more precious implemenatation of this in the future
+    std::lock_guard<std::recursive_mutex> l(formatter_lock);
+    
     int e = errno;
     char msg[255];
     memset(msg,0,255);
@@ -138,6 +151,9 @@ std::string string_error() {
 
 
 std::string bt() {
+    // there could be more precious implemenatation of this in the future
+    std::lock_guard<std::recursive_mutex> l(formatter_lock);    
+    
     std::string s;
     s += "\n Backtrace:";
 
