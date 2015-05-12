@@ -65,6 +65,23 @@ public:
 	
 	bool __static_init = false;
 	
+    // my master: add me to the poll monitor at the right time
+    baseCom* master_ = nullptr;
+    baseCom* master(baseCom* b) { master_ = b; return b; }
+    baseCom* master() { 
+        if(master_ != nullptr) 
+            return master_->master(); 
+        return this;
+    }
+    
+    // create slave Com object (replicate is virtual). My master will master it, or me, if I don't have a master.
+    baseCom* slave() { 
+        baseCom* r = replicate(); 
+        r->master(master());
+        return r;
+    }
+
+    
     virtual ~baseCom() {};
 protected:
     // non-local socket support
