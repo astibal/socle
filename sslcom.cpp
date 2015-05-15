@@ -1473,7 +1473,8 @@ int SSLCom::connect ( const char* host, const char* port, bool blocking )  {
 SSL_CTX* SSLCom::client_ctx_setup(EVP_PKEY* priv, X509* cert, const char* ciphers) {
 //SSL_CTX* SSLCom::client_ctx_setup() {
   
-    const SSL_METHOD *method = TLSv1_client_method();
+    // SSLv3 -> latest TLS
+    const SSL_METHOD *method = SSLv23_client_method();
 
     SSL_CTX* ctx = SSL_CTX_new (method);  
 
@@ -1488,6 +1489,8 @@ SSL_CTX* SSLCom::client_ctx_setup(EVP_PKEY* priv, X509* cert, const char* cipher
 
     
     SSL_CTX_set_options(ctx,SSL_OP_NO_TICKET);
+    // disable SSLv3
+    SSL_CTX_set_options(ctx,SSL_OP_NO_SSLv3);
 
 
     DIAS__("SSLCom::client_ctx_setup: loading default key/cert");
@@ -1504,7 +1507,9 @@ SSL_CTX* SSLCom::client_ctx_setup(EVP_PKEY* priv, X509* cert, const char* cipher
 
 SSL_CTX* SSLCom::server_ctx_setup(EVP_PKEY* priv, X509* cert, const char* ciphers) {
 //SSL_CTX* SSLCom::server_ctx_setup() {
-    const SSL_METHOD *method = TLSv1_server_method();
+    
+    // SSLv3 -> latest TLS
+    const SSL_METHOD *method = SSLv23_server_method();
     SSL_CTX* ctx = SSL_CTX_new (method);  
     
     if (!ctx) {
@@ -1516,6 +1521,8 @@ SSL_CTX* SSLCom::server_ctx_setup(EVP_PKEY* priv, X509* cert, const char* cipher
     //SSL_CTX_set_cipher_list(ctx,"RC4-SHA");
 
     SSL_CTX_set_options(ctx,SSL_OP_NO_TICKET);
+    // disable SSLv3
+    SSL_CTX_set_options(ctx,SSL_OP_NO_SSLv3);
 
     DEBS__("SSLCom::server_ctx_setup: loading default key/cert");
     priv == nullptr ? SSL_CTX_use_PrivateKey(ctx,certstore()->def_sr_key) : SSL_CTX_use_PrivateKey(ctx,priv);
