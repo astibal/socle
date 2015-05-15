@@ -26,6 +26,7 @@
 #include <openssl/x509_vfy.h>
 
 #include <sslcom.hpp>
+#include <sslcom_dh.hpp>
 #include <logger.hpp>
 
 
@@ -441,10 +442,47 @@ long int SSLCom::log_if_error2(unsigned int level, const char* prefix) {
     return err2;
 }
 
+DH* SSLCom::ssl_dh_callback(SSL* s, int is_export, int key_length)  {
+    void* data = SSL_get_ex_data(s, sslcom_ssl_extdata_index);
+    const char *name = "unknown_cx";
+    
+    SSLCom* com = static_cast<SSLCom*>(data);
+    if(com != nullptr) {
+        const char* n = com->hr();
+        if(n != nullptr) {
+            name = n;
+        }
+    }
+    INF__("[%s]: SSLCom::ssl_dh_callback: %d bits requested",name,key_length);
+    switch(key_length) {
+        case 512:
+            return get_dh512();
+        case 768:
+            return get_dh768();
+        case 1024:
+            return get_dh1024();
+        case 1536:
+            return get_dh1536();
+        case 2048:
+            return get_dh2048();
+            
+            
+        default:
+            return get_dh1024();
+    }
+    
+    return nullptr;
+}
+
+
 void SSLCom::init_ssl_callbacks() {
     SSL_set_msg_callback(sslcom_ssl,ssl_msg_callback);
     SSL_set_msg_callback_arg(sslcom_ssl,(void*)this);
-    SSL_set_info_callback(sslcom_ssl,ssl_info_callback);    
+    SSL_set_info_callback(sslcom_ssl,ssl_info_callback);
+    
+    if(opt_pfs) {
+        SSL_set_tmp_dh_callback(sslcom_ssl,ssl_dh_callback);
+    }
     
     // add this pointer to ssl external data
     if(sslcom_ssl_extdata_index < 0) {
@@ -492,6 +530,13 @@ void SSLCom::init_server() {
 
     sslcom_ctx = certstore()->def_sr_ctx;
 	sslcom_ssl = SSL_new(sslcom_ctx);
+    
+    if(opt_pfs) {
+        sslcom_ecdh = EC_KEY_new_by_curve_name(NID_X9_62_prime256v1); 
+        if(sslcom_ecdh != nullptr) {
+            SSL_set_tmp_ecdh(sslcom_ssl,sslcom_ecdh);
+        }
+    }
     
     if (sslcom_pref_cert && sslcom_pref_key) {
         DEB__("SSLCom::init_server[%x]: loading preferred key/cert",this);

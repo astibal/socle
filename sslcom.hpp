@@ -106,6 +106,9 @@ protected:
     X509*     sslcom_pref_cert = NULL;
     EVP_PKEY* sslcom_pref_key  = NULL;
 	
+    //ECDH parameters
+    EC_KEY *sslcom_ecdh = nullptr;
+    
 	// states of read/writes
 	int sslcom_read_blocked_on_write=0;
 	int sslcom_write_blocked_on_read=0;
@@ -207,6 +210,7 @@ public:
 
     static void ssl_msg_callback(int write_p, int version, int content_type, const void *buf, size_t len, SSL *ssl, void *arg);
     static void ssl_info_callback(const SSL *s, int where, int ret);
+    static DH* ssl_dh_callback(SSL* s, int is_export, int key_length);
     static int ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx);
     long log_if_error(unsigned int level, const char* prefix);
     static long log_if_error2(unsigned int level, const char* prefix);
@@ -237,7 +241,11 @@ public:
 
     virtual bool com_status();
     
-    virtual ~SSLCom() {};
+    virtual ~SSLCom() {
+        if(sslcom_ecdh != nullptr) {
+            EC_KEY_free(sslcom_ecdh);;
+        }
+    };
     
    
 public:
@@ -256,6 +264,9 @@ public:
     
     // total bypass
     bool opt_bypass = false;
+    
+    // enable/disable pfs (DHE and ECDHE suites)
+    bool opt_pfs = true;
     
     // unknown issuers
     bool opt_allow_unknown_issuer = false;
