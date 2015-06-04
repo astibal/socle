@@ -323,10 +323,14 @@ void SSLCom::ssl_msg_callback(int write_p, int version, int content_type, const 
             if(!com->is_server()) {
                 int bits = check_server_dh_size(ssl);
                 if(bits < 768) {
-                    WAR__("  [%s]: server dh key bits equivalent: %d",name,bits);
-                    SSL_shutdown(ssl);
-                    if(com->owner_cx() != nullptr) {
-                        com->owner_cx()->error(true);
+                    if(bits > 0) {
+                        WAR__("  [%s]: server dh key bits equivalent: %d",name,bits);
+                        SSL_shutdown(ssl);
+                        if(com->owner_cx() != nullptr) {
+                            com->owner_cx()->error(true);
+                        }
+                    } else {
+                        WAR__("  [%s]: PFS not used!",name);
                     }
                 } else {
                     DIA__("  [%s]: server dh key bits equivalent: %d",name,bits);
