@@ -550,6 +550,7 @@ void SSLCom::init_server() {
     if(opt_pfs) {
         sslcom_ecdh = EC_KEY_new_by_curve_name(NID_X9_62_prime256v1); 
         if(sslcom_ecdh != nullptr) {
+            // this actually disables ecdh callback
             SSL_set_tmp_ecdh(sslcom_ssl,sslcom_ecdh);
         }
     }
