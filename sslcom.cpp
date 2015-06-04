@@ -456,9 +456,9 @@ DH* SSLCom::ssl_dh_callback(SSL* s, int is_export, int key_length)  {
     INF__("[%s]: SSLCom::ssl_dh_callback: %d bits requested",name,key_length);
     switch(key_length) {
         case 512:
-            return get_dh512();
+            //return get_dh512();
         case 768:
-            return get_dh768();
+            //return get_dh768();
         case 1024:
             return get_dh1024();
         case 1536:
@@ -468,9 +468,24 @@ DH* SSLCom::ssl_dh_callback(SSL* s, int is_export, int key_length)  {
             
             
         default:
-            return get_dh1024();
+            return get_dh2048();
     }
     
+    return nullptr;
+}
+
+EC_KEY* SSLCom::ssl_ecdh_callback(SSL* s, int is_export, int key_length) {
+    void* data = SSL_get_ex_data(s, sslcom_ssl_extdata_index);
+    const char *name = "unknown_cx";
+    
+    SSLCom* com = static_cast<SSLCom*>(data);
+    if(com != nullptr) {
+        const char* n = com->hr();
+        if(n != nullptr) {
+            name = n;
+        }
+    }    
+    INF__("[%s]: SSLCom::ssl_ecdh_callback: %d bits requested",name,key_length);
     return nullptr;
 }
 
@@ -482,6 +497,7 @@ void SSLCom::init_ssl_callbacks() {
     
     if(opt_pfs) {
         SSL_set_tmp_dh_callback(sslcom_ssl,ssl_dh_callback);
+        SSL_set_tmp_ecdh_callback(sslcom_ssl,ssl_ecdh_callback);
     }
     
     // add this pointer to ssl external data
@@ -1529,13 +1545,8 @@ SSL_CTX* SSLCom::client_ctx_setup(EVP_PKEY* priv, X509* cert, const char* cipher
         exit(2);
     }
 
-    ciphers == nullptr ? SSL_CTX_set_cipher_list(ctx,"ALL:!ADH:!LOW:!EXP:!MD5:@STRENGTH") : SSL_CTX_set_cipher_list(ctx,ciphers);
-    //SSL_CTX_set_cipher_list(sslcom_ctx,"RC4-SHA");
-
-    
-    SSL_CTX_set_options(ctx,SSL_OP_NO_TICKET);
-    // disable SSLv3
-    SSL_CTX_set_options(ctx,SSL_OP_NO_SSLv3);
+    ciphers == nullptr ? SSL_CTX_set_cipher_list(ctx,"ALL:!ADH:!LOW:!aNULL:!EXP:!MD5:@STRENGTH") : SSL_CTX_set_cipher_list(ctx,ciphers);
+    SSL_CTX_set_options(ctx,SSL_OP_NO_TICKET+SSL_OP_NO_SSLv3);
 
 
     DIAS__("SSLCom::client_ctx_setup: loading default key/cert");
@@ -1563,11 +1574,7 @@ SSL_CTX* SSLCom::server_ctx_setup(EVP_PKEY* priv, X509* cert, const char* cipher
     }
 
     ciphers == nullptr ? SSL_CTX_set_cipher_list(ctx,"ALL:!ADH:!LOW:!EXP:!MD5:@STRENGTH") : SSL_CTX_set_cipher_list(ctx,ciphers);
-    //SSL_CTX_set_cipher_list(ctx,"RC4-SHA");
-
-    SSL_CTX_set_options(ctx,SSL_OP_NO_TICKET);
-    // disable SSLv3
-    SSL_CTX_set_options(ctx,SSL_OP_NO_SSLv3);
+    SSL_CTX_set_options(ctx,SSL_OP_NO_TICKET+SSL_OP_NO_SSLv3);    
 
     DEBS__("SSLCom::server_ctx_setup: loading default key/cert");
     priv == nullptr ? SSL_CTX_use_PrivateKey(ctx,certstore()->def_sr_key) : SSL_CTX_use_PrivateKey(ctx,priv);

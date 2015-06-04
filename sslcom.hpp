@@ -211,6 +211,7 @@ public:
     static void ssl_msg_callback(int write_p, int version, int content_type, const void *buf, size_t len, SSL *ssl, void *arg);
     static void ssl_info_callback(const SSL *s, int where, int ret);
     static DH* ssl_dh_callback(SSL* s, int is_export, int key_length);
+    static EC_KEY* ssl_ecdh_callback(SSL* s, int is_export, int key_length);
     static int ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx);
     long log_if_error(unsigned int level, const char* prefix);
     static long log_if_error2(unsigned int level, const char* prefix);
