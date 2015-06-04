@@ -213,6 +213,7 @@ public:
     static DH* ssl_dh_callback(SSL* s, int is_export, int key_length);
     static EC_KEY* ssl_ecdh_callback(SSL* s, int is_export, int key_length);
     static int ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx);
+    static int check_server_dh_size(SSL* ssl);
     long log_if_error(unsigned int level, const char* prefix);
     static long log_if_error2(unsigned int level, const char* prefix);
     
@@ -285,4 +286,86 @@ private:
     static unsigned int log_level;
 };
 
+
+
+/* 
+ * this has been stolen from sources, since there is no ssl_locl.h header around! 
+ * in case of issues, set SSL_LOCL_REDEF to 0
+ */
+#define SSL_LOCL_REDEF 1
+
+#ifdef SSL_LOCL_REDEF
+#define SSL_PKEY_NUM        8  
+
+typedef struct cert_pkey_st {
+  X509 *x509;
+  EVP_PKEY *privatekey;
+  /* Digest to use when signing */
+  const EVP_MD *digest;
+  } CERT_PKEY;
+
+
+typedef struct ec_extra_data_st {
+    struct ec_extra_data_st *next;
+    void *data;
+    void *(*dup_func) (void *);
+    void (*free_func) (void *);
+    void (*clear_free_func) (void *);
+} EC_EXTRA_DATA;                /* used in EC_GROUP */
+  
+struct ec_point_st {
+    const EC_METHOD *meth;
+    /*
+     * All members except 'meth' are handled by the method functions, even if
+     * they appear generic
+     */
+    BIGNUM X;
+    BIGNUM Y;
+    BIGNUM Z;                   /* Jacobian projective coordinates: (X, Y, Z)
+                                 * represents (X/Z^2, Y/Z^3) if Z != 0 */
+    int Z_is_one;               /* enable optimized point arithmetics for
+                                 * special case */
+} /* EC_POINT */ ;
+
+  
+struct ec_key_st {
+    int version;
+    EC_GROUP *group;
+    EC_POINT *pub_key;
+    BIGNUM *priv_key;
+    unsigned int enc_flag;
+    point_conversion_form_t conv_form;
+    int references;
+    int flags;
+    EC_EXTRA_DATA *method_data;
+} /* EC_KEY */ ;  
+  
+typedef struct sess_cert_st
+    {
+    STACK_OF(X509) *cert_chain; /* as received from peer (not for SSL2) */
+
+    /* The 'peer_...' members are used only by clients. */
+    int peer_cert_type;
+
+    CERT_PKEY *peer_key; /* points to an element of peer_pkeys (never NULL!) */
+    CERT_PKEY peer_pkeys[SSL_PKEY_NUM];
+    /* Obviously we don't have the private keys of these,
+     * so maybe we shouldn't even use the CERT_PKEY type here. */
+
+#ifndef OPENSSL_NO_RSA
+    RSA *peer_rsa_tmp; /* not used for SSL 2 */
+#endif
+#ifndef OPENSSL_NO_DH
+    DH *peer_dh_tmp; /* not used for SSL 2 */
+#endif
+#ifndef OPENSSL_NO_ECDH
+    EC_KEY *peer_ecdh_tmp;
+#endif
+
+    int references; /* actually always 1 at the moment */
+    } SESS_CERT;
+
+  
+#endif 
+  
 #endif

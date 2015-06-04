@@ -21,6 +21,8 @@
 #include <openssl/x509.h>
 #include <openssl/pem.h>
 #include <openssl/ssl.h>
+#include <openssl/dh.h>
+#include <openssl/evp.h>
 #include <openssl/err.h>
 #include <openssl/tls1.h>
 #include <openssl/x509_vfy.h>
@@ -316,9 +318,63 @@ void SSLCom::ssl_msg_callback(int write_p, int version, int content_type, const 
             }
         }
     }
+    else if(content_type ==20) {
+        if(write_p == 0) {
+            if(!com->is_server()) {
+                int bits = check_server_dh_size(ssl);
+                if(bits < 768) {
+                    WAR__("  [%s]: server dh key bits equivalent: %d",name,bits);
+                    SSL_shutdown(ssl);
+                    if(com->owner_cx() != nullptr) {
+                        com->owner_cx()->error(true);
+                    }
+                } else {
+                    DIA__("  [%s]: server dh key bits equivalent: %d",name,bits);
+                }
+            }
+        }
+    }
 }
 
 
+int SSLCom::check_server_dh_size(SSL* ssl) {
+    DEBS_("Checking peer DH parameters:");
+    if(ssl != nullptr) {
+        if (ssl->session != nullptr) {
+            if(ssl->session->sess_cert != nullptr) {
+                DH* dh = ssl->session->sess_cert->peer_dh_tmp;
+                if(dh != nullptr) {
+                    int s = DH_size(dh)*8;
+                    DEB_("Server DH size: %d",s);
+                    return s;
+                } 
+                else if (ssl->session->sess_cert->peer_ecdh_tmp != nullptr) {
+                    EC_KEY* ec = ssl->session->sess_cert->peer_ecdh_tmp;
+                    DEBS_("check_server_dh_size: have peer ecdh key");
+                    EC_POINT* pub = ec->pub_key;
+                    int xb = BN_num_bits(&pub->X);
+                    int yb = BN_num_bits(&pub->Y);
+                    DEB_("check_server_dh_size: have peer ecdh key size: %d,%d",xb,yb);
+                    
+                    // maybe  there is better formula than *6.
+                    if(xb < yb) return xb*6;
+                    return yb*6; 
+                }
+                else {
+                    DEBS_("check_server_dh_size: both dh and ecdh is null");
+                }
+            } else {
+                DEBS_("check_server_dh_size: sess_cert is null");
+            }
+        } else {
+            DEBS_("check_server_dh_size: session is null");
+        }
+    } else {
+        DEBS_("check_server_dh_size: ssl is null");
+    }
+    DEBS_("done.");
+    return 0;
+}
 
 int SSLCom::ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx) {
     
@@ -1547,6 +1603,8 @@ SSL_CTX* SSLCom::client_ctx_setup(EVP_PKEY* priv, X509* cert, const char* cipher
     }
 
     ciphers == nullptr ? SSL_CTX_set_cipher_list(ctx,"ALL:!ADH:!LOW:!aNULL:!EXP:!MD5:@STRENGTH") : SSL_CTX_set_cipher_list(ctx,ciphers);
+    // testing for LogJam:
+    // SSL_CTX_set_cipher_list(ctx,"DHE-RSA-AES256-GCM-SHA384");
     SSL_CTX_set_options(ctx,SSL_OP_NO_TICKET+SSL_OP_NO_SSLv3);
 
 
