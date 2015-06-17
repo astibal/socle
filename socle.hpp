@@ -16,14 +16,15 @@
     License along with this library.
 */
 
-#define SOCLE_VERSION "0.1.24-dev-epoll"
-#define SOCLE_DEVEL    1
+#define SOCLE_VERSION "0.1.24"
+#define SOCLE_DEVEL    0
 
+#include <common/socle_common.hpp>
 #include <common/base64.hpp>
 #include <common/crc32.hpp>
 
 #include <common/buffer.hpp>
-                                                                        
+
 #include <common/display.hpp>
 #include <common/logger.hpp>
 #include <common/timeops.hpp>
