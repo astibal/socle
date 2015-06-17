@@ -84,8 +84,14 @@ public:
     void destroy();
     
      X509_CACHE cache_;
+     X509_CACHE& cache() { return cache_; };
+     
      FQDN_CACHE fqdn_cache_;
+     FQDN_CACHE& fqdn_cache() { return fqdn_cache_; };
+     
      std::mutex mutex_cache_write_;
+     void lock() { mutex_cache_write_.lock(); };
+     void unlock() { mutex_cache_write_.unlock(); }
 
      // our killer feature here 
      X509_PAIR* spoof(X509* cert_orig, bool self_sign=false);

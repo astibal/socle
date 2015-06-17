@@ -78,7 +78,6 @@ void logger::log(unsigned int l, const std::string& fmt, ...) {
     std::lock_guard<std::recursive_mutex> lck(mtx_lout);
 
     if (l > level() && ! forced_) return;
-    forced_ = false;
 
     struct timeval tv;
     struct timezone tz;
@@ -127,7 +126,7 @@ void logger::log(unsigned int l, const std::string& fmt, ...) {
         if(target_profiles().find((uint64_t)*i) != target_profiles().end()) 
             if(target_profiles()[(uint64_t)*i]->level_ < l && ! forced_ ) 
                 continue;
-            if(forced_ && target_profiles()[(uint64_t)*i]->level_ < INF)
+            if(forced_ && target_profiles()[(uint64_t)*i]->level_ == NON)
                 continue;
             
         std::stringstream  s;
@@ -150,6 +149,8 @@ void logger::log(unsigned int l, const std::string& fmt, ...) {
         }
         *o << sss << std::endl;
     }
+    
+    forced_ = false;
 };
 
 
