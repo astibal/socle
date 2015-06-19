@@ -584,7 +584,7 @@ void SSLCom::init_client() {
     sslcom_ctx = certstore()->def_cl_ctx;
     sslcom_ssl = SSL_new(sslcom_ctx);
     if(opt_pfs) {
-        SSL_set_cipher_list(sslcom_ssl,"kEECDH kEECDH kEDH HIGH !kRSA !RC4 !aNULL !eNULL !LOW !3DES !MD5 !EXP !DSS !PSK !SRP !kECDH !CAMELLIA !IDEA !SEED");
+        SSL_set_cipher_list(sslcom_ssl,"kEECDH kEECDH kEDH HIGH !aNULL !eNULL !LOW !3DES !MD5 !EXP !DSS !PSK !SRP !kECDH !CAMELLIA !IDEA !SEED @STRENGTH -AES128 -RC4");
     }
     
     if(!sslcom_ssl) {
@@ -1609,7 +1609,7 @@ SSL_CTX* SSLCom::client_ctx_setup(EVP_PKEY* priv, X509* cert, const char* cipher
         exit(2);
     }
 
-    ciphers == nullptr ? SSL_CTX_set_cipher_list(ctx,"ALL:!ADH:!LOW:!aNULL:!EXP:!MD5:!LOW:@STRENGTH") : SSL_CTX_set_cipher_list(ctx,ciphers);
+    ciphers == nullptr ? SSL_CTX_set_cipher_list(ctx,"ALL:!ADH:!LOW:!aNULL:!EXP:!MD5:@STRENGTH") : SSL_CTX_set_cipher_list(ctx,ciphers);
 
     // testing for LogJam:
     // SSL_CTX_set_cipher_list(ctx,"kEECDH kEECDH kEDH HIGH !kRSA !RC4 !aNULL !eNULL !LOW !3DES !MD5 !EXP !DSS !PSK !SRP !kECDH !CAMELLIA !IDEA !SEED");
