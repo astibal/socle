@@ -119,11 +119,11 @@ int UDPCom::connect(const char* host, const char* port, bool blocking) {
 
     
     if(sfd <= 0) {
-        ERRS_("connect failed");
+        ERRS_("UDPCom::connect failed");
     }
     
     if (rp == NULL) {
-        ERRS_("Could not connect");
+        ERRS_("UDPCom::Could not connect");
         return -2;
     }
 
@@ -192,15 +192,17 @@ bool UDPCom::in_readset(int s) {
 bool UDPCom::in_writeset(int s) {
     
     std::lock_guard<std::mutex> l(DatagramCom::lock);
+
+    INF_("UDPCom::in_writeset: called for %d",s);
     
     auto it_record = DatagramCom::datagrams_received.find((unsigned int)s);
     if(it_record != DatagramCom::datagrams_received.end()) {  
         Datagram& record = (*it_record).second;    
-        
+        INF_("UDPCom::in_writeset: found data for %d (thus virtual socket is writable)",s);
         return true;
         
     } else {
-        if( s > 0) return baseCom::in_writeset(s);
+        if( s > 0) return true; //return baseCom::in_writeset(s);
     }
     
     return false;
@@ -277,6 +279,8 @@ int UDPCom::read_from_pool(int __fd, void* __buf, size_t __n, int __flags) {
 
 int UDPCom::write(int __fd, const void* __buf, size_t __n, int __flags)
 {
+    
+    INF_("UDPCom::write: %d, size = %d",__fd, __n);
     
     if(__n <= 0) {
         return 0;

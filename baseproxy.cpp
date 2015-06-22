@@ -474,7 +474,7 @@ bool baseProxy::handle_cx_write(unsigned char side, baseHostCX* cx) {
     }
     
     if (proceed) {
-        EXT___("baseProxy::handle_cx_write[%c]: writable: %d",side, cx->socket())
+        INF___("baseProxy::handle_cx_write[%c]: writable: %d",side, cx->socket())
         int wrt = cx->write();
         if (wrt < 0) {
             cx->shutdown();
@@ -527,6 +527,7 @@ bool baseProxy::handle_cx_once(unsigned char side, baseCom* xcom, baseHostCX* cx
     }
     if(! cx->paused_write()) {
         if(xcom->in_writeset(cx->socket()) || cx->com()->forced_write_reset()) {
+            INF_("HERE: %d",cx->socket());
             if(! handle_cx_write(side,cx)) {
                 ret = false;
                 goto failure;

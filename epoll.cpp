@@ -40,6 +40,9 @@ bool epoll::add(int socket, int mask) {
     struct epoll_event ev;
     ev.events = mask;
     ev.data.fd = socket;
+    
+    EXT_("epoll:add:%x: epoll_ctl(%d): called to add socket %d ",this, fd, socket);
+    
     if (::epoll_ctl(fd, EPOLL_CTL_ADD, socket, &ev) == -1) {
         if(errno == EEXIST) {
             EXT_("epoll:add:%x: epoll_ctl(%d): socket %d already added",this, fd, socket);
