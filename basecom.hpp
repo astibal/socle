@@ -32,6 +32,7 @@
 #include <time.h>
 #include <unistd.h>
 
+#include <epoll.hpp>
 #include <logger.hpp>
 
 static const char str_unknown[] = "unknown";
@@ -46,10 +47,6 @@ public:
     
     friend class baseHostCX;
     
-    // select variables
-    fd_set read_socketSet;
-    fd_set write_socketSet;
-    fd_set ex_socketSet;
     timeval poll_tv;
     int     poll_sockmax = 0;
     int     poll_result = 0;
@@ -80,6 +77,8 @@ public:
         r->master(master());
         return r;
     }
+
+    struct epoller poller;
 
     
     virtual ~baseCom() {};
@@ -192,18 +191,18 @@ public:
     virtual bool writable(int s) { return true; }; 
     
     // operate on FD_SETs
-    virtual bool in_readset(int s) { return FD_ISSET(s, &read_socketSet); };
-	virtual bool in_writeset(int s) { return FD_ISSET(s, &write_socketSet); };
-    virtual bool in_exset(int s) { return FD_ISSET(s, &ex_socketSet); };  
-	inline void zeroize_readset() { FD_ZERO(&read_socketSet); };
-	inline void zeroize_writeset() { FD_ZERO(&write_socketSet); };
-    inline void zeroize_exset() { FD_ZERO(&ex_socketSet); };
-	inline void set_readset(int s) { if (s > 0) { FD_SET(s, &read_socketSet); if(s > poll_sockmax) { poll_sockmax = s; } } };
-	inline void set_writeset(int s) { if (s > 0) { FD_SET(s, &write_socketSet); if(s > poll_sockmax) { poll_sockmax = s; } } };
-    inline void set_exset(int s) { if (s > 0) { FD_SET(s, &ex_socketSet); if(s > poll_sockmax) { poll_sockmax = s; } } };
-    inline void unset_readset(int s) { FD_CLR(s, &read_socketSet); };
-    inline void unset_writeset(int s) { FD_CLR(s, &write_socketSet); };
-    inline void unset_exset(int s) { FD_CLR(s, &ex_socketSet); };
+    virtual bool in_readset(int s) { return poller.in_read_set(s); };
+	virtual bool in_writeset(int s) { return poller.in_write_set(s); };
+//     virtual bool in_exset(int s) { return FD_ISSET(s, &ex_socketSet); };  
+// 	inline void zeroize_readset() { FD_ZERO(&read_socketSet); };
+// 	inline void zeroize_writeset() { FD_ZERO(&write_socketSet); };
+//     inline void zeroize_exset() { FD_ZERO(&ex_socketSet); };
+	inline void set_monitor(int s) { if (s > 0 ) { poller.add(s,EPOLLIN|EPOLLOUT); } };
+// 	   inline void set_writeset(int s) { if (s > 0) { FD_SET(s, &write_socketSet); if(s > poll_sockmax) { poll_sockmax = s; } } };
+//     inline void set_exset(int s) { if (s > 0) { FD_SET(s, &ex_socketSet); if(s > poll_sockmax) { poll_sockmax = s; } } };
+//     inline void unset_readset(int s) { FD_CLR(s, &read_socketSet); };
+//     inline void unset_writeset(int s) { FD_CLR(s, &write_socketSet); };
+//     inline void unset_exset(int s) { FD_CLR(s, &ex_socketSet); };
     
 	
     virtual bool __same_target_check(const char* host, const char* port, int existing_socket);

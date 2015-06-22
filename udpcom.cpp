@@ -216,9 +216,7 @@ bool UDPCom::in_exset(int s) {
         
         return false;
         
-    } else {
-        if( s > 0) return baseCom::in_exset(s);
-    }
+    } 
 
     return false;
 }

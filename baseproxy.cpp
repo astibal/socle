@@ -269,20 +269,29 @@ int baseProxy::prepare_sockets(baseCom* fdset_owner) {
     if(left_sockets.size() > 0)
 	for(typename std::vector<baseHostCX*>::iterator i = left_sockets.begin(); i != left_sockets.end(); ++i) {
 		int s = (*i)->socket();
-        fdset_owner->set_readset(s);
-		fdset_owner->set_writeset(s);
+        fdset_owner->set_monitor(s);
 		EXT___("baseProxy::prepare_sockets: left -> preparing %d",s);
 
         if (s > max) {
             max = s;
         }
     }
+
+    if(left_delayed_accepts.size() > 0)
+    for(typename std::vector<baseHostCX*>::iterator i = left_delayed_accepts.begin(); i != left_delayed_accepts.end(); ++i) {
+        int s = (*i)->socket();
+        fdset_owner->set_monitor(s);
+        EXT___("baseProxy::prepare_sockets: left -> preparing %d",s);
+
+        if (s > max) {
+            max = s;
+        }
+    }    
     
     if (left_bind_sockets.size() > 0)
 	for(typename std::vector<baseHostCX*>::iterator ii = left_bind_sockets.begin(); ii != left_bind_sockets.end(); ++ii) {
 		int s = (*ii)->socket();
-        fdset_owner->set_readset(s);
-		fdset_owner->set_writeset(s);
+        fdset_owner->set_monitor(s);
 		EXT___("baseProxy::prepare_sockets: left, bound -> preparing %d",s);
 		
         if (s > max) {
@@ -293,8 +302,7 @@ int baseProxy::prepare_sockets(baseCom* fdset_owner) {
     if(right_sockets.size() > 0)
     for(typename std::vector<baseHostCX*>::iterator j = right_sockets.begin(); j != right_sockets.end(); ++j) {
 		int s = (*j)->socket();
-        fdset_owner->set_readset(s);
-		fdset_owner->set_writeset(s);
+        fdset_owner->set_monitor(s);
 		EXT___("baseProxy::prepare_sockets: right -> preparing %d",s);
 
         if (s > max) {
@@ -302,11 +310,21 @@ int baseProxy::prepare_sockets(baseCom* fdset_owner) {
         }
     }
     
+    if(right_delayed_accepts.size() > 0)
+    for(typename std::vector<baseHostCX*>::iterator j = right_delayed_accepts.begin(); j != right_delayed_accepts.end(); ++j) {
+        int s = (*j)->socket();
+        fdset_owner->set_monitor(s);
+        EXT___("baseProxy::prepare_sockets: right -> preparing %d",s);
+
+        if (s > max) {
+            max = s;
+        }
+    }    
+    
     if(right_bind_sockets.size() > 0)
 	for(typename std::vector<baseHostCX*>::iterator jj = right_bind_sockets.begin(); jj != right_bind_sockets.end(); ++jj) {
 		int s = (*jj)->socket();
-        fdset_owner->set_readset(s);
-		fdset_owner->set_writeset(s);
+        fdset_owner->set_monitor(s);
 		EXT___("baseProxy::prepare_sockets: right, bound -> preparing %d",s);
 		
         if (s > max) {
@@ -318,8 +336,7 @@ int baseProxy::prepare_sockets(baseCom* fdset_owner) {
 	for(typename std::vector<baseHostCX*>::iterator k = left_pc_cx.begin(); k != left_pc_cx.end(); ++k) {
 		int k_s = (*k)->socket();
 		if (k_s <= 0) { continue; };
-        fdset_owner->set_readset(k_s);
-		fdset_owner->set_writeset(k_s);
+        fdset_owner->set_monitor(k_s);
 		
 		EXT___("baseProxy::prepare_sockets: left, perma -> preparing %d",k_s);
 		if (k_s > max) {
@@ -331,9 +348,7 @@ int baseProxy::prepare_sockets(baseCom* fdset_owner) {
 	for(typename std::vector<baseHostCX*>::iterator l = right_pc_cx.begin(); l != right_pc_cx.end(); ++l) {    
 		int l_s = (*l)->socket();
 		if (l_s <= 0) { continue; };
-        fdset_owner->set_readset(l_s);
-		fdset_owner->set_writeset(l_s);
-
+        fdset_owner->set_monitor(l_s);
 		
 		EXT___("baseProxy::prepare_sockets: right, perma -> preparing %d",l_s);
 		if (l_s > max) {
@@ -350,7 +365,7 @@ int baseProxy::prepare_sockets(baseCom* fdset_owner) {
 bool baseProxy::handle_cx_events(unsigned char side, baseHostCX* cx) {
         // treat non-blocking still opening sockets 
         if( cx->opening_timeout() ) {
-            DIA___("baseProxy::handle_sockets_once[%d]: opening timeout!",cx->socket());
+            DIA___("baseProxy::handle_cx_events[%d]: opening timeout!",cx->socket());
             cx->shutdown();
             
                  if(side == 'l')  { on_left_error(cx);  }
@@ -360,7 +375,7 @@ bool baseProxy::handle_cx_events(unsigned char side, baseHostCX* cx) {
             return false;
         }
         if( cx->idle_timeout() ) {
-            DIA___("baseProxy::handle_sockets_once[%d]: idle timeout!",cx->socket());
+            DIA___("baseProxy::handle_cx_events[%d]: idle timeout!",cx->socket());
             cx->shutdown();
 
                  if(side == 'l')  { on_left_error(cx);  }
@@ -370,7 +385,7 @@ bool baseProxy::handle_cx_events(unsigned char side, baseHostCX* cx) {
             return false;
         }
         if( cx->error() ) {
-            DIA___("baseProxy::handle_sockets_once[%d]: error!",cx->socket());
+            DIA___("baseProxy::handle_cx_events[%d]: error!",cx->socket());
             cx->shutdown();
 
                  if(side == 'l')  { on_left_error(cx);  }
@@ -382,7 +397,7 @@ bool baseProxy::handle_cx_events(unsigned char side, baseHostCX* cx) {
         
         //process new messages before paused check
         if( cx->new_message() ) {
-            DIA___("baseProxy::handle_sockets_once[%d]: new message!",cx->socket());
+            DIA___("baseProxy::handle_cx_events[%d]: new message!",cx->socket());
                  if(side == 'l') {  on_left_message(cx); }
             else if(side == 'r') { on_right_message(cx); }
             else if(side == 'x')  { on_left_message(cx); }
@@ -965,9 +980,9 @@ int baseProxy::run(void) {
         
         if(pollroot()) {
             
-            com()->zeroize_exset();
-            com()->zeroize_readset();
-            com()->zeroize_writeset();            
+//             com()->zeroize_exset();
+//             com()->zeroize_readset();
+//             com()->zeroize_writeset();            
             
             EXTS___("baseProxy::run: preparing sockets");
             int s_max = prepare_sockets(com());

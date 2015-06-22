@@ -273,7 +273,8 @@ int baseCom::poll() {
     
     timeval n_tv = poll_tv;
     EXTS_("baseCom::poll: called");
-    int r = ::select( poll_sockmax + 1, &read_socketSet, &write_socketSet, NULL, &n_tv);
+    //int r = ::select( poll_sockmax + 1, &read_socketSet, &write_socketSet, NULL, &n_tv);
+    int r = poller.wait(333);
     EXT_("baseCom::poll: select returned %d",r);
     if (r < 0) {
         DIA_("baseCom::poll: error returned by select: errno %d",errno);
