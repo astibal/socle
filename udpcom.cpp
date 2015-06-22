@@ -103,7 +103,7 @@ int UDPCom::connect(const char* host, const char* port, bool blocking) {
             DEB_("UDPCom::connect[%s:%s]: About to name socket[%d] after: %s:%d",host,port,sfd,nonlocal_src_host().c_str(),nonlocal_src_port());
             int bind_status = namesocket(sfd,nonlocal_src_host(),nonlocal_src_port());
             if (bind_status != 0) {
-                    DIA_("UDPCom:connect: cannot bind to the %s:%s: %s",host,port,strerror(bind_status));
+                DIA_("UDPCom::connect[%s:%s]: socket[%d] transparency for %s:%d failed, cannot bind",host,port,sfd,nonlocal_src_host().c_str(),nonlocal_src_port());
             } else {
                 DIA_("UDPCom::connect[%s:%s]: socket[%d] transparency for %s:%d OK",host,port,sfd,nonlocal_src_host().c_str(),nonlocal_src_port());
             }
@@ -193,12 +193,10 @@ bool UDPCom::in_writeset(int s) {
     
     std::lock_guard<std::mutex> l(DatagramCom::lock);
 
-    INF_("UDPCom::in_writeset: called for %d",s);
-    
     auto it_record = DatagramCom::datagrams_received.find((unsigned int)s);
     if(it_record != DatagramCom::datagrams_received.end()) {  
         Datagram& record = (*it_record).second;    
-        INF_("UDPCom::in_writeset: found data for %d (thus virtual socket is writable)",s);
+        DEB_("UDPCom::in_writeset: found data for %d (thus virtual socket is writable)",s);
         return true;
         
     } else {
@@ -279,9 +277,6 @@ int UDPCom::read_from_pool(int __fd, void* __buf, size_t __n, int __flags) {
 
 int UDPCom::write(int __fd, const void* __buf, size_t __n, int __flags)
 {
-    
-    INF_("UDPCom::write: %d, size = %d",__fd, __n);
-    
     if(__n <= 0) {
         return 0;
     }
