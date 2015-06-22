@@ -4,7 +4,7 @@
 int epoll::init() {
     // size in epoll_create is ignored since 2.6.8, but has to be greater than 0
     fd = epoll_create(1);
-    INF_("epoll::init: epoll socket created: %d",fd);
+    DIA_("epoll::init: epoll socket created: %d",fd);
     if (fd == -1) {
         ERR_("epoll::init:%x: epoll_create failed! errno %d",this,errno);
     }
@@ -22,14 +22,14 @@ int epoll::wait(int timeout) {
     
     for(int i = 0; i < nfds; ++i) {
         if(events[i].events & EPOLLIN) {
-            INF_("epoll::wait: data received into socket %d",events[i].data.fd);
+            DEB_("epoll::wait: data received into socket %d",events[i].data.fd);
             in_set.insert(events[i].data.fd);
         }
         else if(events[i].events & EPOLLOUT) {
             //INF_("epoll::wait: socket %d writable",events[i].data.fd);
             out_set.insert(events[i].data.fd);
         } else {
-            INF_("epoll::wait: uncaught event value %d",events[i].events);
+            DIA_("epoll::wait: uncaught event value %d",events[i].events);
         }
     }
    
@@ -49,7 +49,7 @@ bool epoll::add(int socket, int mask) {
             return false;
         } 
     } else {
-        INF_("epoll:add:%x: epoll_ctl(%d): socket added %d",this, fd, socket);
+        DIA_("epoll:add:%x: epoll_ctl(%d): socket added %d",this, fd, socket);
     }
     
     return true;

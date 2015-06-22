@@ -74,53 +74,64 @@ baseProxy::~baseProxy() {
 
 void baseProxy::ladd(baseHostCX* cs) {
 	cs->unblock();
+    com()->set_monitor(cs->socket());
     left_sockets.push_back(cs);
-	DEB___("baseProxy::ladd: added socket: %s",cs->c_name());
+	DIA___("baseProxy::ladd: added socket: %s",cs->c_name());
 };
 
 
 void baseProxy::radd(baseHostCX* cs) {
 	cs->unblock();
+//     INF___("baseProxy::radd: master com: %x",com()->master());
+//     INF___("baseProxy::radd: poller: %x",com()->master()->poller.poller);
+//     INF___("baseProxy::radd: socket to monitor: %d",cs->socket());
+    com()->set_monitor(cs->socket());
     right_sockets.push_back(cs);
-	DEB___("baseProxy::radd: added socket: %s",cs->c_name());
+	DIA___("baseProxy::radd: added socket: %s",cs->c_name());
 };
 
 
 void baseProxy::lbadd(baseHostCX* cs) {
-	DEB___("baseProxy::lbadd: added bound socket: %s",cs->c_name());
+    com()->set_monitor(cs->socket());
     left_bind_sockets.push_back(cs);
+	DIA___("baseProxy::lbadd: added bound socket: %s",cs->c_name());
 };
 
 
 void baseProxy::rbadd(baseHostCX* cs) {
-	DEB___("baseProxy::rbadd: added bound socket: %s",cs->c_name());
+    com()->set_monitor(cs->socket());
     right_bind_sockets.push_back(cs);
+	DIA___("baseProxy::rbadd: added bound socket: %s",cs->c_name());
 };
 
 
 void baseProxy::lpcadd(baseHostCX* cx) {
-	DEB___("baseProxy::lpcadd: added perma socket: %s", cx->c_name());
 	cx->permanent(true);
     left_pc_cx.push_back(cx);
+    com()->set_monitor(cx->socket());
+	DIA___("baseProxy::lpcadd: added perma socket: %s", cx->c_name());
 };
 
 
 void baseProxy::rpcadd(baseHostCX* cx) {
-	DEB___("baseProxy::rpcadd: added perma socket %s", cx->c_name());
 	cx->permanent(true);
     right_pc_cx.push_back(cx);
+    com()->set_monitor(cx->socket());
+	DIA___("baseProxy::rpcadd: added perma socket %s", cx->c_name());
 };
 
 
 void baseProxy::ldaadd(baseHostCX* cs) {
-    DEB___("baseProxy::ldaadd: added delayed socket: %s",cs->c_name());
     left_delayed_accepts.push_back(cs);
+    com()->set_monitor(cs->socket());
+    DIA___("baseProxy::ldaadd: added delayed socket: %s",cs->c_name());
 };
 
 
 void baseProxy::rdaadd(baseHostCX* cs) {
-    DEB___("baseProxy::rdaadd: added delayed socket: %s",cs->c_name());
     right_delayed_accepts.push_back(cs);
+    com()->set_monitor(cs->socket());
+    DIA___("baseProxy::rdaadd: added delayed socket: %s",cs->c_name());
 };
 
 
@@ -261,104 +272,104 @@ void baseProxy::run_timers(void) {
 // (re)set socket set and calculate max socket no
 
 int baseProxy::prepare_sockets(baseCom* fdset_owner) {
-    int max = 0;
+     int max = 1;
 
     
-    DUM___("baseProxy::prepare_sockets: preparing my sockets for Com: %x",fdset_owner);
-    
-    if(left_sockets.size() > 0)
-	for(typename std::vector<baseHostCX*>::iterator i = left_sockets.begin(); i != left_sockets.end(); ++i) {
-		int s = (*i)->socket();
-        fdset_owner->set_monitor(s);
-		EXT___("baseProxy::prepare_sockets: left -> preparing %d",s);
-
-        if (s > max) {
-            max = s;
-        }
-    }
-
-    if(left_delayed_accepts.size() > 0)
-    for(typename std::vector<baseHostCX*>::iterator i = left_delayed_accepts.begin(); i != left_delayed_accepts.end(); ++i) {
-        int s = (*i)->socket();
-        fdset_owner->set_monitor(s);
-        EXT___("baseProxy::prepare_sockets: left -> preparing %d",s);
-
-        if (s > max) {
-            max = s;
-        }
-    }    
-    
-    if (left_bind_sockets.size() > 0)
-	for(typename std::vector<baseHostCX*>::iterator ii = left_bind_sockets.begin(); ii != left_bind_sockets.end(); ++ii) {
-		int s = (*ii)->socket();
-        fdset_owner->set_monitor(s);
-		EXT___("baseProxy::prepare_sockets: left, bound -> preparing %d",s);
-		
-        if (s > max) {
-            max = s;
-        }
-    }
-
-    if(right_sockets.size() > 0)
-    for(typename std::vector<baseHostCX*>::iterator j = right_sockets.begin(); j != right_sockets.end(); ++j) {
-		int s = (*j)->socket();
-        fdset_owner->set_monitor(s);
-		EXT___("baseProxy::prepare_sockets: right -> preparing %d",s);
-
-        if (s > max) {
-            max = s;
-        }
-    }
-    
-    if(right_delayed_accepts.size() > 0)
-    for(typename std::vector<baseHostCX*>::iterator j = right_delayed_accepts.begin(); j != right_delayed_accepts.end(); ++j) {
-        int s = (*j)->socket();
-        fdset_owner->set_monitor(s);
-        EXT___("baseProxy::prepare_sockets: right -> preparing %d",s);
-
-        if (s > max) {
-            max = s;
-        }
-    }    
-    
-    if(right_bind_sockets.size() > 0)
-	for(typename std::vector<baseHostCX*>::iterator jj = right_bind_sockets.begin(); jj != right_bind_sockets.end(); ++jj) {
-		int s = (*jj)->socket();
-        fdset_owner->set_monitor(s);
-		EXT___("baseProxy::prepare_sockets: right, bound -> preparing %d",s);
-		
-        if (s > max) {
-            max = s;
-        }
-    }
-    
-    if(left_pc_cx.size() > 0)
-	for(typename std::vector<baseHostCX*>::iterator k = left_pc_cx.begin(); k != left_pc_cx.end(); ++k) {
-		int k_s = (*k)->socket();
-		if (k_s <= 0) { continue; };
-        fdset_owner->set_monitor(k_s);
-		
-		EXT___("baseProxy::prepare_sockets: left, perma -> preparing %d",k_s);
-		if (k_s > max) {
-            max = k_s;
-        }
-	}
-	
-	if(right_pc_cx.size() > 0)
-	for(typename std::vector<baseHostCX*>::iterator l = right_pc_cx.begin(); l != right_pc_cx.end(); ++l) {    
-		int l_s = (*l)->socket();
-		if (l_s <= 0) { continue; };
-        fdset_owner->set_monitor(l_s);
-		
-		EXT___("baseProxy::prepare_sockets: right, perma -> preparing %d",l_s);
-		if (l_s > max) {
-            max = l_s;
-        }
-	}
-	
-	// Note: delayed accepts are not subject to be read/written, they are not yet fully accepted by higher level CX
-		
-    return max;
+//     DUM___("baseProxy::prepare_sockets: preparing my sockets for Com: %x",fdset_owner);
+//     
+//     if(left_sockets.size() > 0)
+// 	for(typename std::vector<baseHostCX*>::iterator i = left_sockets.begin(); i != left_sockets.end(); ++i) {
+// 		int s = (*i)->socket();
+//         fdset_owner->set_monitor(s);
+// 		EXT___("baseProxy::prepare_sockets: left -> preparing %d",s);
+// 
+//         if (s > max) {
+//             max = s;
+//         }
+//     }
+// 
+//     if(left_delayed_accepts.size() > 0)
+//     for(typename std::vector<baseHostCX*>::iterator i = left_delayed_accepts.begin(); i != left_delayed_accepts.end(); ++i) {
+//         int s = (*i)->socket();
+//         fdset_owner->set_monitor(s);
+//         EXT___("baseProxy::prepare_sockets: left -> preparing %d",s);
+// 
+//         if (s > max) {
+//             max = s;
+//         }
+//     }    
+//     
+//     if (left_bind_sockets.size() > 0)
+// 	for(typename std::vector<baseHostCX*>::iterator ii = left_bind_sockets.begin(); ii != left_bind_sockets.end(); ++ii) {
+// 		int s = (*ii)->socket();
+//         fdset_owner->set_monitor(s);
+// 		EXT___("baseProxy::prepare_sockets: left, bound -> preparing %d",s);
+// 		
+//         if (s > max) {
+//             max = s;
+//         }
+//     }
+// 
+//     if(right_sockets.size() > 0)
+//     for(typename std::vector<baseHostCX*>::iterator j = right_sockets.begin(); j != right_sockets.end(); ++j) {
+// 		int s = (*j)->socket();
+//         fdset_owner->set_monitor(s);
+// 		EXT___("baseProxy::prepare_sockets: right -> preparing %d",s);
+// 
+//         if (s > max) {
+//             max = s;
+//         }
+//     }
+//     
+//     if(right_delayed_accepts.size() > 0)
+//     for(typename std::vector<baseHostCX*>::iterator j = right_delayed_accepts.begin(); j != right_delayed_accepts.end(); ++j) {
+//         int s = (*j)->socket();
+//         fdset_owner->set_monitor(s);
+//         EXT___("baseProxy::prepare_sockets: right -> preparing %d",s);
+// 
+//         if (s > max) {
+//             max = s;
+//         }
+//     }    
+//     
+//     if(right_bind_sockets.size() > 0)
+// 	for(typename std::vector<baseHostCX*>::iterator jj = right_bind_sockets.begin(); jj != right_bind_sockets.end(); ++jj) {
+// 		int s = (*jj)->socket();
+//         fdset_owner->set_monitor(s);
+// 		EXT___("baseProxy::prepare_sockets: right, bound -> preparing %d",s);
+// 		
+//         if (s > max) {
+//             max = s;
+//         }
+//     }
+//     
+//     if(left_pc_cx.size() > 0)
+// 	for(typename std::vector<baseHostCX*>::iterator k = left_pc_cx.begin(); k != left_pc_cx.end(); ++k) {
+// 		int k_s = (*k)->socket();
+// 		if (k_s <= 0) { continue; };
+//         fdset_owner->set_monitor(k_s);
+// 		
+// 		EXT___("baseProxy::prepare_sockets: left, perma -> preparing %d",k_s);
+// 		if (k_s > max) {
+//             max = k_s;
+//         }
+// 	}
+// 	
+// 	if(right_pc_cx.size() > 0)
+// 	for(typename std::vector<baseHostCX*>::iterator l = right_pc_cx.begin(); l != right_pc_cx.end(); ++l) {    
+// 		int l_s = (*l)->socket();
+// 		if (l_s <= 0) { continue; };
+//         fdset_owner->set_monitor(l_s);
+// 		
+// 		EXT___("baseProxy::prepare_sockets: right, perma -> preparing %d",l_s);
+// 		if (l_s > max) {
+//             max = l_s;
+//         }
+// 	}
+// 	
+// 	// Note: delayed accepts are not subject to be read/written, they are not yet fully accepted by higher level CX
+// 		
+     return max;
 };
 
 
