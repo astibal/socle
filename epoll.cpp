@@ -115,3 +115,23 @@ int epoller::wait(int timeout) {
     
     return 0;
 }
+
+epoll_handler* epoller::get_handler(int check) {
+    auto it = handler_hints.find(check);
+    
+    if(it == handler_hints.end()) {
+        return nullptr;
+    } else {
+        epoll_handler* ret = it->second;
+        return ret;
+    }
+
+    return nullptr;
+}
+void epoller::clear_handler(int check) {
+    handler_hints[check] = nullptr;
+}
+
+void epoller::set_handler(int check, epoll_handler* h) {
+    handler_hints[check] = h;
+}

@@ -56,7 +56,7 @@ public:
 };
 
 
-class baseProxy
+class baseProxy : public epoll_handler
 {
 protected:
 	
@@ -198,6 +198,9 @@ public:
     bool handle_cx_new(unsigned char side, baseCom* xcom, baseHostCX* cx);
     
     virtual int handle_sockets_once(baseCom*);
+    virtual void handle_event(int sockfd, int event) {
+        handle_sockets_once(com()->master());
+    };
 
     inline bool pollroot() { return pollroot_; };
     inline void pollroot(bool b) { pollroot_ = b; };

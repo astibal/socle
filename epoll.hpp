@@ -7,6 +7,7 @@
 #include <csignal>
 #include <vector>
 #include <set>
+#include <unordered_map>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/epoll.h>
@@ -23,6 +24,7 @@
 
 class epoll_handler {
 public:
+    int fence__ = 42;
     virtual void handle_event(int sockfd, int event) = 0;
 };
 
@@ -39,6 +41,7 @@ struct epoll {
     virtual int wait(int timeout = -1);
     virtual bool add(int socket, int mask=(EPOLLIN|EPOLLOUT));
     inline void clear() { memset(events,0,EPOLLER_MAX_EVENTS*sizeof(epoll_event)); in_set.clear(); out_set.clear(); }
+    
     virtual ~epoll() {}
 };
 
@@ -54,6 +57,12 @@ struct epoller {
     bool in_write_set(int check);
     virtual bool add(int socket, int mask=(EPOLLIN|EPOLLOUT));
     virtual int wait(int timeout = -1);
+
+    // handler hints is a map of socket->handler. We will allow to grow it as needed. No purges. 
+    std::unordered_map<int,epoll_handler*> handler_hints;    
+    epoll_handler* get_handler(int check);
+    void clear_handler(int check);
+    void set_handler(int check, epoll_handler*);
     
     virtual ~epoller() { if(poller) delete poller; }
 };

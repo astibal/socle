@@ -75,6 +75,7 @@ baseProxy::~baseProxy() {
 void baseProxy::ladd(baseHostCX* cs) {
 	cs->unblock();
     com()->set_monitor(cs->socket());
+    com()->set_poll_handler(cs->socket(),this);
     left_sockets.push_back(cs);
 	DIA___("baseProxy::ladd: added socket: %s",cs->c_name());
 };
@@ -86,6 +87,7 @@ void baseProxy::radd(baseHostCX* cs) {
 //     INF___("baseProxy::radd: poller: %x",com()->master()->poller.poller);
 //     INF___("baseProxy::radd: socket to monitor: %d",cs->socket());
     com()->set_monitor(cs->socket());
+    com()->set_poll_handler(cs->socket(),this);
     right_sockets.push_back(cs);
 	DIA___("baseProxy::radd: added socket: %s",cs->c_name());
 };
@@ -93,6 +95,7 @@ void baseProxy::radd(baseHostCX* cs) {
 
 void baseProxy::lbadd(baseHostCX* cs) {
     com()->set_monitor(cs->socket());
+    com()->set_poll_handler(cs->socket(),this);
     left_bind_sockets.push_back(cs);
 	DIA___("baseProxy::lbadd: added bound socket: %s",cs->c_name());
 };
@@ -100,6 +103,7 @@ void baseProxy::lbadd(baseHostCX* cs) {
 
 void baseProxy::rbadd(baseHostCX* cs) {
     com()->set_monitor(cs->socket());
+    com()->set_poll_handler(cs->socket(),this);
     right_bind_sockets.push_back(cs);
 	DIA___("baseProxy::rbadd: added bound socket: %s",cs->c_name());
 };
@@ -109,6 +113,7 @@ void baseProxy::lpcadd(baseHostCX* cx) {
 	cx->permanent(true);
     left_pc_cx.push_back(cx);
     com()->set_monitor(cx->socket());
+    com()->set_poll_handler(cx->socket(),this);
 	DIA___("baseProxy::lpcadd: added perma socket: %s", cx->c_name());
 };
 
@@ -117,6 +122,7 @@ void baseProxy::rpcadd(baseHostCX* cx) {
 	cx->permanent(true);
     right_pc_cx.push_back(cx);
     com()->set_monitor(cx->socket());
+    com()->set_poll_handler(cx->socket(),this);
 	DIA___("baseProxy::rpcadd: added perma socket %s", cx->c_name());
 };
 
@@ -124,6 +130,7 @@ void baseProxy::rpcadd(baseHostCX* cx) {
 void baseProxy::ldaadd(baseHostCX* cs) {
     left_delayed_accepts.push_back(cs);
     com()->set_monitor(cs->socket());
+    com()->set_poll_handler(cs->socket(),this);
     DIA___("baseProxy::ldaadd: added delayed socket: %s",cs->c_name());
 };
 
@@ -131,6 +138,7 @@ void baseProxy::ldaadd(baseHostCX* cs) {
 void baseProxy::rdaadd(baseHostCX* cs) {
     right_delayed_accepts.push_back(cs);
     com()->set_monitor(cs->socket());
+    com()->set_poll_handler(cs->socket(),this);
     DIA___("baseProxy::rdaadd: added delayed socket: %s",cs->c_name());
 };
 
@@ -1000,6 +1008,17 @@ int baseProxy::run(void) {
             EXTS___("baseProxy::run: sockets prepared");
             if (s_max) {
                 com()->poll();
+            }
+            
+            for (auto s: com()->poller.poller->in_set) {
+                auto ptr = com()->poller.get_handler(s);
+                
+                if(ptr != nullptr) {
+                    auto seg = ptr->fence__;
+                    DIA_("baseProxy::run: socket %d has registered handler 0x%x (fence %d)",s,ptr,seg);
+                } else {
+                    ERR_("baseProxy::run: socket %d has registered NULL handler",s);
+                }
             }
         }
         

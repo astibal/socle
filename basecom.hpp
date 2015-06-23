@@ -203,6 +203,13 @@ public:
             master()->poller.add(s,EPOLLIN|EPOLLOUT); 
         } 
     };
+
+    inline void set_poll_handler(int s, epoll_handler* h) {
+        DEB_("basecom::set_poll_handler: called to add %d monitored by %x",s,h);
+        if (s > 0 ) { 
+            master()->poller.set_handler(s,h);
+        } 
+    };
 // 	   inline void set_writeset(int s) { if (s > 0) { FD_SET(s, &write_socketSet); if(s > poll_sockmax) { poll_sockmax = s; } } };
 //     inline void set_exset(int s) { if (s > 0) { FD_SET(s, &ex_socketSet); if(s > poll_sockmax) { poll_sockmax = s; } } };
 //     inline void unset_readset(int s) { FD_CLR(s, &read_socketSet); };

@@ -91,6 +91,7 @@ baseHostCX::~baseHostCX() {
     com()->cleanup();
     
     if(closing_fds_ > 0) {
+        com()->set_poll_handler(closing_fds_,nullptr);
         com()->close(closing_fds_); 
     }
     delete com_;   
