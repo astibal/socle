@@ -233,7 +233,10 @@ public:
 	
 	void shutdown();
 	inline bool valid() { return ( fds_ > 0 && !error() ); };
-	inline bool error() { return error_; }
+	inline bool error() { 
+        if(com() != nullptr) return (error_ || com()->error());
+        return error_ ; 
+    }
 	inline void error(bool b) { error_ = b; }
 	void socket(int s) {
 		if (s != 0) {
