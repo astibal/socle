@@ -16,6 +16,9 @@
     License along with this library.
 */
 
+#ifndef _THREADED_ACCEPTOR_CPP_
+#define _THREADED_ACCEPTOR_CPP_
+
 #include <vector>
 #include <thread>
 
@@ -171,3 +174,5 @@ int ThreadedAcceptorProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
 	
 	return MasterProxy::handle_sockets_once(com());
 }
+
+#endif
