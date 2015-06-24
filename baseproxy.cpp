@@ -509,7 +509,7 @@ bool baseProxy::handle_cx_write(unsigned char side, baseHostCX* cx) {
     return true;
 }
 
-bool baseProxy::handle_cx_once(unsigned char side, baseCom* xcom, baseHostCX* cx) {
+bool baseProxy::handle_cx_read_once(unsigned char side, baseCom* xcom, baseHostCX* cx) {
 
     bool ret = true;
 
@@ -533,6 +533,21 @@ bool baseProxy::handle_cx_once(unsigned char side, baseCom* xcom, baseHostCX* cx
             }
         }
     }
+
+    // on failure, skip all operations and go here
+    failure:
+    
+    // errors are proucts of operations above. Act on them.
+    if(! handle_cx_events(side,cx))
+        ret = false;    
+    
+    return ret;
+};
+
+bool baseProxy::handle_cx_write_once(unsigned char side, baseCom* xcom, baseHostCX* cx) {
+
+    bool ret = true;
+
     if(! cx->paused_write()) {
         if(xcom->in_writeset(cx->socket()) || cx->com()->forced_write_reset()) {
             if(! handle_cx_write(side,cx)) {
@@ -550,7 +565,7 @@ bool baseProxy::handle_cx_once(unsigned char side, baseCom* xcom, baseHostCX* cx
             
         }
     }
-
+    
     // on failure, skip all operations and go here
     failure:
     
@@ -559,7 +574,8 @@ bool baseProxy::handle_cx_once(unsigned char side, baseCom* xcom, baseHostCX* cx
         ret = false;    
     
     return ret;
-};
+}
+
 
 bool baseProxy::handle_cx_new(unsigned char side, baseCom* xcom, baseHostCX* cx) {
     
@@ -622,21 +638,35 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
 	error_on_write = false;
 	
     if ( xcom->poll_result >= 0) {
-        
+
+
+        // READS
 		if(left_sockets.size() > 0)
 		for(typename std::vector<baseHostCX*>::iterator i = left_sockets.begin(); i != left_sockets.end(); ++i) {
-			if(! handle_cx_once('l',xcom,*i)) {
+			if(! handle_cx_read_once('l',xcom,*i)) {
                 break;
             }
 		}
-		
 		if(right_sockets.size() > 0)
 		for(typename std::vector<baseHostCX*>::iterator j = right_sockets.begin(); j != right_sockets.end(); ++j) {
-            if(! handle_cx_once('r',xcom,*j)) {
+            if(! handle_cx_read_once('r',xcom,*j)) {
                 break;
             }
 		}
 
+		//WRITES
+        if(left_sockets.size() > 0)
+        for(typename std::vector<baseHostCX*>::iterator i = left_sockets.begin(); i != left_sockets.end(); ++i) {
+            if(! handle_cx_write_once('l',xcom,*i)) {
+                break;
+            }
+        }
+        if(right_sockets.size() > 0)
+        for(typename std::vector<baseHostCX*>::iterator j = right_sockets.begin(); j != right_sockets.end(); ++j) {
+            if(! handle_cx_write_once('r',xcom,*j)) {
+                break;
+            }
+        }
 
         // now operate permanent-connect sockets to create accepted sockets
         

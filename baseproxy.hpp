@@ -192,7 +192,8 @@ public:
     virtual bool handle_cx_events(unsigned char side, baseHostCX* cx); // return false to break socket loop. Always call this one in your overide.
     virtual bool handle_cx_read(unsigned char side, baseHostCX* cx);   // return false to break socket loop. Always call this one in your overide.
     virtual bool handle_cx_write(unsigned char side, baseHostCX* cx);  // return false to break socket loop. Always call this one in your overide.
-    virtual bool handle_cx_once(unsigned char side, baseCom* xcom, baseHostCX* cx);
+    virtual bool handle_cx_read_once(unsigned char side, baseCom* xcom, baseHostCX* cx);
+    virtual bool handle_cx_write_once(unsigned char side, baseCom* xcom, baseHostCX* cx);
     
     //bound sockets
     bool handle_cx_new(unsigned char side, baseCom* xcom, baseHostCX* cx);
