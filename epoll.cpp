@@ -26,7 +26,10 @@ int epoll::wait(int timeout) {
             in_set.insert(events[i].data.fd);
         }
         else if(events[i].events & EPOLLOUT) {
-            //INF_("epoll::wait: socket %d writable",events[i].data.fd);
+            if(auto_epollout_remove) {
+                DEB_("epoll::wait: socket %d writable",events[i].data.fd);
+            }
+            
             out_set.insert(events[i].data.fd);
             
             if(auto_epollout_remove) {
