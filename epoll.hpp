@@ -40,7 +40,7 @@ struct epoll {
 
     int init();
     virtual int wait(int timeout = -1);
-    virtual bool add(int socket, int mask=(EPOLLIN|EPOLLOUT));
+    virtual bool add(int socket, int mask=(EPOLLIN));
     inline void clear() { memset(events,0,EPOLLER_MAX_EVENTS*sizeof(epoll_event)); in_set.clear(); out_set.clear(); }
     
     virtual ~epoll() {}
@@ -56,7 +56,7 @@ struct epoller {
     
     bool in_read_set(int check);
     bool in_write_set(int check);
-    virtual bool add(int socket, int mask=(EPOLLIN|EPOLLOUT));
+    virtual bool add(int socket, int mask=(EPOLLIN));
     virtual int wait(int timeout = -1);
 
     // handler hints is a map of socket->handler. We will allow to grow it as needed. No purges. 
