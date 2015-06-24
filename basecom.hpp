@@ -197,15 +197,22 @@ public:
 // 	inline void zeroize_readset() { FD_ZERO(&read_socketSet); };
 // 	inline void zeroize_writeset() { FD_ZERO(&write_socketSet); };
 //     inline void zeroize_exset() { FD_ZERO(&ex_socketSet); };
-	inline void set_monitor(int s) { 
-        DEB_("basecom::set_monitor: called to add %d",s);
+
+    inline void set_monitor(int s) { 
+        DIA_("basecom::set_monitor: called to add %d",s);
         if (s > 0 ) { 
-            master()->poller.add(s,EPOLLIN|EPOLLOUT); 
+            master()->poller.add(s,EPOLLIN); 
         } 
     };
+    inline void set_write_monitor(int s) {
+        DIA_("basecom::set_write_monitor: called to add EPOLLOUT %d",s);
+        if (s > 0 ) { 
+            master()->poller.modify(s,EPOLLIN|EPOLLOUT); 
+        } 
+    }
 
     inline void set_poll_handler(int s, epoll_handler* h) {
-        DEB_("basecom::set_poll_handler: called to add %d monitored by %x",s,h);
+        DIA_("basecom::set_poll_handler: called to add %d monitored by %x",s,h);
         if (s > 0 ) { 
             master()->poller.set_handler(s,h);
         } 

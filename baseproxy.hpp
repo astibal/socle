@@ -156,7 +156,7 @@ public:
 
 
 	inline bool dead() const { return dead_; }
-	inline void dead(bool d) { dead_ = d; } 
+	inline void dead(bool d) { dead_ = d; /* might be handy sometimes. if(dead_) { INF_("dead bt: %s",bt().c_str()); } */ } 
 	
 	inline bool new_raw() const { return new_raw_; }
 	inline void new_raw(bool r) { new_raw_ = r; } 	

@@ -468,6 +468,12 @@ int baseHostCX::write() {
 		DUM_("HostCX::write[%s]: calling post_write",c_name());
 		post_write();
 		
+        if(l < writebuf_.size()) {
+            DIA_("Only %d bytes written out of %d -> setting socket write monitor",l,writebuf_.size());
+            // we need to check once more when socket is fully writable
+            com()->set_write_monitor(socket());
+        }
+        
 		writebuf_.flush(l);
 		
 		if(com()->debug_log_data_crc) {
@@ -478,6 +484,10 @@ int baseHostCX::write() {
 		    shutdown();
 		}
 	}
+	
+	if(l < 0) {
+        DIA_("write failed: %s. Unrecoverable.", string_error().c_str());
+    }
 	
 	return l;
 }

@@ -28,6 +28,10 @@ int epoll::wait(int timeout) {
         else if(events[i].events & EPOLLOUT) {
             //INF_("epoll::wait: socket %d writable",events[i].data.fd);
             out_set.insert(events[i].data.fd);
+            
+            if(auto_epollout_remove) {
+                modify(events[i].data.fd,EPOLLIN);
+            }
         } else {
             DIA_("epoll::wait: uncaught event value %d",events[i].events);
         }
@@ -58,6 +62,30 @@ bool epoll::add(int socket, int mask) {
     return true;
 }
 
+bool epoll::modify(int socket, int mask) {
+    struct epoll_event ev;
+    ev.events = mask;
+    ev.data.fd = socket;
+    
+    DEB_("epoll:modify:%x: epoll_ctl(%d): called to modify socket %d ",this, fd, socket);
+    
+    if (::epoll_ctl(fd, EPOLL_CTL_MOD, socket, &ev) == -1) {
+        if(errno == ENOENT) {
+            DIA_("epoll:modify:%x: epoll_ctl(%d): socket %d not monitored, fixing...",this, fd, socket);
+            add(socket,mask);
+            return false;
+        }
+        else {
+            ERR_("epoll:modify:%x: epoll_ctl(%d): cannot modify socket %d: %s",this, fd, socket, string_error().c_str());
+            return false;
+        } 
+    } else {
+        DIA_("epoll:modify:%x: epoll_ctl(%d): socket added %d",this, fd, socket);
+    }
+    
+    return true;
+}
+
 
 bool epoll::in_read_set(int check) {
     auto f = in_set.find(check);
@@ -65,8 +93,9 @@ bool epoll::in_read_set(int check) {
 }
 
 bool epoll::in_write_set(int check) {
-    auto f = out_set.find(check);
-    return (f != out_set.end());
+//     auto f = out_set.find(check);
+//     return (f != out_set.end());
+    return true;
 }
 
 
@@ -88,6 +117,17 @@ bool epoller::add(int socket, int mask)
     
     if(poller != nullptr) {
         return poller->add(socket,mask);
+    }
+    
+    return false;
+};
+
+bool epoller::modify(int socket, int mask)
+{
+    init_if_null();
+    
+    if(poller != nullptr) {
+        return poller->modify(socket,mask);
     }
     
     return false;
