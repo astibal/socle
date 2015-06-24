@@ -198,8 +198,8 @@ public:
     bool handle_cx_new(unsigned char side, baseCom* xcom, baseHostCX* cx);
     
     virtual int handle_sockets_once(baseCom*);
-    virtual void handle_event(int sockfd, int event) {
-        handle_sockets_once(com()->master());
+    virtual void handle_event(baseCom* com) {
+        handle_sockets_once(com);
     };
 
     inline bool pollroot() { return pollroot_; };

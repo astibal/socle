@@ -22,10 +22,11 @@
 
 #define EPOLLER_MAX_EVENTS 50
 
+class baseCom;
 class epoll_handler {
 public:
     int fence__ = 42;
-    virtual void handle_event(int sockfd, int event) = 0;
+    virtual void handle_event(baseCom*) = 0;
 };
 
 struct epoll {

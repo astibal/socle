@@ -167,7 +167,7 @@ bool baseHostCX::paused_write() {
 
     if(paused_write_ && peercom()) {
         if(peercom()->com_status()) {
-            DIAS_("baseHostCX::paused_write[%s]: peer's com status ok, unpausing write",c_name());
+            DIA_("baseHostCX::paused_write[%s]: peer's com status ok, unpausing write",c_name());
             paused_write(false);
         }
     }

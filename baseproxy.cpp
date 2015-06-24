@@ -1011,7 +1011,7 @@ int baseProxy::run(void) {
             }
             
             for (auto s: com()->poller.poller->in_set) {
-                auto ptr = com()->poller.get_handler(s);
+                epoll_handler* ptr = com()->poller.get_handler(s);
                 
                 if(ptr != nullptr) {
                     auto seg = ptr->fence__;
