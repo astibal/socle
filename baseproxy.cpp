@@ -1047,7 +1047,10 @@ int baseProxy::run(void) {
                     auto seg = ptr->fence__;
                     DIA_("baseProxy::run: socket %d has registered handler 0x%x (fence %d)",s,ptr,seg);
                 } else {
-                    ERR_("baseProxy::run: socket %d has registered NULL handler",s);
+                    if(s != com()->poller.poller->hint_socket()) {
+                        // hint filedescriptor don't have handler
+                        ERR_("baseProxy::run: socket %d has registered NULL handler",s);
+                    }
                 }
             }
         }

@@ -19,6 +19,10 @@
 #ifndef _THREADED_ACCEPTOR_CPP_
 #define _THREADED_ACCEPTOR_CPP_
 
+#include <fcntl.h>
+#include <unistd.h>
+
+
 #include <vector>
 #include <thread>
 
@@ -32,6 +36,7 @@ template<class Worker, class SubWorker>
 ThreadedAcceptor<Worker,SubWorker>::ThreadedAcceptor(baseCom* c): baseProxy(c),
 threads_(NULL) {
 	baseProxy::new_raw(true);
+    pipe2(sq__hint,O_DIRECT|O_NONBLOCK);
 }
 
 template<class Worker, class SubWorker>
@@ -51,6 +56,8 @@ ThreadedAcceptor<Worker,SubWorker>::~ThreadedAcceptor() {
 		}
 		delete[] threads_; 
 	}
+    ::close(sq__hint[0]);
+    ::close(sq__hint[1]);
 };
 
 
@@ -88,6 +95,9 @@ int ThreadedAcceptor<Worker,SubWorker>::create_workers(int count) {
 		w->com()->nonlocal_dst(this->com()->nonlocal_dst());
 		w->parent((baseProxy*)this);
         w->pollroot(true);
+        
+        DIA_("ThreadedAcceptor::create_workers setting worker's queue hint pipe socket %d",sq__hint[0]);
+        w->com()->set_hint_monitor(sq__hint[0]);
 		
 		DIA_("Created ThreadedAcceptorProxy %x",w);
 		workers_[i] = w;
@@ -123,22 +133,27 @@ template<class Worker, class SubWorker>
 int ThreadedAcceptor<Worker,SubWorker>::push(int s) { 
 	std::lock_guard<std::mutex> lck(sq_lock_);
 	sq_.push_front(s);
+    ::write(sq__hint[1],"A",1);
 	
 	return sq_.size();
 };
 
 template<class Worker, class SubWorker>
 int ThreadedAcceptor<Worker,SubWorker>::pop() {
-	std::lock_guard<std::mutex> lck(sq_lock_);
-	
-	if(sq_.size() == 0) {
-		return 0;
-	}
-	
-	int s = sq_.back();
-	sq_.pop_back();
-	
-	return s;
+    std::lock_guard<std::mutex> lck(sq_lock_);
+
+    if(sq_.size() == 0) {
+        return 0;
+    }
+
+    int s = sq_.back();
+    sq_.pop_back();
+
+    char dummy_buffer[1];
+    ::read(sq__hint[0],dummy_buffer,1);
+    DIA_("ThreadedAcceptor::pop: clearing sq__hint %c",dummy_buffer[0]);
+
+    return s;
 }
 
 

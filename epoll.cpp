@@ -22,7 +22,16 @@ int epoll::wait(int timeout) {
     
     for(int i = 0; i < nfds; ++i) {
         if(events[i].events & EPOLLIN) {
-            DEB_("epoll::wait: data received into socket %d",events[i].data.fd);
+            if(events[i].data.fd == hint_socket()) {
+                DIA_("epoll::wait: hint triggered %d",events[i].data.fd);
+            }
+            
+            DIA_("epoll::wait: data received into socket %d",events[i].data.fd);
+            if(events[i].data.fd == 1) {
+                // WORKAROUND: fd == 1 is always readable. 
+                // DIA_("epoll::wait: %s",bt().c_str());
+                char t[1]; ::read(events[i].data.fd,t,1);
+            }
             in_set.insert(events[i].data.fd);
         }
         else if(events[i].events & EPOLLOUT) {
@@ -102,6 +111,31 @@ bool epoll::in_write_set(int check) {
 }
 
 
+bool epoll::hint_socket(int socket) {
+    struct epoll_event ev;
+    ev.events = EPOLLIN;
+    ev.data.fd = socket;
+    
+    if(hint_socket() > 0) {
+        struct epoll_event rem_ev;
+        rem_ev.events = EPOLLIN;
+        rem_ev.data.fd = hint_socket();
+        
+        DIA_("epoll:hint_socket:%x: epoll_ctl(%d): removing old hint socket %d",this, fd,hint_socket());
+        ::epoll_ctl(fd,EPOLL_CTL_DEL,hint_fd,&rem_ev);
+    }
+    
+    if(add(socket,EPOLLIN)) {
+        DIA_("epoll:hint_socket:%x: epoll_ctl(%d): setting hint socket %d",this, fd, socket);
+        hint_fd = socket;
+    } else {
+        DIA_("epoll:hint_socket:%x: epoll_ctl(%d): setting hint socket %d FAILED.",this, fd, socket);
+        return false;
+    }
+    return true;
+}
+
+
 void epoller::init_if_null()
 {
     if (poller == nullptr) { 
@@ -135,6 +169,18 @@ bool epoller::modify(int socket, int mask)
     
     return false;
 };
+
+bool epoller::hint_socket(int socket)
+{
+    init_if_null();
+    
+    if(poller != nullptr) {
+        return poller->hint_socket(socket);
+    }
+    
+    return false;
+};
+
 
 bool epoller::in_read_set(int check)
 {

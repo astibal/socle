@@ -32,6 +32,7 @@ public:
 struct epoll {
     struct epoll_event events[EPOLLER_MAX_EVENTS];
     int fd = 0;
+    int hint_fd = 0;
     bool auto_epollout_remove = true;
     std::set<int> in_set;
     std::set<int> out_set;
@@ -44,6 +45,8 @@ struct epoll {
     virtual bool add(int socket, int mask=(EPOLLIN));
     virtual bool modify(int socket, int mask);
     inline void clear() { memset(events,0,EPOLLER_MAX_EVENTS*sizeof(epoll_event)); in_set.clear(); out_set.clear(); }
+    bool hint_socket(int socket); // this is the socket which will be additinally monitored for EPOLLIN; each time it's readable, single byte is read from it.
+    inline int hint_socket(void) const { return hint_fd; }
     
     virtual ~epoll() {}
 };
@@ -61,6 +64,7 @@ struct epoller {
     virtual bool add(int socket, int mask=(EPOLLIN));
     virtual bool modify(int socket, int mask);
     virtual int wait(int timeout = -1);
+    virtual bool hint_socket(int socket); // this is the socket which will be additinally monitored for EPOLLIN; each time it's readable, single byte is read from it.
 
     // handler hints is a map of socket->handler. We will allow to grow it as needed. No purges. 
     std::unordered_map<int,epoll_handler*> handler_hints;    

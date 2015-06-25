@@ -16,6 +16,10 @@
     License along with this library.
 */
 
+#include <fcntl.h>
+#include <unistd.h>
+
+
 #include <vector>
 #include <thread>
 
@@ -31,6 +35,7 @@ template<class Worker, class SubWorker>
 ThreadedReceiver<Worker,SubWorker>::ThreadedReceiver(baseCom* c): baseProxy(c),
 threads_(NULL) {
     baseProxy::new_raw(true);
+    pipe2(sq__hint,O_DIRECT|O_NONBLOCK);
 }
 
 template<class Worker, class SubWorker>
@@ -50,6 +55,8 @@ ThreadedReceiver<Worker,SubWorker>::~ThreadedReceiver() {
         }
         delete[] threads_; 
     }
+    ::close(sq__hint[0]);
+    ::close(sq__hint[1]);    
 };
 
 
@@ -236,6 +243,8 @@ int ThreadedReceiver<Worker,SubWorker>::create_workers(int count) {
         w->com()->nonlocal_dst(this->com()->nonlocal_dst());
         w->parent((baseProxy*)this);
         w->pollroot(true);
+        DIA_("ThreadedReceiver::create_workers setting worker's queue hint pipe socket %d",sq__hint[0]);
+        w->com()->set_hint_monitor(sq__hint[0]);        
         
         DIA_("Created ThreadedWorkerProxy %x",w);
         workers_[i] = w;
@@ -271,6 +280,7 @@ template<class Worker, class SubWorker>
 int ThreadedReceiver<Worker,SubWorker>::push(int s) { 
     std::lock_guard<std::mutex> lck(sq_lock_);
     sq_.push_front(s);
+    ::write(sq__hint[1],"A",1);
     
     return sq_.size();
 };
@@ -278,41 +288,48 @@ int ThreadedReceiver<Worker,SubWorker>::push(int s) {
 template<class Worker, class SubWorker>
 int ThreadedReceiver<Worker,SubWorker>::pop() {
     std::lock_guard<std::mutex> lck(sq_lock_);
-    
+
     if(sq_.size() == 0) {
         return 0;
     }
-    
+
     uint32_t s = sq_.back();
     sq_.pop_back();
-    
+
+    char dummy_buffer[1];
+    ::read(sq__hint[0],dummy_buffer,1);
+    DIA_("ThreadedReceiver::pop_for_worker: clearing sq__hint %c",dummy_buffer[0]);
+
     return s;
 }
 
 template<class Worker, class SubWorker>
 int ThreadedReceiver<Worker, SubWorker>::pop_for_worker(int id) {
 
-   
     std::lock_guard<std::mutex> lck(sq_lock_);
 
     if(sq_.size() == 0) {
         return 0;
     }
-    
+
     uint32_t b = sq_.back();
-    
+
     if(b <= 0) {
         return 0;
     }
-    
+
     if (((unsigned int)b) % Worker::workers_total == (unsigned int)id) {
         int r = sq_.back();
         sq_.pop_back();
         DIA_("ThreadedReceiver::pop_for_worker: pop-ing %d for worker %d, queue size %d",r,id,sq_.size());
-        
+
+        char dummy_buffer[1];
+        ::read(sq__hint[0],dummy_buffer,1);
+        DIA_("ThreadedReceiver::pop_for_worker: clearing sq__hint %c",dummy_buffer[0]);
+
         return r;
     }
-    
+
     return 0;
 }
 

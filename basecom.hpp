@@ -216,6 +216,12 @@ public:
             master()->poller.modify(s,EPOLLIN|EPOLLOUT); 
         } 
     }
+    inline void set_hint_monitor(int s) {
+        DIA_("basecom::set_hint_monitor: called: %d",s);
+        if (s > 0 ) { 
+            master()->poller.hint_socket(s); 
+        } 
+    }
 
     inline void set_poll_handler(int s, epoll_handler* h) {
         DIA_("basecom::set_poll_handler: called to add %d monitored by %x",s,h);

@@ -48,6 +48,10 @@ public:
 protected:
 	mutable std::mutex sq_lock_;
 	std::deque<int> sq_;
+    
+    // pipe created to be monitored by Workers with poll. If pipe is filled with *some* data
+    // there is something in the queue to pick-up.
+    int sq__hint[2];
 	
 	size_t nthreads;
 	std::thread **threads_;
