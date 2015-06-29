@@ -307,7 +307,7 @@ void SSLCom::ssl_msg_callback(int write_p, int version, int content_type, const 
     
     if(content_type == 21) {
         DEB__("[%s]: SSLCom::ssl_msg_callback: alert dump: %s",name,hex_dump((unsigned char*)buf,len).c_str());
-        unsigned short code = ntohs(buffer::get_at<unsigned short>((unsigned char*)buf));
+        unsigned short code = ntohs(buffer::get_at_ptr<unsigned short>((unsigned char*)buf));
         if(com) {
             DIA__("[%s]: SSLCom::ssl_msg_callback: alert info: %s/%s[%u]",name,SSL_alert_type_string_long(code),SSL_alert_desc_string_long(code),code);
             if(code == 522) {
