@@ -65,6 +65,22 @@ public:
         return len;
     };
     
+    buffer* at(SourceType& t, unsigned int idx) const {
+        unsigned int i = 0;
+        for(auto it = flow_.begin() ; it < flow_.end(); ++it) {
+            std::pair<SourceType,buffer*>& f = it->second;
+            if (f.first == t) {
+                if(i == idx) {
+                    return f.second;
+                }
+
+                i++;
+            }
+        }
+        
+        return nullptr;
+    }
+    
     virtual ~Flow() {
         for( unsigned int i = 0; i < flow_.size(); i++) {
             buffer* b = flow_.at(i).second;
