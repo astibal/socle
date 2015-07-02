@@ -262,7 +262,9 @@ int UDPCom::read_from_pool(int __fd, void* __buf, size_t __n, int __flags) {
             
             memcpy(__buf,record.rx.data(),to_copy);
 
-            record.rx.flush(to_copy);
+            if(! (__flags & MSG_PEEK)) {
+                record.rx.flush(to_copy);
+            }
 
             DIA_("UDPCom::read_from_pool[%x]: retrieved %d bytes from receive pool",__fd,to_copy);
             
