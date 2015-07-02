@@ -65,13 +65,14 @@ public:
         return len;
     };
     
-    buffer* at(SourceType& t, unsigned int idx) const {
-        unsigned int i = 0;
+    buffer* at(SourceType t, int idx) const {
+        int i = 0;
         for(auto it = flow_.begin() ; it < flow_.end(); ++it) {
-            std::pair<SourceType,buffer*>& f = it->second;
-            if (f.first == t) {
+            SourceType tt = it->first;
+            buffer* ff = it->second;
+            if (tt == t) {
                 if(i == idx) {
-                    return f.second;
+                    return ff;
                 }
 
                 i++;
@@ -350,8 +351,8 @@ public:
 
 
 // typedef SignatureType<flowMatch<unsigned char>> duplexSignature;
-typedef Flow<unsigned char> duplexFlow;
-typedef flowMatch<unsigned char> duplexFlowMatch;
+typedef Flow<char> duplexFlow;
+typedef flowMatch<char> duplexFlowMatch;
 
 
 class flowMatchState {

@@ -28,8 +28,8 @@
 template <class K, class T>
 class ptr_cache {
 public:
-    ptr_cache(): auto_delete_(true) {}
-    ptr_cache(bool auto_delete): auto_delete_(auto_delete) {}
+    ptr_cache(): auto_delete_(true), max_size_(0) {}
+    ptr_cache(unsigned int max_size, bool auto_delete): auto_delete_(auto_delete), max_size_(max_size) {}
     virtual ~ptr_cache() { clear(); if(default_value_ != nullptr && auto_delete_) { delete default_value_; }; }
 
 
@@ -51,6 +51,7 @@ public:
     }
 
     std::unordered_map<K,T*>& cache() { return cache_; }
+
     void lock() { lock_.lock(); };
     void unlock() { lock_.unlock(); };
 
@@ -84,6 +85,20 @@ public:
             ptr = v;
         } else {
             cache[k] = v;
+            
+            if(max_size_ > 0) {
+                items_.push_back(k);
+                
+                if( items_.size() > max_size_) {
+                    K to_delete = items_.back();
+                    
+                    if(cache().find(to_delete) != cache().end()) {
+                        set(to_delete,nullptr); // to delete element if needed
+                    }
+                    cache().erase(to_delete);
+                    items_.pop_back();
+                }
+            }
         }
 
         return ret;
@@ -91,6 +106,10 @@ public:
 
 private:
     bool auto_delete_ = true;
+
+    unsigned int max_size_ = 0;
+    std::vector<K> items_;
+    
     T* default_value_ = nullptr;
     std::unordered_map<K,T*> cache_;
     std::recursive_mutex lock_;

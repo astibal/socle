@@ -17,3 +17,4 @@
 */
 
 
+//#define SOCLE_MEM_PROFILE

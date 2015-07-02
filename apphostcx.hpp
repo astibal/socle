@@ -39,7 +39,7 @@ public:
     static const int MODE_NONE = 0;
     static const int MODE_PRE = 1;
     static const int MODE_POST = 2;
-    int mode_ = MODE_POST;
+    int mode_ = MODE_NONE;
     int mode() { return mode_; }
     void mode(int m) { mode_ = m; }
     
@@ -48,6 +48,9 @@ public:
     int zip_signatures(sensorType& s, std::vector<duplexFlowMatch*>& v); // create pairs of results and pointers to (somewhere, already created) signatures.
     
     virtual ~AppHostCX() {};
+
+    inline duplexFlow& flow() { return this->appflow_; }
+    inline duplexFlow* flowptr() { return &this->appflow_; }
 protected:
     unsigned int peek_counter = 0;
     duplexFlow appflow_;
@@ -56,8 +59,6 @@ protected:
     sensorType sensor_;
     sensorType starttls_sensor_;
     
-    inline duplexFlow& flow() { return this->appflow_; }
-    inline duplexFlow* flowptr() { return &this->appflow_; }
 
     // detection mode is done in "post" phase
     virtual void post_read();
@@ -66,7 +67,8 @@ protected:
     virtual void pre_read();
     virtual void pre_write();
     
-    bool detect(sensorType&);
+    bool detect(sensorType&); // signature detection engine
+    virtual void inspect() { }; // to be overriden for ALG inspectors
     
     virtual void on_detect(duplexFlowMatch*, flowMatchState&, vector_range&);
     virtual void on_starttls() {};

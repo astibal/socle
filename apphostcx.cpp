@@ -105,6 +105,7 @@ void AppHostCX::post_read() {
         
         // we can't detect starttls in POST mode
         detect(sensor());
+        inspect();
     }
     
     if (mode() == MODE_PRE) {
@@ -123,6 +124,7 @@ void AppHostCX::post_write() {
        
         // we can't detect starttls in POST mode
         detect(sensor());
+        inspect();
     }
     
     // react on specific signatures 
@@ -210,6 +212,7 @@ void AppHostCX::pre_read() {
                 upgrade_starttls = true;
             }
             detect(sensor());
+            inspect();
         }
     }
     DUM_("AppHostCX::pre_read[%s]: === end",c_name());
@@ -229,6 +232,7 @@ void AppHostCX::pre_write() {
                 upgrade_starttls = true;
             }
             detect(sensor());
+            inspect();
         }
     }
 }
