@@ -60,6 +60,8 @@ public:
 
     T*   default_value() const { return default_value_; }
     void default_value(T* d) const { if(default_value_ != nullptr && auto_delete_) { delete default_value_; }; default_value_ = d; }
+    
+    int max_size() const { return max_size_; }
 
     T* get(K& k) {
         auto it = cache().find(k);
@@ -70,7 +72,7 @@ public:
     }
     
     // set the key->value. Return true if other value had been replaced.
-    bool set(K& k, T* v) {
+    bool set(const K k, T* v) {
         bool ret = false;
         
         auto it = cache().find(k);
@@ -84,7 +86,7 @@ public:
             }
             ptr = v;
         } else {
-            cache[k] = v;
+            cache()[k] = v;
             
             if(max_size_ > 0) {
                 items_.push_back(k);
