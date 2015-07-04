@@ -48,6 +48,7 @@ public:
     void clear() {
         std::lock_guard<std::recursive_mutex> l(lock_);
         cache().clear();
+        items_.clear();
     }
 
     std::unordered_map<K,T*>& cache() { return cache_; }
