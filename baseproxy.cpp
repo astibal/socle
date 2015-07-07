@@ -1047,9 +1047,13 @@ int baseProxy::run(void) {
                     auto seg = ptr->fence__;
                     DIA_("baseProxy::run: socket %d has registered handler 0x%x (fence %d)",s,ptr,seg);
                 } else {
-                    if(s != com()->poller.poller->hint_socket()) {
-                        // hint filedescriptor don't have handler
-                        ERR_("baseProxy::run: socket %d has registered NULL handler",s);
+                    if (com()->poller.poller != nullptr) {
+                        if(s != com()->poller.poller->hint_socket()) {
+                            // hint filedescriptor don't have handler
+                            ERR_("baseProxy::run: socket %d has registered NULL handler",s);
+                        }
+                    } else {
+                        ERRS_("com()->poller.poller is null!");                        
                     }
                 }
             }
@@ -1060,12 +1064,7 @@ int baseProxy::run(void) {
 
         if (r == 0) {
             EXT___("Proxy going to sleep for %dus",sl.tv_nsec );
-            //nanosleep(&sl, NULL);
-	    sleep();
-        } else {
-            DEB___("Proxy transferred %d bytes",r);
-	    sleep_factor_ = 0;
-        }
+         }
     }
 
     return 0;

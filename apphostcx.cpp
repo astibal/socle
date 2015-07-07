@@ -119,11 +119,22 @@ void AppHostCX::post_write() {
         
         if(this->meter_write_bytes <= DETECT_MAX_BYTES) {
             auto b = this->writebuf();
-            if(peek_write_counter < meter_write_bytes) {
-                this->flow().append('w',b);
-                peek_write_counter += b->size();
+            
+            int f_s = flow().flow().size();
+            int f_last_data_size = flow().flow().back().second->size();            
+
+            INF_("AppHostCX::post_write[%s]: peek_counter %d, written to socket %d, write buffer size %d, flow size %d, flow data size %d",c_name(),peek_write_counter,meter_write_bytes,b->size(), f_s,f_last_data_size);
+
+            // how many data I am missing?
+            int delta  = (meter_write_bytes + b->size()) - peek_write_counter;
+            buffer delta_b = b->view(b->size()-delta,b->size());
+            
+            if(delta > 0) {
+                INF_("AppHostCX::post_write[%s]: flow append new %d bytes",c_name(),delta_b.size());
+                this->flow().append('w',delta_b);
+                peek_write_counter += delta_b.size();
             } else {
-                DEBS_("AppHostCX::post_write: attempt to write same data again!");
+                INF_("AppHostCX::post_write:[%s]: data are already copied in the flow",c_name());
             }
         }
         // we can't detect starttls in POST mode
@@ -229,11 +240,21 @@ void AppHostCX::pre_write() {
         
         if(this->meter_write_bytes <= DETECT_MAX_BYTES && b->size() > 0) {
             
-            if(peek_write_counter < meter_write_bytes) {
-                this->flow().append('w',b);
-                peek_write_counter += b->size();
+            int f_s = flow().flow().size();
+            int f_last_data_size = flow().flow().back().second->size();
+            
+            INF_("AppHostCX::pre_write[%s]: peek_counter %d, written to socket %d, write buffer size %d, flow size %d, flow data size %d",c_name(),peek_write_counter,meter_write_bytes,b->size(), f_s,f_last_data_size);
+
+            // how many data I am missing?
+            int delta  = (meter_write_bytes + b->size()) - peek_write_counter;
+            buffer delta_b = b->view(b->size()-delta,b->size());
+            
+            if(delta > 0) {
+                INF_("AppHostCX::pre_write[%s]: flow append new %d bytes",c_name(),delta_b.size());
+                this->flow().append('w',delta_b);
+                peek_write_counter += delta_b.size();
             } else {
-                DEBS_("AppHostCX::pre_write: attempt to write same data again!");
+                INF_("AppHostCX::pre_write:[%s]: data are already copied in the flow",c_name());
             }
             
             DEB_("AppHostCX::pre_write[%s]: write buffer size %d",c_name(),b->size());
