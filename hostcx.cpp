@@ -469,7 +469,7 @@ int baseHostCX::write() {
 		post_write();
 		
         if(l < writebuf_.size()) {
-            DIA_("HostCX::write[%s]: %d bytes written out of %d -> setting socket write monitor",socket(),l,writebuf_.size());
+            DIA_("HostCX::write[%s]: %d bytes written out of %d -> setting socket write monitor",c_name(),l,writebuf_.size());
             // we need to check once more when socket is fully writable
             com()->set_write_monitor(socket());
         }
@@ -486,7 +486,7 @@ int baseHostCX::write() {
 	}
     else if(l == 0 && writebuf()->size() > 0) {
         // write unsuccessful, we have to try immediatelly socket is writable!
-        DIA_("HostCX::write[%d]: %d bytes written out of %d -> setting socket write monitor",socket(),l,writebuf_.size());
+        DIA_("HostCX::write[%s]: %d bytes written out of %d -> setting socket write monitor",c_name(),l,writebuf_.size());
         com()->set_write_monitor(socket());
     }
 	else if(l < 0) {
