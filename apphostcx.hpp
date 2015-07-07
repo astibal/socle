@@ -52,7 +52,8 @@ public:
     inline duplexFlow& flow() { return this->appflow_; }
     inline duplexFlow* flowptr() { return &this->appflow_; }
 protected:
-    unsigned int peek_counter = 0;
+    unsigned int peek_read_counter = 0;
+    unsigned int peek_write_counter = 0;
     duplexFlow appflow_;
     
     //FIXME: select more appropriate storage than vector. Pair will contain some "result-struct" instad of bool

@@ -119,9 +119,13 @@ void AppHostCX::post_write() {
         
         if(this->meter_write_bytes <= DETECT_MAX_BYTES) {
             auto b = this->writebuf();
-            this->flow().append('w',b);
+            if(peek_write_counter < meter_write_bytes) {
+                this->flow().append('w',b);
+                peek_write_counter += b->size();
+            } else {
+                DEBS_("AppHostCX::post_write: attempt to write same data again!");
+            }
         }
-       
         // we can't detect starttls in POST mode
         detect(sensor());
         inspect();
@@ -149,18 +153,18 @@ void AppHostCX::pre_read() {
     bool behind_read = false;
     
     if ( mode() == MODE_PRE) {
-        if(this->meter_read_bytes <= DETECT_MAX_BYTES && peek_counter <= this->meter_read_bytes  ) {
+        if(this->meter_read_bytes <= DETECT_MAX_BYTES && peek_read_counter <= this->meter_read_bytes  ) {
             
-            if(peek_counter < this->meter_read_bytes) {
+            if(peek_read_counter < this->meter_read_bytes) {
                 behind_read = true;
 
                 if(__behind_read_warn) {
-                    WAR_("AppHostCX::pre_read[%s]: More data read than seen by peek: %d vs. %d",c_name(), this->meter_read_bytes, peek_counter);
+                    WAR_("AppHostCX::pre_read[%s]: More data read than seen by peek: %d vs. %d",c_name(), this->meter_read_bytes, peek_read_counter);
                 } else {
-                    DEB_("AppHostCX::pre_read[%s]: More data read than seen by peek: %d vs. %d",c_name(),this->meter_read_bytes, peek_counter);
+                    DEB_("AppHostCX::pre_read[%s]: More data read than seen by peek: %d vs. %d",c_name(),this->meter_read_bytes, peek_read_counter);
                 }
                 
-                unsigned int delta = this->meter_read_bytes - peek_counter;
+                unsigned int delta = this->meter_read_bytes - peek_read_counter;
                 unsigned int w = this->readbuf()->size() - delta; // "+1" should be not there
                 DEB_("AppHostCX::pre_read[%s]: Creating readbuf view at <%d,%d>",c_name(),w,delta);
                 buffer v = this->readbuf()->view(w,delta);
@@ -176,7 +180,7 @@ void AppHostCX::pre_read() {
                     updated = true;
                     
                     // adapt peek_counter so we know we recovered data from readbuf
-                    peek_counter += v.size();
+                    peek_read_counter += v.size();
                     
                 } else {
                     WAR_("AppHostCX::pre_read[%s]: FIXME: peek counter behind read counter, but readbuf is empty!",c_name());
@@ -198,7 +202,7 @@ void AppHostCX::pre_read() {
             }
             
             if(l > 0) {
-                peek_counter += l;
+                peek_read_counter += l;
                 this->flow().append('r',b);
                 DEB_("AppHostCX::pre_read[%s]: Appended to flow %d bytes (allocated buffer size %d): %s",c_name(),b.size(),b.capacity(),hex_dump(b.data(),b.size()).c_str());
                 this->next_read_limit(l); 
@@ -225,7 +229,13 @@ void AppHostCX::pre_write() {
         
         if(this->meter_write_bytes <= DETECT_MAX_BYTES && b->size() > 0) {
             
-            this->flow().append('w',b);
+            if(peek_write_counter < meter_write_bytes) {
+                this->flow().append('w',b);
+                peek_write_counter += b->size();
+            } else {
+                DEBS_("AppHostCX::pre_write: attempt to write same data again!");
+            }
+            
             DEB_("AppHostCX::pre_write[%s]: write buffer size %d",c_name(),b->size());
         
             if(detect(starttls_sensor())) {
