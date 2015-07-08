@@ -131,7 +131,7 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
         ERR_("ThreadedReceiver::on_left_new_raw[%d]: getting original destination failed, (cmsg->cmsg_type==IP_ORIGDSTADDR)",sock);
     } else {
 
-        DIA_("ThreadedReceiver::on_left_new_raw[%d]: new data  for key %d - notification sent",sock,session_key);
+        DIA_("ThreadedReceiver::on_left_new_raw[%d]: new data for key %d",sock,session_key);
         
         DatagramCom* c = dynamic_cast<DatagramCom*>(com());
         if(c == nullptr) {

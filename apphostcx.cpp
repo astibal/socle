@@ -241,7 +241,9 @@ void AppHostCX::pre_write() {
         if(this->meter_write_bytes <= DETECT_MAX_BYTES && b->size() > 0) {
             
             int f_s = flow().flow().size();
-            int f_last_data_size = flow().flow().back().second->size();
+            int f_last_data_size = 0;
+            if(f_s > 0)
+                f_last_data_size = flow().flow().back().second->size();
             
             INF_("AppHostCX::pre_write[%s]: peek_counter %d, written to socket %d, write buffer size %d, flow size %d, flow data size %d",c_name(),peek_write_counter,meter_write_bytes,b->size(), f_s,f_last_data_size);
 

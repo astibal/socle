@@ -196,7 +196,7 @@ bool UDPCom::in_writeset(int s) {
     auto it_record = DatagramCom::datagrams_received.find((unsigned int)s);
     if(it_record != DatagramCom::datagrams_received.end()) {  
         Datagram& record = (*it_record).second;    
-        DEB_("UDPCom::in_writeset: found data for %d (thus virtual socket is writable)",s);
+        EXT_("UDPCom::in_writeset: found data for %d (thus virtual socket is writable)",s);
         return true;
         
     } else {
@@ -264,9 +264,9 @@ int UDPCom::read_from_pool(int __fd, void* __buf, size_t __n, int __flags) {
 
             if(! (__flags & MSG_PEEK)) {
                 record.rx.flush(to_copy);
-                DIA_("UDPCom::read_from_pool[%x]: retrieved %d bytes from receive pool",__fd,to_copy);
+                DIA_("UDPCom::read_from_pool[%x]: retrieved %d bytes from receive pool, in buffer left %d bytes",__fd,to_copy,record.rx.size());
             } else {
-                DIA_("UDPCom::read_from_pool[%x]: peek %d bytes from receive pool",__fd,to_copy);
+                DIA_("UDPCom::read_from_pool[%x]: peek %d bytes from receive pool, in buffer is %d bytes",__fd,to_copy,record.rx.size());
             }
 
             
