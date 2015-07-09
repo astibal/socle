@@ -26,6 +26,7 @@
 #include <openssl/err.h>
 #include <openssl/tls1.h>
 #include <openssl/x509_vfy.h>
+#include <openssl/ocsp.h>
 
 #include <sslcom.hpp>
 #include <sslcom_dh.hpp>
@@ -401,8 +402,18 @@ int SSLCom::ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx) {
             name = n;
         }
     }    
-    
 
+    X509* cert = X509_STORE_CTX_get_current_cert(ctx);
+    
+    if(com != nullptr) {
+        if (depth == 0)
+            com->sslcom_peer_cert = cert;
+        else if (depth == 1)
+            com->sslcom_peer_issuer = cert;
+        else if (depth == 2)
+            com->sslcom_peer_issuer_issuer = cert;
+    }
+    
     if (!ok) {
         if (err_cert) {
             DIA__("[%s]: SSLCom::ssl_client_vrfy_callback: '%s' issued by '%s'",name,SSLCertStore::print_cn(err_cert).c_str(),
@@ -550,6 +561,136 @@ EC_KEY* SSLCom::ssl_ecdh_callback(SSL* s, int is_export, int key_length) {
 }
 
 
+int SSLCom::ocsp_resp_callback(SSL *s, void *arg) {
+    void* data = SSL_get_ex_data(s, sslcom_ssl_extdata_index);
+    const char *name = "unknown_cx";
+    
+    SSLCom* com = static_cast<SSLCom*>(data);
+    
+    bool opt_ocsp_require = false;
+    X509* peer_cert = nullptr;
+    X509* issuer_cert = nullptr;
+    
+    if(com != nullptr) {
+        const char* n = com->hr();
+        if(n != nullptr) {
+            name = n;
+        }
+        opt_ocsp_require = com->opt_ocsp_require;
+        peer_cert   = com->sslcom_peer_cert;
+        issuer_cert = com->sslcom_peer_issuer;
+    }    
+    DIA__("[%s]: ocsp_resp_callback start",name);
+    
+    
+    const unsigned char *p;
+    int len, status, reason;
+    OCSP_RESPONSE *rsp;
+    OCSP_BASICRESP *basic;
+    OCSP_CERTID *id;
+    ASN1_GENERALIZEDTIME *produced_at, *this_update, *next_update;    
+    
+    len = SSL_get_tlsext_status_ocsp_resp(s, &p);
+    if (!p) {
+        INF__("[%s]: no OCSP response received",name);
+        return (opt_ocsp_require == false);
+    }
+    DEB__("[%s]: OCSP Response:  \n%s",name,hex_dump((unsigned char*)p,len,2).c_str());
+    
+    rsp = d2i_OCSP_RESPONSE(NULL, &p, len);
+    if (!rsp) {
+        ERR__("[%s] failed to parse OCSP response",name);
+        return 0;
+    }
+
+    if (!peer_cert || !issuer_cert) {
+        ERR__("[%s] peer certificate or issue certificate not available for OCSP status check",name);
+        OCSP_BASICRESP_free(basic);
+        OCSP_RESPONSE_free(rsp);
+        return 0;
+    }
+    
+    status = OCSP_response_status(rsp);
+    if (status != OCSP_RESPONSE_STATUS_SUCCESSFUL) {
+        ERR__("[%s] OCSP responder error %d (%s)", name, status, OCSP_response_status_str(status));
+        return 0;
+    }
+ 
+    basic = OCSP_response_get1_basic(rsp);
+    if (!basic) {
+        ERR__("[%s] could not find BasicOCSPResponse",name);
+        return 0;
+    }
+ 
+    X509_STORE* st = SSL_CTX_get_cert_store(s->ctx);
+
+    X509_STORE* x_st = X509_STORE_new();
+    X509_STORE_load_locations(x_st,nullptr,"/etc/ssl/certs/");
+//     INF__("Store is at 0x%x",st);
+    
+    status = OCSP_basic_verify(basic, NULL, x_st ,0);
+    X509_STORE_free(x_st);
+    
+    
+    if (status <= 0) {
+        ERR__("[%s] OCSP response failed verification: %d",name,status);
+        
+        int err = SSL_get_error(s,status);
+        ERR__("Error: %s",ERR_error_string(err,nullptr));
+        
+
+        OCSP_BASICRESP_free(basic);
+        OCSP_RESPONSE_free(rsp);
+        return 0;
+    }
+ 
+    DIA__("[%s] OCSP response verification succeeded",name);
+ 
+    id = OCSP_cert_to_id(NULL, com->sslcom_peer_cert, com->sslcom_peer_issuer);
+    if (!id) {
+        ERR__("[%s] could not create OCSP certificate identifier",name);
+        OCSP_BASICRESP_free(basic);
+        OCSP_RESPONSE_free(rsp);
+        return 0;
+    }
+     
+  
+    if (!OCSP_resp_find_status(basic, id, &status, &reason, &produced_at, &this_update, &next_update)) {
+        ERR__("[%s] could not find current server certificate from OCSP response%s", name ,(opt_ocsp_require) ? "" :
+               " (OCSP not required)");
+        OCSP_BASICRESP_free(basic);
+        OCSP_RESPONSE_free(rsp);
+        return (opt_ocsp_require) ? 0 : 1;
+    }
+ 
+    if (!OCSP_check_validity(this_update, next_update, 5 * 60, -1)) {
+        ERR__("[%s] OCSP status times invalid", name);
+        OCSP_BASICRESP_free(basic);
+        OCSP_RESPONSE_free(rsp);
+        return 0;
+    }
+
+    OCSP_BASICRESP_free(basic);
+    OCSP_RESPONSE_free(rsp);
+ 
+    DIA__("[%s] OCSP status for server certificate: %s", name, OCSP_cert_status_str(status));
+ 
+    if (status == V_OCSP_CERTSTATUS_GOOD)
+        INF__("[%s] OCSP status is good",name);
+        return 1;
+    if (status == V_OCSP_CERTSTATUS_REVOKED)
+        INF__("[%s] OCSP status is revoked",name);
+        return 0;
+    if (opt_ocsp_require) {
+        ERR__("[%s] OCSP status unknown, but OCSP required, failing", name);
+        return 0;
+    }
+        
+    INF__("[%s] OCSP status unknown, but OCSP was not required, continue", name);
+
+    return 1;
+}
+
 void SSLCom::init_ssl_callbacks() {
     SSL_set_msg_callback(sslcom_ssl,ssl_msg_callback);
     SSL_set_msg_callback_arg(sslcom_ssl,(void*)this);
@@ -568,10 +709,13 @@ void SSLCom::init_ssl_callbacks() {
     
     if(! is_server()) {
         SSL_set_verify(sslcom_ssl,SSL_VERIFY_PEER,&ssl_client_vrfy_callback);
+        
+        SSL_set_tlsext_status_type(sslcom_ssl, TLSEXT_STATUSTYPE_ocsp);
+        SSL_CTX_set_tlsext_status_cb(sslcom_ctx,ocsp_resp_callback);
+        SSL_CTX_set_tlsext_status_arg(sslcom_ctx, this);
     }
     
 }
-
 
 void SSLCom::init_client() {
 

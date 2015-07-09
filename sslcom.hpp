@@ -109,6 +109,11 @@ protected:
     //ECDH parameters
     EC_KEY *sslcom_ecdh = nullptr;
     
+    //Peer information
+    X509* sslcom_peer_cert = nullptr;
+    X509* sslcom_peer_issuer = nullptr;
+    X509* sslcom_peer_issuer_issuer = nullptr;
+    
 	// states of read/writes
 	int sslcom_read_blocked_on_write=0;
 	int sslcom_write_blocked_on_read=0;
@@ -195,6 +200,7 @@ public:
     
     //initialize callbacks. Basically it sets external data for SSL object.
     void init_ssl_callbacks();
+
     
     //free old SSL (if present), load default cert, set SSL options and set callbacks - no active communication.
 	virtual void init_client();
@@ -212,6 +218,7 @@ public:
     static void ssl_info_callback(const SSL *s, int where, int ret);
     static DH* ssl_dh_callback(SSL* s, int is_export, int key_length);
     static EC_KEY* ssl_ecdh_callback(SSL* s, int is_export, int key_length);
+    static int ocsp_resp_callback(SSL *s, void *arg);
     static int ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx);
     static int check_server_dh_size(SSL* ssl);
     long log_if_error(unsigned int level, const char* prefix);
@@ -269,6 +276,8 @@ public:
     
     // enable/disable pfs (DHE and ECDHE suites)
     bool opt_pfs = true;
+    
+    bool opt_ocsp_require = false; // should we insist on OCSP response?
     
     // unknown issuers
     bool opt_allow_unknown_issuer = false;
