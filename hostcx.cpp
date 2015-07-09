@@ -200,44 +200,43 @@ void baseHostCX::shutdown() {
  }
 }
 
-std::string& baseHostCX::name() {
+std::string& baseHostCX::name(bool force) {
 
-	if (reduced()) {
-        std::string com_name = "?";
-        if(com() != nullptr) {
-            com_name = com()->name();
-        }        
-        
-		if (valid()) {
-
+    if(name__.size() == 0 || online_name | force) {
+        if (reduced()) {
+            std::string com_name = "?";
             if(com() != nullptr) {
-                com()->resolve_socket_src(fds_, &host_,&port_);
+                com_name = com()->name();
+            }        
+            
+            if (valid()) {
+
+                if(com() != nullptr) {
+                    com()->resolve_socket_src(fds_, &host_,&port_);
+                }
+                
+                if(socket_in_name) {
+                    name__ = string_format("%d::%s_%s:%s",socket(), com()->name() , host().c_str(),port().c_str());
+                } else {
+                    name__ = string_format("%s_%s:%s",com()->name() , host().c_str(),port().c_str());
+                }
+                
+                //name__ = string_format("%d:<reduced>",socket());
             }
+            else {
+                name__ = std::string("?:<reduced>");
+            }
+            
+        } else {
             
             if(socket_in_name) {
-                name__ = string_format("%d::%s_%s:%s",socket(), com()->name() , host().c_str(),port().c_str());
+                name__ = string_format("%d::%s_%s:%s",socket(), com()->name() ,host().c_str(),port().c_str());
             } else {
-                name__ = string_format("%s_%s:%s",com()->name() , host().c_str(),port().c_str());
+                name__ = string_format("%s_%s:%s",com()->name() ,host().c_str(),port().c_str());
             }
-            
-			//name__ = string_format("%d:<reduced>",socket());
-		}
-		else {
-			name__ = std::string("?:<reduced>");
         }
-		
-	} else {
-        if(name__.size() > 0 && ! online_name) {
-            return name__;
-        }
-        
-        if(socket_in_name) {
-            name__ = string_format("%d::%s_%s:%s",socket(), com()->name() ,host().c_str(),port().c_str());
-        } else {
-            name__ = string_format("%s_%s:%s",com()->name() ,host().c_str(),port().c_str());
-        }
-	}
-
+    }   
+    
 	return name__;
 }
 

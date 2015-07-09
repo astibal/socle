@@ -198,7 +198,8 @@ public:
 	baseHostCX(baseCom* c, unsigned int s);
 	virtual ~baseHostCX();
 	
-	std::string& name();
+    void rename() { name(true); }
+	std::string& name(bool force=false);
 	const char* c_name();
 	
     ssize_t processed_bytes() { return processed_bytes_; };

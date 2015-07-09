@@ -99,6 +99,12 @@ int UDPCom::connect(const char* host, const char* port, bool blocking) {
         }
 
         
+        int optval = 1;
+        if(setsockopt(sfd, SOL_IP, IP_TRANSPARENT, &optval, sizeof(optval)) != 0) {
+            WAR_("UDPCom::connect[%d]: cannot set transparency sockopt: %s",sfd,string_error().c_str());
+        }
+        
+        
         if(nonlocal_src()) {
             DEB_("UDPCom::connect[%s:%s]: About to name socket[%d] after: %s:%d",host,port,sfd,nonlocal_src_host().c_str(),nonlocal_src_port());
             int bind_status = namesocket(sfd,nonlocal_src_host(),nonlocal_src_port());

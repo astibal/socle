@@ -275,9 +275,9 @@ int baseCom::poll() {
     EXTS_("baseCom::poll: called");
     //int r = ::select( poll_sockmax + 1, &read_socketSet, &write_socketSet, NULL, &n_tv);
     int r = poller.wait(333);
-    EXT_("baseCom::poll: select returned %d",r);
+    EXT_("baseCom::poll: poller returned %d",r);
     if (r < 0) {
-        DIA_("baseCom::poll: error returned by select: errno %d",errno);
+        DIA_("baseCom::poll: returned by poll: %s",string_error().c_str());
     }
     
     poll_sockmax = 0;
