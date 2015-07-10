@@ -21,11 +21,13 @@
 #include <execinfo.h>
 
 #include "display.hpp"
+#include "buffer.hpp"
 
 #include "string.h"
 #include "stdarg.h"
 #include "stdio.h"
 #include "errno.h"
+
 
 std::recursive_mutex formatter_lock;
 
@@ -53,6 +55,9 @@ std::string string_format(const std::string& fmt, ...) {
     }
     return str;
 }
+
+std::string hex_dump(buffer* b, unsigned int ltrim, unsigned char prefix) { return hex_dump((unsigned char*)b->data(),b->size(),ltrim,prefix); }
+std::string hex_dump(buffer& b, unsigned int ltrim, unsigned char prefix) { return hex_dump((unsigned char*)b.data(),b.size(),ltrim,prefix); }
 
 
 std::string hex_dump(unsigned char *data, int size,unsigned int ltrim, unsigned char prefix)

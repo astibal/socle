@@ -35,6 +35,7 @@ template <class SourceType>
 class Flow {
     std::vector<std::pair<SourceType,buffer*>> flow_; // store flow data ... ala follow tcp stream :) 
                                      // Flowdata::side_ doesn't have to be necesarilly L or R
+    std::vector<int> update_counters_;
                                      
 public:
     std::vector<std::pair<SourceType,buffer*>>& flow() { return flow_; }
@@ -49,10 +50,13 @@ public:
             // src initialized by value, buffer is pointer
             std::pair<SourceType,buffer*> t(src,b);
             flow_.push_back(t);
+            update_counters_.push_back(1);
         }
         else if (flow_.back().first == src) {
             DEB_("Appending to side: %c: data:\n%s",src,hex_dump((unsigned char*)data,  len > 128 ? 128 : len ).c_str());
             flow_.back().second->append(data,len);
+            int& counter_ref = update_counters_.back();
+            counter_ref++;
         }
         else if (flow_.back().first != src) {
             DEB_("New side: %c: data:\n%s",src,hex_dump((unsigned char*)data,len > 128 ? 128 : len ).c_str());
@@ -60,6 +64,7 @@ public:
             // src initialized by value, buffer is pointer
             std::pair<SourceType,buffer*> t(src,b);
             flow_.push_back(t);
+            update_counters_.push_back(1);
         }
         
         return len;
@@ -80,6 +85,28 @@ public:
         }
         
         return nullptr;
+    }
+    
+    std::string hr(bool verbose=false) {
+        std::string r = string_format("0x%x: ",this);
+
+        if(flow_.size() == 0) {
+            r += "<empty>";
+        }
+        else
+        for( unsigned int i = 0; i < flow_.size(); i++) {
+            char s =  flow_.at(i).first;
+            buffer* b = flow_.at(i).second;
+            
+            int updates = 1;
+            if(i < update_counters_.size()) i = update_counters_.at(i);
+            
+            r += string_format("%c:%s[%d]",s, i == 1 ? "" : string_format("<%d>:").c_str(),b->size());
+            if(verbose) {
+                r += string_format("\n%s\n",hex_dump(b).c_str());
+            }
+        }
+        
     }
     
     virtual ~Flow() {

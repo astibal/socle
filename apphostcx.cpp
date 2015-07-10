@@ -53,6 +53,8 @@ int AppHostCX::zip_signatures(sensorType& s, std::vector<duplexFlowMatch*>& v) {
 
 bool AppHostCX::detect(sensorType& cur_sensor) {
 
+    DIA_("AppHostCX::detect: flow path: %s",flow().hr().c_str());
+    
     bool matched = false;
     
     if(cur_sensor.size() <= 0) {
@@ -251,9 +253,10 @@ void AppHostCX::pre_write() {
 
             // how many data I am missing?
             int delta  = (meter_write_bytes + b->size()) - peek_write_counter;
-            buffer delta_b = b->view(b->size()-delta,b->size());
             
             if(delta > 0) {
+                buffer delta_b = b->view(b->size()-delta,b->size());
+                
                 DIA_("AppHostCX::pre_write[%s]: flow append new %d bytes",c_name(),delta_b.size());
                 this->flow().append('w',delta_b);
                 peek_write_counter += delta_b.size();
