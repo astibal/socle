@@ -99,14 +99,20 @@ public:
             buffer* b = flow_.at(i).second;
             
             int updates = 1;
-            if(i < update_counters_.size()) i = update_counters_.at(i);
+            if(i < update_counters_.size()) updates = update_counters_.at(i);
             
-            r += string_format("%c:%s[%d]",s, i == 1 ? "" : string_format("<%d>:").c_str(),b->size());
+            r += string_format("%c:%s[%d]",s, updates == 1 ? "" : string_format("<%d>:",updates).c_str(),b->size());
             if(verbose) {
                 r += string_format("\n%s\n",hex_dump(b).c_str());
             }
+            
+            if(i+1 != flow_.size()) {
+                if(!verbose)
+                    r += ", ";
+            }
         }
         
+        return r;
     }
     
     virtual ~Flow() {

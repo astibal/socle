@@ -51,10 +51,8 @@ int AppHostCX::zip_signatures(sensorType& s, std::vector<duplexFlowMatch*>& v) {
     return r;
 };
 
-bool AppHostCX::detect(sensorType& cur_sensor) {
+bool AppHostCX::detect(sensorType& cur_sensor,char side) {
 
-    DIA_("AppHostCX::detect: flow path: %s",flow().hr().c_str());
-    
     bool matched = false;
     
     if(cur_sensor.size() <= 0) {
@@ -62,7 +60,7 @@ bool AppHostCX::detect(sensorType& cur_sensor) {
     }
     
     for (sensorType::iterator i = cur_sensor.begin(); i != cur_sensor.end(); ++i ) {
-    
+        
         std::pair<flowMatchState,duplexFlowMatch*>& sig = (*i);
 
         // get zipped results with signature pointers
@@ -105,9 +103,11 @@ void AppHostCX::post_read() {
             this->flow().append('r',b);
         }
         
+        DIA_("AppHostCX::post_read[%s]: side %c, flow path: %s",c_name(), 'r', flow().hr().c_str());
+
         // we can't detect starttls in POST mode
-        detect(sensor());
-        inspect();
+        detect(sensor(),'r');
+        inspect('r');
     }
     
     if (mode() == MODE_PRE) {
@@ -140,8 +140,9 @@ void AppHostCX::post_write() {
             }
         }
         // we can't detect starttls in POST mode
-        detect(sensor());
-        inspect();
+        DIA_("AppHostCX::post_write[%s]: side %c, flow path: %s",c_name(), 'w', flow().hr().c_str());
+        detect(sensor(),'w');
+        inspect('w');
     }
     
     // react on specific signatures 
@@ -225,11 +226,13 @@ void AppHostCX::pre_read() {
         }
         
         if(updated == true) {
-            if (detect(starttls_sensor())) {
+            DIA_("AppHostCX::pre_read[%s]: side %c, flow path: %s",c_name(), 'r', flow().hr().c_str());
+
+            if (detect(starttls_sensor(),'r')) {
                 upgrade_starttls = true;
             }
-            detect(sensor());
-            inspect();
+            detect(sensor(),'r');
+            inspect('r');
         }
     }
     DUM_("AppHostCX::pre_read[%s]: === end",c_name());
@@ -245,9 +248,10 @@ void AppHostCX::pre_write() {
             int  f_s = flow().flow().size();
             int  f_last_data_size = 0;
             char f_last_data_side = '?';
-            if(f_s > 0)
+            if(f_s > 0) {
                 f_last_data_side = flow().flow().back().first;
                 f_last_data_size = flow().flow().back().second->size();
+            }
             
             INF_("AppHostCX::pre_write[%s]: peek_counter %d, written already %d, write buffer size %d, whole flow size %d, flow data side '%c' size %d",c_name(),peek_write_counter,meter_write_bytes,b->size(), f_s,f_last_data_side,f_last_data_size);
 
@@ -270,12 +274,14 @@ void AppHostCX::pre_write() {
             }
             
             DEB_("AppHostCX::pre_write[%s]: write buffer size %d",c_name(),b->size());
-        
-            if(detect(starttls_sensor())) {
+
+            DIA_("AppHostCX::pre_write[%s]: side %c, flow path: %s",c_name(), 'w', flow().hr().c_str());
+
+            if(detect(starttls_sensor(),'w')) {
                 upgrade_starttls = true;
             }
-            detect(sensor());
-            inspect();
+            detect(sensor(),'w');
+            inspect('w');
         }
     }
 }

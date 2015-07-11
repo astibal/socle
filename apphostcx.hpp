@@ -68,8 +68,8 @@ protected:
     virtual void pre_read();
     virtual void pre_write();
     
-    bool detect(sensorType&); // signature detection engine
-    virtual void inspect() { }; // to be overriden for ALG inspectors
+    bool detect(sensorType&,char side); // signature detection engine
+    virtual void inspect(char side) { }; // to be overriden for ALG inspectors
     
     virtual void on_detect(duplexFlowMatch*, flowMatchState&, vector_range&);
     virtual void on_starttls() {};
