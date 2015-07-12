@@ -37,6 +37,11 @@ logger lout;
 
 static  std::string level_table[] = {"None    ","Fatal   ","Critical","Error   ","Warning ","Notify  ","Informat","Diagnose","Debug   ","Dumpit  ","Extreme "};
 
+std::string ESC_(std::string s) {
+    std::string t = s;
+    std::replace( t.begin(), t.end(), '%', '^');
+    return t;
+}
 
 logger_profile::~logger_profile() { 
     for(std::list<std::ostream*>::iterator i = targets_.begin(); i != targets_.end(); ++i) {  

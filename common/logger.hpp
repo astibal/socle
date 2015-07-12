@@ -383,7 +383,7 @@
 #define PERIOD_END lout.periodic_end();
 
 
-#define VA_BUFFSIZE 1024
+#define VA_BUFFSIZE 2048
 // process valist, and fill std::string
 #define PROCESS_VALIST(str,fmt)     \
     int size = VA_BUFFSIZE;         \
@@ -391,7 +391,7 @@
     while (1) {                     \
         str.resize(size);           \
         va_start(ap, fmt);          \
-        int n = vsnprintf((char *)str.c_str(), size, fmt.c_str(), ap);  \
+        int n = vsnprintf((char *)str.c_str(), size-1, fmt.c_str(), ap);  \
         va_end(ap);                 \
                                     \
         if (n > -1 && n < size) {   \
@@ -429,6 +429,12 @@ public:                                \
     const char* c_name() { return name_.c_str(); }; \
     void name(const char* n) { name_ = n; };        \
     void name(std::string n) { name_ = n; };
+
+#include <algorithm>
+
+std::string ESC_(std::string s);
+
+#define ESC(x) ESC_(x).c_str()
 
 struct timer {
     time_t last;
