@@ -465,7 +465,7 @@ int SSLCom::ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx) {
 
             break;
         case X509_V_ERR_NO_EXPLICIT_POLICY:
-            INF__("[%s]: SSLCom::ssl_client_vrfy_callback: no explicit policy",name);
+            DIA__("[%s]: SSLCom::ssl_client_vrfy_callback: no explicit policy",name);
             break;
     }
     if (err == X509_V_OK && ok == 2) {
@@ -524,7 +524,7 @@ DH* SSLCom::ssl_dh_callback(SSL* s, int is_export, int key_length)  {
             name = n;
         }
     }
-    INF__("[%s]: SSLCom::ssl_dh_callback: %d bits requested",name,key_length);
+    DIA__("[%s]: SSLCom::ssl_dh_callback: %d bits requested",name,key_length);
     switch(key_length) {
         case 512:
             //return get_dh512();
@@ -556,7 +556,7 @@ EC_KEY* SSLCom::ssl_ecdh_callback(SSL* s, int is_export, int key_length) {
             name = n;
         }
     }    
-    INF__("[%s]: SSLCom::ssl_ecdh_callback: %d bits requested",name,key_length);
+    DIA__("[%s]: SSLCom::ssl_ecdh_callback: %d bits requested",name,key_length);
     return nullptr;
 }
 
@@ -592,7 +592,7 @@ int SSLCom::ocsp_resp_callback(SSL *s, void *arg) {
     
     len = SSL_get_tlsext_status_ocsp_resp(s, &p);
     if (!p) {
-        INF__("[%s]: no OCSP response received",name);
+        DIA_("[%s]: no OCSP response received",name);
         return (opt_ocsp_require == false);
     }
     DEB__("[%s]: OCSP Response:  \n%s",name,hex_dump((unsigned char*)p,len,2).c_str());
@@ -626,7 +626,7 @@ int SSLCom::ocsp_resp_callback(SSL *s, void *arg) {
 
     X509_STORE* x_st = X509_STORE_new();
     X509_STORE_load_locations(x_st,nullptr,"/etc/ssl/certs/");
-//     INF__("Store is at 0x%x",st);
+    //DEB__("Store is at 0x%x",st);
     
     status = OCSP_basic_verify(basic, NULL, x_st ,0);
     X509_STORE_free(x_st);
@@ -636,7 +636,7 @@ int SSLCom::ocsp_resp_callback(SSL *s, void *arg) {
         ERR__("[%s] OCSP response failed verification: %d",name,status);
         
         int err = SSL_get_error(s,status);
-        ERR__("Error: %s",ERR_error_string(err,nullptr));
+        DIA__("    error: %s",ERR_error_string(err,nullptr));
         
 
         OCSP_BASICRESP_free(basic);
@@ -676,17 +676,17 @@ int SSLCom::ocsp_resp_callback(SSL *s, void *arg) {
     DIA__("[%s] OCSP status for server certificate: %s", name, OCSP_cert_status_str(status));
  
     if (status == V_OCSP_CERTSTATUS_GOOD)
-        INF__("[%s] OCSP status is good",name);
+        DIA__("[%s] OCSP status is good",name);
         return 1;
     if (status == V_OCSP_CERTSTATUS_REVOKED)
-        INF__("[%s] OCSP status is revoked",name);
+        NOT__("[%s] OCSP status is revoked",name);
         return 0;
     if (opt_ocsp_require) {
         ERR__("[%s] OCSP status unknown, but OCSP required, failing", name);
         return 0;
     }
         
-    INF__("[%s] OCSP status unknown, but OCSP was not required, continue", name);
+    DIA__("[%s] OCSP status unknown, but OCSP was not required, continue", name);
 
     return 1;
 }
