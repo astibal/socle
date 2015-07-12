@@ -16,7 +16,7 @@
     License along with this library.
 */
 
-#define SOCLE_VERSION "0.3.6"
+#define SOCLE_VERSION "0.3.7"
 #define SOCLE_DEVEL    1
 
 #include <common/socle_common.hpp>
