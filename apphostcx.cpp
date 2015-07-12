@@ -125,18 +125,18 @@ void AppHostCX::post_write() {
             int f_s = flow().flow().size();
             int f_last_data_size = flow().flow().back().second->size();            
 
-            INF_("AppHostCX::post_write[%s]: peek_counter %d, written to socket %d, write buffer size %d, flow size %d, flow data size %d",c_name(),peek_write_counter,meter_write_bytes,b->size(), f_s,f_last_data_size);
+            DEB_("AppHostCX::post_write[%s]: peek_counter %d, written to socket %d, write buffer size %d, flow size %d, flow data size %d",c_name(),peek_write_counter,meter_write_bytes,b->size(), f_s,f_last_data_size);
 
             // how many data I am missing?
             int delta  = (meter_write_bytes + b->size()) - peek_write_counter;
             buffer delta_b = b->view(b->size()-delta,b->size());
             
             if(delta > 0) {
-                INF_("AppHostCX::post_write[%s]: flow append new %d bytes",c_name(),delta_b.size());
+                DIA_("AppHostCX::post_write[%s]: flow append new %d bytes",c_name(),delta_b.size());
                 this->flow().append('w',delta_b);
                 peek_write_counter += delta_b.size();
             } else {
-                INF_("AppHostCX::post_write:[%s]: data are already copied in the flow",c_name());
+                DIA_("AppHostCX::post_write:[%s]: data are already copied in the flow",c_name());
             }
         }
         // we can't detect starttls in POST mode
@@ -253,7 +253,7 @@ void AppHostCX::pre_write() {
                 f_last_data_size = flow().flow().back().second->size();
             }
             
-            INF_("AppHostCX::pre_write[%s]: peek_counter %d, written already %d, write buffer size %d, whole flow size %d, flow data side '%c' size %d",c_name(),peek_write_counter,meter_write_bytes,b->size(), f_s,f_last_data_side,f_last_data_size);
+            DIA_("AppHostCX::pre_write[%s]: peek_counter %d, written already %d, write buffer size %d, whole flow size %d, flow data side '%c' size %d",c_name(),peek_write_counter,meter_write_bytes,b->size(), f_s,f_last_data_side,f_last_data_size);
 
             // how many data I am missing?
             int delta  = (meter_write_bytes + b->size()) - peek_write_counter;
