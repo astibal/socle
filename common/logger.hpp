@@ -406,6 +406,30 @@
     }                               \
 
 
+// EXTENDED LOGGING HELPER MACROS
+
+// takes argument of pointer to function which returns std::string, indicate object name. 
+#define DECLARE_LOGGING_INFO(get_name_func)  \
+public:                                      \
+    const char* hr() { hr_ = get_name_func(); return hr_.c_str(); }; \
+    static unsigned int& log_level_ref() { return log_level; } \
+private:                                                       \
+    static unsigned int log_level;                             \
+    std::string hr_;
+
+// takes argument of class name. It defines static variables
+#define DEFINE_LOGGING_INFO(cls)   \
+unsigned int cls::log_level = NON; \
+
+
+#define DEFINE_C_NAME(string_name)     \
+public:                                \
+    std::string name_ = string_name;   \
+    std::string& name()  { return name_; }          \
+    const char* c_name() { return name_.c_str(); }; \
+    void name(const char* n) { name_ = n; };        \
+    void name(std::string n) { name_ = n; };
+
 struct timer {
     time_t last;
     unsigned int timeout;
