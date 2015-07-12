@@ -22,6 +22,7 @@
 
 #include <string>
 #include <vector>
+#include <deque>
 #include <mutex>
 #include <unordered_map>
 
@@ -79,9 +80,10 @@ public:
         auto it = cache().find(k);
         if(it != cache().end()) {
             T*& ptr = it->second;
+            ret = true;
+            
             if(ptr != nullptr) {
-                ret = true;
-                if(auto_delete()) {
+                if(auto_delete() && ptr != v) {
                     delete ptr;
                 }
             }
@@ -93,13 +95,13 @@ public:
                 items_.push_back(k);
                 
                 if( items_.size() > max_size_) {
-                    K to_delete = items_.back();
+                    K to_delete = items_.front();
                     
                     if(cache().find(to_delete) != cache().end()) {
                         set(to_delete,nullptr); // to delete element if needed
                     }
                     cache().erase(to_delete);
-                    items_.pop_back();
+                    items_.pop_front();
                 }
             }
         }
@@ -111,7 +113,7 @@ private:
     bool auto_delete_ = true;
 
     unsigned int max_size_ = 0;
-    std::vector<K> items_;
+    std::deque<K> items_;
     
     T* default_value_ = nullptr;
     std::unordered_map<K,T*> cache_;
