@@ -137,7 +137,7 @@ private:
     std::unordered_map<K,T*> cache_;
     std::recursive_mutex lock_;
     
-    DEFINE_C_NAME("object cache");
+    DECLARE_C_NAME("object cache");
 };
 
 #endif

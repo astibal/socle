@@ -266,7 +266,7 @@ void AppHostCX::pre_write() {
                 peek_write_counter += delta_b.size();
                 
                 buffer* b = flow().flow().back().second;
-                DEB_("AppHostCX::pre_write:[%s]: Last flow entry is now: \n%s",c_name(),hex_dump((unsigned char*)b->data(),b->size()).c_str());
+                DUM_("AppHostCX::pre_write:[%s]: Last flow entry is now: \n%s",c_name(),hex_dump((unsigned char*)b->data(),b->size()).c_str());
                 DIA_("AppHostCX::pre_write:[%s]: ...",c_name());
                 DIA_("AppHostCX::pre_write:[%s]: peek_counter is now %d",c_name(),peek_write_counter);
             } else {
