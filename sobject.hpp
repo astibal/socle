@@ -20,8 +20,17 @@
 #ifndef SOBJECT_HPP_
 #define SOBJECT_HPP_
 
-class Sobject {
+#include <logger.hpp>
+#include <ptr_cache.hpp>
+
+namespace socle {
+   
+class sobject {
     
+DEFINE_C_NAME("sobject");
+DECLARE_LOGGING_INFO(name);
 };
 
+
+};
 #endif

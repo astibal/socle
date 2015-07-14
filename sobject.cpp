@@ -15,3 +15,9 @@
     You  should have received a copy of the GNU Lesser General Public
     License along with this library.
 */
+
+#include <sobject.hpp>
+
+using namespace socle;
+
+DEFINE_LOGGING_INFO(sobject);
