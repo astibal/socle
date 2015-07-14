@@ -22,6 +22,7 @@
 
 #include <logger.hpp>
 #include <ptr_cache.hpp>
+#include <display.hpp>
 
 namespace socle {
 
@@ -29,18 +30,32 @@ namespace socle {
  * Accouting info
 */
 struct sobject_info {
+#ifdef SOCLE_MEM_PROFILE
+    sobject_info() { bt_ = bt(); }
+    std::string bt_;
+    
+    std::string extra_string() { return string_format("created at\n%s",bt_.c_str()); }
+#else
+    std::string extra_string() { return "<empty>";}
+#endif
+
+    std::string to_string() { return name() + ": extra info: " + extra_string(); };
+    virtual ~sobject_info() {};
+    DECLARE_C_NAME("sobject_info");
 };
+
+
 class sobject;
 
-// Class name -> ptr_cache<key is ptr to sobject*, >
-std::unordered_map<std::string,ptr_cache<sobject*,sobject_info>> sobject_db;
+extern ptr_cache<sobject*,sobject_info> sobject_db;
+
+std::string sobject_db_to_string(const char* criteria = nullptr,const char* delimiter = nullptr);
 
 class sobject {
-    
 
 public:
-    sobject() {};
-    virtual ~sobject() {};
+    sobject();
+    virtual ~sobject();
 
     // ask kindly to stop use this object (for example, user implementation could set error indicator, etc. )
     virtual bool ask_destroy() = 0;
@@ -58,3 +73,4 @@ DECLARE_LOGGING_INFO(name);
 
 };
 #endif
+

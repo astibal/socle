@@ -435,6 +435,7 @@ public:                                             \
                     \
     virtual std::string class_name() { return class_name_; } \
     virtual const char* c_class_name() { return class_name_.c_str(); } \
+    virtual int size_of() { return sizeof (*this); }
 
     
 #include <algorithm>

@@ -69,7 +69,25 @@ public:
     
     int max_size() const { return max_size_; }
 
-    T* get(K& k) {
+    
+    bool erase(K k) {
+        std::lock_guard<std::recursive_mutex> l(lock_);
+        auto it = cache().find(k);
+        if(it != cache().end()) {
+            DEB_("ptr_cache::erase[%s]: erase: key found ", c_name());
+            set(k,nullptr);
+            cache().erase(k);
+            
+            return true;
+        } else {
+            DEB_("ptr_cache::erase[%s]: cannot erase: key not found ", c_name());
+        }
+        
+        return false;
+    }
+    
+    T* get(K k) {
+        std::lock_guard<std::recursive_mutex> l(lock_);
         auto it = cache().find(k);
         if(it == cache().end()) {
             return default_value();
@@ -79,47 +97,46 @@ public:
     
     // set the key->value. Return true if other value had been replaced.
     bool set(const K k, T* v) {
+        std::lock_guard<std::recursive_mutex> l(lock_);
         bool ret = false;
         
         auto it = cache().find(k);
         if(it != cache().end()) {
-            DEB_("ptr_cache:set[%s]: existing entry found", c_name());
+            DEB_("ptr_cache::set[%s]: existing entry found", c_name());
             T*& ptr = it->second;
             ret = true;
             
             if(ptr != nullptr) {
                 if(auto_delete() && ptr != v) {
-                    DEB_("ptr_cache:set[%s]: autodelete set and entry new value is different -- deleting.", c_name());
+                    DEB_("ptr_cache::set[%s]: autodelete set and entry new value is different -- deleting.", c_name());
                     delete ptr;
                 } else {
-                    DEB_("ptr_cache:set[%s]: not deleting existing object:", c_name());
+                    DEB_("ptr_cache::set[%s]: not deleting existing object:", c_name());
                     if(!auto_delete()) DEB_("     autodelete not set", c_name());
                     if(ptr == v) DEB_("     values are the same", c_name());
                 }
             } else {
-                INF_("ptr_cache:set[%s]: existing entry is nullptr", c_name());
+                INF_("ptr_cache::set[%s]: existing entry is nullptr", c_name());
             }
             
             ptr = v;
         } else {
-            DIA_("ptr_cache:set[%s]: new entry added", c_name());
+            DIA_("ptr_cache::set[%s]: new entry added", c_name());
             cache()[k] = v;
             
             if(max_size_ > 0) {
                 items_.push_back(k);
                 
                 if( items_.size() > max_size_) {
-                    DEB_("ptr_cache:set[%s]: max size reached!", c_name());
+                    DEB_("ptr_cache::set[%s]: max size reached!", c_name());
                     K to_delete = items_.front();
                     
-                    if(cache().find(to_delete) != cache().end()) {
-                        set(to_delete,nullptr); // to delete element if needed
-                    } else {
-                        DEB_("ptr_cache:set[%s]: cannot set expired object to nullptr: not found!", c_name());
+                    if(!erase(to_delete)) {
+                        DEB_("ptr_cache::set[%s]: cannot erase expired object : not found!", c_name());
                     }
-                    cache().erase(to_delete);
+                    
                     items_.pop_front();
-                    DIA_("ptr_cache:set[%s]: expired object removed from cache", c_name());
+                    DIA_("ptr_cache::set[%s]: expired object removed from cache", c_name());
                 }
             }
         }

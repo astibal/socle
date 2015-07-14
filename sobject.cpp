@@ -18,6 +18,50 @@
 
 #include <sobject.hpp>
 
-using namespace socle;
+namespace socle {
+
+ptr_cache<sobject*,sobject_info> sobject_db("global object db",0,true);
+
+sobject::sobject() {
+    sobject_db.lock();
+    sobject_db.set(this,new sobject_info());
+    sobject_db.unlock();
+}
+
+
+sobject::~sobject() {
+    sobject_db.lock();
+    sobject_db.erase(this);
+    sobject_db.unlock();
+}
+
+
+std::string sobject_db_to_string(const char* criteria,const char* delimiter) {
+    
+    std::string ret;
+    sobject_db.lock();
+    
+    for(auto it: sobject_db.cache()) {
+        sobject*       ptr = it.first;
+        
+        if( criteria == nullptr || ptr->class_name() == criteria ) {
+            sobject_info*  si = it.second;
+            ret += ptr->to_string();
+
+#ifdef SOCLE_MEM_PROFILE
+            ret += "\n";
+            if(si != nullptr) 
+                ret += si->to_string();
+#endif
+            (delimiter == nullptr) ? ret += "\n\n" : ret += delimiter;
+            
+        }
+    }
+    
+    sobject_db.unlock();
+    return ret;
+}
 
 DEFINE_LOGGING_INFO(sobject);
+
+}
