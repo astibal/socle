@@ -422,14 +422,21 @@ private:                                                       \
 unsigned int cls::log_level = NON; \
 
 
-#define DEFINE_C_NAME(string_name)     \
-public:                                \
+#define DECLARE_C_NAME(string_name)     \
+protected:                                \
     std::string name_ = string_name;   \
-    std::string& name()  { return name_; }          \
-    const char* c_name() { return name_.c_str(); }; \
-    void name(const char* n) { name_ = n; };        \
-    void name(std::string n) { name_ = n; };
+    std::string class_name_ = string_name;          \
+public:                                             \
+    virtual std::string& name()  { return name_; }          \
+    virtual const char* c_name() { return name_.c_str(); }; \
+    virtual void name(const char* n) { name_ = n; };        \
+    virtual void name(std::string n) { name_ = n; };        \
+    \
+                    \
+    virtual std::string class_name() { return class_name_; } \
+    virtual const char* c_class_name() { return class_name_.c_str(); } \
 
+    
 #include <algorithm>
 
 std::string ESC_(std::string s);
