@@ -54,6 +54,8 @@ int epoll::wait(int timeout) {
 
 bool epoll::add(int socket, int mask) {
     struct epoll_event ev;
+    memset(&ev,0,sizeof ev);
+    
     ev.events = mask;
     ev.data.fd = socket;
     

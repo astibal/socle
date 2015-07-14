@@ -179,6 +179,7 @@ std::string bt() {
         s += "\n";
         s += strings[i];
     }
+    delete[] strings;
     
     s += "--";
     
