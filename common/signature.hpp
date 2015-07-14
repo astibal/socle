@@ -45,7 +45,8 @@ public:
     unsigned int append(SourceType src,buffer* pb) { return append(src,pb->data(),pb->size());};
     unsigned int append(SourceType src,const void* data, size_t len) {
         if(flow_.size() == 0) {
-            DEB_("New flow init: side: %c: data:\n%s",src,hex_dump((unsigned char*)data,len).c_str());
+            DIA_("New flow init: side: %c: %d bytes",src,len);
+            DUM_("New flow init: side: %c: incoming  data:\n%s",src,hex_dump((unsigned char*)data,len).c_str());
             auto b = new buffer(data,len);
             // src initialized by value, buffer is pointer
             std::pair<SourceType,buffer*> t(src,b);
@@ -53,13 +54,15 @@ public:
             update_counters_.push_back(1);
         }
         else if (flow_.back().first == src) {
-            DEB_("Appending to side: %c: data:\n%s",src,hex_dump((unsigned char*)data,  len > 128 ? 128 : len ).c_str());
+            DIA_("Flow::append: to current side: %c: %d bytes",len);
+            DUM_("Flow::append: to current side: %c: incoming  data:\n%s",src,hex_dump((unsigned char*)data,  len > 128 ? 128 : len ).c_str());
             flow_.back().second->append(data,len);
             int& counter_ref = update_counters_.back();
             counter_ref++;
         }
         else if (flow_.back().first != src) {
-            DEB_("New side: %c: data:\n%s",src,hex_dump((unsigned char*)data,len > 128 ? 128 : len ).c_str());
+            DIA_("Flow::append: to new side: %c: %d bytes",src,len);
+            DUM_("Flow::append: to new side: %c: incoming data:\n%s",src,hex_dump((unsigned char*)data,len > 128 ? 128 : len ).c_str());
             auto b = new buffer(data,len);
             // src initialized by value, buffer is pointer
             std::pair<SourceType,buffer*> t(src,b);
@@ -183,7 +186,12 @@ public:
     virtual range search_function(std::string &expr, std::string &str) { 
         int where = str.find(expr);
 
-        DEB_("simpleMatch::search_function: \nexpr:\n%s\ndata:\n%s",expr.c_str(),hex_dump((unsigned char*)str.c_str(), str.size() > 128 ? 128 : str.size() ).c_str());
+        if(LEV_(DUM)) {
+            DUM_("simpleMatch::search_function: \nexpr:\n%s\ndata:\n%s",expr.c_str(),hex_dump((unsigned char*)str.c_str(), str.size() > 128 ? 128 : str.size() ).c_str());
+        }
+        else {
+            DEB_("simpleMatch::search_function: \nexpr: '%s'",expr.c_str());
+        }
         
         if (where < 0) {
             return NULLRANGE;
