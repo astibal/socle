@@ -26,11 +26,15 @@
 #include <mutex>
 #include <unordered_map>
 
+#include <socle_common.hpp>
+#include <string.h>
+#include <logger.hpp>
+
 template <class K, class T>
 class ptr_cache {
 public:
-    ptr_cache(): auto_delete_(true), max_size_(0) {}
-    ptr_cache(unsigned int max_size, bool auto_delete): auto_delete_(auto_delete), max_size_(max_size) {}
+    ptr_cache(const char* n): auto_delete_(true), max_size_(0) { name(n); }
+    ptr_cache(const char* n, unsigned int max_size, bool auto_delete): auto_delete_(auto_delete), max_size_(max_size) { name(n); }
     virtual ~ptr_cache() { clear(); if(default_value_ != nullptr && auto_delete_) { delete default_value_; }; }
 
 
@@ -79,29 +83,43 @@ public:
         
         auto it = cache().find(k);
         if(it != cache().end()) {
+            DEB_("ptr_cache:set[%s]: existing entry found", c_name());
             T*& ptr = it->second;
             ret = true;
             
             if(ptr != nullptr) {
                 if(auto_delete() && ptr != v) {
+                    DEB_("ptr_cache:set[%s]: autodelete set and entry new value is different -- deleting.", c_name());
                     delete ptr;
+                } else {
+                    DEB_("ptr_cache:set[%s]: not deleting existing object:", c_name());
+                    if(!auto_delete()) DEB_("     autodelete not set", c_name());
+                    if(ptr == v) DEB_("     values are the same", c_name());
                 }
+            } else {
+                INF_("ptr_cache:set[%s]: existing entry is nullptr", c_name());
             }
+            
             ptr = v;
         } else {
+            DIA_("ptr_cache:set[%s]: new entry added", c_name());
             cache()[k] = v;
             
             if(max_size_ > 0) {
                 items_.push_back(k);
                 
                 if( items_.size() > max_size_) {
+                    DEB_("ptr_cache:set[%s]: max size reached!", c_name());
                     K to_delete = items_.front();
                     
                     if(cache().find(to_delete) != cache().end()) {
                         set(to_delete,nullptr); // to delete element if needed
+                    } else {
+                        DEB_("ptr_cache:set[%s]: cannot set expired object to nullptr: not found!", c_name());
                     }
                     cache().erase(to_delete);
                     items_.pop_front();
+                    DIA_("ptr_cache:set[%s]: expired object removed from cache", c_name());
                 }
             }
         }
@@ -118,6 +136,8 @@ private:
     T* default_value_ = nullptr;
     std::unordered_map<K,T*> cache_;
     std::recursive_mutex lock_;
+    
+    DEFINE_C_NAME("object cache");
 };
 
 #endif
