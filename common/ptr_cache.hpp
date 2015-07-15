@@ -77,6 +77,7 @@ public:
             DEB_("ptr_cache::erase[%s]: erase: key found ", c_name());
             set(k,nullptr);
             cache().erase(k);
+            DEB_("ptr_cache::erase[%s]: erase: key erased", c_name());
             
             return true;
         } else {

@@ -36,6 +36,7 @@ struct sobject_info {
     
     std::string extra_string() { return string_format("created at\n%s",bt_.c_str()); }
 #else
+    sobject_info() {}
     std::string extra_string() { return "<empty>";}
 #endif
 
