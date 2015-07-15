@@ -567,6 +567,7 @@ int SSLCom::ocsp_resp_callback(SSL *s, void *arg) {
     
     SSLCom* com = static_cast<SSLCom*>(data);
     
+    bool opt_ocsp_strict = false;
     bool opt_ocsp_require = false;
     X509* peer_cert = nullptr;
     X509* issuer_cert = nullptr;
@@ -576,7 +577,8 @@ int SSLCom::ocsp_resp_callback(SSL *s, void *arg) {
         if(n != nullptr) {
             name = n;
         }
-        opt_ocsp_require = com->opt_ocsp_require;
+        opt_ocsp_strict = (com->opt_ocsp_mode >= 1);
+        opt_ocsp_require = (com->opt_ocsp_mode == 2);
         peer_cert   = com->sslcom_peer_cert;
         issuer_cert = com->sslcom_peer_issuer;
     }    
@@ -592,48 +594,46 @@ int SSLCom::ocsp_resp_callback(SSL *s, void *arg) {
     
     len = SSL_get_tlsext_status_ocsp_resp(s, &p);
     if (!p) {
-        DIA_("[%s]: no OCSP response received",name);
-        return (opt_ocsp_require == false);
+        if(opt_ocsp_strict)
+            WAR_("[%s]: no OCSP response received",name);
+        
+        return (opt_ocsp_require ? 0 : 1);
     }
-    DEB__("[%s]: OCSP Response:  \n%s",name,hex_dump((unsigned char*)p,len,2).c_str());
+    DUM__("[%s]: OCSP Response:  \n%s",name,hex_dump((unsigned char*)p,len,2).c_str());
     
     rsp = d2i_OCSP_RESPONSE(NULL, &p, len);
     if (!rsp) {
         ERR__("[%s] failed to parse OCSP response",name);
-        return 0;
+        return (opt_ocsp_strict ? 0 : 1);
     }
 
     if (!peer_cert || !issuer_cert) {
         ERR__("[%s] peer certificate or issue certificate not available for OCSP status check",name);
         OCSP_BASICRESP_free(basic);
         OCSP_RESPONSE_free(rsp);
-        return 0;
+        return (opt_ocsp_require ? 0 : 1);;
     }
     
     status = OCSP_response_status(rsp);
     if (status != OCSP_RESPONSE_STATUS_SUCCESSFUL) {
         ERR__("[%s] OCSP responder error %d (%s)", name, status, OCSP_response_status_str(status));
-        return 0;
+        return (opt_ocsp_strict ? 0 : 1);
     }
  
     basic = OCSP_response_get1_basic(rsp);
     if (!basic) {
         ERR__("[%s] could not find BasicOCSPResponse",name);
-        return 0;
+        return (opt_ocsp_strict ? 0 : 1);
     }
  
-    X509_STORE* st = SSL_CTX_get_cert_store(s->ctx);
-
     X509_STORE* x_st = X509_STORE_new();
-    X509_STORE_load_locations(x_st,nullptr,"/etc/ssl/certs/");
+    X509_STORE_load_locations(x_st,nullptr,SSLCertStore::def_cl_capath.c_str());
     //DEB__("Store is at 0x%x",st);
     
-    status = OCSP_basic_verify(basic, NULL, x_st ,0);
-    X509_STORE_free(x_st);
-    
+    status = OCSP_basic_verify(basic, NULL, com->ocsp_trust_store ,0);
+   
     
     if (status <= 0) {
-        ERR__("[%s] OCSP response failed verification: %d",name,status);
         
         int err = SSL_get_error(s,status);
         DIA__("    error: %s",ERR_error_string(err,nullptr));
@@ -641,7 +641,18 @@ int SSLCom::ocsp_resp_callback(SSL *s, void *arg) {
 
         OCSP_BASICRESP_free(basic);
         OCSP_RESPONSE_free(rsp);
-        return 0;
+
+        int r = opt_ocsp_strict ? 0 : 1;
+
+        if(r > 0) {
+            NOT__("[%s] OCSP response failed verification",name);
+            ERR_clear_error();
+        }
+        else {
+            ERR__("[%s] OCSP response failed verification",name);
+        }
+        
+        return r;
     }
  
     DIA__("[%s] OCSP response verification succeeded",name);
@@ -651,7 +662,12 @@ int SSLCom::ocsp_resp_callback(SSL *s, void *arg) {
         ERR__("[%s] could not create OCSP certificate identifier",name);
         OCSP_BASICRESP_free(basic);
         OCSP_RESPONSE_free(rsp);
-        return 0;
+
+        int r = opt_ocsp_strict ? 0 : 1;
+        if(r > 0)
+            ERR_clear_error();
+        
+        return r;
     }
      
   
@@ -660,14 +676,24 @@ int SSLCom::ocsp_resp_callback(SSL *s, void *arg) {
                " (OCSP not required)");
         OCSP_BASICRESP_free(basic);
         OCSP_RESPONSE_free(rsp);
-        return (opt_ocsp_require) ? 0 : 1;
+
+        int r = opt_ocsp_require ? 0 : 1;
+        if(r > 0)
+            ERR_clear_error();
+        
+        return r;
     }
  
     if (!OCSP_check_validity(this_update, next_update, 5 * 60, -1)) {
         ERR__("[%s] OCSP status times invalid", name);
         OCSP_BASICRESP_free(basic);
         OCSP_RESPONSE_free(rsp);
-        return 0;
+
+        int r = opt_ocsp_strict ? 0 : 1;
+        if(r > 0)
+            ERR_clear_error();
+        
+        return r;
     }
 
     OCSP_CERTID_free(id);
@@ -710,10 +736,20 @@ void SSLCom::init_ssl_callbacks() {
     
     if(! is_server()) {
         SSL_set_verify(sslcom_ssl,SSL_VERIFY_PEER,&ssl_client_vrfy_callback);
-        
-        SSL_set_tlsext_status_type(sslcom_ssl, TLSEXT_STATUSTYPE_ocsp);
-        SSL_CTX_set_tlsext_status_cb(sslcom_ctx,ocsp_resp_callback);
-        SSL_CTX_set_tlsext_status_arg(sslcom_ctx, this);
+
+        if(opt_ocsp_enabled) {
+            
+            ocsp_trust_store = X509_STORE_new();
+            if(X509_STORE_load_locations(ocsp_trust_store,nullptr,SSLCertStore::def_cl_capath.c_str()) == 0)  {
+                ERRS___("cannot load OCSP trusted store. Fail-open.");
+                opt_ocsp_mode = 0;
+            } else {
+                DIA__("[%s]: OCSP stapling enabled, mode %d",hr(),opt_ocsp_mode);
+                SSL_set_tlsext_status_type(sslcom_ssl, TLSEXT_STATUSTYPE_ocsp);
+                SSL_CTX_set_tlsext_status_cb(sslcom_ctx,ocsp_resp_callback);
+                SSL_CTX_set_tlsext_status_arg(sslcom_ctx, this);
+            }
+        }
     }
     
 }
@@ -1629,6 +1665,10 @@ void SSLCom::cleanup()  {
 	if(sslcom_ssl) 	{
         SSL_free (sslcom_ssl);
         sslcom_ssl = nullptr;
+    }
+
+    if(ocsp_trust_store) {
+            X509_STORE_free(ocsp_trust_store);
     }
     
 // 	if (sslcom_ctx) {

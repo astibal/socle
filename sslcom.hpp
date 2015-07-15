@@ -277,7 +277,12 @@ public:
     // enable/disable pfs (DHE and ECDHE suites)
     bool opt_pfs = true;
     
-    bool opt_ocsp_require = false; // should we insist on OCSP response?
+    bool opt_ocsp_enabled = false; // should we insist on OCSP response?
+    int  opt_ocsp_mode = 0;        // 0 - allow all, log unverified. 1 - allow all, but don't allow unverified. 2 - as 1. but require all connections to have stapling reponse
+    #define SOCLE_OCSP_STAP_MODE_LOOSE   0
+    #define SOCLE_OCSP_STAP_MODE_STRICT  1
+    #define SOCLE_OCSP_STAP_MODE_REQUIRE 2 
+    X509_STORE* ocsp_trust_store = nullptr;
     
     // unknown issuers
     bool opt_allow_unknown_issuer = false;
