@@ -53,7 +53,7 @@ std::string sobject_db_to_string(const char* criteria,const char* delimiter) {
             if(si != nullptr) 
                 ret += si->to_string();
 #endif
-            (delimiter == nullptr) ? ret += "\n\n" : ret += delimiter;
+            (delimiter == nullptr) ? ret += "\n" : ret += delimiter;
             
         }
     }
