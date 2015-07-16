@@ -22,6 +22,23 @@ namespace socle {
 
 ptr_cache<sobject*,sobject_info> sobject_db("global object db",0,true);
 
+std::string sobject_info::to_string(int verbosity) { 
+    std::string r;
+    
+    if(verbosity > INF) {
+        r += "    " + name()+ ": " + string_format("age: %ds", age());
+        
+        if(verbosity >= DEB ) {
+            std::string ex = extra_string();
+            if(ex.size() > 0)
+                r += " extra info: " + ex; 
+        }
+    }
+    
+    return r;
+};
+
+
 sobject::sobject() {
     sobject_db.lock();
     sobject_db.set(this,new sobject_info());
@@ -48,11 +65,12 @@ std::string sobject_db_to_string(const char* criteria,const char* delimiter,int 
             sobject_info*  si = it.second;
             ret += string_format("Id: 0x%lx | ",ptr) + ptr->to_string(verbosity);
 
-#ifdef SOCLE_MEM_PROFILE
-            ret += "\n";
-            if(si != nullptr) 
-                ret += si->to_string();
-#endif
+            if(verbosity >= DEB) {
+                ret += "\n";
+                if(si != nullptr) 
+                    ret += si->to_string(verbosity);
+            }
+            
             (delimiter == nullptr) ? ret += "\n" : ret += delimiter;
             
         }

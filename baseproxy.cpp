@@ -1190,6 +1190,11 @@ std::string baseProxy::to_string(int verbosity) {
 		empty = false;	
 	}
 	
+	if(verbosity > DIA) {
+        ret += "\n";
+        ret += string_format("    parent id: 0x%x, poll_root: %d", parent(),pollroot());
+    }
+	
 	if (empty) {
 		ret += "<empty> ";
 	}

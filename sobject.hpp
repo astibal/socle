@@ -20,6 +20,8 @@
 #ifndef SOBJECT_HPP_
 #define SOBJECT_HPP_
 
+#include <time.h>
+
 #include <logger.hpp>
 #include <ptr_cache.hpp>
 #include <display.hpp>
@@ -31,16 +33,21 @@ namespace socle {
 */
 struct sobject_info {
 #ifdef SOCLE_MEM_PROFILE
-    sobject_info() { bt_ = bt(); }
+    sobject_info() { bt_ = bt(); init(); }
     std::string bt_;
     
-    std::string extra_string() { return string_format("created at\n%s",bt_.c_str()); }
+    std::string extra_string() { return string_format("creation point:\n%s",bt_.c_str()); }
 #else
-    sobject_info() {}
-    std::string extra_string() { return "<empty>";}
+    sobject_info() { init(); }
+    std::string extra_string() { return ""; }
 #endif
 
-    std::string to_string() { return name() + ": extra info: " + extra_string(); };
+    void init() { created_ = time(nullptr); }
+
+    time_t created_ = 0;
+    unsigned int age() { return time(nullptr) - created_; }
+
+    std::string to_string(int verbosity=INF);
     virtual ~sobject_info() {};
     DECLARE_C_NAME("sobject_info");
 };
