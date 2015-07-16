@@ -554,10 +554,10 @@ void baseHostCX::on_delay_socket(int fd) {
     com()->delay_socket(fd);
 }
 
-std::string baseHostCX::hr() {
+std::string baseHostCX::to_string(int verbosity) {
 	std::string r;
-	r+= this->name() + " " + string_format("%d:%d-%d:%d",meter_read_count,meter_read_bytes,
-                                                meter_write_count,meter_write_bytes);
+	r+= this->name() + ( verbosity > INF ? string_format(" %d:%d-%d:%d",meter_read_count,meter_read_bytes,
+                                                meter_write_count,meter_write_bytes) : "");
 	return r;
 }
 

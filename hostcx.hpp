@@ -312,7 +312,7 @@ public:
     void on_delay_socket(int fd);
 	
     // return human readable details of this object
-	std::string hr();
+	std::string to_string(int verbosity=INF);
     std::string full_name(unsigned char);
     
     // debug options

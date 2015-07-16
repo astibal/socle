@@ -43,7 +43,7 @@
 extern int errno;
 extern ::logger lout;
 
-int baseProxy::log_level = NON;
+DEFINE_LOGGING(baseProxy);
 
 baseProxy::baseProxy(baseCom* c) :
 dead_(false),
@@ -1141,10 +1141,10 @@ int baseProxy::right_connect ( const char* host, const char* port, bool blocking
 
 
 
-const char* baseProxy::hr() {
+std::string baseProxy::to_string(int verbosity) {
 
-	hr_.clear();
-    hr_.append(" ");
+    std::string ret;
+    ret.append(" ");
 
 	int lb = left_bind_sockets.size();
 	int ls = left_sockets.size();
@@ -1158,40 +1158,40 @@ const char* baseProxy::hr() {
 	bool empty = true;
 	
 	if(lb > 0) {
-		for(typename std::vector<baseHostCX*>::iterator ii = left_bind_sockets.begin(); ii != left_bind_sockets.end(); ++ii) { hr_ += ("a: " + (*ii)->hr() + " "); };
+		for(typename std::vector<baseHostCX*>::iterator ii = left_bind_sockets.begin(); ii != left_bind_sockets.end(); ++ii) { ret += ("a: " + (*ii)->to_string(verbosity) + " "); };
 		empty = false;
 	}
 	if(ls > 0) {
-		for(typename std::vector<baseHostCX*>::iterator ii = left_sockets.begin(); ii != left_sockets.end(); ++ii) { hr_ += ("l:" + (*ii)->hr() + " "); };
+		for(typename std::vector<baseHostCX*>::iterator ii = left_sockets.begin(); ii != left_sockets.end(); ++ii) { ret += ("l:" + (*ii)->to_string(verbosity) + " "); };
 		empty = false;	
 	}
     if(la > 0) {
-        for(typename std::vector<baseHostCX*>::iterator ii = left_delayed_accepts.begin(); ii != left_delayed_accepts.end(); ++ii) { hr_ += ("*l:" + (*ii)->hr() + " "); };
+        for(typename std::vector<baseHostCX*>::iterator ii = left_delayed_accepts.begin(); ii != left_delayed_accepts.end(); ++ii) { ret += ("l:" + (*ii)->to_string(verbosity) + " "); };
         empty = false;  
     }
 	if(lp > 0) {
-		for(typename std::vector<baseHostCX*>::iterator ii = left_pc_cx.begin(); ii != left_pc_cx.end(); ++ii) { hr_ += ("x:" + (*ii)->hr() + " "); };
+		for(typename std::vector<baseHostCX*>::iterator ii = left_pc_cx.begin(); ii != left_pc_cx.end(); ++ii) { ret += ("x:" + (*ii)->to_string(verbosity) + " "); };
 		empty = false;	
 	}
 	if(rb > 0) {
-		for(typename std::vector<baseHostCX*>::iterator ii = right_bind_sockets.begin(); ii != right_bind_sockets.end(); ++ii) { hr_ += ("b:" + (*ii)->hr() + " "); };
+		for(typename std::vector<baseHostCX*>::iterator ii = right_bind_sockets.begin(); ii != right_bind_sockets.end(); ++ii) { ret += ("b:" + (*ii)->to_string(verbosity) + " "); };
 		empty = false;	
 	}
 	if(rs > 0) {
-		for(typename std::vector<baseHostCX*>::iterator ii = right_sockets.begin(); ii != right_sockets.end(); ++ii) { hr_ += ("r:" + (*ii)->hr() + " "); };
+		for(typename std::vector<baseHostCX*>::iterator ii = right_sockets.begin(); ii != right_sockets.end(); ++ii) { ret += ("r:" + (*ii)->to_string(verbosity) + " "); };
 		empty = false;	
 	}
     if(ra > 0) {
-        for(typename std::vector<baseHostCX*>::iterator ii = right_delayed_accepts.begin(); ii != right_delayed_accepts.end(); ++ii) { hr_ += ("*r:" + (*ii)->hr() + " "); };
+        for(typename std::vector<baseHostCX*>::iterator ii = right_delayed_accepts.begin(); ii != right_delayed_accepts.end(); ++ii) { ret += ("r:" + (*ii)->to_string(verbosity) + " "); };
         empty = false;  
     }
 	if(rp > 0) {
-		for(typename std::vector<baseHostCX*>::iterator ii = right_pc_cx.begin(); ii != right_pc_cx.end(); ++ii) { hr_ += ("y:" + (*ii)->hr() + " "); };
+		for(typename std::vector<baseHostCX*>::iterator ii = right_pc_cx.begin(); ii != right_pc_cx.end(); ++ii) { ret += ("y:" + (*ii)->to_string(verbosity) + " "); };
 		empty = false;	
 	}
 	
 	if (empty) {
-		hr_ += "<empty> ";
+		ret += "<empty> ";
 	}
-	return hr_.c_str();
+	return ret;
 }

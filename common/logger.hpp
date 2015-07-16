@@ -44,6 +44,7 @@
 
 #define DEB_DO_(x) if(lout.level() >= DEB) { (x); }
 #define LEV_(x) (lout.level() >= (x) ? true : false ) 
+#define LEV lout.level()
 
 #define O_LOG_(lev,x,...) \
     if(lout.level() >= (lev)) { \
@@ -409,16 +410,16 @@
 // EXTENDED LOGGING HELPER MACROS
 
 // takes argument of pointer to function which returns std::string, indicate object name. 
-#define DECLARE_LOGGING_INFO(get_name_func)  \
+#define DECLARE_LOGGING(get_name_func)  \
 public:                                      \
     const char* hr() { hr_ = get_name_func(); return hr_.c_str(); }; \
     static unsigned int& log_level_ref() { return log_level; } \
-private:                                                       \
     static unsigned int log_level;                             \
+private:                                                       \
     std::string hr_;
 
 // takes argument of class name. It defines static variables
-#define DEFINE_LOGGING_INFO(cls)   \
+#define DEFINE_LOGGING(cls)   \
 unsigned int cls::log_level = NON; \
 
 
@@ -517,9 +518,11 @@ public:
 
     void log(unsigned int l, const std::string& fmt, ...);
     void log_w_name(unsigned int l, const char* n, const std::string& fmt, ...);
+    void log_w_name(unsigned int l, std::string n, const std::string& fmt, ...);
     
     void log2(unsigned int l, const char* f, int li, const std::string& fmt, ...);
     void log2_w_name(unsigned int l, const char* f, int li, const char* n, const std::string& fmt, ...);
+    void log2_w_name(unsigned int l, const char* f, int li, std::string n, const std::string& fmt, ...);
     
     std::map<uint64_t,logger_profile*>& target_profiles() { return target_profiles_; }
     std::map<uint64_t,std::string>& target_names() { return target_names_; }

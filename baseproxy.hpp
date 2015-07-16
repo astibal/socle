@@ -230,10 +230,7 @@ public:
 	virtual void on_left_new_raw(int sock) {};
 	virtual void on_right_new_raw(int sock) {};
 	
-	const char* hr(void);
 protected:
-    std::string hr_;
-    
 	// internal functions which should not be used directly
 	void run_timers(void);
     int read_socket(int,char);
@@ -248,11 +245,11 @@ protected:
 	bool run_timer(baseHostCX*);
 	void reset_timer();
 
+    virtual std::string to_string(int verbosity=INF);
+    
 // implement double __ logging
-public:
-    static int& log_level_ref() { return log_level; }
-private:
-    static int log_level;    
+    DECLARE_C_NAME("baseProxy");
+    DECLARE_LOGGING(c_name);
 };
 
 typedef std::vector<baseHostCX*>::iterator cx_iterator;
