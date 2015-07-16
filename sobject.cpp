@@ -36,7 +36,7 @@ sobject::~sobject() {
 }
 
 
-std::string sobject_db_to_string(const char* criteria,const char* delimiter) {
+std::string sobject_db_to_string(const char* criteria,const char* delimiter,int verbosity) {
     
     std::string ret;
     sobject_db.lock();
@@ -46,7 +46,7 @@ std::string sobject_db_to_string(const char* criteria,const char* delimiter) {
         
         if( criteria == nullptr || ptr->class_name() == criteria ) {
             sobject_info*  si = it.second;
-            ret += string_format("Id: 0x%lx | ",ptr) + ptr->to_string();
+            ret += string_format("Id: 0x%lx | ",ptr) + ptr->to_string(verbosity);
 
 #ifdef SOCLE_MEM_PROFILE
             ret += "\n";

@@ -50,7 +50,7 @@ class sobject;
 
 extern ptr_cache<sobject*,sobject_info> sobject_db;
 
-std::string sobject_db_to_string(const char* criteria = nullptr,const char* delimiter = nullptr);
+std::string sobject_db_to_string(const char* criteria = nullptr,const char* delimiter = nullptr,int verbosity=INF);
 int sobject_db_ask_destroy(void* ptr);
 
 class sobject {
