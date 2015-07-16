@@ -46,7 +46,7 @@ std::string sobject_db_to_string(const char* criteria,const char* delimiter) {
         
         if( criteria == nullptr || ptr->class_name() == criteria ) {
             sobject_info*  si = it.second;
-            ret += ptr->to_string();
+            ret += string_format("Id: 0x%lx | ",ptr) + ptr->to_string();
 
 #ifdef SOCLE_MEM_PROFILE
             ret += "\n";
@@ -62,6 +62,26 @@ std::string sobject_db_to_string(const char* criteria,const char* delimiter) {
     return ret;
 }
 
-DEFINE_LOGGING_INFO(sobject);
+
+// asks object to terminate
+int sobject_db_ask_destroy(void* ptr) {
+    
+    int ret = -1;
+    
+    sobject_db.lock();
+    
+    auto it = sobject_db.cache().find((sobject*)ptr);
+    if(it != sobject_db.cache().end()) {
+        ret = 0;
+        if(it->first->ask_destroy()) {
+            ret = 1;
+        }
+    }
+    sobject_db.unlock();
+    
+    return ret;
+}
+
+//DEFINE_LOGGING(sobject);
 
 }

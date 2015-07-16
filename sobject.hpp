@@ -51,6 +51,7 @@ class sobject;
 extern ptr_cache<sobject*,sobject_info> sobject_db;
 
 std::string sobject_db_to_string(const char* criteria = nullptr,const char* delimiter = nullptr);
+int sobject_db_ask_destroy(void* ptr);
 
 class sobject {
 
@@ -62,13 +63,10 @@ public:
     virtual bool ask_destroy() = 0;
 
     // return string representation of the object on single line
-    virtual std::string to_string() = 0;
-
-    // return string representation of the object on multiple lines, good for troubleshooting
-    virtual std::string to_string_full() = 0;
+    virtual std::string to_string(int verbosity=INF) = 0;
 
 DECLARE_C_NAME("sobject");
-DECLARE_LOGGING_INFO(name);
+// DECLARE_LOGGING(name);
 };
 
 
