@@ -154,7 +154,7 @@ std::string sobject_db_stats_string(const char* criteria) {
         avg_age = sum_age/object_counter;
     
     ret += string_format("Performance: %ld new objects per second, %ld deleted objects per second.\n",
-                            socle::sobject::get_meter_created_second(), socle::sobject::get_meter_created_second());
+                            socle::sobject::get_meter_created_second(), socle::sobject::get_meter_deleted_second());
     ret += string_format("Database contains: %ld entries, oldest %ds, youngest age %ds, average age is %.1fs.",
                          object_counter, oldest_age, youngest_age, avg_age);
     return ret;
