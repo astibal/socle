@@ -31,6 +31,8 @@ namespace socle {
 
 std::string sobject_db_to_string(const char* criteria = nullptr,const char* delimiter = nullptr,int verbosity=INF);
 std::string sobject_db_stats_string(const char* criteria);
+
+unsigned long time_update_counter_sec(time_t* last_time, unsigned long* counter, int seconds, int increment=1);
 unsigned long time_get_counter_sec(time_t* last_time, unsigned long* counter, int seconds);
 
 int sobject_db_ask_destroy(void* ptr);

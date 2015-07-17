@@ -47,7 +47,7 @@ std::string sobject_info::to_string(int verbosity) {
 // increment counter @counter according to time @last_time value. 
 // If @last_time difference from now is higher than @seconds from now,
 // threshold is reached and new @last_time is set to now.
-unsigned long time_update_counter_sec(time_t* last_time, unsigned long* counter, int seconds) {
+unsigned long time_update_counter_sec(time_t* last_time, unsigned long* counter, int seconds, int increment) {
     time_t now = time(nullptr);
     
     if( now - *last_time > seconds  ) {
@@ -55,11 +55,11 @@ unsigned long time_update_counter_sec(time_t* last_time, unsigned long* counter,
         *last_time = now;
         
         unsigned long ret = *counter;
-        *counter = 1;
+        *counter = increment;
         
         return ret;
     } else {
-        (*counter)++;
+        (*counter)+=increment;
     }
     
     return *counter;
