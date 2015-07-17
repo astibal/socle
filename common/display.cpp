@@ -185,3 +185,28 @@ std::string bt() {
     
     return s;
 }
+
+#define POW_1   1024.0
+#define POW_2   1048576.0
+#define POW_3   1073741824.0
+#define POW_4   1099511627776.0
+
+std::string number_suffixed(unsigned long xn) {
+    unsigned long n = labs(xn);
+
+    if(n < POW_1 ) {
+        return string_format("%.1ld",xn);
+    } else 
+    if(n >= POW_1 && n < POW_2 ) {
+        return string_format("%.fk",xn/POW_1);
+    } else 
+    if(n >= POW_2 && n < POW_3 ) {
+        return string_format("%.2fM",xn/POW_2);
+    } else 
+    if (n >= POW_3 && n < POW_3 ) {
+        return string_format("%.2fG",xn/POW_3);
+    }
+    else {
+        return string_format("%.3fT",xn/POW_4);
+    }
+}
