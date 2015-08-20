@@ -175,8 +175,10 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
             if (clashed) {
                 n_it.reuse = true;
                 
+                // fix crash when cx is already deleted, but not removed for some reason
+                // clashed_cx->error() is no-op anyway, it just returns error state!
                 if(clashed_cx != nullptr) {
-                    clashed_cx->error();
+                    //clashed_cx->error();
                 }
             }
             
