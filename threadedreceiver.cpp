@@ -179,6 +179,8 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
                 // clashed_cx->error() is no-op anyway, it just returns error state!
                 if(clashed_cx != nullptr) {
                     //clashed_cx->error();
+                } else {
+                    n_it.embryonic = true;
                 }
             }
             
