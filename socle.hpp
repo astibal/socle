@@ -16,7 +16,7 @@
     License along with this library.
 */
 
-#define SOCLE_VERSION "0.3.9"
+#define SOCLE_VERSION "0.3.10"
 #define SOCLE_DEVEL    1
 
 #include <common/socle_common.hpp>
@@ -36,6 +36,7 @@
 #include <basecom.hpp>
 #include <tcpcom.hpp>
 #include <sslcom.hpp>
+#include <uxcom.hpp>
 
 #include <sslmitmcom.hpp>
 #include <sslcertstore.hpp>
