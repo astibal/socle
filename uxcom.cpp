@@ -50,7 +50,8 @@ int UxCom::connect(const char* host, const char* noop_port, bool blocking) {
 
             close(sfd);
             sfd = 0;
-        } 
+        }
+        
     } else {
         if (::connect(sfd, (struct sockaddr *) &server, sizeof(struct sockaddr_un)) != 0) {
             close(sfd);
@@ -60,6 +61,8 @@ int UxCom::connect(const char* host, const char* noop_port, bool blocking) {
 
     if(sfd == 0) {
         ERR_("UxCom::connect[%s:%s]: socket[%d]: connect failed",host,port,sfd);
+    } else {
+        DUM_("UxCom::connect[%s:%s]: socket[%d]: connect ok",host,port,sfd);
     }
 
     tcpcom_fd = sfd;
