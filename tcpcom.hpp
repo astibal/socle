@@ -57,7 +57,7 @@ public:
         }
         return r;
     };
-    virtual void shutdown(int __fd) { int r = ::shutdown(__fd,SHUT_RDWR); if(r > 0) DIA_("TCPCom::close[%d]: %s",__fd,string_error().c_str()); };
+    virtual void shutdown(int __fd) { int r = ::shutdown(__fd,SHUT_RDWR); if(r > 0) DIA_("%s::shutdown[%d]: %s",name(),__fd,string_error().c_str()); };
     
     virtual void cleanup() {};  
     
@@ -66,6 +66,11 @@ public:
 
 protected:
     int tcpcom_fd = 0;
+    unsigned int connect_sock_family = AF_UNSPEC;
+    unsigned int connect_sock_type = SOCK_STREAM;
+    unsigned int bind_sock_family = AF_INET;
+    unsigned int bind_sock_type = SOCK_STREAM;
+    unsigned int bind_sock_protocol = IPPROTO_TCP;
 };
 
 #endif

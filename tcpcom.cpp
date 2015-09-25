@@ -32,8 +32,8 @@ int TCPCom::connect(const char* host, const char* port, bool blocking) {
     /* Obtain address(es) matching host/port */
 
     memset(&hints, 0, sizeof(struct addrinfo));
-    hints.ai_family = AF_UNSPEC;    /* Allow IPv4 or IPv6 */
-    hints.ai_socktype = SOCK_STREAM; /* Datagram socket */
+    hints.ai_family = connect_sock_family;    /* Allow IPv4 or IPv6 */
+    hints.ai_socktype = connect_sock_type; /* Datagram socket */
     hints.ai_flags = 0;
     hints.ai_protocol = 0;          /* Any protocol */
 
@@ -122,11 +122,11 @@ int TCPCom::bind(unsigned short port) {
     int s;
     sockaddr_in sockName;
 
-    sockName.sin_family = AF_INET;
+    sockName.sin_family = bind_sock_family;
     sockName.sin_port = htons(port);
     sockName.sin_addr.s_addr = INADDR_ANY;
 
-    if ((s = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP)) == -1) return -129;
+    if ((s = socket(bind_sock_family, bind_sock_type, bind_sock_protocol)) == -1) return -129;
     
     int optval = 1;
     setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof optval);
