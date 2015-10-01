@@ -765,7 +765,7 @@ void SSLCom::init_client() {
     sslcom_ctx = certstore()->def_cl_ctx;
     sslcom_ssl = SSL_new(sslcom_ctx);
     if(opt_pfs) {
-        SSL_set_cipher_list(sslcom_ssl,"kEECDH kEECDH kEDH HIGH !aNULL !eNULL !LOW !3DES !MD5 !EXP !DSS !PSK !SRP !kECDH !CAMELLIA !IDEA !SEED @STRENGTH -AES128 -RC4");
+        SSL_set_cipher_list(sslcom_ssl,"kEECDH kEECDH kEDH HIGH !aNULL !eNULL !LOW !3DES !MD5 !EXP !DSS !PSK !SRP !kECDH !CAMELLIA !IDEA !SEED @STRENGTH -AES128");
     }
     
     if(!sslcom_ssl) {
