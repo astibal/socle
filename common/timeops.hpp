@@ -21,5 +21,6 @@
 	#define _TIMEOPS_HPP
 
 int timeval_msdelta (struct timeval  *x,struct timeval  *y);
+std::string uptime_string(unsigned int uptime);
      
 #endif
