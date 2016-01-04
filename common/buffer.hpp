@@ -594,5 +594,6 @@ inline std::string buffer::to_string() {
     return std::string((const char*)data(),size());
 }
 
+std::string regex_replace_fill(std::string str_sample, std::string str_match, std::string str_replacement, const char* str_fill_pattern=" ");
 
 #endif
