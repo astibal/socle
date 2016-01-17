@@ -232,6 +232,13 @@ void SSLCom::ssl_info_callback(const SSL* s, int where, int ret) {
     {
         if (ret == 0) {
             DEB__("[%s]: SSLCom::ssl_info_callback: %s:failed in %s", name, str,SSL_state_string_long(s));
+            
+            // close the session
+            if(com != nullptr)
+                if(com->owner_cx() != nullptr) {
+                    com->owner_cx()->error(true);
+                    DIA__("[%s]: failure callback, owning CX error flag set", name);
+                }            
         }
         else if (ret < 0)  {
             DEB__("[%s]: SSLCom::ssl_info_callback %s:error in %s", name, str,SSL_state_string_long(s));
@@ -1442,7 +1449,9 @@ int SSLCom::read ( int __fd, void* __buf, size_t __n, int __flags )  {
                     DEB___("SSLCom::read[%d]: want read: err=%d,read_now=%4d,total=%4d",__fd,err,r,total_r);
                 }
                 sslcom_read_blocked=1;
-                forced_read(true);
+                
+                // this is nonsense - it means that we should wait socket has data. So don't set force_read.
+                //forced_read(true);
 
                 if(total_r > 0) return total_r;
                 return r;
