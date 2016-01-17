@@ -155,17 +155,18 @@ bool TCPCom::is_connected(int s) {
         return true;
     }
     
-    unsigned int error_code;
+    int error_code = 0;
     socklen_t l = sizeof(error_code);
     char str_err[256];
     
     // tcp socket will stay in EINPROGRESS unless there is ANY stat call! Don't ask why. 
     // fstating socket seemed to me cheapest/fastest.
     // fstating with stat struct buffer wasn't working too!
+    // 2016-01-16: seems not needed anymore. But keep to easy revert in case.
 
 #pragma GCC diagnostic ignored "-Wnonnull"
 #pragma GCC diagnostic push        
-    fstat(s,nullptr);
+    //fstat(s,nullptr);
 #pragma GCC diagnostic pop
     
     int r_getsockopt = getsockopt(s, SOL_SOCKET, SO_ERROR, &error_code, &l);
@@ -180,9 +181,17 @@ bool TCPCom::is_connected(int s) {
                 DUM_("TCPCom::is_connected[%d]: getsockopt errno %d = %s",s,error_code,strerror_r(error_code,str_err,256));
         }
         
-        return (error_code != EINPROGRESS);
-//      return true;
-//      return (error_code == 0);
+        if(error_code == EINPROGRESS) return false;
+
+        if(LEV_(DEB)) {
+            if(poller.in_write_set(s)) {
+                DEB_("TCP::is_connected[%d]: writable",s);
+            } else {
+                DEB_("TCP::is_connected[%d]: not writable",s);
+            }
+        }
+
+        return true;
 
     } else {
         DIA_("TCPCom::is_connected[%d]: getsockopt failed, returned %d = %s",s,r_getsockopt,strerror_r(r_getsockopt,str_err,256));
