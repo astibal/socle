@@ -21,11 +21,13 @@
 #include <logger.hpp>
 
 #define EPOLLER_MAX_EVENTS 50
+#define HANDLER_FENCE 0xcaba1a
+
 
 class baseCom;
 class epoll_handler {
 public:
-    int fence__ = 42;
+    int fence__ = HANDLER_FENCE;
     virtual void handle_event(baseCom*) = 0;
 };
 
