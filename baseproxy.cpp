@@ -517,8 +517,19 @@ bool baseProxy::handle_cx_read_once(unsigned char side, baseCom* xcom, baseHostC
     
     // paused cx is subject to timeout only, no r/w is done on it ( it would return -1/0 anyway, so spare some cycles)
     if(! cx->paused_read()) {
-        if(xcom->in_readset(cx->socket()) || cx->com()->forced_read_reset()) {
+        bool forced_read = cx->com()->forced_read_reset();
+        bool in_read_set = xcom->in_readset(cx->socket());
 
+        if(in_read_set || forced_read) {
+
+            if(forced_read) {
+                if(! in_read_set) {
+                    DIA___("baseProxy::handle_cx_once[%c]: forced read, NOT in read set",side);
+                } else {
+                    DEB___("baseProxy::handle_cx_once[%c]: forced read, but in read set too",side);
+                }
+            }
+            
             if(! handle_cx_read(side,cx)) {
                 ret = false;
                 goto failure;
@@ -1020,11 +1031,6 @@ void baseProxy::on_right_new(baseHostCX* cx) {
 
 int baseProxy::run(void) {
     
-    timespec sl;
-    sl.tv_sec = 0;
-    sl.tv_nsec = get_sleeptime();
-    
-
     while(! dead() ) {
         
         if(pollroot()) {
@@ -1040,13 +1046,40 @@ int baseProxy::run(void) {
                 com()->poll();
             }
             
+            int counter_proxy_handler = 0;
+            int counter_back_handler = 0;
+            std::vector<int> back_in_set;
+            
             for (auto s: com()->poller.poller->in_set) {
                 epoll_handler* ptr = com()->poller.get_handler(s);
                 
                 if(ptr != nullptr) {
                     auto seg = ptr->fence__;
-                    DIA_("baseProxy::run: socket %d has registered handler 0x%x (fence %d)",s,ptr,seg);
+                    EXT_("baseProxy::run: socket %d has registered handler 0x%x (fence %x)",s,ptr,seg);
+                    
+                    if(seg != HANDLER_FENCE) {
+                        ERR_("baseProxy::run: socket %d magic fence doesn't match!!",s);
+                    } else {
+                        baseProxy* proxy = dynamic_cast<baseProxy*>(ptr);
+                        if(proxy != nullptr) {
+                            EXT_("baseProxy::run: socket %d has baseProxy handler!!",s);
+                            
+                            // call poller-carried proxy handler!
+                             proxy->handle_sockets_once(com());
+                             counter_proxy_handler++;
+                            
+                        } else {
+                            DIA_("baseProxy::run: socket %d has NOT baseProxy handler!!",s);
+                            back_in_set.push_back(s);
+                        }
+                    }
+                    
                 } else {
+                    DEB_("baseProxy::run: socket %d NO handler!!",s);
+                    
+                    // all sockets without ANY handler should be re-inserted
+                    back_in_set.push_back(s);
+                    
                     if (com()->poller.poller != nullptr) {
                         if(s != com()->poller.poller->hint_socket()) {
                             // hint filedescriptor don't have handler
@@ -1057,14 +1090,31 @@ int baseProxy::run(void) {
                     }
                 }
             }
+            
+            // clear in_set, so alrady handled sockets are excluded 
+            com()->poller.poller->in_set.clear();
+            
+            // add back sockets which don't have handler - generally it should be just few sockets!
+            for(int a: back_in_set) {
+                counter_back_handler++;
+                
+                com()->poller.poller->in_set.insert(a);
+            }
+            
+            // run REST of all sockets. in_read_set and out_read_set is called, so if it's cleared handled (and not re-inserted back)
+            // proxies will not be processed, unless they are forced.
+            // 
+            // now you say why we can't call this at the beginning and avoid all that smart stuff
+            // above. 
+            // Reason: we want to have a code prepared for fully handler-based approach,
+            // which means traversing all proxies will not be needed, and only proxies which asked beforehand 
+            // will be handled if they won't receive any data.
+            handle_sockets_once(com());
+            
+            if(counter_proxy_handler > 0) {
+                EXT___("baseProxy::run: proxy handlers: %d, back-inserted: %d",counter_proxy_handler,counter_back_handler);
+            }
         }
-        
-        int r = handle_sockets_once(com());
-        EXT___("baseProxy::handle_sockets_once: %d",r);
-
-        if (r == 0) {
-            EXT___("Proxy going to sleep for %dus",sl.tv_nsec );
-         }
     }
 
     return 0;
