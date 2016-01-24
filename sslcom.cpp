@@ -1015,6 +1015,21 @@ int SSLCom::waiting() {
 
         // we have client hello
         if(sslcom_peer_hello_received()) {
+            
+            DEBS___("SSLCom:waiting: check SNI filter");
+            if(sslcom_peer_hello_sni() == "www.openssl.org") {
+                INFS___("SSLCom:waiting: matched SNI filter!");
+
+                SSLCom* p = dynamic_cast<SSLCom*>(peer());
+                if(p != nullptr) {
+                    opt_bypass = true;
+                    p->opt_bypass = true;
+                    
+                    return 0;
+                } else {
+                    DIAS___("SSLCom:waiting: SNI filter matched, but peer is not SSLCom");
+                }
+            }
 
             DEBS___("SSLCom::waiting: before SSL_connect");
 

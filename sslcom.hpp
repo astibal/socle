@@ -89,6 +89,8 @@ struct CRYPTO_dynlock_value
 };
 
 
+
+
 class SSLCom : public TCPCom {
 
 public:
@@ -153,7 +155,9 @@ protected:
     
     bool sslcom_peer_hello_received_ = false;
     buffer sslcom_peer_hello_buffer;
+
     std::string sslcom_peer_hello_sni_;
+    std::string& sslcom_peer_hello_sni() { return sslcom_peer_hello_sni_; }
     
     //try to set peer's key/certificate from cache (succeeds if peer haven't yet started ssl handhake and if there is cert in the cache).
     //For server side only.
