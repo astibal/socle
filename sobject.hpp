@@ -89,6 +89,92 @@ DECLARE_C_NAME("sobject");
 // DECLARE_LOGGING(name);
 };
 
+
+template <class T> class sref;
+
+template <class T>
+class spointer {
+    public:
+        spointer(T* ptr): pointer_(ptr) {};
+        virtual ~spointer() { delete pointer_; }
+
+        unsigned int usage() { return count_; }
+
+        bool valid() { return (pointer_ != nullptr); }
+        void invalidate() { delete pointer_; pointer_ = nullptr; }
+        
+        T* operator->() { return pointer_;  }
+        T& operator*() { return *pointer_; }
+        T* ptr() { return pointer_; }
+
+        spointer<T>& operator=(const spointer<T>&) = delete;
+        spointer(const spointer&) = delete;
+        spointer() = delete;        
+    private:
+        T* pointer_ = nullptr;
+        unsigned int count_ = 0;
+        
+        inline void use() { count_++; };
+        inline void unuse() { if(count_>0) count_--; };
+        
+    friend class sref<T>;
+};
+
+template <class T>
+class sref {
+    public:
+        sref() = delete;
+        sref(spointer<T>* r) : reference_(r) { r->use(); };
+        sref(spointer<T>& r) : reference_(&r) { r.use(); };
+
+        sref<T>& operator=(const sref& other) {
+            if(this != &other) {
+                unref();
+                reference_ = other.reference_;
+                reference_->use();
+            }
+            return *this;
+        };
+
+        sref<T>& operator=(const spointer<T>* sptr) {
+            unref();
+            newref(sptr);
+
+            return *this;
+        };
+        
+        sref(const sref<T>& other) {
+            reference_ = other.reference_;
+            
+            if(reference_ != nullptr) {
+                reference_->use();
+            }
+        };
+
+        virtual ~sref() { unref(); };
+        
+        inline void unref() {
+            if(reference_ != nullptr) {
+                reference_->unuse();
+                reference_ = nullptr;
+            }
+        }
+        
+        spointer<T>* ref() { return reference_; }
+        
+        void newref(spointer<T>* n) { reference_ = n; if(n != nullptr) { n->use(); } };
+        void ref(spointer<T>* n) { unref(); newref(n); };
+        
+        T* refval() { ref()->pointer; }
+        
+        
+    private:
+        spointer<T>* reference_ = nullptr;
+};
+
+typedef spointer<std::vector<std::string>> spointer_vector_string;
+typedef sref<std::vector<std::string>> sref_vector_string;
+
 extern ptr_cache<sobject*,sobject_info> sobject_db;
 
 };
