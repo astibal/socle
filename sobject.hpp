@@ -123,7 +123,7 @@ class spointer {
 template <class T>
 class sref {
     public:
-        sref() = delete;
+        sref() : reference_(nullptr) {};
         sref(spointer<T>* r) : reference_(r) { r->use(); };
         sref(spointer<T>& r) : reference_(&r) { r.use(); };
 
@@ -131,7 +131,7 @@ class sref {
             if(this != &other) {
                 unref();
                 reference_ = other.reference_;
-                reference_->use();
+                if(reference_ != nullptr) reference_->use();
             }
             return *this;
         };
@@ -163,9 +163,11 @@ class sref {
         spointer<T>* ref() { return reference_; }
         
         void newref(spointer<T>* n) { reference_ = n; if(n != nullptr) { n->use(); } };
+        void newref(spointer<T>& n) { reference_ = &n; if(reference_ != nullptr) { reference_->use(); } };
         void ref(spointer<T>* n) { unref(); newref(n); };
+        void ref(spointer<T>& n) { unref(); newref(&n); };
         
-        T* refval() { ref()->pointer; }
+        T* refval() { if(ref() != nullptr)  return ref()->pointer_; return nullptr; }
         
         
     private:
