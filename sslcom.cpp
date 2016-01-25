@@ -1017,17 +1017,30 @@ int SSLCom::waiting() {
         if(sslcom_peer_hello_received()) {
             
             DEBS___("SSLCom:waiting: check SNI filter");
-            if(sslcom_peer_hello_sni() == "www.openssl.org") {
-                INFS___("SSLCom:waiting: matched SNI filter!");
+            
+            // Do we have sni_filter_to_bypass set? If so, check if we do have also SNI
+            // and check all entries in the filter.
+            
+            if(sni_filter_to_bypass.refval() != nullptr) {
+                if(sslcom_peer_hello_sni().size() > 0) {
+                
+                    for(std::string& filter_element: *sni_filter_to_bypass.refval()) {
 
-                SSLCom* p = dynamic_cast<SSLCom*>(peer());
-                if(p != nullptr) {
-                    opt_bypass = true;
-                    p->opt_bypass = true;
-                    
-                    return 0;
-                } else {
-                    DIAS___("SSLCom:waiting: SNI filter matched, but peer is not SSLCom");
+                        if(sslcom_peer_hello_sni() == filter_element) {
+                            DIAS___("SSLCom:waiting: matched SNI filter: %s!",filter_element.c_str());
+                            sni_filter_to_bypass_matched = true;
+
+                            SSLCom* p = dynamic_cast<SSLCom*>(peer());
+                            if(p != nullptr) {
+                                opt_bypass = true;
+                                p->opt_bypass = true;
+                                
+                                return 0;
+                            } else {
+                                DIAS___("SSLCom:waiting: SNI filter matched, but peer is not SSLCom");
+                            }
+                        }
+                    }
                 }
             }
 

@@ -31,6 +31,7 @@
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 
+#include <sobject.hpp>
 #include <buffer.hpp>
 #include <basecom.hpp>
 #include <tcpcom.hpp>
@@ -158,6 +159,8 @@ protected:
 
     std::string sslcom_peer_hello_sni_;
     std::string& sslcom_peer_hello_sni() { return sslcom_peer_hello_sni_; }
+    socle::sref_vector_string sni_filter_to_bypass;
+    bool sni_filter_to_bypass_matched = false;
     
     //try to set peer's key/certificate from cache (succeeds if peer haven't yet started ssl handhake and if there is cert in the cache).
     //For server side only.
