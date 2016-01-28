@@ -95,21 +95,22 @@ template <class T> class sref;
 template <class T>
 class spointer {
     public:
+        spointer() : pointer_(nullptr) {};        
         spointer(T* ptr): pointer_(ptr) {};
         virtual ~spointer() { delete pointer_; }
 
         unsigned int usage() { return count_; }
 
         bool valid() { return (pointer_ != nullptr); }
-        void invalidate() { delete pointer_; pointer_ = nullptr; }
+        void invalidate() { delete pointer_; pointer_ = nullptr; count_=0; }
         
         T* operator->() { return pointer_;  }
         T& operator*() { return *pointer_; }
         T* ptr() { return pointer_; }
+        void ptr(T* p) { invalidate(); pointer_ = p; }
 
         spointer<T>& operator=(const spointer<T>&) = delete;
         spointer(const spointer&) = delete;
-        spointer() = delete;        
     private:
         T* pointer_ = nullptr;
         unsigned int count_ = 0;

@@ -1021,10 +1021,10 @@ int SSLCom::waiting() {
             // Do we have sni_filter_to_bypass set? If so, check if we do have also SNI
             // and check all entries in the filter.
             
-            if(sni_filter_to_bypass.refval() != nullptr) {
+            if(sni_filter_to_bypass_.refval() != nullptr) {
                 if(sslcom_peer_hello_sni().size() > 0) {
                 
-                    for(std::string& filter_element: *sni_filter_to_bypass.refval()) {
+                    for(std::string& filter_element: *sni_filter_to_bypass_.refval()) {
 
                         if(sslcom_peer_hello_sni() == filter_element) {
                             DIAS___("SSLCom:waiting: matched SNI filter: %s!",filter_element.c_str());
