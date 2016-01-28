@@ -1027,7 +1027,7 @@ int SSLCom::waiting() {
                     for(std::string& filter_element: *sni_filter_to_bypass_.refval()) {
 
                         if(sslcom_peer_hello_sni() == filter_element) {
-                            DIAS___("SSLCom:waiting: matched SNI filter: %s!",filter_element.c_str());
+                            DIA___("SSLCom:waiting: matched SNI filter: %s!",filter_element.c_str());
                             sni_filter_to_bypass_matched = true;
 
                             SSLCom* p = dynamic_cast<SSLCom*>(peer());
