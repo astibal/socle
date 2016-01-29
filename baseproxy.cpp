@@ -1051,6 +1051,7 @@ int baseProxy::run(void) {
             std::vector<int> back_in_set;
             
             for (auto s: com()->poller.poller->in_set) {
+                DEB_("baseProxy::run: in_set socket %d ",s);
                 epoll_handler* ptr = com()->poller.get_handler(s);
                 
                 if(ptr != nullptr) {

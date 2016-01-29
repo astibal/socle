@@ -166,7 +166,7 @@ bool TCPCom::is_connected(int s) {
 
 #pragma GCC diagnostic ignored "-Wnonnull"
 #pragma GCC diagnostic push        
-    //fstat(s,nullptr);
+    fstat(s,nullptr);
 #pragma GCC diagnostic pop
     
     int r_getsockopt = getsockopt(s, SOL_SOCKET, SO_ERROR, &error_code, &l);
