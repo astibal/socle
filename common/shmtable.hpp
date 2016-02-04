@@ -99,7 +99,7 @@ public:
 //             printf("same version %d:%d\n",seen_version_,header_version());
         }
 
-        return 0;
+        return -1;
     }
   
   unsigned int write_header(bool increase_version=false, int n_entries=-1) {
