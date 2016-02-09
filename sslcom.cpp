@@ -768,7 +768,7 @@ void SSLCom::init_client() {
     sslcom_ctx = certstore()->def_cl_ctx;
     sslcom_ssl = SSL_new(sslcom_ctx);
     if(opt_pfs) {
-        SSL_set_cipher_list(sslcom_ssl,"kEECDH kEECDH kEDH HIGH !aNULL !eNULL !LOW !3DES !MD5 !EXP !DSS !PSK !SRP !kECDH !CAMELLIA !IDEA !SEED @STRENGTH -AES128");
+        SSL_set_cipher_list(sslcom_ssl,"kEECDH kEECDH kEDH HIGH GCM !kRSA !aNULL !eNULL !LOW !3DES !MD5 !EXP !DSS !PSK !SRP !kECDH !CAMELLIA !IDEA !SEED !SHA1 @STRENGTH");
     }
 
     if(!sslcom_ssl) {
@@ -801,6 +801,8 @@ void SSLCom::init_server() {
             // this actually disables ecdh callback
             SSL_set_tmp_ecdh(sslcom_ssl,sslcom_ecdh);
         }
+        
+        SSL_set_cipher_list(sslcom_ssl,"kEECDH kEECDH kEDH HIGH GCM !kRSA !aNULL !eNULL !LOW !3DES !MD5 !EXP !DSS !PSK !SRP !kECDH !CAMELLIA !IDEA !SEED !SHA1 @STRENGTH");
     }
 
     if (sslcom_pref_cert && sslcom_pref_key) {

@@ -719,7 +719,7 @@ std::string SSLCertStore::print_cert(X509* x) {
             unsigned nid = OBJ_obj2nid(obj);    
             if (nid == NID_undef) {
                 // no lookup found for the provided OID so nid came back as undefined.
-                OBJ_obj2txt(tmp, 512, (const ASN1_OBJECT *) obj, 1);
+                OBJ_obj2txt(tmp, SSLCERTSTORE_BUFSIZE , (const ASN1_OBJECT *) obj, 1);
                 s.append(string_format("Extension[%d]: '%s'\n ", i, tmp));
             } 
             else {

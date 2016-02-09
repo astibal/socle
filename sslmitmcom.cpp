@@ -28,7 +28,7 @@ bool SSLMitmCom::check_cert(const char* peer_name) {
     
     SSLMitmCom* p = dynamic_cast<SSLMitmCom*>(peer());
     
-    if(p) {
+    if(p != nullptr) {
         // FIXME: this is not right, design another type of test
         p->sslcom_server_ = true;
 	
@@ -69,8 +69,6 @@ bool SSLMitmCom::check_cert(const char* peer_name) {
 bool SSLMitmCom::spoof_cert(X509* cert_orig, SpoofOptions& spo) {
     char tmp[512];
     DEB__("SSLMitmCom::spoof_cert[%x]: about to spoof certificate!",this);
-    
-    
     // get info from the peer certificate
     //
     // not used at this time
