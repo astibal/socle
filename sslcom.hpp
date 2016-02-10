@@ -151,7 +151,7 @@ protected:
     bool waiting_peer_hello();
     
     //parses peer hello and stores interesing data (e.g. SNI information). For server side only (currently).
-    bool parse_peer_hello();
+    int parse_peer_hello();
     unsigned short parse_peer_hello_extensions(buffer& b, unsigned int curpos);
     
     bool sslcom_peer_hello_received_ = false;

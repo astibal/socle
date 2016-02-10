@@ -1161,11 +1161,34 @@ bool SSLCom::waiting_peer_hello() {
                     DIA___("SSLCom::waiting_peer_hello: %d bytes in buffer for hello analysis",red);
                     DUM___("SSLCom::waiting_peer_hello: ClientHello data:\n%s",hex_dump(sslcom_peer_hello_buffer.data(),sslcom_peer_hello_buffer.size()).c_str());
 
-                    if (! parse_peer_hello()) {
+                    int parse_hello_result = parse_peer_hello();
+                    if(parse_hello_result == 0) {
                         DIAS___("SSLCom::waiting_peer_hello: analysis failed");
                         DIA___("SSLCom::waiting_peer_hello: failed ClientHello data:\n%s",hex_dump(sslcom_peer_hello_buffer.data(),sslcom_peer_hello_buffer.size()).c_str());
+                        
+                        if(peer() != nullptr) {
+                            SSLCom* s = dynamic_cast<SSLCom*>(peer());
+                            if(s != nullptr) {
+                                opt_bypass = true;
+                                s->opt_bypass = true;
+                                INFS___("connection is not SSL/TLS. Bypassing");
+                                return false; //return false to return from read() or write()
+                            }
+                        }
+                        
+                        error_flag_ = ERROR_UNSPEC; // peer nullprt or its com() is not SSLCom
                         return false;
+                        
+                    } else 
+                    if(parse_hello_result < 0) {
+                        
+                        // not enough of data
+                        return false;
+                    } 
+                    else /* > 0*/ {
+                        // we are okay
                     }
+                    
                     sslcom_peer_hello_received_ = true;
 
                     if(sslcom_peer_hello_sni_.size() > 0) {
@@ -1236,9 +1259,9 @@ bool SSLCom::enforce_peer_cert_from_cache(std::string & subj) {
 }
 
 
-bool SSLCom::parse_peer_hello() {
+int SSLCom::parse_peer_hello() {
 
-    bool ret = false;
+    int ret = -1;
 
     uint8_t content_type = 0;
 
@@ -1263,8 +1286,11 @@ bool SSLCom::parse_peer_hello() {
 
             DIA___("SSLCom::parse_peer_hello: buffer size %d, received message type %d, version %d.%d, length %d",b.size(),message_type,version_maj, version_min, message_length);
             if(b.size() != (unsigned int)message_length + 5) {
-                DIAS___("SSLCom::parse_peer_hello: incomplete message received");
-                return false;
+                DEBS___("SSLCom::parse_peer_hello: strange SSL payload received");
+                if(message_type != 22 || version_maj > 5) {
+                    DIAS___("SSLCom::parse_peer_hello: message is not ClientHello");
+                    return 0;
+                }
             }
 
             if(message_type == 22) {
@@ -1288,7 +1314,7 @@ bool SSLCom::parse_peer_hello() {
                 // we already know it's handshake, it's ok to return true
                 if(handshake_type == 1) {
                     DIA___("SSLCom::parse_peer_hello: handshake (type %u), version %u.%u, length %u",handshake_type,handshake_version_maj,handshake_version_min,handshake_length);
-                    ret = true;
+                    ret = 1;
                 }
 
                 if(session_id_length > 0) {
@@ -1325,7 +1351,7 @@ bool SSLCom::parse_peer_hello() {
             DIA___("SSLCom::parse_peer_hello: only %d bytes in peek:\n%s",b.size(),hex_dump(b.data(),b.size()).c_str());
         }
 
-        DIA___("SSLCom::parse_peer_hello: return status %s",ret ? "true" : "false");
+        DIA___("SSLCom::parse_peer_hello: return status %d",ret);
     }
     catch (std::out_of_range e) {
         DIAS___(string_format("SSLCom::parse_peer_hello: failed to parse hello: %s",e.what()).c_str());
