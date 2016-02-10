@@ -356,10 +356,14 @@ int baseHostCX::read() {
                     
                 } else {
                     NOT_("HostCX::read[%s]: memory tension: read buffer cannot be resized!",c_name());
+                    // we left potentially some bytes in system buffer 
+                    com()->forced_read(true);
                 }
             } 
             else {
                 DIA_("HostCX::read[%s]: buffer already reached it's maximum capacity.",c_name());
+                // we left potentially some bytes in system buffer 
+                com()->forced_read(true);
             }
         }
         
