@@ -1093,6 +1093,8 @@ int SSLCom::waiting() {
             prof_want_write_cnt++;
             // forced_write(true);
             // sslcom_waiting_write = true;
+            
+            master()->poller.modify(sslcom_fd,EPOLLIN|EPOLLET|EPOLLOUT);
             return 0;
         }
         else {
@@ -1348,6 +1350,10 @@ int SSLCom::parse_peer_hello() {
                 }
             }
         } else {
+            SSLCom* p = dynamic_cast<SSLCom*>(peer());
+            if(p != nullptr) 
+                master()->poller.poller->rescan(p->sslcom_fd);
+            
             DIA___("SSLCom::parse_peer_hello: only %d bytes in peek:\n%s",b.size(),hex_dump(b.data(),b.size()).c_str());
         }
 
@@ -1481,7 +1487,7 @@ int SSLCom::read ( int __fd, void* __buf, size_t __n, int __flags )  {
                 would have to prevent this condition */
                 // fwrite ( s2c,1,r,stdout );
 
-                DIA___("SSLCom::read [%d]: %4d bytes read:%d from ssl socket %s, %X",__fd,r,rounds,(r == (signed int)__n) ? "(max)" : "",
+                DEB___("SSLCom::read [%d]: %4d bytes read:%d from ssl socket %s, %X",__fd,r,rounds,(r == (signed int)__n) ? "(max)" : "",
                     debug_log_data_crc ? socle_crc32(0,__buf,r) : 0
                     );
 
@@ -1539,6 +1545,7 @@ int SSLCom::read ( int __fd, void* __buf, size_t __n, int __flags )  {
 
                 //forced_write(true);  // we can opportinistically enforce write operation regardless of select result
                 forced_read_on_write(true);
+                master()->poller.modify(__fd,EPOLLIN|EPOLLET|EPOLLOUT);
 
                 if(total_r > 0) return total_r;
                 return r;
@@ -1649,7 +1656,7 @@ again:
 
             /* We wrote something*/
         case SSL_ERROR_NONE:
-            DIA___("SSLCom::write[%d]: %4d bytes written to the ssl socket %s, %X",__fd,r, r != (signed int)__n ? "(incomplete)" : "",
+            DEB___("SSLCom::write[%d]: %4d bytes written to the ssl socket %s, %X",__fd,r, r != (signed int)__n ? "(incomplete)" : "",
                 debug_log_data_crc ? socle_crc32(0,__buf,r) : 0
                 );
             is_problem = false;
@@ -1661,6 +1668,7 @@ again:
             /* We would have blocked */
         case SSL_ERROR_WANT_WRITE:
             DIA___("SSLCom::write[%d]: want write: %d (written %4d)",__fd,err,r);
+            master()->poller.modify(__fd,EPOLLIN|EPOLLET|EPOLLOUT);
 
             if (r > 0) {
                 normalized__n = normalized__n - r;
@@ -1669,7 +1677,8 @@ again:
                 DUM___("SSLCom::write[%d]: want write: repeating last operation",__fd);
             }
 
-            goto again;
+            // dont loop, rather wait for socket is writable
+            //goto again;
             break;
 
             /* We get a WANT_READ if we're
@@ -1696,6 +1705,7 @@ again:
         return 0;
     }
 
+    DIA___("SSLCom::write[%d]: %4d bytes written",__fd,r);
     return r;
 };
 
