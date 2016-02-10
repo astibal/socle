@@ -1102,6 +1102,18 @@ int baseProxy::run(void) {
                 com()->poller.poller->in_set.insert(a);
             }
             
+            // add back sockets to rescan
+            if(com()->poller.poller->should_rescan_now()) {
+                for(int a: com()->poller.poller->rescan_set) {
+                    counter_back_handler++;
+                    
+                    INF_("baseCom::run: adding back to poller to rescan socket %d",a);
+                    com()->poller.poller->in_set.insert(a);
+                    com()->poller.poller->add(a);
+                }
+                com()->poller.poller->rescan_set.clear();
+            }
+            
             // run REST of all sockets. in_read_set and out_read_set is called, so if it's cleared handled (and not re-inserted back)
             // proxies will not be processed, unless they are forced.
             // 
