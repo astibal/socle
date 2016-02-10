@@ -8,6 +8,7 @@ int epoll::init() {
     if (fd == -1) {
         ERR_("epoll::init:%x: epoll_create failed! errno %d",this,errno);
     }
+    ftime(&rescan_timer);
     
     return fd;
 }
@@ -100,6 +101,25 @@ bool epoll::modify(int socket, int mask) {
     return true;
 }
 
+bool epoll::del(int socket) {
+    struct epoll_event ev;
+    memset(&ev,0,sizeof ev);
+    
+    ev.events = 0;
+    ev.data.fd = socket;
+    
+    DEB_("epoll:del:%x: epoll_ctl(%d): called to delete socket %d ",this, fd, socket);
+    
+    if (::epoll_ctl(fd, EPOLL_CTL_DEL, socket, &ev) == -1) {
+        ERR_("epoll:del:%x: epoll_ctl(%d): cannot delete socket %d: %s",this, fd, socket, string_error().c_str());
+        return false;
+    } else {
+        DIA_("epoll:del:%x: epoll_ctl(%d): socket deleted %d",this, fd, socket);
+    }
+    
+    return true;
+}
+
 
 bool epoll::in_read_set(int check) {
     auto f = in_set.find(check);
@@ -138,6 +158,45 @@ bool epoll::hint_socket(int socket) {
 }
 
 
+bool epoll::rescan(int socket) {
+    if(socket > 0) {
+
+        del(socket);
+        
+        // re-init timer, otherwise let it be
+        if(rescan_set.empty()) {
+            ftime(&rescan_timer);
+        }
+        
+        auto it = rescan_set.find(socket);
+        if(it == rescan_set.end()) {
+            rescan_set.insert(socket);
+        }
+        
+        return true;
+    }
+    
+    return false;
+}
+
+bool epoll::should_rescan_now() {
+
+    timeb now;
+    ftime(&now);
+    
+    int ms_diff = (int) (1000.0 * (now.time - rescan_timer.time) + (now.millitm - rescan_timer.millitm));
+    if(ms_diff > 2) {
+        ftime(&rescan_timer);
+        EXT_("epoll::should_rescan_now: rescanning, diff = %d",ms_diff);
+        return true;
+    }
+    
+    return false;
+}
+
+
+
+
 void epoller::init_if_null()
 {
     if (poller == nullptr) { 
@@ -171,6 +230,41 @@ bool epoller::modify(int socket, int mask)
     
     return false;
 };
+
+bool epoller::del(int socket)
+{
+    init_if_null();
+    
+    if(poller != nullptr) {
+        return poller->del(socket);
+    }
+    
+    return false;
+};
+
+bool epoller::rescan(int socket)
+{
+    init_if_null();
+    
+    if(poller != nullptr) {
+        return poller->rescan(socket);
+    }
+    
+    return false;
+};
+
+
+bool epoller::should_rescan_now()
+{
+    init_if_null();
+    
+    if(poller != nullptr) {
+        return poller->should_rescan_now();
+    }
+    
+    return false;
+}
+
 
 bool epoller::hint_socket(int socket)
 {

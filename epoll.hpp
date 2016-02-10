@@ -12,6 +12,7 @@
 #include <sys/socket.h>
 #include <sys/epoll.h>
 #include <sys/stat.h>
+#include <sys/timeb.h>
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <fcntl.h>
@@ -38,14 +39,24 @@ struct epoll {
     bool auto_epollout_remove = true;
     std::set<int> in_set;
     std::set<int> out_set;
+
+    // this set is used for sockets where ARE already some data, but we wait for more.
+    // because of this, socket will be REMOVED from in_set (so avoiding CPU spikes when there are still not enough of data)
+    // but those sockets will be added latest after time set in @rescan_timeout microseconds.
+    std::set<int> rescan_set;
+    struct timeb rescan_timer;
     
     bool in_read_set(int check);
     bool in_write_set(int check);
 
     int init();
     virtual int wait(int timeout = -1);
-    virtual bool add(int socket, int mask=(EPOLLIN));
+    virtual bool add(int socket, int mask=(EPOLLIN|EPOLLET));
     virtual bool modify(int socket, int mask);
+    virtual bool del(int socket);
+    virtual bool rescan(int socket);
+    virtual bool should_rescan_now(); // return true if we should add them back to in_set (scan their readability again). If yes, reset timer.
+    
     inline void clear() { memset(events,0,EPOLLER_MAX_EVENTS*sizeof(epoll_event)); in_set.clear(); out_set.clear(); }
     bool hint_socket(int socket); // this is the socket which will be additinally monitored for EPOLLIN; each time it's readable, single byte is read from it.
     inline int hint_socket(void) const { return hint_fd; }
@@ -63,8 +74,12 @@ struct epoller {
     
     bool in_read_set(int check);
     bool in_write_set(int check);
-    virtual bool add(int socket, int mask=(EPOLLIN));
+    virtual bool add(int socket, int mask=(EPOLLIN|EPOLLET));
     virtual bool modify(int socket, int mask);
+    virtual bool del(int socket);
+    virtual bool rescan(int socket);
+    virtual bool should_rescan_now(); // return true if we should add them back to in_set (scan their readability again). If yes, reset timer.
+    
     virtual int wait(int timeout = -1);
     virtual bool hint_socket(int socket); // this is the socket which will be additinally monitored for EPOLLIN; each time it's readable, single byte is read from it.
 
