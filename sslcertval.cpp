@@ -251,15 +251,6 @@ int ocsp_check_cert(X509 *x509, X509 *issuer)
     return is_revoked;
 }
 
-std::string common_came(X509 *x509)
-{
-    X509_NAME *subject = X509_get_subject_name(x509);
-    int subject_position = X509_NAME_get_index_by_NID(subject, NID_commonName, 0);
-    X509_NAME_ENTRY *entry = subject_position==-1 ? NULL : X509_NAME_get_entry(subject, subject_position);
-    ASN1_STRING *d = X509_NAME_ENTRY_get_data(entry);
-    return std::string( (char*)ASN1_STRING_data(d), ASN1_STRING_length(d) );
-}
-
 
 int ocsp_check_bytes(const char cert_bytes[], const char issuer_bytes[])
 {

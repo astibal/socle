@@ -435,7 +435,7 @@ int SSLCom::ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx) {
         case X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT:
         case X509_V_ERR_SELF_SIGNED_CERT_IN_CHAIN:
         case X509_V_ERR_CERT_UNTRUSTED:
-            //INF__("[%s]: SSLCom::ssl_client_vrfy_callback: issuer: %s", name, SSLCertStore::print_issuer(err_cert).c_str());
+            //DIA__("[%s]: SSLCom::ssl_client_vrfy_callback: issuer: %s", name, SSLCertStore::print_issuer(err_cert).c_str());
             if(com != nullptr)
                 if(com->opt_allow_unknown_issuer || com->opt_allow_self_signed_chain) {
                     ret = 1;
@@ -477,9 +477,21 @@ int SSLCom::ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx) {
         DIA__("[%s]: SSLCom::ssl_client_vrfy_callback: explicit policy", name);
     }
 
-    DIA__("[%s]: SSLCom::ssl_client_vrfy_callback[%d]: returning %s (pre-verify %d)",name,depth,(ret > 0 ? "ok" : "failed" ),ok);
+    std::string cn = "unknown";
+    if(cert != nullptr) {   
+        cn = SSLCertStore::print_cn(cert);
+    }
+    DIA__("[%s]: SSLCom::ssl_client_vrfy_callback[%d:%s]: returning %s (pre-verify %d)",name,depth,cn.c_str(),(ret > 0 ? "ok" : "failed" ),ok);
     if(ret <= 0) {
         NOT__("[%s]: target server ssl certificate check failed:%d: %s",name, err,X509_verify_cert_error_string(err));
+    }
+    
+    
+    if(depth == 0 && com != nullptr) {
+        if(com->opt_ocsp_mode > 0 &&  com->sslcom_peer_cert && com->sslcom_peer_issuer) {
+            int is_revoked = SSLCom::ocsp_explicit_check(com);
+            DIA__("[%s]: SSLCom::ssl_client_vrfy_callback[%d:%s]: ocsp is_revoked = %d)",name,depth,cn.c_str(),is_revoked);
+        }
     }
 
     if(com != nullptr) {
@@ -566,43 +578,72 @@ EC_KEY* SSLCom::ssl_ecdh_callback(SSL* s, int is_export, int key_length) {
 
 int SSLCom::ocsp_explicit_check(SSLCom* com) {
     
-    int ret = -1;
+    int is_revoked = -1;
     std::string name("unknown");
     
     if(com != nullptr) {
         const char* n = com->hr();
         if(n != nullptr) {
             name = n;
-        }        
+        }      
         
-        INF_("SSLCom::ocsp_explicit_check: OCSP stapling result = %d, com = %x",com->ocsp_stapling_result,com);
-        if(com->opt_ocsp_mode > 0 && com->ocsp_stapling_result < 0 && com->sslcom_peer_cert != nullptr && com->sslcom_peer_issuer != nullptr) {
+        DIA_("SSLCom::ocsp_explicit_check: OCSP stapling result = %d, com = %x",com->ocsp_stapling_result,com);
+        if(com->opt_ocsp_mode > 0 && com->sslcom_peer_cert != nullptr && com->sslcom_peer_issuer != nullptr) {
 
             std::vector<std::string> ocsps = ocsp_urls(com->sslcom_peer_cert);
             if(ocsps.size() > 0) {
                 for(auto o: ocsps) {
-                    INF__("[%s]: SSLCom::ocsp_explicit_check : OCSP at %s",name.c_str(),o.c_str());
+                    DIA__("[%s]: SSLCom::ocsp_explicit_check : OCSP at %s",name.c_str(),o.c_str());
 
-                    ret = ocsp_check_cert(com->sslcom_peer_cert,com->sslcom_peer_issuer);
-                    INF__("[%s]: SSLCom::ocsp_explicit_check: OCSP response =  %d",name.c_str(),ret);
+                    is_revoked = ocsp_check_cert(com->sslcom_peer_cert,com->sslcom_peer_issuer);
+                    DIA__("[%s]: SSLCom::ocsp_explicit_check: OCSP response: revoked =  %d",name.c_str(),is_revoked);
+                    if(is_revoked >= 0) {
+                        // we have some result
+                        break;
+                    }
                 }
+            } else {
+                DIA__("[%s]: SSLCom::ocsp_explicit_check : no OCSP info",name.c_str());
+                is_revoked = -2;
             }
         }
     }    
-    INF__("[%s]: SSLCom::ocsp_explicit_check: final OCSP response =  %d",name.c_str(),ret);
-    return ret;
+    DIA__("[%s]: SSLCom::ocsp_explicit_check: final OCSP response:  revoked =  %d",name.c_str(),is_revoked);
+    return is_revoked;
 }
 
 int SSLCom::ocsp_resp_callback_explicit(SSLCom* com, int cur_status) {
-    if(com != nullptr) {
-        
-        int ret = SSLCom::ocsp_explicit_check(com);
-        if(ret >= 0) {
-            INF_("return -1, cur_status = %d",cur_status);
-            return -1;
-        }
-    }
+    
+    
     return cur_status;
+    
+    // make this no-op, OCSP is checked in normal vrfy callback. Could this have use in the future?
+    
+    //     if(com != nullptr) {
+    //         
+    //         if(!com->sslcom_peer_cert) {
+    //             DIAS_("SSLCom::ocsp_resp_callback_explicit: no cert! (return 1)");
+    //             return 1;
+    //         }
+    //         
+    //         std::string cn = common_came(com->sslcom_peer_cert);
+    //         int is_revoked = SSLCom::ocsp_explicit_check(com);
+    //         
+    //         if(is_revoked == 0) {
+    //             DIA_("SSLCom::ocsp_resp_callback_explicit: %s: revocation status=%d (return 1)",cn.c_str(),is_revoked);
+    //             
+    //             // if check is ok (is_revoked == 0), return 1 (to be passed to return value of OCSP callback)
+    //             return 1;
+    //         } else {
+    //             DIA_("SSLCom::ocsp_resp_callback_explicit: %s: revocation status=%d (return requirement setting %d)",cn.c_str(),cur_status);
+    //         }
+    //     }
+    //     else {
+    //         DIA_("SSLCom::ocsp_resp_callback_explicit: passed com object is null (return requirement setting %d)",cur_status);
+    //     }
+    //     
+    //     
+    //     return cur_status;
 }
 
 int SSLCom::ocsp_resp_callback(SSL *s, void *arg) {
@@ -625,10 +666,16 @@ int SSLCom::ocsp_resp_callback(SSL *s, void *arg) {
         opt_ocsp_require = (com->opt_ocsp_stapling_mode == 2);
         peer_cert   = com->sslcom_peer_cert;
         issuer_cert = com->sslcom_peer_issuer;
+        
+        // only classics OCSP check is requested (no stapling check)
+        if(!com->opt_ocsp_stapling_enabled && com->opt_ocsp_mode > 0) {
+            return SSLCom::ocsp_resp_callback_explicit(com,opt_ocsp_require ? 0 : 1);
+        }
     }
-    INF__("[%s]: ocsp_resp_callback start",name);
+    DIA__("[%s]: ocsp_resp_callback start",name);
 
 
+    
     const unsigned char *p;
     int len, status, reason;
     OCSP_RESPONSE *rsp;
@@ -747,14 +794,14 @@ int SSLCom::ocsp_resp_callback(SSL *s, void *arg) {
     DIA__("[%s] OCSP status for server certificate: %s", name, OCSP_cert_status_str(status));
 
     if (status == V_OCSP_CERTSTATUS_GOOD) {
-        INF__("[%s] OCSP status is good",name);
+        DIA__("[%s] OCSP status is good",name);
         if(com != nullptr){
             com->ocsp_stapling_result = 0;
         }
         return 1;
     } else
     if (status == V_OCSP_CERTSTATUS_REVOKED) {
-        INF__("[%s] OCSP status is revoked",name);
+        DIA__("[%s] OCSP status is revoked",name);
         if(com != nullptr){
             com->ocsp_stapling_result = 1;
         }
@@ -765,7 +812,7 @@ int SSLCom::ocsp_resp_callback(SSL *s, void *arg) {
         return SSLCom::ocsp_resp_callback_explicit(com,0);
     }
 
-    INF__("[%s] OCSP status unknown, but OCSP was not required, continue", name);
+    DIA__("[%s] OCSP status unknown, but OCSP was not required, continue", name);
 
     return SSLCom::ocsp_resp_callback_explicit(com,1);
 }
@@ -789,7 +836,7 @@ void SSLCom::init_ssl_callbacks() {
     if(! is_server()) {
         SSL_set_verify(sslcom_ssl,SSL_VERIFY_PEER,&ssl_client_vrfy_callback);
 
-        if(opt_ocsp_stapling_enabled) {
+        if(opt_ocsp_stapling_enabled || opt_ocsp_mode > 0) {
 
             ocsp_trust_store = X509_STORE_new();
             if(X509_STORE_load_locations(ocsp_trust_store,nullptr,SSLCertStore::def_cl_capath.c_str()) == 0)  {
@@ -1221,7 +1268,7 @@ bool SSLCom::waiting_peer_hello() {
                             if(s != nullptr) {
                                 opt_bypass = true;
                                 s->opt_bypass = true;
-                                INFS___("connection is not SSL/TLS. Bypassing");
+                                INFS___("bypassing non-TLS connection");
                                 return false; //return false to return from read() or write()
                             }
                         }
