@@ -292,7 +292,7 @@ public:
     #define SOCLE_OCSP_STAP_MODE_STRICT  1
     #define SOCLE_OCSP_STAP_MODE_REQUIRE 2 
     X509_STORE* ocsp_trust_store = nullptr;
-    int ocsp_stapling_result = -1;
+    int ocsp_cert_is_revoked = -1;
     
     int opt_ocsp_mode = 0;
     static int ocsp_explicit_check(SSLCom* com);

@@ -488,9 +488,13 @@ int SSLCom::ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx) {
     
     
     if(depth == 0 && com != nullptr) {
-        if(com->opt_ocsp_mode > 0 &&  com->sslcom_peer_cert && com->sslcom_peer_issuer) {
+        if(com->opt_ocsp_mode > 0 &&  com->sslcom_peer_cert && com->sslcom_peer_issuer
+            && com->ocsp_cert_is_revoked == -1) {
+            
             int is_revoked = SSLCom::ocsp_explicit_check(com);
-            DIA__("[%s]: SSLCom::ssl_client_vrfy_callback[%d:%s]: ocsp is_revoked = %d)",name,depth,cn.c_str(),is_revoked);
+            DIA__("[%s]: SSLCom::ssl_client_vrfy_callback[%d:%s]: ocsp is_revoked = %d)",name,depth,cn.c_str(),is_revoked);        
+            
+            com->ocsp_cert_is_revoked = is_revoked;
         }
     }
 
@@ -587,7 +591,7 @@ int SSLCom::ocsp_explicit_check(SSLCom* com) {
             name = n;
         }      
         
-        DIA_("SSLCom::ocsp_explicit_check: OCSP stapling result = %d, com = %x",com->ocsp_stapling_result,com);
+        DIA_("SSLCom::ocsp_explicit_check: current OCSP result = %d, com = %x",com->ocsp_cert_is_revoked,com);
         if(com->opt_ocsp_mode > 0 && com->sslcom_peer_cert != nullptr && com->sslcom_peer_issuer != nullptr) {
 
             std::vector<std::string> ocsps = ocsp_urls(com->sslcom_peer_cert);
@@ -666,6 +670,9 @@ int SSLCom::ocsp_resp_callback(SSL *s, void *arg) {
         opt_ocsp_require = (com->opt_ocsp_stapling_mode == 2);
         peer_cert   = com->sslcom_peer_cert;
         issuer_cert = com->sslcom_peer_issuer;
+        
+        if (com->ocsp_cert_is_revoked == 0) return 1;
+        if (com->ocsp_cert_is_revoked == 1) return 0;
         
         // only classics OCSP check is requested (no stapling check)
         if(!com->opt_ocsp_stapling_enabled && com->opt_ocsp_mode > 0) {
@@ -796,14 +803,14 @@ int SSLCom::ocsp_resp_callback(SSL *s, void *arg) {
     if (status == V_OCSP_CERTSTATUS_GOOD) {
         DIA__("[%s] OCSP status is good",name);
         if(com != nullptr){
-            com->ocsp_stapling_result = 0;
+            com->ocsp_cert_is_revoked = 0;
         }
         return 1;
     } else
     if (status == V_OCSP_CERTSTATUS_REVOKED) {
         DIA__("[%s] OCSP status is revoked",name);
         if(com != nullptr){
-            com->ocsp_stapling_result = 1;
+            com->ocsp_cert_is_revoked = 1;
         }
         return 0;
     } else
