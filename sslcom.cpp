@@ -564,6 +564,46 @@ EC_KEY* SSLCom::ssl_ecdh_callback(SSL* s, int is_export, int key_length) {
     return nullptr;
 }
 
+int SSLCom::ocsp_explicit_check(SSLCom* com) {
+    
+    int ret = -1;
+    std::string name("unknown");
+    
+    if(com != nullptr) {
+        const char* n = com->hr();
+        if(n != nullptr) {
+            name = n;
+        }        
+        
+        INF_("SSLCom::ocsp_explicit_check: OCSP stapling result = %d, com = %x",com->ocsp_stapling_result,com);
+        if(com->opt_ocsp_mode > 0 && com->ocsp_stapling_result < 0 && com->sslcom_peer_cert != nullptr && com->sslcom_peer_issuer != nullptr) {
+
+            std::vector<std::string> ocsps = ocsp_urls(com->sslcom_peer_cert);
+            if(ocsps.size() > 0) {
+                for(auto o: ocsps) {
+                    INF__("[%s]: SSLCom::ocsp_explicit_check : OCSP at %s",name.c_str(),o.c_str());
+
+                    ret = ocsp_check_cert(com->sslcom_peer_cert,com->sslcom_peer_issuer);
+                    INF__("[%s]: SSLCom::ocsp_explicit_check: OCSP response =  %d",name.c_str(),ret);
+                }
+            }
+        }
+    }    
+    INF__("[%s]: SSLCom::ocsp_explicit_check: final OCSP response =  %d",name.c_str(),ret);
+    return ret;
+}
+
+int SSLCom::ocsp_resp_callback_explicit(SSLCom* com, int cur_status) {
+    if(com != nullptr) {
+        
+        int ret = SSLCom::ocsp_explicit_check(com);
+        if(ret >= 0) {
+            INF_("return -1, cur_status = %d",cur_status);
+            return -1;
+        }
+    }
+    return cur_status;
+}
 
 int SSLCom::ocsp_resp_callback(SSL *s, void *arg) {
     void* data = SSL_get_ex_data(s, sslcom_ssl_extdata_index);
@@ -581,12 +621,12 @@ int SSLCom::ocsp_resp_callback(SSL *s, void *arg) {
         if(n != nullptr) {
             name = n;
         }
-        opt_ocsp_strict = (com->opt_ocsp_mode >= 1);
-        opt_ocsp_require = (com->opt_ocsp_mode == 2);
+        opt_ocsp_strict = (com->opt_ocsp_stapling_mode >= 1);
+        opt_ocsp_require = (com->opt_ocsp_stapling_mode == 2);
         peer_cert   = com->sslcom_peer_cert;
         issuer_cert = com->sslcom_peer_issuer;
     }
-    DIA__("[%s]: ocsp_resp_callback start",name);
+    INF__("[%s]: ocsp_resp_callback start",name);
 
 
     const unsigned char *p;
@@ -601,14 +641,14 @@ int SSLCom::ocsp_resp_callback(SSL *s, void *arg) {
         if(opt_ocsp_strict)
             WAR_("[%s]: no OCSP response received",name);
 
-        return (opt_ocsp_require ? 0 : 1);
+        return SSLCom::ocsp_resp_callback_explicit(com,opt_ocsp_require ? 0 : 1);
     }
     DUM__("[%s]: OCSP Response:  \n%s",name,hex_dump((unsigned char*)p,len,2).c_str());
 
     rsp = d2i_OCSP_RESPONSE(NULL, &p, len);
     if (!rsp) {
         ERR__("[%s] failed to parse OCSP response",name);
-        return (opt_ocsp_strict ? 0 : 1);
+        return SSLCom::ocsp_resp_callback_explicit(com,opt_ocsp_strict ? 0 : 1);
     }
 
     if (!peer_cert || !issuer_cert) {
@@ -621,13 +661,13 @@ int SSLCom::ocsp_resp_callback(SSL *s, void *arg) {
     status = OCSP_response_status(rsp);
     if (status != OCSP_RESPONSE_STATUS_SUCCESSFUL) {
         ERR__("[%s] OCSP responder error %d (%s)", name, status, OCSP_response_status_str(status));
-        return (opt_ocsp_strict ? 0 : 1);
+        return SSLCom::ocsp_resp_callback_explicit(com,opt_ocsp_strict ? 0 : 1);
     }
 
     basic = OCSP_response_get1_basic(rsp);
     if (!basic) {
         ERR__("[%s] could not find BasicOCSPResponse",name);
-        return (opt_ocsp_strict ? 0 : 1);
+        return SSLCom::ocsp_resp_callback_explicit(com,opt_ocsp_strict ? 0 : 1);
     }
 
     X509_STORE* x_st = X509_STORE_new();
@@ -656,7 +696,7 @@ int SSLCom::ocsp_resp_callback(SSL *s, void *arg) {
             ERR__("[%s] OCSP response failed verification",name);
         }
 
-        return r;
+        return SSLCom::ocsp_resp_callback_explicit(com,r);
     }
 
     DIA__("[%s] OCSP response verification succeeded",name);
@@ -671,7 +711,7 @@ int SSLCom::ocsp_resp_callback(SSL *s, void *arg) {
         if(r > 0)
             ERR_clear_error();
 
-        return r;
+        return SSLCom::ocsp_resp_callback_explicit(com,r);
     }
 
 
@@ -685,7 +725,7 @@ int SSLCom::ocsp_resp_callback(SSL *s, void *arg) {
         if(r > 0)
             ERR_clear_error();
 
-        return r;
+        return SSLCom::ocsp_resp_callback_explicit(com,r);
     }
 
     if (!OCSP_check_validity(this_update, next_update, 5 * 60, -1)) {
@@ -697,7 +737,7 @@ int SSLCom::ocsp_resp_callback(SSL *s, void *arg) {
         if(r > 0)
             ERR_clear_error();
 
-        return r;
+        return SSLCom::ocsp_resp_callback_explicit(com,r);
     }
 
     OCSP_CERTID_free(id);
@@ -706,20 +746,28 @@ int SSLCom::ocsp_resp_callback(SSL *s, void *arg) {
 
     DIA__("[%s] OCSP status for server certificate: %s", name, OCSP_cert_status_str(status));
 
-    if (status == V_OCSP_CERTSTATUS_GOOD)
-        DIA__("[%s] OCSP status is good",name);
-    return 1;
-    if (status == V_OCSP_CERTSTATUS_REVOKED)
-        NOT__("[%s] OCSP status is revoked",name);
-    return 0;
+    if (status == V_OCSP_CERTSTATUS_GOOD) {
+        INF__("[%s] OCSP status is good",name);
+        if(com != nullptr){
+            com->ocsp_stapling_result = 0;
+        }
+        return 1;
+    } else
+    if (status == V_OCSP_CERTSTATUS_REVOKED) {
+        INF__("[%s] OCSP status is revoked",name);
+        if(com != nullptr){
+            com->ocsp_stapling_result = 1;
+        }
+        return 0;
+    } else
     if (opt_ocsp_require) {
         ERR__("[%s] OCSP status unknown, but OCSP required, failing", name);
-        return 0;
+        return SSLCom::ocsp_resp_callback_explicit(com,0);
     }
 
-    DIA__("[%s] OCSP status unknown, but OCSP was not required, continue", name);
+    INF__("[%s] OCSP status unknown, but OCSP was not required, continue", name);
 
-    return 1;
+    return SSLCom::ocsp_resp_callback_explicit(com,1);
 }
 
 void SSLCom::init_ssl_callbacks() {
@@ -741,14 +789,14 @@ void SSLCom::init_ssl_callbacks() {
     if(! is_server()) {
         SSL_set_verify(sslcom_ssl,SSL_VERIFY_PEER,&ssl_client_vrfy_callback);
 
-        if(opt_ocsp_enabled) {
+        if(opt_ocsp_stapling_enabled) {
 
             ocsp_trust_store = X509_STORE_new();
             if(X509_STORE_load_locations(ocsp_trust_store,nullptr,SSLCertStore::def_cl_capath.c_str()) == 0)  {
                 ERRS___("cannot load OCSP trusted store. Fail-open.");
-                opt_ocsp_mode = 0;
+                opt_ocsp_stapling_mode = 0;
             } else {
-                DIA__("[%s]: OCSP stapling enabled, mode %d",hr(),opt_ocsp_mode);
+                DIA__("[%s]: OCSP stapling enabled, mode %d",hr(),opt_ocsp_stapling_mode);
                 SSL_set_tlsext_status_type(sslcom_ssl, TLSEXT_STATUSTYPE_ocsp);
                 SSL_CTX_set_tlsext_status_cb(sslcom_ctx,ocsp_resp_callback);
                 SSL_CTX_set_tlsext_status_arg(sslcom_ctx, this);
