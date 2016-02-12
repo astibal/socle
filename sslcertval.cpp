@@ -268,3 +268,118 @@ int ocsp_check_bytes(const char cert_bytes[], const char issuer_bytes[])
     
     return ret;
 }
+
+
+
+int is_revoked_by_crl(X509 *x509, X509 *issuer, X509_CRL *crl_file)
+{
+    int is_revoked = -1;
+    if (issuer)
+    {
+        EVP_PKEY *ikey=X509_get_pubkey(issuer);
+        ASN1_INTEGER *serial = X509_get_serialNumber(x509);
+ 
+        if (crl_file && ikey && X509_CRL_verify(crl_file, ikey))
+        {
+            is_revoked = 0;
+            STACK_OF(X509_REVOKED) *revoked_list = crl_file->crl->revoked;
+            for (int j = 0; j < sk_X509_REVOKED_num(revoked_list) && !is_revoked; j++)
+            {
+                X509_REVOKED *entry = sk_X509_REVOKED_value(revoked_list, j);
+                if (entry->serialNumber->length==serial->length)
+                {
+                    if (memcmp(entry->serialNumber->data, serial->data, serial->length)==0)
+                    {
+                        is_revoked=1;
+                    }
+                }
+            }
+        }
+    }
+    return is_revoked;
+}
+
+
+int crl_verify_trust(X509 *x509, X509* issuer, X509_CRL *crl_file, const std::string& cacerts_pem_path)
+{
+    STACK_OF (X509)* chain = sk_X509_new_null();
+    sk_X509_push(chain, issuer);
+ 
+    X509_STORE *store=X509_STORE_new();
+    if (store==NULL) { return 0; }
+ 
+    X509_LOOKUP *lookup=X509_STORE_add_lookup(store,X509_LOOKUP_file());
+    if (lookup==NULL) { return 0; }
+ 
+    int q1 = X509_LOOKUP_load_file(lookup, cacerts_pem_path.c_str(), X509_FILETYPE_PEM);
+    if (!q1) { return 0; }
+ 
+    X509_STORE_CTX *csc = X509_STORE_CTX_new();
+    X509_STORE_CTX_init(csc, store, x509, chain);
+    X509_STORE_CTX_set_purpose(csc, X509_PURPOSE_SSL_SERVER);
+ 
+    X509_STORE_add_crl(store, crl_file);
+    X509_STORE_set_flags(store, X509_V_FLAG_CRL_CHECK);
+ 
+    int verify_result=X509_verify_cert(csc);
+    if (verify_result!=1)
+        DIA_("Trust Failure: %s",X509_verify_cert_error_string(csc->error));
+ 
+    X509_STORE_CTX_cleanup(csc);
+    X509_STORE_CTX_free(csc);
+    X509_STORE_free(store);
+    sk_X509_free(chain);
+ 
+    return verify_result;
+}
+
+
+std::vector<std::string> x509_crl_urls(X509 *x509)
+{
+    std::vector<std::string> list;
+    int nid = NID_crl_distribution_points;
+    STACK_OF(DIST_POINT) * dist_points =(STACK_OF(DIST_POINT) *)X509_get_ext_d2i(x509, nid, NULL, NULL);
+    for (int j = 0; j < sk_DIST_POINT_num(dist_points); j++)
+    {
+        DIST_POINT *dp = sk_DIST_POINT_value(dist_points, j);
+        DIST_POINT_NAME    *distpoint = dp->distpoint;
+        if (distpoint->type==0)//fullname GENERALIZEDNAME
+        {
+            for (int k = 0; k < sk_GENERAL_NAME_num(distpoint->name.fullname); k++) 
+            {
+                GENERAL_NAME *gen = sk_GENERAL_NAME_value(distpoint->name.fullname, k);
+                ASN1_IA5STRING *asn1_str = gen->d.uniformResourceIdentifier;
+                list.push_back( std::string( (char*)ASN1_STRING_data(asn1_str), ASN1_STRING_length(asn1_str) ) );
+            }
+        }
+        else if (distpoint->type==1)//relativename X509NAME
+        {
+            STACK_OF(X509_NAME_ENTRY) *sk_relname = distpoint->name.relativename;
+            for (int k = 0; k < sk_X509_NAME_ENTRY_num(sk_relname); k++) 
+            {
+                X509_NAME_ENTRY *e = sk_X509_NAME_ENTRY_value(sk_relname, k);
+                ASN1_STRING *d = X509_NAME_ENTRY_get_data(e);
+                list.push_back( std::string( (char*)ASN1_STRING_data(d), ASN1_STRING_length(d) ) );
+            }
+        }
+    }
+    return list;
+}
+
+X509 *new_x509(const char* cert_bytes)
+{
+    BIO *bio_mem = BIO_new(BIO_s_mem());
+    BIO_puts(bio_mem, cert_bytes);
+    X509 * x509 = PEM_read_bio_X509(bio_mem, NULL, NULL, NULL);
+    BIO_free(bio_mem);
+    return x509;
+}
+
+
+X509_CRL *new_CRL(const char* crl_filename)
+{
+    BIO *bio = BIO_new_file(crl_filename, "r");
+    X509_CRL *crl_file=d2i_X509_CRL_bio(bio,NULL); //if (format == FORMAT_PEM) crl=PEM_read_bio_X509_CRL(in,NULL,NULL,NULL);
+    BIO_free(bio);
+    return crl_file;
+}

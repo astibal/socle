@@ -25,6 +25,9 @@
 #include <openssl/ssl.h>
 #include <openssl/x509.h>
 #include <openssl/x509v3.h>
+#include <openssl/crypto.h>
+#include <openssl/ocsp.h>
+#include <openssl/pem.h>
 
 #include <string>
 #include <vector>
