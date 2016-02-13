@@ -26,9 +26,28 @@
 #include <mutex>
 #include <unordered_map>
 
+#include <ctime>
+
 #include <socle_common.hpp>
 #include <string.h>
 #include <logger.hpp>
+
+template <class T>
+struct expiring {
+    
+    expiring(T v, unsigned int in_seconds): value(v) { expired_at = ::time(nullptr) + in_seconds; }
+    
+    T value;
+    time_t expired_at;
+    
+    static bool is_expired(expiring<T> *ptr) { return (ptr->expired_at <= ::time(nullptr)); }
+
+private:
+    expiring();
+};
+
+typedef expiring<int> expiring_int;
+typedef expiring<std::string> expiring_string;
 
 template <class K, class T>
 class ptr_cache {
@@ -93,6 +112,14 @@ public:
         if(it == cache().end()) {
             return default_value();
         }
+        else if (fn_expired_check != nullptr) {
+            // check if object isn't expired
+            if(fn_expired_check(it->second)) {
+                erase(k);
+                return default_value();
+            }
+        }
+        
         return it->second;
     }
     
@@ -144,7 +171,9 @@ public:
 
         return ret;
     }
-
+    
+    void expiration_check(bool (*fn_expired_check_ptr)(T*)) { fn_expired_check = fn_expired_check_ptr; };
+    
 private:
     bool auto_delete_ = true;
 
@@ -154,6 +183,8 @@ private:
     T* default_value_ = nullptr;
     std::unordered_map<K,T*> cache_;
     std::recursive_mutex lock_;
+    
+    bool (*fn_expired_check)(T*) = nullptr;
     
     DECLARE_C_NAME("object cache");
 };
