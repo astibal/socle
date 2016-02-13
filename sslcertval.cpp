@@ -17,6 +17,7 @@
 */
 
 #include <sslcertval.hpp>
+#include <display.hpp>
 
 #include <sslcertstore.hpp>
 #include <logger.hpp>
@@ -364,6 +365,28 @@ std::vector<std::string> crl_urls(X509 *x509)
         }
     }
     return list;
+}
+
+
+std::string fingerprint(X509* cert) {
+
+  const EVP_MD *fprint_type = NULL;
+  unsigned fprint_size;
+  unsigned char fprint[EVP_MAX_MD_SIZE];
+
+  fprint_type = EVP_sha1();
+
+  if (!X509_digest(cert, fprint_type, fprint, &fprint_size)) {
+    ERRS_("error creating the certificate fingerprint");
+  }
+
+  std::string ret;
+  for (int j = 0; j < fprint_size; ++j)  {
+      ret += string_format("%02x", fprint[j]);
+  }
+  
+  
+  return ret;
 }
 
 X509 *new_x509(const char* cert_bytes)

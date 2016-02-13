@@ -32,6 +32,9 @@
 #include <string>
 #include <vector>
 
+
+std::string fingerprint(X509* cert);
+
 std::vector<std::string> ocsp_urls(X509 *x509);
 int ocsp_prepare_request(OCSP_REQUEST **req, X509 *cert, const EVP_MD *cert_id_md,X509 *issuer,STACK_OF(OCSP_CERTID) *ids);
 OCSP_RESPONSE * ocsp_query_responder(BIO *err, BIO *cbio, char *path, char *host, OCSP_REQUEST *req, int req_timeout);
