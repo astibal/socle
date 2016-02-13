@@ -489,7 +489,7 @@ int SSLCom::ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx) {
 
     std::string cn = "unknown";
     if(cert != nullptr) {   
-        cn = SSLCertStore::print_cn(cert);
+        cn = SSLCertStore::print_cn(cert) + ";"+ fingerprint(cert);
     }
     DIA__("[%s]: SSLCom::ssl_client_vrfy_callback[%d:%s]: returning %s (pre-verify %d)",name,depth,cn.c_str(),(ret > 0 ? "ok" : "failed" ),ok);
     if(ret <= 0) {
@@ -501,17 +501,49 @@ int SSLCom::ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx) {
         if(com->opt_ocsp_mode > 0 &&  com->sslcom_peer_cert && com->sslcom_peer_issuer
             && com->ocsp_cert_is_revoked == -1) {
             
-            int is_revoked = SSLCom::ocsp_explicit_check(com);
+            certstore()->ocsp_result_cache.lock();
+            expiring_ocsp_result* cached_result = certstore()->ocsp_result_cache.get(cn);
+            certstore()->ocsp_result_cache.unlock();
+            
+            int is_revoked = -1;
+            const char* str_cached = "cached";
+            const char* str_fresh = "fresh";
+            const char* str_status = "unknown";
+        
+            
+            if(cached_result != nullptr) {
+                is_revoked = cached_result->value;
+                str_status = str_cached;
+            } else {
+                is_revoked = ocsp_explicit_check(com);
+                str_status = str_fresh;
+            }
+            
             DIA__("[%s]: SSLCom::ssl_client_vrfy_callback[%d:%s]: ocsp is_revoked = %d)",name,depth,cn.c_str(),is_revoked);        
             
             com->ocsp_cert_is_revoked = is_revoked;
             if(is_revoked > 0) {
-                WAR__("Connection from %s: certificate %s is revoked (OCSP))",name,cn.c_str());
+                WAR__("Connection from %s: certificate %s is revoked (%s OCSP))",name,cn.c_str(),str_status);
             } else if (is_revoked == 0){
-                INF__("Connection from %s: certificate %s is valid (OCSP))",name,cn.c_str());
+                INF__("Connection from %s: certificate %s is valid (%s OCSP))",name,cn.c_str(),str_status);
             } else {
                 /*< 0*/
-                WAR__("Connection from %s: certificate %s revocation status is unknown (OCSP))",name,cn.c_str());
+                WAR__("Connection from %s: certificate %s revocation status is unknown (%s OCSP))",name,cn.c_str(),str_status);
+            }
+
+            
+            if(cached_result == nullptr) {
+                // if result is fresh, store it
+                certstore()->ocsp_result_cache.lock();
+                // set cache for 3 minutes
+                certstore()->ocsp_result_cache.set(cn,new expiring_ocsp_result(is_revoked,180));
+                certstore()->ocsp_result_cache.unlock();            
+            }
+            
+            // experimental CRL list check
+            std::vector<std::string> crls = crl_urls(com->sslcom_peer_cert);
+            for (auto c: crls) {
+                INF__("Connection from %s: certificate %s CRL at %s)",name,cn.c_str(),c.c_str());
             }
         }
     }
