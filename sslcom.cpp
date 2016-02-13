@@ -401,9 +401,19 @@ int SSLCom::ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx) {
 
     SSLCom* com = static_cast<SSLCom*>(data);
     if(com != nullptr) {
-        const char* n = com->hr();
-        if(n != nullptr) {
-            name = n;
+        
+        SSLCom* pcom = static_cast<SSLCom*>(com->peer());
+        if(pcom != nullptr) {
+            const char* n = pcom->hr();
+            if(n != nullptr) {
+                name = n;
+            }
+        }
+        else {
+            const char* n = com->hr();
+            if(n != nullptr) {
+                name = n;
+            }
         }
     }
 
@@ -495,6 +505,14 @@ int SSLCom::ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx) {
             DIA__("[%s]: SSLCom::ssl_client_vrfy_callback[%d:%s]: ocsp is_revoked = %d)",name,depth,cn.c_str(),is_revoked);        
             
             com->ocsp_cert_is_revoked = is_revoked;
+            if(is_revoked > 0) {
+                WAR__("Connection from %s: certificate %s is revoked (OCSP))",name,cn.c_str());
+            } else if (is_revoked == 0){
+                INF__("Connection from %s: certificate %s is valid (OCSP))",name,cn.c_str());
+            } else {
+                /*< 0*/
+                WAR__("Connection from %s: certificate %s revocation status is unknown (OCSP))",name,cn.c_str());
+            }
         }
     }
 
@@ -595,6 +613,7 @@ int SSLCom::ocsp_explicit_check(SSLCom* com) {
         if(com->opt_ocsp_mode > 0 && com->sslcom_peer_cert != nullptr && com->sslcom_peer_issuer != nullptr) {
 
             std::vector<std::string> ocsps = ocsp_urls(com->sslcom_peer_cert);
+            
             if(ocsps.size() > 0) {
                 for(auto o: ocsps) {
                     DIA__("[%s]: SSLCom::ocsp_explicit_check : OCSP at %s",name.c_str(),o.c_str());
