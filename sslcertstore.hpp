@@ -30,6 +30,7 @@
 #include <openssl/err.h>
 
 #include <logger.hpp>
+#include <ptr_cache.hpp>
 
 #include <thread>
 #include <string>
@@ -49,6 +50,7 @@ typedef std::pair<EVP_PKEY*,X509*> X509_PAIR;
 typedef std::map<std::string,X509_PAIR*> X509_CACHE;
 typedef std::map<std::string,std::string> FQDN_CACHE;
 
+typedef expiring_int expiring_ocsp_result;
 
 #define SSLCERTSTORE_BUFSIZE 512
 
@@ -88,6 +90,8 @@ public:
      
      FQDN_CACHE fqdn_cache_;
      FQDN_CACHE& fqdn_cache() { return fqdn_cache_; };
+     
+     static ptr_cache<std::string,expiring_ocsp_result> ocsp_result_cache;
      
      std::mutex mutex_cache_write_;
      void lock() { mutex_cache_write_.lock(); };

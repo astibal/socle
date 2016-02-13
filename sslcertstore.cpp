@@ -28,6 +28,8 @@ std::string SSLCertStore::certs_path = "./certs/";
 std::string SSLCertStore::password = "password";
 std::string SSLCertStore::def_cl_capath;
 
+ptr_cache<std::string,expiring_ocsp_result> SSLCertStore::ocsp_result_cache("ocsp response cache",500,true);
+
 int SSLCertStore::log_level = NON;
 
 bool SSLCertStore::load() {
@@ -51,6 +53,9 @@ bool SSLCertStore::load() {
         destroy();
         return false;
     }
+    
+    ocsp_result_cache.clear();
+    ocsp_result_cache.expiration_check(expiring_ocsp_result::is_expired);
     
     return ret;
 }
