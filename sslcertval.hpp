@@ -37,7 +37,10 @@ int ocsp_prepare_request(OCSP_REQUEST **req, X509 *cert, const EVP_MD *cert_id_m
 OCSP_RESPONSE * ocsp_query_responder(BIO *err, BIO *cbio, char *path, char *host, OCSP_REQUEST *req, int req_timeout);
 OCSP_RESPONSE * ocsp_send_request(BIO *err, OCSP_REQUEST *req, char *host, char *path, char *port, int use_ssl,int req_timeout);
 int ocsp_parse_response(OCSP_RESPONSE *resp);
-int ocsp_check_cert(X509 *x509, X509 *issuer);
+int ocsp_check_cert(X509 *x509, X509 *issuer,int req_timeout=2);
 int ocsp_check_bytes(const char cert_bytes[], const char issuer_bytes[]);
+
+
+std::vector<std::string> crl_urls(X509 *x509);
 
 #endif

@@ -196,7 +196,7 @@ int ocsp_parse_response(OCSP_RESPONSE *resp)
     return is_revoked;
 }
 
-int ocsp_check_cert(X509 *x509, X509 *issuer)
+int ocsp_check_cert(X509 *x509, X509 *issuer, int req_timeout)
 {
     int is_revoked=-1;
  
@@ -217,7 +217,7 @@ int ocsp_check_cert(X509 *x509, X509 *issuer)
         for (int j = 0; j < sk_OPENSSL_STRING_num(ocsp_list) && is_revoked==-1; j++)
         {
             char *host = NULL, *port = NULL, *path = NULL; 
-            int use_ssl, req_timeout = 30;
+            int use_ssl;
             std::string ocsp_url0 = std::string( sk_OPENSSL_STRING_value(ocsp_list, j) );
  
             char *ocsp_url = sk_OPENSSL_STRING_value(ocsp_list, j);
@@ -334,7 +334,7 @@ int crl_verify_trust(X509 *x509, X509* issuer, X509_CRL *crl_file, const std::st
 }
 
 
-std::vector<std::string> x509_crl_urls(X509 *x509)
+std::vector<std::string> crl_urls(X509 *x509)
 {
     std::vector<std::string> list;
     int nid = NID_crl_distribution_points;
