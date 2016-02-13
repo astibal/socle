@@ -503,7 +503,6 @@ int SSLCom::ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx) {
             
             certstore()->ocsp_result_cache.lock();
             expiring_ocsp_result* cached_result = certstore()->ocsp_result_cache.get(cn);
-            certstore()->ocsp_result_cache.unlock();
             
             int is_revoked = -1;
             const char* str_cached = "cached";
@@ -518,6 +517,7 @@ int SSLCom::ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx) {
                 is_revoked = ocsp_explicit_check(com);
                 str_status = str_fresh;
             }
+            certstore()->ocsp_result_cache.unlock();
             
             DIA__("[%s]: SSLCom::ssl_client_vrfy_callback[%d:%s]: ocsp is_revoked = %d)",name,depth,cn.c_str(),is_revoked);        
             
@@ -540,10 +540,16 @@ int SSLCom::ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx) {
                 certstore()->ocsp_result_cache.unlock();            
             }
             
-            // experimental CRL list check
-            std::vector<std::string> crls = crl_urls(com->sslcom_peer_cert);
-            for (auto c: crls) {
-                INF__("Connection from %s: certificate %s CRL at %s)",name,cn.c_str(),c.c_str());
+            
+            if(is_revoked < 0) {
+                // experimental CRL list check
+                
+                NOT__("Connection from %s: certificate OCSP revocation status cannot be obtained)",name,cn.c_str());
+                
+                std::vector<std::string> crls = crl_urls(com->sslcom_peer_cert);
+                for (auto c: crls) {
+                    INF__("Connection from %s: certificate %s CRL at %s)",name,cn.c_str(),c.c_str());
+                }
             }
         }
     }
