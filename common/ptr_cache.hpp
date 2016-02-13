@@ -113,8 +113,8 @@ public:
                     delete ptr;
                 } else {
                     DEB_("ptr_cache::set[%s]: not deleting existing object:", c_name());
-                    if(!auto_delete()) DEB_("     autodelete not set", c_name());
-                    if(ptr == v) DEB_("     values are the same", c_name());
+                    if(!auto_delete()) DEBS_("     autodelete not set");
+                    if(ptr == v) DEBS_("     values are the same");
                 }
             } else {
                 INF_("ptr_cache::set[%s]: existing entry is nullptr", c_name());
