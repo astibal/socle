@@ -288,6 +288,7 @@ public:
     
     bool opt_ocsp_stapling_enabled = false; // should we insist on OCSP response?
     int  opt_ocsp_stapling_mode = 0;        // 0 - allow all, log unverified. 1 - allow all, but don't allow unverified. 2 - as 1. but require all connections to have stapling reponse
+    bool opt_ocsp_enforce_in_verify = false;     // stapling was not able to get status, we need use OCSP at the end of verify
     #define SOCLE_OCSP_STAP_MODE_LOOSE   0
     #define SOCLE_OCSP_STAP_MODE_STRICT  1
     #define SOCLE_OCSP_STAP_MODE_REQUIRE 2 

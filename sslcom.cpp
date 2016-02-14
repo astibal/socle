@@ -420,12 +420,15 @@ int SSLCom::ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx) {
     X509* cert = X509_STORE_CTX_get_current_cert(ctx);
 
     if(com != nullptr) {
-        if (depth == 0)
+        if (depth == 0) {
             com->sslcom_peer_cert = cert;
-        else if (depth == 1)
+        }
+        else if (depth == 1) {
             com->sslcom_peer_issuer = cert;
-        else if (depth == 2)
+        }
+        else if (depth == 2) {
             com->sslcom_peer_issuer_issuer = cert;
+        }
     }
 
     if (!ok) {
@@ -499,58 +502,11 @@ int SSLCom::ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx) {
     
     if(depth == 0 && com != nullptr) {
         if(com->opt_ocsp_mode > 0 &&  com->sslcom_peer_cert && com->sslcom_peer_issuer
-            && com->ocsp_cert_is_revoked == -1) {
-            
-            certstore()->ocsp_result_cache.lock();
-            expiring_ocsp_result* cached_result = certstore()->ocsp_result_cache.get(cn);
-            
-            int is_revoked = -1;
-            const char* str_cached = "cached";
-            const char* str_fresh = "fresh";
-            const char* str_status = "unknown";
-        
-            
-            if(cached_result != nullptr) {
-                is_revoked = cached_result->value;
-                str_status = str_cached;
-            } else {
-                is_revoked = ocsp_explicit_check(com);
-                str_status = str_fresh;
-            }
-            certstore()->ocsp_result_cache.unlock();
-            
-            DIA__("[%s]: SSLCom::ssl_client_vrfy_callback[%d:%s]: ocsp is_revoked = %d)",name,depth,cn.c_str(),is_revoked);        
-            
-            com->ocsp_cert_is_revoked = is_revoked;
-            if(is_revoked > 0) {
-                WAR__("Connection from %s: certificate %s is revoked (%s OCSP))",name,cn.c_str(),str_status);
-            } else if (is_revoked == 0){
-                INF__("Connection from %s: certificate %s is valid (%s OCSP))",name,cn.c_str(),str_status);
-            } else {
-                /*< 0*/
-                WAR__("Connection from %s: certificate %s revocation status is unknown (%s OCSP))",name,cn.c_str(),str_status);
-            }
-
-            
-            if(cached_result == nullptr) {
-                // if result is fresh, store it
-                certstore()->ocsp_result_cache.lock();
-                // set cache for 3 minutes
-                certstore()->ocsp_result_cache.set(cn,new expiring_ocsp_result(is_revoked,180));
-                certstore()->ocsp_result_cache.unlock();            
-            }
-            
-            
-            if(is_revoked < 0) {
-                // experimental CRL list check
-                
-                NOT__("Connection from %s: certificate OCSP revocation status cannot be obtained)",name,cn.c_str());
-                
-                std::vector<std::string> crls = crl_urls(com->sslcom_peer_cert);
-                for (auto c: crls) {
-                    INF__("Connection from %s: certificate %s CRL at %s)",name,cn.c_str(),c.c_str());
-                }
-            }
+            && com->ocsp_cert_is_revoked == -1 && com->opt_ocsp_enforce_in_verify) {
+         
+             int is_revoked = SSLCom::ocsp_explicit_check(com);
+             if(is_revoked  == 0) ret = 1;
+             else if(is_revoked > 0) ret = 0;
         }
     }
 
@@ -637,77 +593,106 @@ EC_KEY* SSLCom::ssl_ecdh_callback(SSL* s, int is_export, int key_length) {
 }
 
 int SSLCom::ocsp_explicit_check(SSLCom* com) {
-    
     int is_revoked = -1;
-    std::string name("unknown");
     
     if(com != nullptr) {
-        const char* n = com->hr();
-        if(n != nullptr) {
-            name = n;
-        }      
-        
-        DIA_("SSLCom::ocsp_explicit_check: current OCSP result = %d, com = %x",com->ocsp_cert_is_revoked,com);
-        if(com->opt_ocsp_mode > 0 && com->sslcom_peer_cert != nullptr && com->sslcom_peer_issuer != nullptr) {
 
-            std::vector<std::string> ocsps = ocsp_urls(com->sslcom_peer_cert);
-            
-            if(ocsps.size() > 0) {
-                for(auto o: ocsps) {
-                    DIA__("[%s]: SSLCom::ocsp_explicit_check : OCSP at %s",name.c_str(),o.c_str());
-
-                    is_revoked = ocsp_check_cert(com->sslcom_peer_cert,com->sslcom_peer_issuer);
-                    DIA__("[%s]: SSLCom::ocsp_explicit_check: OCSP response: revoked =  %d",name.c_str(),is_revoked);
-                    if(is_revoked >= 0) {
-                        // we have some result
-                        break;
-                    }
-                }
-            } else {
-                DIA__("[%s]: SSLCom::ocsp_explicit_check : no OCSP info",name.c_str());
-                is_revoked = -2;
+        const char *name = "unknown_cx";
+        SSLCom* pcom = static_cast<SSLCom*>(com->peer());
+        if(pcom != nullptr) {
+            const char* n = pcom->hr();
+            if(n != nullptr) {
+                name = n;
             }
         }
-    }    
-    DIA__("[%s]: SSLCom::ocsp_explicit_check: final OCSP response:  revoked =  %d",name.c_str(),is_revoked);
+        else {
+            const char* n = com->hr();
+            if(n != nullptr) {
+                name = n;
+            }
+        }
+
+        std::string cn = "unknown";
+        if(com->sslcom_peer_cert != nullptr) {   
+            cn = SSLCertStore::print_cn(com->sslcom_peer_cert) + ";" + fingerprint(com->sslcom_peer_cert);
+        }
+
+        const char* str_cached = "cached";
+        const char* str_fresh = "fresh";
+        const char* str_status = "unknown";
+        
+        com->certstore()->ocsp_result_cache.lock();
+        expiring_ocsp_result* cached_result = com->certstore()->ocsp_result_cache.get(cn);
+        
+        if(cached_result != nullptr) {
+            is_revoked = cached_result->value;
+            certstore()->ocsp_result_cache.unlock();  //WARNING
+            str_status = str_cached;                  //   |
+        } else {                                      //   |
+            certstore()->ocsp_result_cache.unlock();  //WARNING
+            is_revoked = ocsp_check_cert(com->sslcom_peer_cert,com->sslcom_peer_issuer);
+            str_status = str_fresh;
+        }
+        
+        DIA__("[%s]: SSLCom::ocsp_explicit_check[%s]: ocsp is_revoked = %d)",name,cn.c_str(),is_revoked);        
+        
+        com->ocsp_cert_is_revoked = is_revoked;
+        if(is_revoked > 0) {
+            WAR__("Connection from %s: certificate %s is revoked (%s OCSP))",name,cn.c_str(),str_status);
+        } else if (is_revoked == 0){
+            INF__("Connection from %s: certificate %s is valid (%s OCSP))",name,cn.c_str(),str_status);
+        } else {
+            /*< 0*/
+            if(com->opt_ocsp_mode > 1) {
+            }
+            WAR__("Connection from %s: certificate %s revocation status is unknown (%s OCSP))",name,cn.c_str(),str_status);
+        }
+
+        
+        if(cached_result == nullptr) {
+            // if result is fresh, store it
+            certstore()->ocsp_result_cache.lock();
+            // set cache for 3 minutes
+            certstore()->ocsp_result_cache.set(cn,new expiring_ocsp_result(is_revoked,180));
+            certstore()->ocsp_result_cache.unlock();            
+        }
+        
+        
+        if(is_revoked < 0) {
+            // experimental CRL list check
+            
+            NOT__("Connection from %s: certificate OCSP revocation status cannot be obtained)",name);
+            
+            std::vector<std::string> crls = crl_urls(com->sslcom_peer_cert);
+            for (auto c: crls) {
+                INF__("Connection from %s: certificate %s CRL at %s)",name,cn.c_str(),c.c_str());
+            }
+        }
+    }
+    
     return is_revoked;
 }
 
 int SSLCom::ocsp_resp_callback_explicit(SSLCom* com, int cur_status) {
     
-    
+    if(com != nullptr) {
+        if(!com->opt_ocsp_enforce_in_verify) {
+            DIAS_("ocsp_resp_callback_explicit: still no result, running full OCSP request");
+            int is_revoked = SSLCom::ocsp_explicit_check(com);
+            
+            if(is_revoked > 0) {
+                return 0;
+            } else
+            if(is_revoked == 0) {
+                return 1;
+            }
+        }
+    }
     return cur_status;
-    
-    // make this no-op, OCSP is checked in normal vrfy callback. Could this have use in the future?
-    
-    //     if(com != nullptr) {
-    //         
-    //         if(!com->sslcom_peer_cert) {
-    //             DIAS_("SSLCom::ocsp_resp_callback_explicit: no cert! (return 1)");
-    //             return 1;
-    //         }
-    //         
-    //         std::string cn = common_came(com->sslcom_peer_cert);
-    //         int is_revoked = SSLCom::ocsp_explicit_check(com);
-    //         
-    //         if(is_revoked == 0) {
-    //             DIA_("SSLCom::ocsp_resp_callback_explicit: %s: revocation status=%d (return 1)",cn.c_str(),is_revoked);
-    //             
-    //             // if check is ok (is_revoked == 0), return 1 (to be passed to return value of OCSP callback)
-    //             return 1;
-    //         } else {
-    //             DIA_("SSLCom::ocsp_resp_callback_explicit: %s: revocation status=%d (return requirement setting %d)",cn.c_str(),cur_status);
-    //         }
-    //     }
-    //     else {
-    //         DIA_("SSLCom::ocsp_resp_callback_explicit: passed com object is null (return requirement setting %d)",cur_status);
-    //     }
-    //     
-    //     
-    //     return cur_status;
 }
 
 int SSLCom::ocsp_resp_callback(SSL *s, void *arg) {
+
     void* data = SSL_get_ex_data(s, sslcom_ssl_extdata_index);
     const char *name = "unknown_cx";
 
@@ -719,24 +704,35 @@ int SSLCom::ocsp_resp_callback(SSL *s, void *arg) {
     X509* issuer_cert = nullptr;
 
     if(com != nullptr) {
-        const char* n = com->hr();
-        if(n != nullptr) {
-            name = n;
+        SSLCom* pcom = dynamic_cast<SSLCom*>(com->peer());
+        if(pcom != nullptr) {
+            const char* n = pcom->hr();
+            if(n != nullptr) {
+                name = n;
+            }
+        } else {  
+            const char* n = com->hr();
+            if(n != nullptr) {
+                name = n;
+            }
         }
         opt_ocsp_strict = (com->opt_ocsp_stapling_mode >= 1);
         opt_ocsp_require = (com->opt_ocsp_stapling_mode == 2);
         peer_cert   = com->sslcom_peer_cert;
         issuer_cert = com->sslcom_peer_issuer;
-        
-        if (com->ocsp_cert_is_revoked == 0) return 1;
-        if (com->ocsp_cert_is_revoked == 1) return 0;
-        
-        // only classics OCSP check is requested (no stapling check)
-        if(!com->opt_ocsp_stapling_enabled && com->opt_ocsp_mode > 0) {
+
+        if (!peer_cert || !issuer_cert) {
+            DIA__("[%s]: ocsp_resp_callback: verify hasn't been yet called",name);
+            com->opt_ocsp_enforce_in_verify = true;
             return SSLCom::ocsp_resp_callback_explicit(com,opt_ocsp_require ? 0 : 1);
         }
+        
+        DEB_("ocsp_resp_callback[%s]: peer cert=%x, issuer_cert=%x",name,peer_cert,issuer_cert);
+       
+    } else {
+        ERRS_("SSLCom::ocsp_resp_callback: argument data is not SSLCom*!");
+        return 1;
     }
-    DIA__("[%s]: ocsp_resp_callback start",name);
 
 
     
@@ -752,6 +748,7 @@ int SSLCom::ocsp_resp_callback(SSL *s, void *arg) {
         if(opt_ocsp_strict)
             WAR_("[%s]: no OCSP response received",name);
 
+        com->opt_ocsp_enforce_in_verify = true;
         return SSLCom::ocsp_resp_callback_explicit(com,opt_ocsp_require ? 0 : 1);
     }
     DUM__("[%s]: OCSP Response:  \n%s",name,hex_dump((unsigned char*)p,len,2).c_str());
@@ -759,25 +756,28 @@ int SSLCom::ocsp_resp_callback(SSL *s, void *arg) {
     rsp = d2i_OCSP_RESPONSE(NULL, &p, len);
     if (!rsp) {
         ERR__("[%s] failed to parse OCSP response",name);
+        com->opt_ocsp_enforce_in_verify = true;
         return SSLCom::ocsp_resp_callback_explicit(com,opt_ocsp_strict ? 0 : 1);
     }
 
-    if (!peer_cert || !issuer_cert) {
-        ERR__("[%s] peer certificate or issue certificate not available for OCSP status check",name);
-        OCSP_BASICRESP_free(basic);
-        OCSP_RESPONSE_free(rsp);
-        return (opt_ocsp_require ? 0 : 1);;
-    }
+//     if (!peer_cert || !issuer_cert) {
+//         ERR__("[%s] peer certificate or issue certificate not available for OCSP status check",name);
+//         OCSP_BASICRESP_free(basic);
+//         OCSP_RESPONSE_free(rsp);
+//         return (opt_ocsp_require ? 0 : 1);;
+//     }
 
     status = OCSP_response_status(rsp);
     if (status != OCSP_RESPONSE_STATUS_SUCCESSFUL) {
         ERR__("[%s] OCSP responder error %d (%s)", name, status, OCSP_response_status_str(status));
+        com->opt_ocsp_enforce_in_verify = true;
         return SSLCom::ocsp_resp_callback_explicit(com,opt_ocsp_strict ? 0 : 1);
     }
 
     basic = OCSP_response_get1_basic(rsp);
     if (!basic) {
         ERR__("[%s] could not find BasicOCSPResponse",name);
+        com->opt_ocsp_enforce_in_verify = true;
         return SSLCom::ocsp_resp_callback_explicit(com,opt_ocsp_strict ? 0 : 1);
     }
 
@@ -800,13 +800,14 @@ int SSLCom::ocsp_resp_callback(SSL *s, void *arg) {
         int r = opt_ocsp_strict ? 0 : 1;
 
         if(r > 0) {
-            NOT__("[%s] OCSP response failed verification",name);
+            NOT__("[%s] OCSP stapling response failed verification",name);
             ERR_clear_error();
         }
         else {
-            ERR__("[%s] OCSP response failed verification",name);
+            ERR__("[%s] OCSP stapling response failed verification",name);
         }
 
+        //com->opt_ocsp_enforce_in_verify = true;
         return SSLCom::ocsp_resp_callback_explicit(com,r);
     }
 
@@ -822,6 +823,7 @@ int SSLCom::ocsp_resp_callback(SSL *s, void *arg) {
         if(r > 0)
             ERR_clear_error();
 
+        com->opt_ocsp_enforce_in_verify = true;
         return SSLCom::ocsp_resp_callback_explicit(com,r);
     }
 
@@ -836,6 +838,7 @@ int SSLCom::ocsp_resp_callback(SSL *s, void *arg) {
         if(r > 0)
             ERR_clear_error();
 
+        com->opt_ocsp_enforce_in_verify = true;
         return SSLCom::ocsp_resp_callback_explicit(com,r);
     }
 
@@ -848,6 +851,7 @@ int SSLCom::ocsp_resp_callback(SSL *s, void *arg) {
         if(r > 0)
             ERR_clear_error();
 
+        com->opt_ocsp_enforce_in_verify = true;
         return SSLCom::ocsp_resp_callback_explicit(com,r);
     }
 
@@ -857,10 +861,14 @@ int SSLCom::ocsp_resp_callback(SSL *s, void *arg) {
 
     DIA__("[%s] OCSP status for server certificate: %s", name, OCSP_cert_status_str(status));
 
+    std::string cn = SSLCertStore::print_cn(com->sslcom_peer_cert) + ";" + fingerprint(com->sslcom_peer_cert);
+    
     if (status == V_OCSP_CERTSTATUS_GOOD) {
         DIA__("[%s] OCSP status is good",name);
         if(com != nullptr){
             com->ocsp_cert_is_revoked = 0;
+            INF__("Connection from %s: certificate %s is valid (stapling OCSP))",name,cn.c_str());            
+            
         }
         return 1;
     } else
@@ -868,6 +876,7 @@ int SSLCom::ocsp_resp_callback(SSL *s, void *arg) {
         DIA__("[%s] OCSP status is revoked",name);
         if(com != nullptr){
             com->ocsp_cert_is_revoked = 1;
+            WAR__("Connection from %s: certificate %s is revoked (stapling OCSP))",name,cn.c_str());
         }
         return 0;
     } else
@@ -1235,6 +1244,8 @@ int SSLCom::waiting() {
 
     if (r < 0) {
         int err = SSL_get_error(sslcom_ssl,r);
+        long err2 = ERR_get_error();
+        
         if (err == SSL_ERROR_WANT_READ) {
             DUM___("SSLCom::waiting: SSL_%s: want read",op);
 
@@ -1256,10 +1267,11 @@ int SSLCom::waiting() {
             master()->poller.modify(sslcom_fd,EPOLLIN|EPOLLET|EPOLLOUT);
             return 0;
         }
+        else if (err2 == 654741622 || err2 == 654741605) {
+            return 0; //?
+        }
         else {
-            DIA___("SSLCom::waiting: SSL_%s: error: %d",op,err);
-
-            long err2 = ERR_get_error();
+            DIA___("SSLCom::waiting: SSL_%s: error: %d:%d",op,err,err2);
             do {
                 if(err2 != 0 || LEV_(DEB)) {
                     DIA___("SSLCom::waiting:   error code: %s",ERR_error_string(err2,nullptr));
