@@ -1280,7 +1280,16 @@ int SSLCom::waiting() {
             master()->poller.modify(sslcom_fd,EPOLLIN|EPOLLET|EPOLLOUT);
             return 0;
         }
+        // this is error code produced by SSL_connect via OCSP callback. 
+        // Unfortunately this error code is undocumented, added here to make it work
+        // our way based on observation.
         else if (err2 == 654741622 || err2 == 654741605) {
+            
+            if(ocsp_cert_is_revoked > 0) {
+                DIAS___("SSLCom::waiting: aborted due to certificate verification failure.");
+                return -1;
+            }
+            
             return 0; //?
         }
         else {
