@@ -39,6 +39,7 @@
 #include <crc32.hpp>
 #include <display.hpp>
 #include <buffer.hpp>
+#include <internet.hpp>
 #include "hostcx.hpp"
 
 std::once_flag SSLCom::openssl_thread_setup_done;
@@ -658,16 +659,28 @@ int SSLCom::ocsp_explicit_check(SSLCom* com) {
         }
         
         
-        if(is_revoked < 0) {
-            // experimental CRL list check
-            
-            NOT__("Connection from %s: certificate OCSP revocation status cannot be obtained)",name);
-            
-            std::vector<std::string> crls = crl_urls(com->sslcom_peer_cert);
-            for (auto c: crls) {
-                INF__("Connection from %s: certificate %s CRL at %s)",name,cn.c_str(),c.c_str());
-            }
-        }
+        //if(is_revoked < 0) {
+//         if(true) {
+//             // experimental CRL list check
+//             
+//             NOT__("Connection from %s: certificate OCSP revocation status cannot be obtained)",name);
+//             
+//             std::vector<std::string> crls = crl_urls(com->sslcom_peer_cert);
+//             for (auto c: crls) {
+//                 INF__("Connection from %s: certificate %s CRL at %s)",name,cn.c_str(),c.c_str());
+//                 buffer b;
+//                 download(c.c_str(),b);
+//                 int crl_size = b.size();
+//                 INF__("CRL downloaded: size %d bytes",crl_size);
+// 
+//                 X509_CRL* crl = new_CRL(b);
+//                 int crl_trust = crl_verify_trust(com->sslcom_peer_cert,com->sslcom_peer_issuer,crl,com->certstore()->def_cl_capath.c_str());
+//                 INF__("CRL 0x%x trusted = %d",crl, crl_trust);
+//                 
+//                 int is_revoked_by_crl = crl_is_revoked_by(com->sslcom_peer_cert,com->sslcom_peer_issuer,crl);
+//                 INF__("CRL says this certificate is revoked = %d",is_revoked_by_crl);
+//             }
+//         }
     }
     
     return is_revoked;

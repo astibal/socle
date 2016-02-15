@@ -31,6 +31,7 @@
 
 #include <string>
 #include <vector>
+#include <buffer.hpp>
 
 
 std::string fingerprint(X509* cert);
@@ -45,5 +46,9 @@ int ocsp_check_bytes(const char cert_bytes[], const char issuer_bytes[]);
 
 
 std::vector<std::string> crl_urls(X509 *x509);
+X509_CRL *new_CRL(const char* cert_bytes);
+X509_CRL *new_CRL(buffer& b);
+int crl_verify_trust(X509 *x509, X509* issuer, X509_CRL *crl_file, const std::string& cacerts_pem_path);
+int crl_is_revoked_by(X509 *x509, X509 *issuer, X509_CRL *crl_file);
 
 #endif

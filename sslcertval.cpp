@@ -21,6 +21,7 @@
 
 #include <sslcertstore.hpp>
 #include <logger.hpp>
+#include <buffer.hpp>
 
 std::vector<std::string> ocsp_urls(X509 *x509)
 {
@@ -272,7 +273,7 @@ int ocsp_check_bytes(const char cert_bytes[], const char issuer_bytes[])
 
 
 
-int is_revoked_by_crl(X509 *x509, X509 *issuer, X509_CRL *crl_file)
+int crl_is_revoked_by(X509 *x509, X509 *issuer, X509_CRL *crl_file)
 {
     int is_revoked = -1;
     if (issuer)
@@ -307,13 +308,15 @@ int crl_verify_trust(X509 *x509, X509* issuer, X509_CRL *crl_file, const std::st
     sk_X509_push(chain, issuer);
  
     X509_STORE *store=X509_STORE_new();
-    if (store==NULL) { return 0; }
+    if (store==NULL) { INFS_("crl_verify_trust: X509_STORE_new failed"); return 0; }
  
     X509_LOOKUP *lookup=X509_STORE_add_lookup(store,X509_LOOKUP_file());
-    if (lookup==NULL) { return 0; }
+    if (lookup==NULL) { INFS_("crl_verify_trust: X509_STORE_add_lookup failed"); return 0; }
  
-    int q1 = X509_LOOKUP_load_file(lookup, cacerts_pem_path.c_str(), X509_FILETYPE_PEM);
-    if (!q1) { return 0; }
+    // FIXME
+    //INF_("crl_verify_trust: Loading CA path %s",cacerts_pem_path.c_str());
+    //int q1 = X509_LOOKUP_load_file(lookup, cacerts_pem_path.c_str(), X509_FILETYPE_PEM);
+    //if (!q1) { INFS_("crl_verify_trust: X509_LOOKUP_load_file failed"); return 0; }
  
     X509_STORE_CTX *csc = X509_STORE_CTX_new();
     X509_STORE_CTX_init(csc, store, x509, chain);
@@ -324,13 +327,14 @@ int crl_verify_trust(X509 *x509, X509* issuer, X509_CRL *crl_file, const std::st
  
     int verify_result=X509_verify_cert(csc);
     if (verify_result!=1)
-        DIA_("Trust Failure: %s",X509_verify_cert_error_string(csc->error));
+        INF_("crl_verify_trust: %s",X509_verify_cert_error_string(csc->error));
  
     X509_STORE_CTX_cleanup(csc);
     X509_STORE_CTX_free(csc);
     X509_STORE_free(store);
     sk_X509_free(chain);
  
+    INF_("crl_verify_trust: %s",X509_verify_cert_error_string(csc->error));
     return verify_result;
 }
 
@@ -398,11 +402,33 @@ X509 *new_x509(const char* cert_bytes)
     return x509;
 }
 
+X509_CRL *new_CRL(const char* cert_bytes)
+{
+    BIO *bio_mem = BIO_new(BIO_s_mem());
+    BIO_puts(bio_mem, cert_bytes);
+    X509_CRL * crl = d2i_X509_CRL_bio(bio_mem, NULL);
+    BIO_free(bio_mem);
+    return crl;
+}
 
-X509_CRL *new_CRL(const char* crl_filename)
+X509_CRL *new_CRL(buffer& b)
+{
+    BIO *bio_mem = BIO_new(BIO_s_mem());
+    BIO_write(bio_mem,b.data(),b.size());
+    //EXT_("new_CRL: \n%s",hex_dump(b).c_str())
+    X509_CRL * crl = d2i_X509_CRL_bio(bio_mem, NULL);
+    BIO_free(bio_mem);
+    return crl;
+}
+
+
+
+X509_CRL *new_CRL_from_file(const char* crl_filename)
 {
     BIO *bio = BIO_new_file(crl_filename, "r");
-    X509_CRL *crl_file=d2i_X509_CRL_bio(bio,NULL); //if (format == FORMAT_PEM) crl=PEM_read_bio_X509_CRL(in,NULL,NULL,NULL);
+    X509_CRL *crl=d2i_X509_CRL_bio(bio,NULL); //if (format == FORMAT_PEM) crl=PEM_read_bio_X509_CRL(in,NULL,NULL,NULL);
     BIO_free(bio);
-    return crl_file;
+    return crl;
 }
+
+
