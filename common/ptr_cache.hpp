@@ -36,6 +36,7 @@ template <class T>
 struct expiring {
     
     expiring(T v, unsigned int in_seconds): value(v) { expired_at = ::time(nullptr) + in_seconds; }
+    virtual ~expiring() {};
     
     T value;
     time_t expired_at;
