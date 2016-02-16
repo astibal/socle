@@ -47,6 +47,23 @@ private:
     expiring();
 };
 
+template <class T>
+struct expiring_ptr {
+    
+    expiring_ptr(T* v, unsigned int in_seconds): value(v) { expired_at = ::time(nullptr) + in_seconds; }
+    virtual ~expiring_ptr() { delete value; };
+    
+    T* value;
+    time_t expired_at;
+    
+    static bool is_expired(expiring<T> *ptr) { return (ptr->expired_at <= ::time(nullptr)); }
+
+private:
+    expiring_ptr();
+};
+
+
+
 typedef expiring<int> expiring_int;
 typedef expiring<std::string> expiring_string;
 
