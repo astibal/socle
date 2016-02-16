@@ -80,7 +80,7 @@ int socket_connect(std::string ip_address, int port)
 
 void download(const std::string& url, buffer& buf)
 {
-    int ipv,r,port;
+    int ipv,port;
     std::string protocol, domain, path, query, url_port;
     std::vector<std::string> ip_addresses;
  
@@ -153,17 +153,23 @@ int http_get(const std::string& request, const std::string& ip_address, int port
     std::string header;
     char delim[] = "\r\n\r\n";
     char buffer[16384];
-    int sd, bytes_received=-1,bytes_sofar=0,bytes_expected=-1,i,state=0;
+
+    int bytes_received=-1;
+    int bytes_sofar=0;
+    int bytes_expected=-1;
+    int state=0;
  
-    if (sd = socket_connect(ip_address, port)) 
+    int sd = socket_connect(ip_address, port);
+    if (sd > 0) 
     {
         ::send(sd, request.c_str(), request.length(), 0);
         while (bytes_sofar!=bytes_expected && (bytes_received = ::recv(sd, buffer, sizeof(buffer), 0))>0)
         {
             int body_index = 0;
-            if (state<sizeof(delim)-1)//read header
+            if (state + 1 < (signed int)sizeof(delim))//read header
             {
-                for(i=0; i<bytes_received && state<sizeof(delim)-1; i++)
+                int i = 0;
+                for(; i < bytes_received && state + 1 < (signed int)sizeof(delim); i++)
                 {
                     header += buffer[i];
                     state = buffer[i]==delim[state] ? state+1 : 0;
