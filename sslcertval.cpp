@@ -281,18 +281,21 @@ int crl_is_revoked_by(X509 *x509, X509 *issuer, X509_CRL *crl_file)
         EVP_PKEY *ikey=X509_get_pubkey(issuer);
         ASN1_INTEGER *serial = X509_get_serialNumber(x509);
  
-        if (crl_file && ikey && X509_CRL_verify(crl_file, ikey))
-        {
-            is_revoked = 0;
-            STACK_OF(X509_REVOKED) *revoked_list = crl_file->crl->revoked;
-            for (int j = 0; j < sk_X509_REVOKED_num(revoked_list) && !is_revoked; j++)
-            {
-                X509_REVOKED *entry = sk_X509_REVOKED_value(revoked_list, j);
-                if (entry->serialNumber->length==serial->length)
+        if (crl_file && ikey) {
+            if(X509_CRL_verify(crl_file, ikey)) {
+
+                DEBS_("X509_CRL_verify ok");
+                is_revoked = 0;
+                STACK_OF(X509_REVOKED) *revoked_list = crl_file->crl->revoked;
+                for (int j = 0; j < sk_X509_REVOKED_num(revoked_list) && !is_revoked; j++)
                 {
-                    if (memcmp(entry->serialNumber->data, serial->data, serial->length)==0)
+                    X509_REVOKED *entry = sk_X509_REVOKED_value(revoked_list, j);
+                    if (entry->serialNumber->length==serial->length)
                     {
-                        is_revoked=1;
+                        if (memcmp(entry->serialNumber->data, serial->data, serial->length)==0)
+                        {
+                            is_revoked=1;
+                        }
                     }
                 }
             }
@@ -327,14 +330,14 @@ int crl_verify_trust(X509 *x509, X509* issuer, X509_CRL *crl_file, const std::st
  
     int verify_result=X509_verify_cert(csc);
     if (verify_result!=1)
-        INF_("crl_verify_trust: %s",X509_verify_cert_error_string(csc->error));
+        DIA_("crl_verify_trust: %s",X509_verify_cert_error_string(csc->error));
  
+
     X509_STORE_CTX_cleanup(csc);
     X509_STORE_CTX_free(csc);
     X509_STORE_free(store);
     sk_X509_free(chain);
  
-    INF_("crl_verify_trust: %s",X509_verify_cert_error_string(csc->error));
     return verify_result;
 }
 
@@ -415,8 +418,10 @@ X509_CRL *new_CRL(buffer& b)
 {
     BIO *bio_mem = BIO_new(BIO_s_mem());
     BIO_write(bio_mem,b.data(),b.size());
-    //EXT_("new_CRL: \n%s",hex_dump(b).c_str())
+    EXT_("new_CRL: \n%s",hex_dump(b).c_str())
+    
     X509_CRL * crl = d2i_X509_CRL_bio(bio_mem, NULL);
+    
     BIO_free(bio_mem);
     return crl;
 }

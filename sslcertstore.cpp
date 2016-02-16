@@ -29,6 +29,7 @@ std::string SSLCertStore::password = "password";
 std::string SSLCertStore::def_cl_capath;
 
 ptr_cache<std::string,expiring_ocsp_result> SSLCertStore::ocsp_result_cache("ocsp response cache",500,true);
+ptr_cache<std::string,expiring_crl> SSLCertStore::crl_cache("crl cache",500,true);
 
 int SSLCertStore::log_level = NON;
 

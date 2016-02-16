@@ -51,8 +51,18 @@ typedef std::map<std::string,X509_PAIR*> X509_CACHE;
 typedef std::map<std::string,std::string> FQDN_CACHE;
 
 typedef expiring_int expiring_ocsp_result;
+struct crl_holder;
+typedef expiring_ptr<crl_holder> expiring_crl;
 
 #define SSLCERTSTORE_BUFSIZE 512
+
+
+struct crl_holder {
+    X509_CRL* ptr = nullptr;
+    crl_holder(X509_CRL* c): ptr(c) {};
+    virtual ~crl_holder() { if(ptr) X509_CRL_free(ptr); }
+};
+
 
 class SSLCertStore {
    
@@ -92,6 +102,7 @@ public:
      FQDN_CACHE& fqdn_cache() { return fqdn_cache_; };
      
      static ptr_cache<std::string,expiring_ocsp_result> ocsp_result_cache;
+     static ptr_cache<std::string,expiring_crl> crl_cache;
      
      std::mutex mutex_cache_write_;
      void lock() { mutex_cache_write_.lock(); };

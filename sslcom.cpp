@@ -659,28 +659,98 @@ int SSLCom::ocsp_explicit_check(SSLCom* com) {
         }
         
         
-        //if(is_revoked < 0) {
-//         if(true) {
-//             // experimental CRL list check
-//             
-//             NOT__("Connection from %s: certificate OCSP revocation status cannot be obtained)",name);
-//             
-//             std::vector<std::string> crls = crl_urls(com->sslcom_peer_cert);
-//             for (auto c: crls) {
-//                 INF__("Connection from %s: certificate %s CRL at %s)",name,cn.c_str(),c.c_str());
-//                 buffer b;
-//                 download(c.c_str(),b);
-//                 int crl_size = b.size();
-//                 INF__("CRL downloaded: size %d bytes",crl_size);
-// 
-//                 X509_CRL* crl = new_CRL(b);
-//                 int crl_trust = crl_verify_trust(com->sslcom_peer_cert,com->sslcom_peer_issuer,crl,com->certstore()->def_cl_capath.c_str());
-//                 INF__("CRL 0x%x trusted = %d",crl, crl_trust);
-//                 
-//                 int is_revoked_by_crl = crl_is_revoked_by(com->sslcom_peer_cert,com->sslcom_peer_issuer,crl);
-//                 INF__("CRL says this certificate is revoked = %d",is_revoked_by_crl);
-//             }
-//         }
+        if(is_revoked < 0) {
+            //if(true) { // testing -- uncomment if needed to test CRL download despite we have OCSP result (and comment if statement above ;))
+            
+            NOT__("Connection from %s: certificate OCSP revocation status cannot be obtained)",name);
+            
+            std::vector<std::string> crls = crl_urls(com->sslcom_peer_cert);
+            
+            expiring_crl* crl_h = nullptr;
+            X509_CRL* crl = nullptr;
+            
+            for(auto c: crls) {
+                certstore()->crl_cache.lock();
+                crl_h = certstore()->crl_cache.get(c);
+                
+                if(crl_h != nullptr) {
+                    crl = crl_h->value->ptr;
+                    DIA__("found cached crl: %s",c.c_str());
+                    str_status = str_cached;
+                }
+                else {
+                    certstore()->crl_cache.unlock(); // WARNING: unlock for the download
+                    DIA__("crl not cached: %s",c.c_str());
+                    
+                    const int tolerated_dnld_time = 3;
+                    time_t start = ::time(nullptr);
+                    
+                    INF__("Connection from %s: downloading CRL at %s)",name,c.c_str());
+
+                    buffer b;
+                    download(c.c_str(),b);
+                    time_t t_dif = ::time(nullptr) - start;
+                    
+                    int crl_size = b.size();
+                    INF__("CRL downloaded: size %d bytes in %d seconds",crl_size,t_dif);
+                    if(t_dif > tolerated_dnld_time) {
+                        WARS__("it took long time to download CRL. You should consider to disable CRL check :(");
+                    }
+
+                    crl = new_CRL(b);
+                    str_status = str_fresh;
+                    
+                    certstore()->crl_cache.lock(); // WARNING: lock back again -- we risk here that someone else already downloaded it
+                    if(crl != nullptr) {
+                        DIA__("Caching CRL 0x%x", crl);
+                        certstore()->crl_cache.set(c.c_str(),new expiring_crl(new crl_holder(crl),1800)); // but because we are locked, we are happy to overwrite it!
+                    }
+                }
+                // all control-paths are locked now
+                
+                int is_revoked_by_crl = -1;
+                
+                if(crl != nullptr && com->sslcom_peer_cert != nullptr && com->sslcom_peer_issuer != nullptr) {
+                    int crl_trust = crl_verify_trust(com->sslcom_peer_cert,com->sslcom_peer_issuer,crl,com->certstore()->def_cl_capath.c_str());
+                    DIA__("CRL 0x%x trusted = %d",crl, crl_trust);
+                    
+                    bool trust_blindly_downloaded_CRL = true;
+                    if(crl_trust == 0 && !trust_blindly_downloaded_CRL) {
+                        WAR__("CRL %s is not verified, it's untrusted",c.c_str());
+                    }
+                    else {
+                        if(crl_trust == 0 && crl_h == nullptr) {
+                            // complain only at download time only
+                            NOT__("CRL %s is not verified, but we are instructed to trust it.",c.c_str());
+                        }
+                        DIA__("Checking revocation status: CRL 0x%x", crl);
+                        is_revoked_by_crl = crl_is_revoked_by(com->sslcom_peer_cert,com->sslcom_peer_issuer,crl);
+                    }
+                }
+                
+                certstore()->crl_cache.unlock(); // unlocking, we don't need lock anymore
+                DIA__("CRL says this certificate is revoked = %d",is_revoked_by_crl);
+
+                if(is_revoked_by_crl > 0) {
+                    WAR__("Connection from %s: certificate %s revocation status is revoked (%s CRL))",name,cn.c_str(),str_status);
+                } else
+                if(is_revoked_by_crl == 0) {
+                    INF__("Connection from %s: certificate %s revocation status is valid (%s CRL))",name,cn.c_str(),str_status);
+                } else {
+                    WAR__("Connection from %s: certificate %s revocation status is still unknown (%s CRL))",name,cn.c_str(),str_status);
+                }
+                
+                is_revoked = is_revoked_by_crl;
+                
+                if(is_revoked_by_crl >= 0) {
+                    break;
+                }
+            }
+            
+            
+            for (auto c: crls) {
+            }
+        }
     }
     
     return is_revoked;
