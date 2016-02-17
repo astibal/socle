@@ -746,10 +746,6 @@ int SSLCom::ocsp_explicit_check(SSLCom* com) {
                     break;
                 }
             }
-            
-            
-            for (auto c: crls) {
-            }
         }
     }
     
