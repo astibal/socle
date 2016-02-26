@@ -210,6 +210,12 @@ public:
             master()->poller.add(s,EPOLLIN); 
         } 
     };
+    inline void unset_monitor(int s) { 
+        DIA_("basecom::unset_monitor: called to remove %d",s);
+        if (s > 0 ) { 
+            master()->poller.del(s);
+        } 
+    };    
     inline void set_write_monitor(int s) {
         DIA_("basecom::set_write_monitor: called to add EPOLLOUT %d",s);
         if (s > 0 ) { 
