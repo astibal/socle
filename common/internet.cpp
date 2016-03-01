@@ -78,8 +78,10 @@ int socket_connect(std::string ip_address, int port)
     //if (errno==EINPROGRESS) { return 0; }//errno is a global set by connect
 }
 
-void download(const std::string& url, buffer& buf)
+int download(const std::string& url, buffer& buf, int timeout)
 {
+    int ret = 0;
+    
     int ipv,port;
     std::string protocol, domain, path, query, url_port;
     std::vector<std::string> ip_addresses;
@@ -127,9 +129,14 @@ void download(const std::string& url, buffer& buf)
  
         for(int i=0,r=0, ix=ip_addresses.size(); i<ix && r==0; i++)
         {
-            r = http_get(request, ip_addresses[i], port, buf);
+            r = http_get(request, ip_addresses[i], port, buf, timeout);
+            ret = r;
+            if(ret > 0) 
+                break;
         }
     }
+    
+    return ret;
 }
 
 std::string header_value(const std::string& full_header, const std::string& header_name)
@@ -148,7 +155,7 @@ std::string header_value(const std::string& full_header, const std::string& head
     return r;
 }
 
-int http_get(const std::string& request, const std::string& ip_address, int port, buffer& buf)
+int http_get(const std::string& request, const std::string& ip_address, int port, buffer& buf, int timeout)
 {
     std::string header;
     char delim[] = "\r\n\r\n";
@@ -159,12 +166,50 @@ int http_get(const std::string& request, const std::string& ip_address, int port
     int bytes_expected=-1;
     int state=0;
  
+    time_t start_time = time(nullptr);
+    
     int sd = socket_connect(ip_address, port);
     if (sd > 0) 
     {
         ::send(sd, request.c_str(), request.length(), 0);
-        while (bytes_sofar!=bytes_expected && (bytes_received = ::recv(sd, buffer, sizeof(buffer), 0))>0)
+        while (bytes_sofar!=bytes_expected)
         {
+            
+            fd_set rfds;
+            struct timeval tv;
+            int retval;
+
+            FD_ZERO(&rfds);
+            FD_SET(sd, &rfds);
+
+            /* Wait up to five seconds. */
+            tv.tv_sec = 1;
+            tv.tv_usec = 0;
+
+            retval = select(1, &rfds, NULL, NULL, &tv);
+            if(retval) {
+                /* Don't rely on the value of tv now! */
+                bytes_received = ::recv(sd, buffer, sizeof(buffer), 0);
+            } else {
+                if(time(nullptr) > start_time + timeout) {
+                    bytes_sofar = -1;
+                    break;
+                }
+                
+                continue;
+            }
+
+            if(time(nullptr) > start_time + timeout) {
+                bytes_sofar = -1;
+                break;
+            }
+
+            
+            
+            if(bytes_received <= 0) {
+                break;
+            }
+            
             int body_index = 0;
             if (state + 1 < (signed int)sizeof(delim))//read header
             {
