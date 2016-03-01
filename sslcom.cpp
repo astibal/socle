@@ -31,7 +31,7 @@
 #include <sslcom.hpp>
 #include <sslcom_dh.hpp>
 #include <logger.hpp>
-
+#include <display.hpp>
 
 #include <cstdio>
 #include <functional>
@@ -669,42 +669,52 @@ int SSLCom::ocsp_explicit_check(SSLCom* com) {
             expiring_crl* crl_h = nullptr;
             X509_CRL* crl = nullptr;
             
-            for(auto c: crls) {
+            for(auto crl_url: crls) {
+                
+                std::string crl_printable = printable(crl_url);
                 certstore()->crl_cache.lock();
-                crl_h = certstore()->crl_cache.get(c);
+                crl_h = certstore()->crl_cache.get(crl_url);
                 
                 if(crl_h != nullptr) {
                     crl = crl_h->value->ptr;
-                    DIA__("found cached crl: %s",c.c_str());
+                    DIA__("found cached crl: %s",crl_printable.c_str());
                     str_status = str_cached;
                 }
                 else {
                     certstore()->crl_cache.unlock(); // WARNING: unlock for the download
-                    DIA__("crl not cached: %s",c.c_str());
+                    DIA__("crl not cached: %s",crl_printable.c_str());
                     
                     const int tolerated_dnld_time = 3;
                     time_t start = ::time(nullptr);
                     
-                    INF__("Connection from %s: downloading CRL at %s)",name,c.c_str());
+                    INF__("Connection from %s: downloading CRL at %s)",name,crl_printable.c_str());
 
                     buffer b;
-                    download(c.c_str(),b);
-                    time_t t_dif = ::time(nullptr) - start;
-                    
-                    int crl_size = b.size();
-                    INF__("CRL downloaded: size %d bytes in %d seconds",crl_size,t_dif);
-                    if(t_dif > tolerated_dnld_time) {
-                        WARS__("it took long time to download CRL. You should consider to disable CRL check :(");
+                    bool dnld_failed = false;
+                    int bytes = download(crl_url.c_str(),b,tolerated_dnld_time*3);
+                    if(bytes < 0) dnld_failed = true;
+
+                    if(! dnld_failed ) {
+                        time_t t_dif = ::time(nullptr) - start;
+                        
+                        int crl_size = b.size();
+                        INF__("CRL downloaded: size %d bytes in %d seconds",crl_size,t_dif);
+                        if(t_dif > tolerated_dnld_time) {
+                            WARS__("it took long time to download CRL. You should consider to disable CRL check :(");
+                        }
+
+                        crl = new_CRL(b);
+                        str_status = str_fresh;
+                        
+                        certstore()->crl_cache.lock(); // WARNING: lock back again -- we risk here that someone else already downloaded it
+                        if(crl != nullptr) {
+                            DIA__("Caching CRL 0x%x", crl);
+                            certstore()->crl_cache.set(crl_url.c_str(),new expiring_crl(new crl_holder(crl),1800)); // but because we are locked, we are happy to overwrite it!
+                        }
+                    } else {
+                        WAR__("downloding CRL from %s failed.",crl_printable.c_str());
                     }
 
-                    crl = new_CRL(b);
-                    str_status = str_fresh;
-                    
-                    certstore()->crl_cache.lock(); // WARNING: lock back again -- we risk here that someone else already downloaded it
-                    if(crl != nullptr) {
-                        DIA__("Caching CRL 0x%x", crl);
-                        certstore()->crl_cache.set(c.c_str(),new expiring_crl(new crl_holder(crl),1800)); // but because we are locked, we are happy to overwrite it!
-                    }
                 }
                 // all control-paths are locked now
                 
@@ -716,12 +726,12 @@ int SSLCom::ocsp_explicit_check(SSLCom* com) {
                     
                     bool trust_blindly_downloaded_CRL = true;
                     if(crl_trust == 0 && !trust_blindly_downloaded_CRL) {
-                        WAR__("CRL %s is not verified, it's untrusted",c.c_str());
+                        WAR__("CRL %s is not verified, it's untrusted",crl_printable.c_str());
                     }
                     else {
                         if(crl_trust == 0 && crl_h == nullptr) {
                             // complain only at download time only
-                            NOT__("CRL %s is not verified, but we are instructed to trust it.",c.c_str());
+                            NOT__("CRL %s is not verified, but we are instructed to trust it.",crl_printable.c_str());
                         }
                         DIA__("Checking revocation status: CRL 0x%x", crl);
                         is_revoked_by_crl = crl_is_revoked_by(com->sslcom_peer_cert,com->sslcom_peer_issuer,crl);
