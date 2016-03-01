@@ -210,3 +210,110 @@ std::string number_suffixed(unsigned long xn) {
         return string_format("%.3fT",xn/POW_4);
     }
 }
+
+
+void chr_cstrlit(unsigned char u, char *buffer, size_t buflen, bool to_print = false) {
+
+    
+    if (buflen < 2)
+        *buffer = '\0';
+    else if (isprint(u) && u != '\'' && u != '\"' && u != '\\' && u != '\?')
+        sprintf(buffer, "%c", u);
+    else if (buflen < 3)
+        *buffer = '\0';
+    else
+    {
+        switch (u)
+        {
+        case '\a':  strcpy(buffer, "\\a"); break;
+        case '\b':  strcpy(buffer, "\\b"); break;
+        case '\f':  strcpy(buffer, "\\f"); break;
+        case '\n':  strcpy(buffer, "\\n"); break;
+        case '\r':  strcpy(buffer, "\\r"); break;
+        case '\t':  strcpy(buffer, "\\t"); break;
+        case '\v':  strcpy(buffer, "\\v"); break;
+        case '\\':  strcpy(buffer, "\\\\"); break;
+        case '\'':  strcpy(buffer, "\\'"); break;
+        case '\"':  strcpy(buffer, "\\\""); break;
+        case '\?':  strcpy(buffer, "\\\?"); break;
+        
+        case '%':
+            if(to_print) {
+                strcpy(buffer, "%%"); break;
+            }
+        
+        default:
+            if (buflen < 5)
+                *buffer = '\0';
+            else
+                sprintf(buffer, "\\%03o", u);
+            break;
+        }
+    }
+}
+
+
+
+
+/*
+ * this function escapes string for 2 purposes:
+ * - to use string internally
+ * - for printing
+ * it behaves slightly different way, depending on mode.
+ * For internal only, it will escape everything to be escaped, except formating character '%'
+ * For printing purposes, it will escape only non-printables, + formatting character '%'
+ */
+std::string escape(std::string orig, bool to_print) {
+    std::string ret;
+    
+    for (size_t i = 0; i < orig.size(); ++i) {
+        char c = orig[i];
+        if (isprint(c) && c != '\'' && c != '\"' && c != '\\' && c != '\?' && c != '%') {
+            ret += c;        
+        }
+        else {
+            switch (c)
+            {
+                
+            // escape in all cases
+            case '\a':  ret += "\\a"; break;
+            case '\b':  ret += "\\b"; break;
+            case '\f':  ret += "\\f"; break;
+            case '\v':  ret += "\\v"; break;
+            case '\\':  ret += "\\\\"; break;
+
+            
+            // escape only when we want to print string out
+            case '%':
+                if(to_print) ret += "%%"; break;
+                
+            
+            // escape if full escape requested
+            case '\n':  
+                if(! to_print) ret += "\\n"; break;
+                
+            case '\t':  
+                if(! to_print) ret += "\\t"; break;
+                
+            case '\r':  
+                if(! to_print) ret += "\\r"; break;
+            
+
+            case '\'':  
+                if(! to_print) ret += "\\'"; break;
+
+            case '\"':  
+                if(! to_print) ret += "\\\""; break;
+
+            case '\?':  
+                if(! to_print) ret += "\\\?"; break;
+            
+            
+            default:
+                if(! to_print) ret += string_format("\\%03o", c);
+            }
+        }
+    }
+    
+    return ret;
+}

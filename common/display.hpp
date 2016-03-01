@@ -31,4 +31,10 @@ std::string hex_dump(buffer*, unsigned int=0,unsigned char=0);
 std::string string_error();
 std::string bt();
 
+std::string escape(std::string orig, bool to_print = false);
+inline std::string printable(std::string orig) {
+    return escape(orig,true);
+}
+
+
 #endif
