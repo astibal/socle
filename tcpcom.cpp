@@ -83,11 +83,11 @@ int TCPCom::connect(const char* host, const char* port, bool blocking) {
                     
                     
                 } else {
+                    close(sfd);
+                    sfd = 0;
                     NOT_("TCPCom::connect[%s:%s]: socket[%d]: connnect errno: %s",host,port,sfd,strerror(errno));
                 }
 
-                close(sfd);
-                sfd = 0;
                 DUMS_("new attempt, socket reset");
                 
             } 

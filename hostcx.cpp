@@ -89,6 +89,11 @@ baseHostCX::baseHostCX(baseCom* c, unsigned int s) {
 
 baseHostCX::~baseHostCX() {
     com()->cleanup();
+
+    if(fds_ > 0) {
+        com()->set_poll_handler(fds_,nullptr);
+        com()->close(fds_); 
+    }
     
     if(closing_fds_ > 0) {
         com()->set_poll_handler(closing_fds_,nullptr);
