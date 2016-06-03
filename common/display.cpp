@@ -17,13 +17,19 @@
 */
 
 #include <string>
+#include <vector>
 #include <mutex>
+#include <sstream>
+#include <iostream>
+#include <algorithm>
+#include <cstring>
+
 #include <execinfo.h>
+#include <sys/utsname.h>
 
 #include "display.hpp"
 #include "buffer.hpp"
 
-#include "string.h"
 #include "stdarg.h"
 #include "stdio.h"
 #include "errno.h"
@@ -316,4 +322,66 @@ std::string escape(std::string orig, bool to_print) {
     }
     
     return ret;
+}
+
+
+std::vector<std::string> string_split(std::string str, char delimiter) {
+    std::vector<std::string> internal;
+    std::stringstream ss(str); // Turn the string into a stream.
+    std::string tok;
+
+    while(getline(ss, tok, delimiter)) {
+        internal.push_back(tok);
+    }
+
+    return internal;
+}
+
+std::string get_kernel_version() {
+    utsname u;
+    memset(&u,0,sizeof(utsname));
+    uname(&u);
+
+    std::string kernel_ver = u.release;
+    printf("Kernel version detected: %s\n",kernel_ver.c_str());
+
+    std::replace( kernel_ver.begin(), kernel_ver.end(), '-', '.');
+    printf("Kernel version sanitized: %s\n",kernel_ver.c_str());
+
+    return kernel_ver;
+}
+
+bool version_check(std::string real_string ,std::string v) {
+
+    std::vector<std::string> real_ver = string_split(real_string,'.');
+    std::vector<std::string> target_ver = string_split(v,'.');
+
+    int max_ver_level = (target_ver.size() < real_ver.size()) ? target_ver.size() : real_ver.size();
+    for( int i = 0 ; i < max_ver_level; ++i) {
+
+        int real_int = 0;
+        int target_int = 0;
+        try {
+            real_int = std::stoi(real_ver.at(i));
+            target_int = std::stoi(target_ver.at(i));
+        }
+        catch(std::invalid_argument e) {
+            printf("error: cannot convert to a number\n");
+
+            // so far we succeeded with version checks
+            // or if i == 0 and no checks were possible. Be polite and fail-open.
+            return true;
+        }
+
+        printf("Comparing[%d:%d]: real %d with target %d\n",max_ver_level,i,real_int,target_int);
+
+        if( real_int < target_int) {
+            return false;
+        } else
+        if( real_int > target_int) {
+            return true;
+        }
+    }
+
+    return true;
 }

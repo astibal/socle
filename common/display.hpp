@@ -20,10 +20,13 @@
 #define DISPLAY_HPP
 
 #include <string>
+#include <vector>
 
 class buffer;
 
 std::string string_format(const std::string& fmt, ...);
+std::vector<std::string> 
+            string_split(std::string str, char delimiter);
 std::string number_suffixed(unsigned long xn);
 std::string hex_dump(unsigned char *data, int size, unsigned int=0,unsigned char=0);
 std::string hex_dump(buffer&, unsigned int=0,unsigned char=0);
@@ -36,5 +39,9 @@ inline std::string printable(std::string orig) {
     return escape(orig,true);
 }
 
+// get sanitized, dot-separated kernel version. 
+std::string get_kernel_version();
+// compare dot-formated @target version with against @real version. @returns false if real version is lower than target.
+bool version_check(std::string real, std::string target);
 
 #endif
