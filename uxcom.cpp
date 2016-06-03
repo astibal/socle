@@ -45,11 +45,11 @@ int UxCom::connect(const char* host, const char* noop_port, bool blocking) {
                 DEB_("UxCom::connect[%s:%s]: socket[%d]: connnect errno: EINPROGRESS",host,port,sfd);
                 
             } else {
+                close(sfd);
+                sfd = 0;
                 NOT_("UxCom::connect[%s:%s]: socket[%d]: connnect errno: %s",host,port,sfd,strerror(errno));
             }
 
-            close(sfd);
-            sfd = 0;
         }
         
     } else {

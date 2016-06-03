@@ -54,7 +54,7 @@ public:
             update_counters_.push_back(1);
         }
         else if (flow_.back().first == src) {
-            DIA_("Flow::append: to current side: %c: %d bytes",len);
+            DIA_("Flow::append: to current side: %c: %d bytes",src, len);
             DUM_("Flow::append: to current side: %c: incoming  data:\n%s",src,hex_dump((unsigned char*)data,  len > 128 ? 128 : len ).c_str());
             flow_.back().second->append(data,len);
             int& counter_ref = update_counters_.back();
