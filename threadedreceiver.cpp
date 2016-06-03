@@ -23,6 +23,7 @@
 #include <vector>
 #include <thread>
 
+#include <display.hpp>
 #include <logger.hpp>
 #include <threadedreceiver.hpp>
 
@@ -35,7 +36,14 @@ template<class Worker, class SubWorker>
 ThreadedReceiver<Worker,SubWorker>::ThreadedReceiver(baseCom* c): baseProxy(c),
 threads_(NULL) {
     baseProxy::new_raw(true);
-    pipe2(sq__hint,O_DIRECT|O_NONBLOCK);
+    
+    if(version_check(get_kernel_version(),"3.4")) {
+        DEBS_("Acceptor: kernel supports O_DIRECT");
+        pipe2(sq__hint,O_DIRECT|O_NONBLOCK);
+    } else {
+        WARS_("Acceptor: kernel doesn't support O_DIRECT");
+        pipe2(sq__hint,O_NONBLOCK);
+    } 
 }
 
 template<class Worker, class SubWorker>

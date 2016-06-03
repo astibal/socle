@@ -26,6 +26,7 @@
 #include <vector>
 #include <thread>
 
+#include <display.hpp>
 #include <threadedacceptor.hpp>
 #include <logger.hpp>
 
@@ -35,8 +36,14 @@ int ThreadedAcceptorProxy<SubWorker>::workers_total = 2;
 template<class Worker, class SubWorker>
 ThreadedAcceptor<Worker,SubWorker>::ThreadedAcceptor(baseCom* c): baseProxy(c),
 threads_(NULL) {
-	baseProxy::new_raw(true);
-    pipe2(sq__hint,O_DIRECT|O_NONBLOCK);
+    baseProxy::new_raw(true);
+    if(version_check(get_kernel_version(),"3.4")) {
+        DEBS_("Acceptor: kernel supports O_DIRECT");
+        pipe2(sq__hint,O_DIRECT|O_NONBLOCK);
+    } else {
+        WARS_("Acceptor: kernel doesn't support O_DIRECT");
+        pipe2(sq__hint,O_NONBLOCK);
+    } 
 }
 
 template<class Worker, class SubWorker>
