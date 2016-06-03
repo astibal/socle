@@ -343,10 +343,10 @@ std::string get_kernel_version() {
     uname(&u);
 
     std::string kernel_ver = u.release;
-    printf("Kernel version detected: %s\n",kernel_ver.c_str());
+    //printf("Kernel version detected: %s\n",kernel_ver.c_str());
 
     std::replace( kernel_ver.begin(), kernel_ver.end(), '-', '.');
-    printf("Kernel version sanitized: %s\n",kernel_ver.c_str());
+    //printf("Kernel version sanitized: %s\n",kernel_ver.c_str());
 
     return kernel_ver;
 }
@@ -366,14 +366,14 @@ bool version_check(std::string real_string ,std::string v) {
             target_int = std::stoi(target_ver.at(i));
         }
         catch(std::invalid_argument e) {
-            printf("error: cannot convert to a number\n");
+            //printf("error: cannot convert to a number\n");
 
             // so far we succeeded with version checks
             // or if i == 0 and no checks were possible. Be polite and fail-open.
             return true;
         }
 
-        printf("Comparing[%d:%d]: real %d with target %d\n",max_ver_level,i,real_int,target_int);
+        //printf("Comparing[%d:%d]: real %d with target %d\n",max_ver_level,i,real_int,target_int);
 
         if( real_int < target_int) {
             return false;
