@@ -23,6 +23,7 @@
 #include <vector>
 #include <thread>
 
+#include <internet.hpp>
 #include <display.hpp>
 #include <logger.hpp>
 #include <threadedreceiver.hpp>
@@ -75,7 +76,7 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
     
     unsigned char recv_buf_[2048];
     char cmbuf[128];
-    struct sockaddr_in from;
+    struct sockaddr_storage from;
     struct iovec io;
     struct msghdr msg;
     bool found_origdst = false;
@@ -95,7 +96,7 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
     
    
     uint32_t session_key = 0;
-    struct sockaddr_in orig;
+    struct sockaddr_storage orig;
     
 //     hdr.client_addr_ = from.sin_addr.s_addr;
 //     hdr.client_port_ = ntohs(from.sin_port);
@@ -111,13 +112,19 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
 
             DEB_("ThreadedReceiver::on_left_new_raw[%d]: ancillary data level=%d, type=%d",sock,cmsg->cmsg_level,cmsg->cmsg_type);
             
-            std::string str_src_host(inet_ntoa(from.sin_addr));
-            std::string str_dst_host(inet_ntoa(orig.sin_addr));
+            std::string str_src_host(inet_ntoa(inet::to_sockaddr_in(&from)->sin_addr));
+            std::string str_dst_host(inet_ntoa(inet::to_sockaddr_in(&orig)->sin_addr));
             
-            DIA_("ThreadedReceiver::on_left_new_raw[%d]: datagram from: %s:%u to %s:%u", sock, str_src_host.c_str() , ntohs(from.sin_port) , str_dst_host.c_str(), ntohs(orig.sin_port));
+            DIA_("ThreadedReceiver::on_left_new_raw[%d]: datagram from: %s:%u to %s:%u", 
+                        sock, 
+                        str_src_host.c_str(), 
+                        ntohs(inet::to_sockaddr_in(&from)->sin_port), 
+                        str_dst_host.c_str(), 
+                        ntohs(inet::to_sockaddr_in(&orig)->sin_port)
+                        );
             
-            uint32_t s = from.sin_addr.s_addr;
-            uint16_t sp = ntohs(from.sin_port);
+            uint32_t s = inet::to_sockaddr_in(&from)->sin_addr.s_addr;
+            uint16_t sp = ntohs(inet::to_sockaddr_in(&from)->sin_port);
             s = s << 16;
             s += sp;
             
@@ -203,11 +210,11 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
         else {
             Datagram& o_it = DatagramCom::datagrams_received[session_key];
             
-            if( (o_it.src.sin_addr.s_addr != from.sin_addr.s_addr) ||
-                (o_it.src.sin_port != from.sin_port) ||
-                (o_it.dst.sin_addr.s_addr != orig.sin_addr.s_addr) ||
-                (o_it.dst.sin_port != orig.sin_port) ||
-                (o_it.src.sin_family != orig.sin_family)
+            if( (o_it.src_in_addr4().s_addr != inet::to_sockaddr_in(&from)->sin_addr.s_addr) ||
+                (o_it.src_port4() != inet::to_sockaddr_in(&from)->sin_port) ||
+                (o_it.dst_in_addr4().s_addr != inet::to_sockaddr_in(&orig)->sin_addr.s_addr) ||
+                (o_it.dst_port4() != inet::to_sockaddr_in(&orig)->sin_port) ||
+                (o_it.src_family() != inet::to_sockaddr_in(&orig)->sin_family)
             ) {
                 DIA_("ThreadedReceiver::on_left_new_raw[%d]: key %d: session clash with cx@%x!",sock, session_key,o_it.cx);
                 clashed = true;
