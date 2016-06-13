@@ -242,10 +242,6 @@ public:
 //     inline void unset_exset(int s) { FD_CLR(s, &ex_socketSet); };
     
 	
-    virtual bool __same_target_check(const char* host, const char* port, int existing_socket);
-	
-	bool __deprecated_check_same_destination(int s, int ss);
-
     virtual bool resolve_socket(bool source,int s, std::string *target_host, std::string *target_port, struct sockaddr_storage *target_storage = NULL );    
 	bool resolve_socket_src(int s, std::string *target_host, std::string *target_port, struct sockaddr_storage *target_storage = NULL ) { 
 		return resolve_socket(true, s, target_host, target_port, target_storage);
