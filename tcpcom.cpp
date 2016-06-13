@@ -17,6 +17,7 @@
 */
 
 #include <tcpcom.hpp>
+#include <internet.hpp>
 
 void TCPCom::init(baseHostCX* owner) { 
     
@@ -120,12 +121,20 @@ int TCPCom::connect(const char* host, const char* port, bool blocking) {
 
 int TCPCom::bind(unsigned short port) {
     int s;
-    sockaddr_in sockName;
+    sockaddr_storage sa;
 
-    sockName.sin_family = bind_sock_family;
-    sockName.sin_port = htons(port);
-    sockName.sin_addr.s_addr = INADDR_ANY;
-
+    sa.ss_family = bind_sock_family;
+    
+    if(sa.ss_family == AF_INET) {
+        inet::to_sockaddr_in(&sa)->sin_port = htons(port);
+        inet::to_sockaddr_in(&sa)->sin_addr.s_addr = INADDR_ANY;
+    }
+    else
+    if(sa.ss_family == AF_INET6) {
+        inet::to_sockaddr_in6(&sa)->sin6_port = htons(port);
+        inet::to_sockaddr_in6(&sa)->sin6_addr = in6addr_any;
+    }
+        
     if ((s = socket(bind_sock_family, bind_sock_type, bind_sock_protocol)) == -1) return -129;
     
     int optval = 1;
@@ -137,7 +146,7 @@ int TCPCom::bind(unsigned short port) {
         setsockopt(s, SOL_IP, IP_TRANSPARENT, &optval, sizeof(optval));     
     }
     
-    if (::bind(s, (sockaddr *)&sockName, sizeof(sockName)) == -1) return -130;
+    if (::bind(s, (sockaddr *)&sa, sizeof(sa)) == -1) return -130;
     if (listen(s, 10) == -1)  return -131;
     
     return s;
