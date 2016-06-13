@@ -162,8 +162,8 @@ bool UDPCom::resolve_nonlocal_socket(int sock) {
         DIA_("UDPCom::resolve_nonlocal_socket[%x]: found datagram pool entry",sock);
         
 
-        nonlocal_dst_host() = inet_ntoa(record.dst.sin_addr);
-        nonlocal_dst_port() = ntohs(record.dst.sin_port);
+        nonlocal_dst_host() = inet_ntoa(record.dst_in_addr4());
+        nonlocal_dst_port() = ntohs(record.dst_port4());
         nonlocal_dst_resolved_ = true;
          
         return true;
@@ -331,7 +331,7 @@ int UDPCom::write_to_pool(int __fd, const void* __buf, size_t __n, int __flags) 
         cmsg->cmsg_type = IP_PKTINFO;
         cmsg->cmsg_len = CMSG_LEN(sizeof(struct in_pktinfo));
         pktinfo = (struct in_pktinfo*) CMSG_DATA(cmsg);
-        pktinfo->ipi_spec_dst = record.dst.sin_addr;
+        pktinfo->ipi_spec_dst = record.dst_in_addr4();
         pktinfo->ipi_ifindex = 0;
         m.msg_controllen = CMSG_SPACE(sizeof(struct in_pktinfo));
 
@@ -368,11 +368,11 @@ bool UDPCom::resolve_socket(bool source, int s, std::string* target_host, std::s
         Datagram& record = (*it_record).second;
         
         if(source == true) {
-            target_host->assign(inet_ntoa(record.src.sin_addr));
-            target_port->assign(std::to_string(ntohs(record.src.sin_port)));
+            target_host->assign(inet_ntoa(record.src_in_addr4()));
+            target_port->assign(std::to_string(ntohs(record.src_port4())));
         } else {
-            target_host->assign(inet_ntoa(record.dst.sin_addr));
-            target_port->assign(std::to_string(ntohs(record.dst.sin_port)));
+            target_host->assign(inet_ntoa(record.dst_in_addr4()));
+            target_port->assign(std::to_string(ntohs(record.dst_port4())));
         }
         
     } else {

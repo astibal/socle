@@ -38,8 +38,8 @@
 #include <baseproxy.hpp>
 
 struct Datagram {
-    sockaddr_in dst;
-    sockaddr_in src;
+    sockaddr_storage dst;
+    sockaddr_storage src;
     buffer rx;
     int socket;
     
@@ -50,6 +50,30 @@ struct Datagram {
                                 // It's toggle type, whenever used, it should be again set to false,
                                 // in order to be deleted once in the future.
     baseHostCX* cx = nullptr;
+    
+
+    inline sockaddr_in* src_sockaddr_in() { sockaddr_in* ptr = (sockaddr_in*)&src; return ptr; }
+    inline sockaddr_in6* src_sockaddr_in6() { sockaddr_in6* ptr = (sockaddr_in6*)&src; return ptr; }
+    
+    inline bool src_ipv4() const { return src.ss_family == AF_INET; } 
+    inline bool src_ipv6() const { return src.ss_family == AF_INET6; } 
+    inline in_addr& src_in_addr4() { return src_sockaddr_in()->sin_addr; };
+    inline in6_addr& src_in_addr6() { return src_sockaddr_in6()->sin6_addr; };
+    inline unsigned short src_port4() { return src_sockaddr_in()->sin_port; }
+    inline unsigned short src_port6() { return src_sockaddr_in6()->sin6_port; }
+    inline sa_family_t src_family() { return src.ss_family; }
+    
+    inline sockaddr_in* dst_sockaddr_in() { sockaddr_in* ptr = (sockaddr_in*)&dst; return ptr; }
+    inline sockaddr_in6* dst_sockaddr_in6() { sockaddr_in6* ptr = (sockaddr_in6*)&dst; return ptr; }
+    
+    inline bool dst_ipv4() const { return dst.ss_family == AF_INET; } 
+    inline bool dst_ipv6() const { return dst.ss_family == AF_INET6; } 
+    inline in_addr& dst_in_addr4() { return dst_sockaddr_in()->sin_addr; };
+    inline in6_addr& dst_in_addr6() { return dst_sockaddr_in6()->sin6_addr; };
+    inline unsigned short dst_port4() { return dst_sockaddr_in()->sin_port; }
+    inline unsigned short dst_port6() { return dst_sockaddr_in6()->sin6_port; }
+    inline sa_family_t dst_family() { return dst.ss_family; }
+    
 };    
 
 class DatagramCom {
