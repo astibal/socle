@@ -21,4 +21,9 @@ int socket_connect(std::string ip_address, int port);
 int http_get(const std::string& request, const std::string& ip_address, int port, buffer& buf, int timout=10);
 int download(const std::string& url, buffer& buf, int timout=10);
  
- 
+
+namespace inet {
+    inline sockaddr_in* to_sockaddr_in(sockaddr_storage* st) { sockaddr_in* ptr = (sockaddr_in*)st; return ptr; }
+    inline sockaddr_in6* to_sockaddr_in6(sockaddr_storage* st) { sockaddr_in6* ptr = (sockaddr_in6*)st; return ptr; }
+
+}
