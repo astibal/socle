@@ -257,7 +257,7 @@ public:
 	// non-local socket support
 	inline bool nonlocal_dst() { return nonlocal_dst_; }
 	inline void nonlocal_dst(bool b) { nonlocal_dst_ = b; }	
-    virtual int namesocket(int, std::string&, unsigned short);
+    virtual int namesocket(int, std::string&, unsigned short,sa_family_t=AF_INET);
 
     inline void nonlocal_dst_resolved(bool b) { nonlocal_dst_resolved_ = b; }
 	inline bool nonlocal_dst_resolved(void) { return nonlocal_dst_resolved_; }

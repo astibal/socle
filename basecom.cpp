@@ -18,6 +18,7 @@
 
 #include <basecom.hpp>
 #include <hostcx.hpp>
+#include <internet.hpp>
 
 bool baseCom::debug_log_data_crc = false;
 
@@ -68,18 +69,26 @@ int baseCom::unblock(int s) {
     return 0;
 }
 
-int baseCom::namesocket(int sockfd, std::string& addr, unsigned short port) {
-    sockaddr_in sockName;
+int baseCom::namesocket(int sockfd, std::string& addr, unsigned short port, sa_family_t family) {
+    sockaddr_storage sa;
     
-    sockName.sin_family = AF_INET;
-    sockName.sin_port = htons(port);
+    sa.ss_family = family;
+    
+    if(family == AF_INET) {
+        inet::to_sockaddr_in(&sa)->sin_port = htons(port);
+        inet_pton(family,addr.c_str(),&inet::to_sockaddr_in(&sa)->sin_addr);
+        
+    } else
+    if(family == AF_INET6) {
+        inet::to_sockaddr_in6(&sa)->sin6_port = htons(port);
+        inet_pton(family,addr.c_str(),&inet::to_sockaddr_in6(&sa)->sin6_addr);
+    }
 
-    inet_aton(addr.c_str(),&sockName.sin_addr);
     
     int optval = 1;
     setsockopt(sockfd, SOL_IP, IP_TRANSPARENT, &optval, sizeof(optval));
     
-    if (::bind(sockfd, (sockaddr *)&sockName, sizeof(sockName)) == 0) {
+    if (::bind(sockfd, (sockaddr*)&sa, sizeof(sockaddr_storage)) == 0) {
         return 0;
     }
     
