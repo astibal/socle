@@ -59,9 +59,9 @@ public:
         poll_tv.tv_sec = sec;
         poll_tv.tv_usec = usec;
     };    
-	
-	bool __static_init = false;
-	
+
+    bool __static_init = false;
+
     // my master: add me to the poll monitor at the right time
     baseCom* master_ = nullptr;
     baseCom* master(baseCom* b) { master_ = b; return b; }
@@ -91,10 +91,10 @@ public:
 protected:
     // non-local socket support
     bool nonlocal_dst_;
-	bool nonlocal_dst_resolved_;
-	std::string nonlocal_dst_host_;
-	unsigned short nonlocal_dst_port_;
-	struct sockaddr_storage nonlocal_dst_peer_info_;
+    bool nonlocal_dst_resolved_;
+    std::string nonlocal_dst_host_;
+    unsigned short nonlocal_dst_port_;
+    struct sockaddr_storage nonlocal_dst_peer_info_;
     
     bool nonlocal_src_ = false;
     std::string nonlocal_src_host_;
@@ -149,33 +149,33 @@ public:
     baseCom* peer() { return peer_; }
     
 public:
-	virtual void init(baseHostCX* owner);
-	
-	virtual void static_init() {
-		signal(SIGPIPE, SIG_IGN);
-	};
-	
+    virtual void init(baseHostCX* owner);
+
+    virtual void static_init() {
+        signal(SIGPIPE, SIG_IGN);
+    };
+
     virtual baseCom* replicate() = 0;
     virtual const char* name() = 0;
     
     virtual int connect(const char* , const char* , bool = false) = 0;
     virtual int read(int __fd, void* __buf, size_t __n, int __flags) = 0;
     virtual int peek(int __fd, void* __buf, size_t __n, int __flags) = 0;
-	virtual int write(int __fd, const void* __buf, size_t __n, int __flags) = 0;
-	virtual void shutdown(int __fd) = 0;
+    virtual int write(int __fd, const void* __buf, size_t __n, int __flags) = 0;
+    virtual void shutdown(int __fd) = 0;
     virtual void close(int __fd); 
-	virtual int bind(unsigned short __port) = 0;
-	
-	// syscall wrapper 
-	virtual int accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen_) = 0;
-	
+    virtual int bind(unsigned short __port) = 0;
+
+    // syscall wrapper 
+    virtual int accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen_) = 0;
+
     // call to init already accepted socket
-	virtual void accept_socket(int sockfd) {
-		if(nonlocal_dst_) {
-			resolve_nonlocal_dst_socket(sockfd);
-		}
-	};
-    
+    virtual void accept_socket(int sockfd) {
+        if(nonlocal_dst_) {
+            resolve_nonlocal_dst_socket(sockfd);
+        }
+    };
+
     // call to init socket about to be accepted in the future but paused for now
     virtual void delay_socket(int sockfd) {
         /* do nothing */
@@ -184,18 +184,18 @@ public:
     int unblock(int s);   
     inline int is_blocking(int s) { return !(::fcntl(s, F_GETFL, 0) & O_NONBLOCK);  }
     
-	virtual void cleanup() = 0;
+    virtual void cleanup() = 0;
 
     virtual bool is_connected(int s) = 0;
     
-	// those two need to be virtual, since e.g. OpenSSL read/write cannot be managed only with FD_SET due reads 
-	// sometimes do writes on themselves and another read is necessary
+    // those two need to be virtual, since e.g. OpenSSL read/write cannot be managed only with FD_SET due reads 
+    // sometimes do writes on themselves and another read is necessary
     virtual bool readable(int s) { return true; };
     virtual bool writable(int s) { return true; }; 
     
     // operate on FD_SETs
     virtual bool in_readset(int s) { return poller.in_read_set(s); };
-	virtual bool in_writeset(int s) { return poller.in_write_set(s); };
+    virtual bool in_writeset(int s) { return poller.in_write_set(s); };
 
     inline void set_monitor(int s) { 
         DIA_("basecom::set_monitor: called to add %d",s);
@@ -228,35 +228,35 @@ public:
             master()->poller.set_handler(s,h);
         } 
     };
-	
+
     virtual bool resolve_socket(bool source,int s, std::string *target_host, std::string *target_port, struct sockaddr_storage *target_storage = NULL );    
-	bool resolve_socket_src(int s, std::string *target_host, std::string *target_port, struct sockaddr_storage *target_storage = NULL ) { 
-		return resolve_socket(true, s, target_host, target_port, target_storage);
-	}
-	bool resolve_socket_dst(int s, std::string *target_host, std::string *target_port, struct sockaddr_storage *target_storage = NULL ) {
-		return resolve_socket(false, s, target_host, target_port, target_storage);
-	}	
-	
-	// non-local socket support
-	inline bool nonlocal_dst() { return nonlocal_dst_; }
-	inline void nonlocal_dst(bool b) { nonlocal_dst_ = b; }	
+    bool resolve_socket_src(int s, std::string *target_host, std::string *target_port, struct sockaddr_storage *target_storage = NULL ) { 
+        return resolve_socket(true, s, target_host, target_port, target_storage);
+    }
+    bool resolve_socket_dst(int s, std::string *target_host, std::string *target_port, struct sockaddr_storage *target_storage = NULL ) {
+        return resolve_socket(false, s, target_host, target_port, target_storage);
+    }	
+
+    // non-local socket support
+    inline bool nonlocal_dst() { return nonlocal_dst_; }
+    inline void nonlocal_dst(bool b) { nonlocal_dst_ = b; }	
     virtual int namesocket(int, std::string&, unsigned short,sa_family_t=AF_INET);
 
     inline void nonlocal_dst_resolved(bool b) { nonlocal_dst_resolved_ = b; }
-	inline bool nonlocal_dst_resolved(void) { return nonlocal_dst_resolved_; }
-	inline std::string& nonlocal_dst_host(void) { return nonlocal_dst_host_; }
-	inline unsigned short& nonlocal_dst_port(void) { return nonlocal_dst_port_; }
-	inline struct sockaddr_storage* nonlocal_dst_peer_info() { return &nonlocal_dst_peer_info_; }	
-	
+    inline bool nonlocal_dst_resolved(void) { return nonlocal_dst_resolved_; }
+    inline std::string& nonlocal_dst_host(void) { return nonlocal_dst_host_; }
+    inline unsigned short& nonlocal_dst_port(void) { return nonlocal_dst_port_; }
+    inline struct sockaddr_storage* nonlocal_dst_peer_info() { return &nonlocal_dst_peer_info_; }	
+
     inline bool nonlocal_src() { return nonlocal_src_; }
     inline void nonlocal_src(bool b) { nonlocal_src_ = b; } 
     inline std::string& nonlocal_src_host(void) { return nonlocal_src_host_; }
     inline unsigned short& nonlocal_src_port(void) { return nonlocal_src_port_; }
     
-	
-	
-	virtual int nonlocal_bind(unsigned short port);
-	virtual bool resolve_nonlocal_dst_socket(int sock);
+
+
+    virtual int nonlocal_bind(unsigned short port);
+    virtual bool resolve_nonlocal_dst_socket(int sock);
 };
 
 # endif
