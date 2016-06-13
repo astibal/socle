@@ -145,11 +145,8 @@ public:
     
     virtual bool com_status() { DUMS_("baseCom::com_status: returning 1"); return true; }
     inline std::string& log() { return log_buffer_; };       
-
     
     baseCom* peer() { return peer_; }
-    // make it settable only by baseHostCX->peer() call
-//     void peer(baseCom* p) { peer_ = p; }
     
 public:
 	virtual void init(baseHostCX* owner);
@@ -199,10 +196,6 @@ public:
     // operate on FD_SETs
     virtual bool in_readset(int s) { return poller.in_read_set(s); };
 	virtual bool in_writeset(int s) { return poller.in_write_set(s); };
-//     virtual bool in_exset(int s) { return FD_ISSET(s, &ex_socketSet); };  
-// 	inline void zeroize_readset() { FD_ZERO(&read_socketSet); };
-// 	inline void zeroize_writeset() { FD_ZERO(&write_socketSet); };
-//     inline void zeroize_exset() { FD_ZERO(&ex_socketSet); };
 
     inline void set_monitor(int s) { 
         DIA_("basecom::set_monitor: called to add %d",s);
@@ -235,12 +228,6 @@ public:
             master()->poller.set_handler(s,h);
         } 
     };
-// 	   inline void set_writeset(int s) { if (s > 0) { FD_SET(s, &write_socketSet); if(s > poll_sockmax) { poll_sockmax = s; } } };
-//     inline void set_exset(int s) { if (s > 0) { FD_SET(s, &ex_socketSet); if(s > poll_sockmax) { poll_sockmax = s; } } };
-//     inline void unset_readset(int s) { FD_CLR(s, &read_socketSet); };
-//     inline void unset_writeset(int s) { FD_CLR(s, &write_socketSet); };
-//     inline void unset_exset(int s) { FD_CLR(s, &ex_socketSet); };
-    
 	
     virtual bool resolve_socket(bool source,int s, std::string *target_host, std::string *target_port, struct sockaddr_storage *target_storage = NULL );    
 	bool resolve_socket_src(int s, std::string *target_host, std::string *target_port, struct sockaddr_storage *target_storage = NULL ) { 
