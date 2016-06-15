@@ -17,4 +17,7 @@
 */
 
 
+// Uncomment line below and enable extensive buffer object profiling.
+// Warning: it's resource intesive.
+
 //#define SOCLE_MEM_PROFILE
