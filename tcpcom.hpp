@@ -44,6 +44,7 @@ public:
     
     virtual int connect(const char* host, const char* port, bool blocking = false);
     virtual int bind(unsigned short port);  
+    virtual int bind(const char* __path) { return -1; };
     virtual int accept ( int sockfd, sockaddr* addr, socklen_t* addrlen_ );
     
     virtual int read(int __fd, void* __buf, size_t __n, int __flags) { return ::recv(__fd,__buf,__n,__flags); };

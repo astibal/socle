@@ -171,6 +171,7 @@ public:
 	int left_bind(unsigned short);
 	int right_bind(unsigned short);
 	int bind(unsigned short, unsigned char);
+    int bind(const char*, unsigned char); // support for AF_UNIX and similar
 	
 	// permantenty (re)connected sockets
 	int left_connect(const char*, const char*,bool=false);

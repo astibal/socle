@@ -89,7 +89,8 @@ public:
     virtual const char* name() { return "udp"; };
     
     virtual int connect(const char* host, const char* port, bool blocking = false);
-    virtual int bind(unsigned short port);  
+    virtual int bind(unsigned short port);
+    virtual int bind(const char* path) { return -1; };  
     virtual int accept ( int sockfd, sockaddr* addr, socklen_t* addrlen_ );
     
     virtual bool in_readset(int s);

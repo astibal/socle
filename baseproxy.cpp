@@ -1166,6 +1166,25 @@ int baseProxy::bind(unsigned short port, unsigned char side) {
 };
 
 
+int baseProxy::bind(const char* path, unsigned char side) {
+    
+    int s = com()->bind(path);
+    
+    // this function will always return value of 'port' parameter (but <=0 will not be added)
+    
+    baseHostCX *cx = new baseHostCX(com()->replicate(), s);
+    cx->com()->nonlocal_dst(com()->nonlocal_dst());
+    
+    if ( s > 0 ) {
+        if ( side == 'L') lbadd(cx);
+        else rbadd(cx);
+    }
+
+    return s;
+};
+
+
+
 baseHostCX* baseProxy::new_cx(int s) {
 	return new baseHostCX(com()->replicate(),s);
 }

@@ -165,7 +165,8 @@ public:
     virtual void shutdown(int __fd) = 0;
     virtual void close(int __fd); 
     virtual int bind(unsigned short __port) = 0;
-
+    virtual int bind(const char* __path) = 0;
+    
     // syscall wrapper 
     virtual int accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen_) = 0;
 
