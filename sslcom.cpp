@@ -984,7 +984,7 @@ void SSLCom::init_ssl_callbacks() {
     SSL_set_msg_callback_arg(sslcom_ssl,(void*)this);
     SSL_set_info_callback(sslcom_ssl,ssl_info_callback);
 
-    if(opt_pfs) {
+    if((is_server() && opt_left_pfs) || (!is_server() && opt_right_pfs)) {
         SSL_set_tmp_dh_callback(sslcom_ssl,ssl_dh_callback);
         SSL_set_tmp_ecdh_callback(sslcom_ssl,ssl_ecdh_callback);
     }
@@ -1024,8 +1024,11 @@ void SSLCom::init_client() {
 
     sslcom_ctx = certstore()->def_cl_ctx;
     sslcom_ssl = SSL_new(sslcom_ctx);
-    if(opt_pfs) {
+    if(opt_right_pfs) {
         SSL_set_cipher_list(sslcom_ssl,"kEECDH kEECDH kEDH HIGH GCM !kRSA !aNULL !eNULL !LOW !3DES !MD5 !EXP !DSS !PSK !SRP !kECDH !CAMELLIA !IDEA !SEED !SHA1 @STRENGTH");
+    } else {
+        // apart of not including DH, we allow also SHA1, due to compatibility with TLS1.0 cipher suites
+        SSL_set_cipher_list(sslcom_ssl," !kEECDH !kEECDH !kEDH kRSA HIGH GCM !aNULL !eNULL !LOW !3DES !MD5 !EXP !DSS !PSK !SRP !kECDH !CAMELLIA !IDEA !SEED SHA1 @STRENGTH");
     }
 
     if(!sslcom_ssl) {
@@ -1050,7 +1053,7 @@ void SSLCom::init_server() {
     sslcom_ctx = certstore()->def_sr_ctx;
     sslcom_ssl = SSL_new(sslcom_ctx);
 
-    if(opt_pfs) {
+    if(opt_left_pfs) {
         if(sslcom_ecdh == nullptr) {
             sslcom_ecdh = EC_KEY_new_by_curve_name(NID_X9_62_prime256v1);
         }
