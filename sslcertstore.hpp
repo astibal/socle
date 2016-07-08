@@ -56,11 +56,19 @@ typedef expiring_ptr<crl_holder> expiring_crl;
 
 #define SSLCERTSTORE_BUFSIZE 512
 
+struct session_holder;
+typedef ptr_cache<std::string,session_holder> ssl_session_cache;
 
 struct crl_holder {
     X509_CRL* ptr = nullptr;
     crl_holder(X509_CRL* c): ptr(c) {};
     virtual ~crl_holder() { if(ptr) X509_CRL_free(ptr); }
+};
+
+struct session_holder {
+    SSL_SESSION* ptr = nullptr;
+    session_holder(SSL_SESSION* p): ptr(p) {};
+    virtual ~session_holder() { if(ptr) SSL_SESSION_free(ptr); }
 };
 
 
@@ -106,6 +114,7 @@ public:
      
      static ptr_cache<std::string,expiring_ocsp_result> ocsp_result_cache;
      static ptr_cache<std::string,expiring_crl> crl_cache;
+     static ptr_cache<std::string,session_holder> session_cache;
      
      std::mutex mutex_cache_write_;
      void lock() { mutex_cache_write_.lock(); };

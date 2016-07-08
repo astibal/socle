@@ -1349,7 +1349,7 @@ int SSLCom::waiting() {
         long err2 = ERR_get_error();
         
         if (err == SSL_ERROR_WANT_READ) {
-            DUM___("SSLCom::waiting: SSL_%s: want read",op);
+            DIA___("SSLCom::waiting: SSL_%s[%d]: pending on want_read",op,sslcom_fd);
 
             sslcom_waiting = true;
             prof_want_read_cnt++;
@@ -1359,14 +1359,15 @@ int SSLCom::waiting() {
             return 0;
         }
         else if (err == SSL_ERROR_WANT_WRITE) {
-            DUM___("SSLCom::waiting: SSL_%s: want write",op);
+            DIA___("SSLCom::waiting: SSL_%s[%d]: pending on want_write",op,sslcom_fd);
 
             sslcom_waiting = true;
             prof_want_write_cnt++;
             // forced_write(true);
             // sslcom_waiting_write = true;
             
-            master()->poller.modify(sslcom_fd,EPOLLIN|EPOLLET|EPOLLOUT);
+            //master()->poller.modify(sslcom_fd,EPOLLIN|EPOLLET|EPOLLOUT);
+            set_write_monitor_only(sslcom_fd);
             return 0;
         }
         // this is error code produced by SSL_connect via OCSP callback. 
@@ -1417,10 +1418,24 @@ int SSLCom::waiting() {
 
     if(!is_server()) {
         check_cert(ssl_waiting_host);
+        store_session_if_needed();
     }
 
     return r;
 }
+
+bool SSLCom::store_session_if_needed() {
+    if(!is_server() && certstore() && owner_cx() && !opt_right_no_tickets) {
+        
+        std::string key = string_format("%s:%s",owner_cx()->host().c_str(),owner_cx()->port().c_str());
+        if(!SSL_session_reused(sslcom_ssl)) {
+            DIA___("ticketing: key %s: full key exchange, connect attempt %d on socket %d",key.c_str(),prof_connect_cnt,owner_cx()->socket());
+        } else {
+            DIA___("ticketing: key %s: abbreviated key exchange, connect attempt %d on socket %d",key.c_str(),prof_connect_cnt,owner_cx()->socket());
+        }
+    }
+}
+
 
 bool SSLCom::waiting_peer_hello() {
 
@@ -2074,12 +2089,21 @@ int SSLCom::upgrade_client_socket(int sock) {
 
             if (r == -1) {
                 int err = SSL_get_error(sslcom_ssl,r);
-                if (err == SSL_ERROR_WANT_READ) {
+                if (err == SSL_ERROR_WANT_WRITE) {
                     DIA___("upgrade_client_socket[%d]: SSL_connect: pending on want_write",sock);
+                    
+                    // interested in WRITE, so ignore read events
+                    set_write_monitor_only(sslcom_fd);
+                    
+                    // since connect is not immediate, ignore all read events of the peer causing busy loop
+                    unmonitor_peer();
+                   
                 }
                 else if(err == SSL_ERROR_WANT_READ) {
                     DIA___("upgrade_client_socket[%d]: SSL_connect: pending on want_read",sock);
-
+                    
+                    // since connect is not immediate, ignore all read events of the peer causing busy loop
+                    unmonitor_peer();
                 }
                 sslcom_waiting = true;
                 return sock;
@@ -2091,6 +2115,10 @@ int SSLCom::upgrade_client_socket(int sock) {
 
         DEB___("SSLCom::upgrade_client_socket[%d]: connection succeeded",sock);
         sslcom_waiting = false;
+        
+        // restore peer monitoring
+        monitor_peer();
+        store_session_if_needed();
 
         //ssl_waiting_host = (char*)host;
         check_cert(nullptr);

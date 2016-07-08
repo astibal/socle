@@ -1050,46 +1050,58 @@ int baseProxy::run(void) {
             int counter_back_handler = 0;
             std::vector<int> back_in_set;
             
-            for (auto s: com()->poller.poller->in_set) {
-                DEB_("baseProxy::run: in_set socket %d ",s);
-                epoll_handler* ptr = com()->poller.get_handler(s);
-                
-                if(ptr != nullptr) {
-                    auto seg = ptr->fence__;
-                    EXT_("baseProxy::run: socket %d has registered handler 0x%x (fence %x)",s,ptr,seg);
+            // std::set<int>& sets[] = { com()->poller.poller->in_set, com()->poller.poller->out_set };
+            std::vector<std::set<int>> sets;
+            sets.push_back(com()->poller.poller->in_set);
+            sets.push_back(com()->poller.poller->out_set);
+            
+            const char *setname[] = { "inset","outset" };
+            int name_iter = 0;
+            
+            for (auto current_set: sets) {
+                for (auto s: current_set) {
+                    DIA_("baseProxy::run: %s socket %d ",setname[name_iter],s);
+                    epoll_handler* ptr = com()->poller.get_handler(s);
                     
-                    if(seg != HANDLER_FENCE) {
-                        ERR_("baseProxy::run: socket %d magic fence doesn't match!!",s);
-                    } else {
-                        baseProxy* proxy = dynamic_cast<baseProxy*>(ptr);
-                        if(proxy != nullptr) {
-                            EXT_("baseProxy::run: socket %d has baseProxy handler!!",s);
-                            
-                            // call poller-carried proxy handler!
-                             proxy->handle_sockets_once(com());
-                             counter_proxy_handler++;
-                            
+                    if(ptr != nullptr) {
+                        auto seg = ptr->fence__;
+                        EXT_("baseProxy::run: socket %d has registered handler 0x%x (fence %x)",s,ptr,seg);
+                        
+                        if(seg != HANDLER_FENCE) {
+                            ERR_("baseProxy::run: socket %d magic fence doesn't match!!",s);
                         } else {
-                            DIA_("baseProxy::run: socket %d has NOT baseProxy handler!!",s);
-                            back_in_set.push_back(s);
+                            baseProxy* proxy = dynamic_cast<baseProxy*>(ptr);
+                            if(proxy != nullptr) {
+                                EXT_("baseProxy::run: socket %d has baseProxy handler!!",s);
+                                
+                                // call poller-carried proxy handler!
+                                proxy->handle_sockets_once(com());
+                                counter_proxy_handler++;
+                                
+                            } else {
+                                DIA_("baseProxy::run: socket %d has NOT baseProxy handler!!",s);
+                                back_in_set.push_back(s);
+                            }
                         }
-                    }
-                    
-                } else {
-                    DEB_("baseProxy::run: socket %d NO handler!!",s);
-                    
-                    // all sockets without ANY handler should be re-inserted
-                    back_in_set.push_back(s);
-                    
-                    if (com()->poller.poller != nullptr) {
-                        if(s != com()->poller.poller->hint_socket()) {
-                            // hint filedescriptor don't have handler
-                            ERR_("baseProxy::run: socket %d has registered NULL handler",s);
-                        }
+                        
                     } else {
-                        ERRS_("com()->poller.poller is null!");                        
+                        DEB_("baseProxy::run: socket %d NO handler!!",s);
+                        
+                        // all sockets without ANY handler should be re-inserted
+                        back_in_set.push_back(s);
+                        
+                        if (com()->poller.poller != nullptr) {
+                            if(s != com()->poller.poller->hint_socket()) {
+                                // hint filedescriptor don't have handler
+                                ERR_("baseProxy::run: socket %d has registered NULL handler",s);
+                            }
+                        } else {
+                            ERRS_("com()->poller.poller is null!");                        
+                        }
                     }
                 }
+                
+                name_iter++;
             }
             
             // clear in_set, so alrady handled sockets are excluded 

@@ -216,6 +216,13 @@ public:
             master()->poller.modify(s,EPOLLIN|EPOLLOUT); 
         } 
     }
+    inline void set_write_monitor_only(int s) {
+        DIA_("basecom::set_write_monitor: called to add EPOLLOUT %d only",s);
+        if (s > 0 ) { 
+            master()->poller.modify(s,EPOLLOUT); 
+        } 
+    }    
+    
     inline void set_hint_monitor(int s) {
         DIA_("basecom::set_hint_monitor: called: %d",s);
         if (s > 0 ) { 

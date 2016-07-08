@@ -30,8 +30,11 @@ std::string SSLCertStore::certs_path = "./certs/";
 std::string SSLCertStore::password = "password";
 std::string SSLCertStore::def_cl_capath;
 
-ptr_cache<std::string,expiring_ocsp_result> SSLCertStore::ocsp_result_cache("ocsp response cache",500,true);
-ptr_cache<std::string,expiring_crl> SSLCertStore::crl_cache("crl cache",500,true);
+#define CERTSTORE_CACHE_SIZE 500
+
+ptr_cache<std::string,expiring_ocsp_result> SSLCertStore::ocsp_result_cache("ocsp response cache",CERTSTORE_CACHE_SIZE,true);
+ptr_cache<std::string,expiring_crl> SSLCertStore::crl_cache("crl cache",CERTSTORE_CACHE_SIZE,true);
+ptr_cache<std::string,session_holder> SSLCertStore::session_cache("ssl session cache",CERTSTORE_CACHE_SIZE,true);
 
 int SSLCertStore::log_level = NON;
 

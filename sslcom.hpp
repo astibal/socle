@@ -133,6 +133,10 @@ protected:
     
     //handhake handler called from read/write - you will not want to use it directly
 	int waiting();
+    
+    //if we are actively waiting for something, it doesn't make sense to process peer events (which creates unnecessary load)
+    inline bool unmonitor_peer() { if(peer()) { SSLCom* p = (SSLCom*)peer(); unset_monitor(p->sslcom_fd); return true; } return false; }
+    inline bool monitor_peer()   { if(peer()) { SSLCom* p = (SSLCom*)peer();   set_monitor(p->sslcom_fd); return true; } return false; } 
 
     //if enabled, upgreade_client_socket or upgreade_server_socket are called automatically
     //during waiting().
@@ -233,6 +237,7 @@ public:
     static long log_if_error2(unsigned int level, const char* prefix);
     
 	virtual bool check_cert(const char*);
+    virtual bool store_session_if_needed();
 	
 	virtual bool readable (int s);
 	virtual bool writable (int s);

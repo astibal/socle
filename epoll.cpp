@@ -21,6 +21,20 @@ int epoll::wait(int timeout) {
         EXT_("epoll::wait: %d socket events",nfds);
     }
     
+    
+    if(LEV_(DEB) && nfds > 0) {
+        std::string ports;
+        for(int xi = 0; xi < nfds; ++xi) {
+            ports += std::to_string(events[xi].data.fd);
+            
+            if(events[xi].events & EPOLLIN) ports += "r";
+            if(events[xi].events & EPOLLOUT) ports += "w";
+            ports += " ";
+            
+        }
+        DEB_("ports: %s",ports.c_str());
+    }
+    
     for(int i = 0; i < nfds; ++i) {
         if(events[i].events & EPOLLIN) {
             if(events[i].data.fd == hint_socket()) {
