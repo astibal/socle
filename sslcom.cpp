@@ -1036,7 +1036,12 @@ void SSLCom::init_client() {
         log_if_error(ERR,"SSLCom::init_client");
     }
 
-    SSL_set_session(sslcom_ssl, NULL);
+    //SSL_set_session(sslcom_ssl, NULL);
+    
+    if(opt_right_no_tickets) {
+        SSL_set_options(sslcom_ssl,SSL_OP_NO_TICKET);
+    }
+    
     SSL_set_mode(sslcom_ssl, SSL_MODE_ENABLE_PARTIAL_WRITE|SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
 
     init_ssl_callbacks();
@@ -1073,6 +1078,11 @@ void SSLCom::init_server() {
     }
 
     SSL_set_session(sslcom_ssl, NULL);
+    
+    if(opt_right_no_tickets) {
+        SSL_set_options(sslcom_ssl,SSL_OP_NO_TICKET);
+    }    
+    
     SSL_set_mode(sslcom_ssl, SSL_MODE_ENABLE_PARTIAL_WRITE|SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
 
     SSL_set_fd (sslcom_ssl, sslcom_fd);
@@ -2129,7 +2139,9 @@ SSL_CTX* SSLCom::client_ctx_setup(EVP_PKEY* priv, X509* cert, const char* cipher
 
     // testing for LogJam:
     // SSL_CTX_set_cipher_list(ctx,"kEECDH kEECDH kEDH HIGH !kRSA !RC4 !aNULL !eNULL !LOW !3DES !MD5 !EXP !DSS !PSK !SRP !kECDH !CAMELLIA !IDEA !SEED");
-    SSL_CTX_set_options(ctx,SSL_OP_NO_TICKET+SSL_OP_NO_SSLv3);
+    SSL_CTX_set_options(ctx,certstore()->def_cl_options); //used to be also SSL_OP_NO_TICKET+
+    SSL_CTX_set_session_cache_mode(ctx,SSL_SESS_CACHE_CLIENT);
+    
 
 
     DIAS__("SSLCom::client_ctx_setup: loading default key/cert");
@@ -2156,7 +2168,7 @@ SSL_CTX* SSLCom::server_ctx_setup(EVP_PKEY* priv, X509* cert, const char* cipher
     }
 
     ciphers == nullptr ? SSL_CTX_set_cipher_list(ctx,"ALL:!ADH:!LOW:!EXP:!MD5:@STRENGTH") : SSL_CTX_set_cipher_list(ctx,ciphers);
-    SSL_CTX_set_options(ctx,SSL_OP_NO_TICKET+SSL_OP_NO_SSLv3);
+    SSL_CTX_set_options(ctx,certstore()->def_sr_options);
 
     DEBS__("SSLCom::server_ctx_setup: loading default key/cert");
     priv == nullptr ? SSL_CTX_use_PrivateKey(ctx,certstore()->def_sr_key) : SSL_CTX_use_PrivateKey(ctx,priv);

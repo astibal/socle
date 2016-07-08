@@ -88,6 +88,9 @@ public:
     
     static int password_callback(char* buf, int size, int rwflag, void*u);
     
+    static unsigned long def_cl_options;
+    static unsigned long def_sr_options;
+    
     bool load();
         bool load_ca_cert();
         bool load_def_cl_cert();

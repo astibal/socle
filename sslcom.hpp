@@ -286,6 +286,8 @@ public:
     // enable/disable pfs (DHE and ECDHE suites)
     bool opt_left_pfs = true;
     bool opt_right_pfs = true;
+    bool opt_left_no_tickets = false;
+    bool opt_right_no_tickets = false;
     
     bool opt_ocsp_stapling_enabled = false; // should we insist on OCSP response?
     int  opt_ocsp_stapling_mode = 0;        // 0 - allow all, log unverified. 1 - allow all, but don't allow unverified. 2 - as 1. but require all connections to have stapling reponse
