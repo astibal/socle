@@ -62,6 +62,8 @@ struct epoll {
     inline int hint_socket(void) const { return hint_fd; }
     
     virtual ~epoll() {}
+    
+    static int log_level;
 };
 
 /*

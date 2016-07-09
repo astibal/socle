@@ -1,6 +1,8 @@
 #include <epoll.hpp>
 #include <hostcx.hpp>
 
+int epoll::log_level = INF;
+
 int epoll::init() {
     // size in epoll_create is ignored since 2.6.8, but has to be greater than 0
     fd = epoll_create(1);
@@ -22,7 +24,7 @@ int epoll::wait(int timeout) {
     }
     
     
-    if(LEV_(DEB) && nfds > 0) {
+    if((LEV_(DEB) || epoll::log_level >= DEB) && nfds > 0) {
         std::string ports;
         for(int xi = 0; xi < nfds; ++xi) {
             ports += std::to_string(events[xi].data.fd);
@@ -125,7 +127,9 @@ bool epoll::del(int socket) {
     DEB_("epoll:del:%x: epoll_ctl(%d): called to delete socket %d ",this, fd, socket);
     
     if (::epoll_ctl(fd, EPOLL_CTL_DEL, socket, &ev) == -1) {
+        std::string str_bt = bt();
         ERR_("epoll:del:%x: epoll_ctl(%d): cannot delete socket %d: %s",this, fd, socket, string_error().c_str());
+        ERRS_(str_bt.c_str());
         return false;
     } else {
         DIA_("epoll:del:%x: epoll_ctl(%d): socket deleted %d",this, fd, socket);
