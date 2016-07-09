@@ -22,6 +22,7 @@
 #include <sstream>
 
 #include <timeops.hpp>
+#include <sys/time.h>
 
 int timeval_msdelta (struct timeval  *x,struct timeval  *y)  {
 
@@ -30,6 +31,18 @@ int timeval_msdelta (struct timeval  *x,struct timeval  *y)  {
     
     return sec_delta + usec_delta;
 }
+
+int timeval_msdelta_now (struct timeval  *x)  {
+
+    timeval now;
+    gettimeofday(&now,nullptr);
+    
+    int sec_delta = (now.tv_sec - x->tv_sec) * 1000;
+    int usec_delta = (now.tv_usec - x->tv_usec)/1000;
+    
+    return sec_delta + usec_delta;
+}
+
 
 std::string uptime_string(unsigned int uptime) {
 
