@@ -240,6 +240,7 @@ public:
     
 	virtual bool check_cert(const char*);
     virtual bool store_session_if_needed();
+    virtual bool load_session_if_needed();
 	
 	virtual bool readable (int s);
 	virtual bool writable (int s);

@@ -1051,10 +1051,12 @@ void SSLCom::init_client() {
         log_if_error(ERR,"SSLCom::init_client");
     }
 
-    //SSL_set_session(sslcom_ssl, NULL);
     
     if(opt_right_no_tickets) {
         SSL_set_options(sslcom_ssl,SSL_OP_NO_TICKET);
+    }
+    else {
+        load_session_if_needed();
     }
     
     SSL_set_mode(sslcom_ssl, SSL_MODE_ENABLE_PARTIAL_WRITE|SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
@@ -1440,17 +1442,47 @@ int SSLCom::waiting() {
 }
 
 bool SSLCom::store_session_if_needed() {
+    bool ret = false;
+    
     if(!is_server() && certstore() && owner_cx() && !opt_right_no_tickets) {
         
         std::string key = string_format("%s:%s",owner_cx()->host().c_str(),owner_cx()->port().c_str());
         if(!SSL_session_reused(sslcom_ssl)) {
             DIA___("ticketing: key %s: full key exchange, connect attempt %d on socket %d",key.c_str(),prof_connect_cnt,owner_cx()->socket());
+            certstore()->session_cache.set(key,new session_holder(SSL_get1_session(sslcom_ssl)));
+            DIA_("ticketing: key %s: keying material stored, cache size = %d",key.c_str(),certstore()->session_cache.cache().size());
+            
+            ret = true;
         } else {
             DIA___("ticketing: key %s: abbreviated key exchange, connect attempt %d on socket %d",key.c_str(),prof_connect_cnt,owner_cx()->socket());
         }
     }
+    
+    return ret;
 }
 
+
+bool SSLCom::load_session_if_needed() {
+
+    bool ret = false;
+    
+    if(!is_server() && certstore() && owner_cx() && !opt_right_no_tickets) {
+        std::string key = string_format("%s:%s",owner_cx()->host().c_str(),owner_cx()->port().c_str());
+        session_holder* h = certstore()->session_cache.get(key);
+        
+        if(h != nullptr) {
+            DIAS___("target server TLS ticket found!");
+            SSL_set_session(sslcom_ssl, h->ptr);
+            
+            ret = true;
+        } else {
+            DIAS___("target server TLS ticket not found");
+            SSL_set_session(sslcom_ssl, NULL);
+        }
+    }
+    
+    return ret;
+}
 
 bool SSLCom::waiting_peer_hello() {
 
