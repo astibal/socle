@@ -235,6 +235,7 @@ public:
     static int check_server_dh_size(SSL* ssl);
     long log_if_error(unsigned int level, const char* prefix);
     static long log_if_error2(unsigned int level, const char* prefix);
+    void log_profiling_stats(unsigned int level);
     
 	virtual bool check_cert(const char*);
     virtual bool store_session_if_needed();

@@ -248,6 +248,19 @@ void SSLCom::ssl_info_callback(const SSL* s, int where, int ret) {
 
 }
 
+void SSLCom::log_profiling_stats(unsigned int lev) {
+    
+    SSLCom* com = this;
+    const char *name = "unknown_cx";
+    const char* n = com->hr();
+    if(n != nullptr) {
+        name = n;
+    }
+    
+    LOGS__(lev, string_format("  [%s]: prof_accept_cnt %d, prof_connect_cnt %d, prof_peek_cnt %d, prof_read_cnt %d, prof_want_read_cnt %d, prof_want_write_cnt %d, prof_write_cnt %d",name, com->prof_accept_cnt   , com->prof_connect_cnt   , com->prof_peek_cnt   , com->prof_read_cnt   , com->prof_want_read_cnt   , com->prof_want_write_cnt   , com->prof_write_cnt));
+    LOGS__(lev, string_format("  [%s]: prof_accept_ok %d, prof_connect_ok %d",name, com->prof_accept_ok, com->prof_connect_ok));    
+}
+
 void SSLCom::ssl_msg_callback(int write_p, int version, int content_type, const void* buf, size_t len, SSL* ssl, void* arg)
 {
     const char *msg_version;
@@ -318,9 +331,7 @@ void SSLCom::ssl_msg_callback(int write_p, int version, int content_type, const 
             DIA__("[%s]: SSLCom::ssl_msg_callback: alert info: %s/%s[%u]",name,SSL_alert_type_string_long(code),SSL_alert_desc_string_long(code),code);
             if(code == 522) {
                 // unexpected message
-                DEB__("  [%s]: prof_accept_cnt %d, prof_connect_cnt %d, prof_peek_cnt %d, prof_read_cnt %d, prof_want_read_cnt %d, prof_want_write_cnt %d, prof_write_cnt %d",
-                      name, com->prof_accept_cnt   , com->prof_connect_cnt   , com->prof_peek_cnt   , com->prof_read_cnt   , com->prof_want_read_cnt   , com->prof_want_write_cnt   , com->prof_write_cnt);
-                DEB__("  [%s]: prof_accept_ok %d, prof_connect_ok %d",name, com->prof_accept_ok, com->prof_connect_ok);
+                com->log_profiling_stats(DEB);
             }
         }
     }

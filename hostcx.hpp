@@ -248,6 +248,7 @@ public:
     
 	int socket() const { return fds_; };
     bool is_connected();
+    int closed_socket() const { return closing_fds_; };
 	
 	void permanent(bool p) { permanent_=p; }
 	bool permanent(void) const { return permanent_; }
