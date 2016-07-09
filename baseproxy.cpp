@@ -1119,7 +1119,7 @@ int baseProxy::run(void) {
                 for(int a: com()->poller.poller->rescan_set) {
                     counter_back_handler++;
                     
-                    INF_("baseCom::run: adding back to poller to rescan socket %d",a);
+                    DIA_("baseProxy::run: adding back to poller to rescan socket %d",a);
                     com()->poller.poller->in_set.insert(a);
                     com()->poller.poller->add(a);
                 }

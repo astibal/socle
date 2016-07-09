@@ -127,9 +127,9 @@ bool epoll::del(int socket) {
     DEB_("epoll:del:%x: epoll_ctl(%d): called to delete socket %d ",this, fd, socket);
     
     if (::epoll_ctl(fd, EPOLL_CTL_DEL, socket, &ev) == -1) {
-        std::string str_bt = bt();
         ERR_("epoll:del:%x: epoll_ctl(%d): cannot delete socket %d: %s",this, fd, socket, string_error().c_str());
-        ERRS_(str_bt.c_str());
+        //std::string str_bt = bt();
+        //ERRS_(str_bt.c_str());
         return false;
     } else {
         DIA_("epoll:del:%x: epoll_ctl(%d): socket deleted %d",this, fd, socket);
