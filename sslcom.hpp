@@ -91,7 +91,7 @@ struct CRYPTO_dynlock_value
 };
 
 
-
+extern int SSLCOM_CLIENTHELLO_TIMEOUT;
 
 class SSLCom : public TCPCom {
 
@@ -133,7 +133,8 @@ protected:
     
     //handhake handler called from read/write - you will not want to use it directly
 	int waiting();
-    
+    struct timeval timer_start;
+        
     //if we are actively waiting for something, it doesn't make sense to process peer events (which creates unnecessary load)
     inline bool unmonitor_peer() { if(peer()) { SSLCom* p = (SSLCom*)peer(); unset_monitor(p->sslcom_fd); return true; } return false; }
     inline bool monitor_peer()   { if(peer()) { SSLCom* p = (SSLCom*)peer();   set_monitor(p->sslcom_fd); return true; } return false; } 

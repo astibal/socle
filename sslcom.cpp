@@ -32,6 +32,7 @@
 #include <sslcom_dh.hpp>
 #include <logger.hpp>
 #include <display.hpp>
+#include <timeops.hpp>
 
 #include <cstdio>
 #include <functional>
@@ -51,6 +52,8 @@ int SSLCom::sslcom_ssl_extdata_index = -1;
 int SSLCom::counter_ssl_connect = 0;
 int SSLCom::counter_ssl_accept = 0;
 unsigned int SSLCom::log_level = NON;
+
+int SSLCOM_CLIENTHELLO_TIMEOUT = 3000; //in ms
 
 void locking_function ( int mode, int n, const char * file, int line )  {
 
@@ -154,6 +157,7 @@ int THREAD_cleanup ( void ) {
 
 SSLCom::SSLCom() {
     sslcom_peer_hello_buffer.capacity(1500);
+    gettimeofday(&timer_start,nullptr);
 }
 
 
@@ -1663,6 +1667,10 @@ int SSLCom::parse_peer_hello() {
                 master()->poller.poller->rescan(p->sslcom_fd);
             
             DIA___("SSLCom::parse_peer_hello: only %d bytes in peek:\n%s",b.size(),hex_dump(b.data(),b.size()).c_str());
+            if(timeval_msdelta_now(&timer_start) > SSLCOM_CLIENTHELLO_TIMEOUT) {
+                ERRS___("handhake timeout: waiting for ClientHello");
+                error(ERROR_UNSPEC);
+            }
         }
 
         DIA___("SSLCom::parse_peer_hello: return status %d",ret);
