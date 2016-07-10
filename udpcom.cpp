@@ -338,7 +338,9 @@ int UDPCom::write_to_pool(int __fd, const void* __buf, size_t __n, int __flags) 
         int l = 0;
         int n = 1;
         int d = socket (AF_INET, SOCK_DGRAM, 0);
-        int ret = setsockopt (d, SOL_IP, IP_TRANSPARENT, &n, sizeof(int));
+        int ret = setsockopt (d, SOL_IP, IP_TRANSPARENT, &n, sizeof(n));
+        setsockopt(d, SOL_SOCKET, SO_REUSEADDR, &n, sizeof(n));
+        setsockopt(d, SOL_SOCKET, SO_BROADCAST, &n, sizeof(n));         
         
         ret = ::bind (d, (struct sockaddr*)&(record.dst), sizeof (struct sockaddr_in));
         if(ret != 0) {
