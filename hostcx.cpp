@@ -301,9 +301,9 @@ int baseHostCX::read() {
         // append-like behavior: append to the end of the buffer, don't exceed max. capacity!
         void *ptr = &(readbuf_.data()[readbuf_.size()]);
         
-        size_t max_len = readbuf_.capacity()-readbuf_.size();    
+        ssize_t max_len = readbuf_.capacity()-readbuf_.size();    
 
-        if (max_len > next_read_limit_ -l && next_read_limit_ > 0) {
+        if (max_len + l > next_read_limit_ && next_read_limit_ > 0) {
             DUM_("HostCX::read[%s]: read buffer limiter: %d",c_name(), next_read_limit_ - l);
             max_len = next_read_limit_ - l;
         }
@@ -456,7 +456,7 @@ int baseHostCX::write() {
         DEB_("HostCX::write[%s]: writebuf_ %d bytes pending",c_name(),tx_size);
 	}
 
-	int l = com()->write(socket(), writebuf_.data(), tx_size, MSG_NOSIGNAL);
+	ssize_t l = com()->write(socket(), writebuf_.data(), tx_size, MSG_NOSIGNAL);
 	
 	if (l > 0) {
 		meter_write_bytes += l;
@@ -476,7 +476,7 @@ int baseHostCX::write() {
 		DUM_("HostCX::write[%s]: calling post_write",c_name());
 		post_write();
 		
-        if(l < writebuf_.size()) {
+        if(l < static_cast<ssize_t>(writebuf_.size())) {
             DIA_("HostCX::write[%s]: %d bytes written out of %d -> setting socket write monitor",c_name(),l,writebuf_.size());
             // we need to check once more when socket is fully writable
             com()->set_write_monitor(socket());
