@@ -337,6 +337,11 @@ int UDPCom::write_to_pool(int __fd, const void* __buf, size_t __n, int __flags) 
         setsockopt(d, SOL_SOCKET, SO_REUSEADDR, &n, sizeof(n));
         setsockopt(d, SOL_SOCKET, SO_BROADCAST, &n, sizeof(n));         
         
+        
+        // avoid other threads to potentially bind to the same source IP:PORT and fail on that.
+        std::recursive_mutex send_lock;
+        send_lock.lock();
+        
         ret = ::bind (d, (struct sockaddr*)&(record.dst), sizeof (struct sockaddr_in));
         if(ret != 0) {
             ERRS_("UDPCom::write_to_pool[%d]: cannot bind to destination!",__fd);
@@ -346,7 +351,7 @@ int UDPCom::write_to_pool(int __fd, const void* __buf, size_t __n, int __flags) 
             DIA_("UDPCom::write_to_pool[%d]: socket: %d: written %d bytes",__fd,d,l);
         }
         ::close(d);
-        
+        send_lock.unlock();
         
         //l = send(record.socket,__buf,__n,__flags);
         return l;
