@@ -47,18 +47,14 @@ public:
     
     friend class baseHostCX;
     
-    timeval poll_tv;
+    int poll_msec = 100;
     int     poll_sockmax = 0;
     int     poll_result = 0;
     baseHostCX* owner_cx_ = nullptr;
     inline baseHostCX* owner_cx() { return owner_cx_; }
     
     virtual int poll();
-    void polltime(unsigned int sec, unsigned int usec)
-    {
-        poll_tv.tv_sec = sec;
-        poll_tv.tv_usec = usec;
-    };    
+    inline void polltime(int msec) { poll_msec = msec; }
 
     bool __static_init = false;
 

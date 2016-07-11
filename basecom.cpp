@@ -37,8 +37,6 @@ void baseCom::init(baseHostCX* owner) {
 	nonlocal_dst_host_ = "";
 	nonlocal_dst_port_ = 0;
 	memset(&nonlocal_dst_peer_info_,0,sizeof(nonlocal_dst_peer_info_));
-    
-    polltime(0,350);
 }
 
 
@@ -174,10 +172,9 @@ bool baseCom::resolve_nonlocal_dst_socket(int sock) {
 
 int baseCom::poll() {
     
-    timeval n_tv = poll_tv;
     EXTS_("baseCom::poll: called");
     //int r = ::select( poll_sockmax + 1, &read_socketSet, &write_socketSet, NULL, &n_tv);
-    int r = poller.wait(100);
+    int r = poller.wait(poll_msec);
     EXT_("baseCom::poll: poller returned %d",r);
     if (r < 0) {
         DIA_("baseCom::poll: returned by poll: %s",string_error().c_str());
