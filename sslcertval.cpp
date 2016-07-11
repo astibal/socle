@@ -63,7 +63,6 @@ OCSP_RESPONSE * ocsp_query_responder(BIO *err, BIO *cbio, char *path,
 {
     int fd;
     int rv;
-    int i;
     OCSP_REQ_CTX *ctx = NULL;
     OCSP_RESPONSE *rsp = NULL;
     fd_set confds;
@@ -182,7 +181,7 @@ int ocsp_parse_response(OCSP_RESPONSE *resp)
         for (int i = 0; i < sk_OCSP_SINGLERESP_num(rd->responses); i++)
         {
             OCSP_SINGLERESP *single = sk_OCSP_SINGLERESP_value(rd->responses, i);
-            OCSP_CERTID *cid = single->certId;
+            //OCSP_CERTID *cid = single->certId;
             OCSP_CERTSTATUS *cst = single->certStatus;
             if (cst->type == V_OCSP_CERTSTATUS_REVOKED)
             {
@@ -209,7 +208,7 @@ int ocsp_check_cert(X509 *x509, X509 *issuer, int req_timeout)
     {
         //build ocsp request
         OCSP_REQUEST *req = NULL;
-        STACK_OF(CONF_VALUE) *headers = NULL;
+        //STACK_OF(CONF_VALUE) *headers = NULL;
         STACK_OF(OCSP_CERTID) *ids = sk_OCSP_CERTID_new_null();
         const EVP_MD *cert_id_md = EVP_sha1();
         ocsp_prepare_request(&req, x509, cert_id_md, issuer, ids);
@@ -388,7 +387,7 @@ std::string fingerprint(X509* cert) {
   }
 
   std::string ret;
-  for (int j = 0; j < fprint_size; ++j)  {
+  for (unsigned int j = 0; j < fprint_size; ++j)  {
       ret += string_format("%02x", fprint[j]);
   }
   
