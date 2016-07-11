@@ -1985,8 +1985,6 @@ int SSLCom::write ( int __fd, const void* __buf, size_t __n, int __flags )  {
         return 0;
     }
 
-again:
-
     /* Try to write */
     ERR_clear_error();
     int r = SSL_write (sslcom_ssl,ptr,normalized__n);
