@@ -201,10 +201,8 @@ bool UDPCom::in_writeset(int s) {
 
     auto it_record = DatagramCom::datagrams_received.find((unsigned int)s);
     if(it_record != DatagramCom::datagrams_received.end()) {  
-        Datagram& record = (*it_record).second;    
         EXT_("UDPCom::in_writeset: found data for %d (thus virtual socket is writable)",s);
         return true;
-        
     } else {
         if( s > 0) return true; //return baseCom::in_writeset(s);
     }
@@ -218,10 +216,7 @@ bool UDPCom::in_exset(int s) {
     
     auto it_record = DatagramCom::datagrams_received.find((unsigned int)s);
     if(it_record != DatagramCom::datagrams_received.end()) {  
-        Datagram& record = (*it_record).second;    
-        
         return false;
-        
     } 
 
     return false;
