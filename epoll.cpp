@@ -152,9 +152,6 @@ bool epoll::in_write_set(int check) {
 
 
 bool epoll::hint_socket(int socket) {
-    struct epoll_event ev;
-    ev.events = EPOLLIN;
-    ev.data.fd = socket;
     
     if(hint_socket() > 0) {
         struct epoll_event rem_ev;
