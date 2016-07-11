@@ -271,7 +271,7 @@ std::string SSLCertStore::find_subject_by_fqdn(std::string& fqdn) {
         return (*entry).second;
      }
 
-     std::regex hostname_re("^[a-zA-Z0-9-]+\.");
+     std::regex hostname_re("^[a-zA-Z0-9-]+\\.");
      std::string wildcard_fqdn = std::regex_replace(fqdn,hostname_re,"*.");
      
      entry = fqdn_cache_.find(wildcard_fqdn);
