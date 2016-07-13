@@ -180,6 +180,10 @@ protected:
     inline bool sslcom_status() { return sslcom_status_; }
     inline void sslcom_status(bool b) { sslcom_status_ = b; }
 
+    virtual std::string flags_str();
+private:
+    typedef enum { HSK_REUSED = 0x4 } sslcom_flags;
+    unsigned long flags_ = 0;
 public:    
     // debug counters
     static int counter_ssl_connect;

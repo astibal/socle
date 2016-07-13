@@ -194,3 +194,15 @@ void baseCom::close(int __fd) {
         if(r < 0) DIA_("baseCom::close[%d]: error: %s",string_error().c_str());
     }
 }
+
+std::string baseCom::full_flags_str() {
+    std::string msg = flags_str();
+    
+    if(peer() != nullptr) {
+        msg += "|" + peer()->flags_str();
+    } else {
+        msg += "|X";
+    }
+    
+    return msg;
+}

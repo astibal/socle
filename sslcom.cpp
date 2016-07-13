@@ -160,6 +160,19 @@ SSLCom::SSLCom() {
     gettimeofday(&timer_start,nullptr);
 }
 
+std::string SSLCom::flags_str()
+{
+    std::string msg = baseCom::flags_str();
+    msg += ":";
+    
+    bool is = false;
+    if(flags_ & HSK_REUSED ) { msg+="A"; is = true; }
+    
+    if(!is) { msg+="0"; }
+    
+    return msg;
+}
+
 
 void SSLCom::static_init() {
 
@@ -1227,6 +1240,10 @@ void SSLCom::accept_socket ( int sockfd )  {
         forced_read(true);
         forced_write(true);
 
+        if(SSL_session_reused(sslcom_ssl)) {
+            flags_ |= HSK_REUSED;
+        }
+        
     } else {
         DIA___("SSLCom::accept_socket[%d]: ret %d, need to call later.",sockfd,r);
     }
@@ -1428,6 +1445,9 @@ int SSLCom::waiting() {
         prof_connect_ok++;
     } else {
         prof_accept_ok++;
+        if(SSL_session_reused(sslcom_ssl)) {
+            flags_ |= HSK_REUSED;
+        }
     }
 
     DEB___("SSLCom::waiting: operation succeeded: %s", op);
@@ -1459,6 +1479,7 @@ bool SSLCom::store_session_if_needed() {
             ret = true;
         } else {
             DIA___("ticketing: key %s: abbreviated key exchange, connect attempt %d on socket %d",key.c_str(),prof_connect_cnt,owner_cx()->socket());
+            flags_ |= HSK_REUSED;
         }
     }
     

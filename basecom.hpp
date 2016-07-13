@@ -85,6 +85,10 @@ public:
     inline void error(baseCom::err_flags e) { error_flag_ = e;}
     
     virtual ~baseCom() {};
+    virtual std::string flags_str() { return "0"; };
+    virtual std::string full_flags_str();
+private:
+    unsigned long flags_;
 protected:
     // non-local socket support
     bool nonlocal_dst_;
