@@ -1445,12 +1445,16 @@ bool SSLCom::store_session_if_needed() {
     bool ret = false;
     
     if(!is_server() && certstore() && owner_cx() && !opt_right_no_tickets) {
+        std::string sni = "?";
         
-        std::string key = string_format("%s:%s",owner_cx()->host().c_str(),owner_cx()->port().c_str());
+        if(sslcom_peer_hello_sni().length() > 0)
+            sni = sslcom_peer_hello_sni();
+        
+        std::string key = string_format("%s:%s+%s",owner_cx()->host().c_str(),owner_cx()->port().c_str(),sni.c_str());
         if(!SSL_session_reused(sslcom_ssl)) {
             DIA___("ticketing: key %s: full key exchange, connect attempt %d on socket %d",key.c_str(),prof_connect_cnt,owner_cx()->socket());
             certstore()->session_cache.set(key,new session_holder(SSL_get1_session(sslcom_ssl)));
-            DIA_("ticketing: key %s: keying material stored, cache size = %d",key.c_str(),certstore()->session_cache.cache().size());
+            DIA___("ticketing: key %s: keying material stored, cache size = %d",key.c_str(),certstore()->session_cache.cache().size());
             
             ret = true;
         } else {
@@ -1467,16 +1471,20 @@ bool SSLCom::load_session_if_needed() {
     bool ret = false;
     
     if(!is_server() && certstore() && owner_cx() && !opt_right_no_tickets) {
-        std::string key = string_format("%s:%s",owner_cx()->host().c_str(),owner_cx()->port().c_str());
+        std::string sni = "?";
+        if(sslcom_peer_hello_sni().length() > 0)
+            sni = sslcom_peer_hello_sni();
+        
+        std::string key = string_format("%s:%s+%s",owner_cx()->host().c_str(),owner_cx()->port().c_str(),sni.c_str());
         session_holder* h = certstore()->session_cache.get(key);
         
         if(h != nullptr) {
-            DIAS___("target server TLS ticket found!");
+            DIA___("ticketing: key %s:target server TLS ticket found!",key.c_str());
             SSL_set_session(sslcom_ssl, h->ptr);
             
             ret = true;
         } else {
-            DIAS___("target server TLS ticket not found");
+            DIA___("ticketing: key %s:target server TLS ticket not found",key.c_str());
             SSL_set_session(sslcom_ssl, NULL);
         }
     }
