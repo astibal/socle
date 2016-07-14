@@ -17,6 +17,7 @@
 */
 
 #include <sslmitmcom.hpp>
+#include <hostcx.hpp>
 
 int SSLMitmCom::log_level = NON;
 
@@ -31,11 +32,27 @@ bool SSLMitmCom::check_cert(const char* peer_name) {
     if(p != nullptr) {
         // FIXME: this is not right, design another type of test
         p->sslcom_server_ = true;
-	
-	SpoofOptions spo;
-	if (status_client_verify != X509_V_OK) {
-	  spo.self_signed = true;
-	}
+        
+        SpoofOptions spo;
+        if (verify_status != VERIFY_OK) {
+            if(!opt_failed_certcheck_replacement) {
+                spo.self_signed = true;
+            } else {
+                
+                // we WILL pretend target certificate is OK 
+                spo.self_signed = false;
+
+                // there is problem, and we do relaxed cert check. Add DNS and IP SAN,
+                // to raise significantly possibility to pass e.g. browser checks
+                if(sslcom_peer_hello_sni().size() > 0) {
+                    spo.sans.push_back(string_format("DNS:%s",sslcom_peer_hello_sni().c_str()));
+                } 
+                if(owner_cx()) {
+                    spo.sans.push_back(string_format("IP:%s",owner_cx()->host().c_str()));
+                }
+            }
+        }
+        
         
         if(p->sslcom_server_) {
             
@@ -77,12 +94,24 @@ bool SSLMitmCom::spoof_cert(X509* cert_orig, SpoofOptions& spo) {
     
     X509_NAME_oneline( X509_get_subject_name(cert_orig) , tmp, 512);
     std::string subject(tmp);
+    std::string store_key = subject;
     
     
-    // cache lookup
-    X509_PAIR* parek = certstore()->find(subject);
+    X509_PAIR* parek = nullptr;
+    
+    if(spo.self_signed == true) {
+        store_key += "+self_signed";
+    }
+    if(spo.sans.size() > 0) {
+        for(auto san: spo.sans) {
+            store_key += string_format("+SAN:%s",san.c_str());
+        }
+    }
+
+    // cache lookup - only if it's valid, verified cert
+    parek = certstore()->find(store_key);
     if (parek) {
-        DIA__("SSLMitmCom::spoof_cert[%x]: certstore hit for '%s'",this,subject.c_str());
+        DIA__("SSLMitmCom::spoof_cert[%x]: certstore hit for '%s'",this,store_key.c_str());
         sslcom_pref_cert = parek->second;
         sslcom_pref_key = parek->first;
         
@@ -90,11 +119,11 @@ bool SSLMitmCom::spoof_cert(X509* cert_orig, SpoofOptions& spo) {
     }
     
   
-    DIA__("SSLMitmCom::spoof_cert[%x]: NOT in my certstore '%s'",this,subject.c_str());    
+    DIA__("SSLMitmCom::spoof_cert[%x]: NOT in my certstore '%s'",this,store_key.c_str());    
     
-    parek = certstore()->spoof(cert_orig,spo.self_signed);
+    parek = certstore()->spoof(cert_orig,spo.self_signed,&spo.sans);
     if(!parek) {
-        WAR__("SSLMitmCom::spoof_cert[%x]: certstore failed to spoof '%d' - default will be used",this,subject.c_str()); 
+        WAR__("SSLMitmCom::spoof_cert[%x]: certstore failed to spoof '%d' - default will be used",this,store_key.c_str()); 
         return false;
     } 
     else {
@@ -102,8 +131,8 @@ bool SSLMitmCom::spoof_cert(X509* cert_orig, SpoofOptions& spo) {
         sslcom_pref_key  = parek->first;
     }
     
-    if (! certstore()->add(subject,parek)) {
-        DIA__("SSLMitmCom::spoof_cert[%x]: spoof was successful, but cache add failed for %s",this,subject.c_str());
+    if (! certstore()->add(store_key,parek)) {
+        DIA__("SSLMitmCom::spoof_cert[%x]: spoof was successful, but cache add failed for %s",this,store_key.c_str());
         return true;
     }
     

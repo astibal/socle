@@ -475,43 +475,73 @@ int SSLCom::ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx) {
         case X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY:
         case X509_V_ERR_UNABLE_TO_VERIFY_LEAF_SIGNATURE:
         case X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT:
+            if(com != nullptr) {
+                com->verify_status = UNKNOWN_ISSUER;
+                if(com->opt_allow_unknown_issuer) {
+                    ret = 1;
+                } 
+                if(com->opt_failed_certcheck_replacement && com->owner_cx() && com->owner_cx()->port() == "443") {
+                    ret = 1;
+                }            
+            }
         case X509_V_ERR_SELF_SIGNED_CERT_IN_CHAIN:
         case X509_V_ERR_CERT_UNTRUSTED:
-            //DIA__("[%s]: SSLCom::ssl_client_vrfy_callback: issuer: %s", name, SSLCertStore::print_issuer(err_cert).c_str());
-            if(com != nullptr)
-                if(com->opt_allow_unknown_issuer || com->opt_allow_self_signed_chain) {
+            if(com != nullptr) {
+                com->verify_status = SELF_SIGNED_CHAIN;
+                if(com->opt_allow_self_signed_chain) {
                     ret = 1;
                 }
+                if(com->opt_failed_certcheck_replacement && com->owner_cx() && com->owner_cx()->port() == "443") {
+                    ret = 1;
+                }
+            }
 
             break;
         case X509_V_ERR_DEPTH_ZERO_SELF_SIGNED_CERT:
-            if(com != nullptr)
+            if(com != nullptr) {
+                com->verify_status = SELF_SIGNED;
                 if(com->opt_allow_self_signed_cert) {
                     ret = 1;
                 }
+                if(com->opt_failed_certcheck_replacement && com->owner_cx() && com->owner_cx()->port() == "443") {
+                    ret = 1;
+                }
+            }
+                
             break;
 
         case X509_V_ERR_CERT_NOT_YET_VALID:
         case X509_V_ERR_ERROR_IN_CERT_NOT_BEFORE_FIELD:
             DIA__("[%s]: SSLCom::ssl_client_vrfy_callback: not before: %s",name, SSLCertStore::print_not_before(err_cert).c_str());
-            if(com != nullptr)
+            if(com != nullptr) {
+                com->verify_status = INVALID;
                 if(com->opt_allow_not_valid_cert) {
                     ret = 1;
                 }
+                if(com->opt_failed_certcheck_replacement && com->owner_cx() && com->owner_cx()->port() == "443") {
+                    ret = 1;
+                }
+            }
 
             break;
         case X509_V_ERR_CERT_HAS_EXPIRED:
         case X509_V_ERR_ERROR_IN_CERT_NOT_AFTER_FIELD:
             DIA__("[%s]: SSLCom::ssl_client_vrfy_callback: not after: %s",name, SSLCertStore::print_not_after(err_cert).c_str());
-            if(com != nullptr)
+            if(com != nullptr) {
+                com->verify_status = INVALID;
                 if(com->opt_allow_not_valid_cert) {
                     ret = 1;
                 }
+                if(com->opt_failed_certcheck_replacement && com->owner_cx() && com->owner_cx()->port() == "443") {
+                    ret = 1;
+                }
+            }
 
             break;
         case X509_V_ERR_NO_EXPLICIT_POLICY:
             DIA__("[%s]: SSLCom::ssl_client_vrfy_callback: no explicit policy",name);
             break;
+            
     }
     
     
@@ -533,14 +563,20 @@ int SSLCom::ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx) {
         if(com->opt_ocsp_mode > 0 &&  com->sslcom_peer_cert && com->sslcom_peer_issuer
             && com->ocsp_cert_is_revoked == -1 && com->opt_ocsp_enforce_in_verify) {
          
-             int is_revoked = SSLCom::ocsp_explicit_check(com);
-             if(is_revoked  == 0) ret = 1;
-             else if(is_revoked > 0) ret = 0;
+            int is_revoked = SSLCom::ocsp_explicit_check(com);
+            if(is_revoked  == 0) { 
+                ret = 1;
+            }
+            else if(is_revoked > 0)  {   
+                com->verify_status = REVOKED;
+                ret = 0;
+                
+                if(com->opt_failed_certcheck_replacement && com->owner_cx() && com->owner_cx()->port() == "443") {
+                    ret = 1;
+                }
+                
+            }
         }
-    }
-
-    if(com != nullptr) {
-        com->status_client_verify = err;
     }
 
     return ret;
@@ -1473,10 +1509,16 @@ bool SSLCom::store_session_if_needed() {
         std::string key = string_format("%s:%s+%s",owner_cx()->host().c_str(),owner_cx()->port().c_str(),sni.c_str());
         if(!SSL_session_reused(sslcom_ssl)) {
             DIA___("ticketing: key %s: full key exchange, connect attempt %d on socket %d",key.c_str(),prof_connect_cnt,owner_cx()->socket());
-            certstore()->session_cache.set(key,new session_holder(SSL_get1_session(sslcom_ssl)));
-            DIA___("ticketing: key %s: keying material stored, cache size = %d",key.c_str(),certstore()->session_cache.cache().size());
             
-            ret = true;
+            if(verify_status == VERIFY_OK) {
+                certstore()->session_cache.set(key,new session_holder(SSL_get1_session(sslcom_ssl)));
+                DIA___("ticketing: key %s: keying material stored, cache size = %d",key.c_str(),certstore()->session_cache.cache().size());
+                ret = true;
+            } else {
+                DIAS__("certificate verification failed, not storing in the cache.");
+                ret = false;
+            }
+            
         } else {
             DIA___("ticketing: key %s: abbreviated key exchange, connect attempt %d on socket %d",key.c_str(),prof_connect_cnt,owner_cx()->socket());
             flags_ |= HSK_REUSED;

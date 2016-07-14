@@ -45,6 +45,7 @@ static struct entry ext_ent[EXT_COUNT] = {
 
 struct SpoofOptions {
   bool self_signed = false; // set to true if we should deliberately make a mistake
+  std::vector<std::string> sans;
 };
 
 class SSLMitmCom : public SSLCom {

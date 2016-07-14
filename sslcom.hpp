@@ -321,9 +321,13 @@ public:
     // common mistakes/misconfigs
     bool opt_allow_not_valid_cert = false;    //expired or not yet valid
     bool opt_allow_self_signed_cert = false;  //for depth 0
-
-    int status_client_verify = -1;	      // -1 never ever done, everything else is status of processed verification
     
+    bool opt_failed_certcheck_replacement = true; //if this is set to true, opt_allow* above will not cause session to terminate,
+                                                  //it will succeed to connect. It's then up to proxy to display replacement message.
+                                                  //currently works only for port 443, should be extended.
+    typedef enum { VERIFY_OK=0, UNKNOWN_ISSUER=1, SELF_SIGNED, INVALID, SELF_SIGNED_CHAIN, REVOKED } verify_status_t;
+    verify_status_t verify_status = VERIFY_OK; 
+
 public:
     static unsigned int& log_level_ref() { return log_level; }
 private:

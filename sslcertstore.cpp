@@ -227,7 +227,7 @@ bool SSLCertStore::add(std::string& subject,X509_PAIR* parek, X509_REQ* req) {
         cache_[subject] = parek;
         DIA__("SSLCertStore::add[%x] cert %s",this,subject.c_str());
         
-        std::string cn = print_cn(parek->second);
+        std::string cn = subject;
         fqdn_cache_[cn] = subject;
         DIA__("SSLCertStore::add[%x] fqdn %s -> %s",this,cn.c_str(), subject.c_str());
     }
@@ -318,12 +318,28 @@ void SSLCertStore::erase(std::string& subject) {
     
 }
 
-X509_PAIR* SSLCertStore::spoof(X509* cert_orig, bool self_sign) {
+int add_ext(STACK_OF(X509_EXTENSION) *sk, int nid, char *value) {
+  X509_EXTENSION *ex;
+  ex = X509V3_EXT_conf_nid(NULL, NULL, nid, value);
+  if (!ex)
+    return 0;
+  sk_X509_EXTENSION_push(sk, ex);
+  return 1;
+}
+
+X509_PAIR* SSLCertStore::spoof(X509* cert_orig, bool self_sign, std::vector<std::string>* additional_sans) {
     char tmp[2048];
     DEB__("SSLCertStore::spoof[%x]: about to spoof certificate!",this);
     
     if(self_sign) {
-      INF__("SSLCertStore::spoof[%x]: about to spoof certificate (self-signed)!",this);
+      DIA__("SSLCertStore::spoof[%x]: about to spoof certificate (self-signed)!",this);
+    }
+    if(additional_sans != nullptr && additional_sans->size() > 0) {
+        DIA__("SSLCertStore::spoof[%x]: about to spoof certificate (+sans):",this);
+        std::vector<std::string>& sans = *additional_sans;
+        for (auto san: sans) {
+            DIA__("SSLCertStore::spoof[%x]:  SAN: %s",this, san.c_str());
+        }
     }
     
     // get info from the peer certificate
@@ -389,6 +405,22 @@ X509_PAIR* SSLCertStore::spoof(X509* cert_orig, bool self_sign) {
                     sk_X509_EXTENSION_push(s,n_ex);
 //                     X509_EXTENSION_free(n_ex);  //leak hunt
                 }                
+            }
+            
+            if(additional_sans != nullptr) {
+                std::string san_string;
+                std::vector<std::string>& as = *additional_sans;
+                if(as.size() > 0) {
+                    for(unsigned int i = 0 ; i < as.size(); ++i ) {
+                        san_string += as.at(i);
+                        if(i < as.size() - 1) {
+                            san_string += ",";
+                        }
+                    }
+                    
+                    add_ext(s,NID_subject_alt_name, (char*) san_string.c_str());
+                    DIA__("SSLCertStore::spoof[%x]: additional sans = '%s'",this,san_string.c_str());
+                }
             }
         }
         
