@@ -325,6 +325,9 @@ public:
     bool opt_failed_certcheck_replacement = true; //if this is set to true, opt_allow* above will not cause session to terminate,
                                                   //it will succeed to connect. It's then up to proxy to display replacement message.
                                                   //currently works only for port 443, should be extended.
+    bool opt_failed_certcheck_override = false;       //failed ssl replacement will contain option to temporarily allow the connection for the source IP.
+    int  opt_failed_certcheck_override_timeout = 600; // if failed ssl override is active, this is the timeout.    
+    
     typedef enum { VERIFY_OK=0, UNKNOWN_ISSUER=1, SELF_SIGNED, INVALID, SELF_SIGNED_CHAIN, REVOKED } verify_status_t;
     verify_status_t verify_status = VERIFY_OK; 
 
