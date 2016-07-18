@@ -476,7 +476,7 @@ int SSLCom::ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx) {
         case X509_V_ERR_UNABLE_TO_VERIFY_LEAF_SIGNATURE:
         case X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT:
             if(com != nullptr) {
-                com->verify_status = UNKNOWN_ISSUER;
+                com->verify_set(UNKNOWN_ISSUER);
                 if(com->opt_allow_unknown_issuer) {
                     ret = 1;
                 } 
@@ -487,7 +487,7 @@ int SSLCom::ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx) {
         case X509_V_ERR_SELF_SIGNED_CERT_IN_CHAIN:
         case X509_V_ERR_CERT_UNTRUSTED:
             if(com != nullptr) {
-                com->verify_status = SELF_SIGNED_CHAIN;
+                com->verify_set(SELF_SIGNED_CHAIN);
                 if(com->opt_allow_self_signed_chain) {
                     ret = 1;
                 }
@@ -499,7 +499,7 @@ int SSLCom::ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx) {
             break;
         case X509_V_ERR_DEPTH_ZERO_SELF_SIGNED_CERT:
             if(com != nullptr) {
-                com->verify_status = SELF_SIGNED;
+                com->verify_set(SELF_SIGNED);
                 if(com->opt_allow_self_signed_cert) {
                     ret = 1;
                 }
@@ -514,7 +514,7 @@ int SSLCom::ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx) {
         case X509_V_ERR_ERROR_IN_CERT_NOT_BEFORE_FIELD:
             DIA__("[%s]: SSLCom::ssl_client_vrfy_callback: not before: %s",name, SSLCertStore::print_not_before(err_cert).c_str());
             if(com != nullptr) {
-                com->verify_status = INVALID;
+                com->verify_set(INVALID);
                 if(com->opt_allow_not_valid_cert) {
                     ret = 1;
                 }
@@ -528,7 +528,7 @@ int SSLCom::ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx) {
         case X509_V_ERR_ERROR_IN_CERT_NOT_AFTER_FIELD:
             DIA__("[%s]: SSLCom::ssl_client_vrfy_callback: not after: %s",name, SSLCertStore::print_not_after(err_cert).c_str());
             if(com != nullptr) {
-                com->verify_status = INVALID;
+                com->verify_set(INVALID);
                 if(com->opt_allow_not_valid_cert) {
                     ret = 1;
                 }
@@ -568,7 +568,7 @@ int SSLCom::ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx) {
                 ret = 1;
             }
             else if(is_revoked > 0)  {   
-                com->verify_status = REVOKED;
+                com->verify_set(REVOKED);
                 ret = 0;
                 
                 if(com->opt_failed_certcheck_replacement && com->owner_cx() && com->owner_cx()->port() == "443") {
@@ -1043,6 +1043,43 @@ int SSLCom::ocsp_resp_callback(SSL *s, void *arg) {
     return SSLCom::ocsp_resp_callback_explicit(com,1);
 }
 
+int SSLCom::ssl_client_cert_callback(SSL* ssl, X509** x509, EVP_PKEY** pkey) {
+    //return 0 if we don't want to provide cert, 1 if yes.
+    //if yes, x509 and pkey has to point to pointers with cert.
+    
+    
+    void* data = SSL_get_ex_data(ssl, sslcom_ssl_extdata_index);
+    const char *name = "unknown_cx";
+
+    SSLCom* com = static_cast<SSLCom*>(data);
+    if(com != nullptr) {
+        SSLCom* pcom = dynamic_cast<SSLCom*>(com->peer());
+        if(pcom != nullptr) {
+            const char* n = pcom->hr();
+            if(n != nullptr) {
+                name = n;
+            }
+        } else {  
+            const char* n = com->hr();
+            if(n != nullptr) {
+                name = n;
+            }
+        }
+        
+        com->verify_set(SSLCom::CLIENT_CERT_RQ);
+
+        if(com->opt_client_cert_action == 0 && !com->opt_failed_certcheck_replacement) {
+            com->error(ERROR_UNSPEC);
+        }
+    }
+    
+    INF__("[%s] server asks for client certificate", name);
+    
+    return 0;
+}
+
+
+
 void SSLCom::init_ssl_callbacks() {
     SSL_set_msg_callback(sslcom_ssl,ssl_msg_callback);
     SSL_set_msg_callback_arg(sslcom_ssl,(void*)this);
@@ -1061,6 +1098,7 @@ void SSLCom::init_ssl_callbacks() {
 
     if(! is_server()) {
         SSL_set_verify(sslcom_ssl,SSL_VERIFY_PEER,&ssl_client_vrfy_callback);
+        SSL_CTX_set_client_cert_cb(sslcom_ctx,ssl_client_cert_callback);
 
         if(opt_ocsp_stapling_enabled || opt_ocsp_mode > 0) {
 
@@ -1075,7 +1113,7 @@ void SSLCom::init_ssl_callbacks() {
                 SSL_CTX_set_tlsext_status_arg(sslcom_ctx, this);
             }
         }
-    }
+    } 
 }
 
 void SSLCom::init_client() {
@@ -2292,14 +2330,14 @@ SSL_CTX* SSLCom::client_ctx_setup(EVP_PKEY* priv, X509* cert, const char* cipher
     
 
 
-    DIAS__("SSLCom::client_ctx_setup: loading default key/cert");
-    priv == nullptr ? SSL_CTX_use_PrivateKey(ctx,certstore()->def_cl_key) : SSL_CTX_use_PrivateKey(ctx,priv);
-    cert == nullptr ? SSL_CTX_use_certificate(ctx,certstore()->def_cl_cert) : SSL_CTX_use_certificate(ctx,cert);
-
-    if (!SSL_CTX_check_private_key(ctx)) {
-        ERRS__("SSLCom::client_ctx_setup: Private key does not match the certificate public key\n");
-        exit(5);
-    }
+//     DIAS__("SSLCom::client_ctx_setup: loading default key/cert");
+//     priv == nullptr ? SSL_CTX_use_PrivateKey(ctx,certstore()->def_cl_key) : SSL_CTX_use_PrivateKey(ctx,priv);
+//     cert == nullptr ? SSL_CTX_use_certificate(ctx,certstore()->def_cl_cert) : SSL_CTX_use_certificate(ctx,cert);
+// 
+//     if (!SSL_CTX_check_private_key(ctx)) {
+//         ERRS__("SSLCom::client_ctx_setup: Private key does not match the certificate public key\n");
+//         exit(5);
+//     }
 
     return ctx;
 }

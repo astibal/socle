@@ -236,6 +236,7 @@ public:
     static DH* ssl_dh_callback(SSL* s, int is_export, int key_length);
     static EC_KEY* ssl_ecdh_callback(SSL* s, int is_export, int key_length);
     static int ocsp_resp_callback(SSL *s, void *arg);
+    static int ssl_client_cert_callback(SSL *ssl, X509 **x509, EVP_PKEY **pkey);
     static int ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx);
     static int check_server_dh_size(SSL* ssl);
     long log_if_error(unsigned int level, const char* prefix);
@@ -328,8 +329,22 @@ public:
     bool opt_failed_certcheck_override = false;       //failed ssl replacement will contain option to temporarily allow the connection for the source IP.
     int  opt_failed_certcheck_override_timeout = 600; // if failed ssl override is active, this is the timeout.    
     
-    typedef enum { VERIFY_OK=0, UNKNOWN_ISSUER=1, SELF_SIGNED, INVALID, SELF_SIGNED_CHAIN, REVOKED } verify_status_t;
-    verify_status_t verify_status = VERIFY_OK; 
+    bool opt_client_cert_action = 0;                    // 0 - display a warning message and block, or drop the connection
+                                                        // 1 - pass, don't provide any certificate to server
+                                                        // 2 - bypass next connection
+    
+    // verify status. Added also verify pseudostatus for client cert request.
+    typedef enum {  VERIFY_OK=0x0, 
+                    UNKNOWN_ISSUER=0x1, 
+                    SELF_SIGNED=0x2, 
+                    INVALID=0x4, 
+                    SELF_SIGNED_CHAIN=0x8, 
+                                REVOKED=0x10, 
+                                CLIENT_CERT_RQ=0x20 } verify_status_t;
+                                
+    int verify_status = VERIFY_OK;
+    inline void verify_set(int s) { verify_status |= (verify_status_t)s; }
+    inline bool verify_check(int s) { return (verify_status & s); }
 
 public:
     static unsigned int& log_level_ref() { return log_level; }

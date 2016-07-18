@@ -71,7 +71,7 @@ template <class K, class T>
 class ptr_cache {
 public:
     ptr_cache(const char* n): auto_delete_(true), max_size_(0) { name(n); }
-    ptr_cache(const char* n, unsigned int max_size, bool auto_delete): auto_delete_(auto_delete), max_size_(max_size) { name(n); }
+    ptr_cache(const char* n, unsigned int max_size, bool auto_delete, bool (*fn_exp)(T*) = nullptr ): auto_delete_(auto_delete), max_size_(max_size) { name(n); expiration_check(fn_exp); }
     virtual ~ptr_cache() { clear(); if(default_value_ != nullptr && auto_delete_) { delete default_value_; }; }
 
 
