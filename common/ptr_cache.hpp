@@ -78,7 +78,7 @@ public:
     void invalidate() {
         std::lock_guard<std::recursive_mutex> l(lock_);
         
-        for(auto it = cache().begin(); it < cache().end() ; ++ it) {
+        for(auto it = cache().begin(); it != cache().end() ; ++ it) {
             T*& ptr = it->second;
             if(auto_delete()) {
                 delete ptr;
