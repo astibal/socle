@@ -52,8 +52,11 @@ int SSLCom::sslcom_ssl_extdata_index = -1;
 int SSLCom::counter_ssl_connect = 0;
 int SSLCom::counter_ssl_accept = 0;
 unsigned int SSLCom::log_level = NON;
+std::string SSLCom::ci_def_filter = "HIGH RC4 !aNULL !eNULL !LOW !3DES !MD5 !EXP !DSS !PSK !SRP !kECDH !CAMELLIA !IDEA !SEED @STRENGTH";
 
 int SSLCOM_CLIENTHELLO_TIMEOUT = 3000; //in ms
+
+
 
 void locking_function ( int mode, int n, const char * file, int line )  {
 
@@ -1085,7 +1088,7 @@ void SSLCom::init_ssl_callbacks() {
     SSL_set_msg_callback_arg(sslcom_ssl,(void*)this);
     SSL_set_info_callback(sslcom_ssl,ssl_info_callback);
 
-    if((is_server() && opt_left_pfs) || (!is_server() && opt_right_pfs)) {
+    if((is_server() && opt_left_kex_dh) || (!is_server() && opt_right_kex_dh)) {
         SSL_set_tmp_dh_callback(sslcom_ssl,ssl_dh_callback);
         SSL_set_tmp_ecdh_callback(sslcom_ssl,ssl_ecdh_callback);
     }
@@ -1126,13 +1129,28 @@ void SSLCom::init_client() {
 
     sslcom_ctx = certstore()->def_cl_ctx;
     sslcom_ssl = SSL_new(sslcom_ctx);
-    if(opt_right_pfs) {
-        SSL_set_cipher_list(sslcom_ssl,"kEECDH kEECDH kEDH HIGH GCM !kRSA !aNULL !eNULL !LOW !3DES !MD5 !EXP !DSS !PSK !SRP !kECDH !CAMELLIA !IDEA !SEED !SHA1 @STRENGTH");
-    } else {
-        // apart of not including DH, we allow also SHA1, due to compatibility with TLS1.0 cipher suites
-        SSL_set_cipher_list(sslcom_ssl," !kEECDH !kEECDH !kEDH kRSA HIGH GCM !aNULL !eNULL !LOW !3DES !MD5 !EXP !DSS !PSK !SRP !kECDH !CAMELLIA !IDEA !SEED SHA1 @STRENGTH");
-    }
-
+    
+    std::string my_filter = ci_def_filter;
+    
+    if(!opt_right_allow_sha1)
+                my_filter += " !SHA1";
+    if(!opt_right_allow_rc4)
+                my_filter += " !RC4";
+    if(!opt_right_allow_aes128)
+                my_filter += " !AES128";
+    
+    
+    if(!opt_right_kex_dh)
+                my_filter += " !kEECDH !kEDH";
+    
+    if(!opt_right_kex_rsa)
+                my_filter += " !kRSA";
+    
+    
+    DIA___("right ciphers: %s",my_filter.c_str());
+    
+    SSL_set_cipher_list(sslcom_ssl,my_filter.c_str());
+    
     if(!sslcom_ssl) {
         ERRS___("Client: Error creating SSL context!");
         log_if_error(ERR,"SSLCom::init_client");
@@ -1162,17 +1180,35 @@ void SSLCom::init_server() {
     sslcom_ctx = certstore()->def_sr_ctx;
     sslcom_ssl = SSL_new(sslcom_ctx);
 
-    if(opt_left_pfs) {
-        if(sslcom_ecdh == nullptr) {
-            sslcom_ecdh = EC_KEY_new_by_curve_name(NID_X9_62_prime256v1);
-        }
-        if(sslcom_ecdh != nullptr) {
-            // this actually disables ecdh callback
-            SSL_set_tmp_ecdh(sslcom_ssl,sslcom_ecdh);
-        }
-        
-        SSL_set_cipher_list(sslcom_ssl,"kEECDH kEECDH kEDH HIGH GCM !kRSA !aNULL !eNULL !LOW !3DES !MD5 !EXP !DSS !PSK !SRP !kECDH !CAMELLIA !IDEA !SEED !SHA1 @STRENGTH");
+    std::string my_filter = ci_def_filter;
+    
+    if(!opt_left_allow_sha1)
+                my_filter += " !SHA1";
+    if(!opt_left_allow_rc4)
+                my_filter += " !RC4";
+    if(!opt_left_allow_aes128)
+                my_filter += " !AES128";
+    
+    
+    if(!opt_left_kex_dh) {
+                my_filter += " !kEECDH !kEDH";
+    } else {
+                // ok, use DH, in that case select 
+                if(sslcom_ecdh == nullptr) {
+                    sslcom_ecdh = EC_KEY_new_by_curve_name(NID_X9_62_prime256v1);
+                }
+                if(sslcom_ecdh != nullptr) {
+                    // this actually disables ecdh callback
+                    SSL_set_tmp_ecdh(sslcom_ssl,sslcom_ecdh);
+                }        
     }
+                
+    if(!opt_left_kex_rsa)
+                my_filter += " !kRSA";
+    
+    
+    DIA___("left ciphers: %s",my_filter.c_str());
+    SSL_set_cipher_list(sslcom_ssl,my_filter.c_str());
 
     if (sslcom_pref_cert && sslcom_pref_key) {
         DEB__("SSLCom::init_server[%x]: loading preferred key/cert",this);

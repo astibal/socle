@@ -296,10 +296,22 @@ public:
     // total bypass
     bool opt_bypass = false;
     
-    // enable/disable pfs (DHE and ECDHE suites)
-    bool opt_left_pfs = true;
-    bool opt_right_pfs = true;
-    bool opt_left_no_tickets = false;
+    static std::string ci_def_filter;;
+    
+    bool opt_left_kex_dh = true;       // enable/disable pfs (DHE and ECDHE suites)
+    bool opt_left_kex_rsa = true;      // enable also kRSA
+    bool opt_left_allow_sha1 = true;   // should sha1 be enabled?
+    bool opt_left_allow_rc4 = false;   // should rc4 be enabled?
+    bool opt_left_allow_aes128 = true; // should we allow aes-128?
+    bool opt_left_no_tickets = false;  // enable abbreviated TLS handshake
+    
+    
+                                       // the same as above, for right side
+    bool opt_right_kex_dh = true;
+    bool opt_right_kex_rsa = true;
+    bool opt_right_allow_sha1 = true;
+    bool opt_right_allow_rc4 = false;
+    bool opt_right_allow_aes128 = true;
     bool opt_right_no_tickets = false;
     
     bool opt_ocsp_stapling_enabled = false; // should we insist on OCSP response?
