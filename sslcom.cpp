@@ -1450,7 +1450,7 @@ int SSLCom::waiting() {
                             bool cont = true;
                             
                             if(pos > 0) {
-                                if(sslcom_peer_hello_sni().at(pos) != '.') {
+                                if(sslcom_peer_hello_sni().at(pos - 1) != '.') {
                                     DIA___("%s NOT bypassed with sni filter %s",sslcom_peer_hello_sni().c_str(),filter_element.c_str());
                                     cont = false;
                                 }
