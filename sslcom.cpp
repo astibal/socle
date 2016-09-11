@@ -1444,18 +1444,32 @@ int SSLCom::waiting() {
 
                         std::size_t pos = sslcom_peer_hello_sni().rfind(filter_element);
                         if(pos != std::string::npos && pos + filter_element.size() >= sslcom_peer_hello_sni().size()) {
-                            DIA___("SSLCom:waiting: matched SNI filter: %s!",filter_element.c_str());
-                            sni_filter_to_bypass_matched = true;
+                            
+                            //ok, we know SNI ends with the filter entry. We need to check if the character BEFORE match pos in SNI is '.' to prevent
+                            // match www.mycnn.com with cnn.com SNI entry.
+                            bool cont = true;
+                            
+                            if(pos > 0) {
+                                if(sslcom_peer_hello_sni().at(pos) != '.') {
+                                    DIA___("%s NOT bypassed with sni filter %s",sslcom_peer_hello_sni().c_str(),filter_element.c_str());
+                                    cont = false;
+                                }
+                            }
+                            
+                            if(cont) {
+                                DIA___("SSLCom:waiting: matched SNI filter: %s!",filter_element.c_str());
+                                sni_filter_to_bypass_matched = true;
 
-                            SSLCom* p = dynamic_cast<SSLCom*>(peer());
-                            if(p != nullptr) {
-                                opt_bypass = true;
-                                p->opt_bypass = true;
-                                
-                                INF___("bypassed due to SNI filter matching %s",filter_element.c_str());
-                                return 0;
-                            } else {
-                                DIAS___("SSLCom:waiting: SNI filter matched, but peer is not SSLCom");
+                                SSLCom* p = dynamic_cast<SSLCom*>(peer());
+                                if(p != nullptr) {
+                                    opt_bypass = true;
+                                    p->opt_bypass = true;
+                                    
+                                    INF___("%s bypassed with sni filter %s",sslcom_peer_hello_sni().c_str(),filter_element.c_str());
+                                    return 0;
+                                } else {
+                                    DIAS___("SSLCom:waiting: SNI filter matched, but peer is not SSLCom");
+                                }
                             }
                         }
                     }
