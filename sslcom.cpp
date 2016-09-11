@@ -1442,7 +1442,8 @@ int SSLCom::waiting() {
                 
                     for(std::string& filter_element: *sni_filter_to_bypass_.refval()) {
 
-                        if(sslcom_peer_hello_sni() == filter_element) {
+                        std::size_t pos = sslcom_peer_hello_sni().rfind(filter_element);
+                        if(pos != std::string::npos && pos + filter_element.size() >= sslcom_peer_hello_sni().size()) {
                             DIA___("SSLCom:waiting: matched SNI filter: %s!",filter_element.c_str());
                             sni_filter_to_bypass_matched = true;
 
@@ -1451,6 +1452,7 @@ int SSLCom::waiting() {
                                 opt_bypass = true;
                                 p->opt_bypass = true;
                                 
+                                INF___("bypassed due to SNI filter matching %s",filter_element.c_str());
                                 return 0;
                             } else {
                                 DIAS___("SSLCom:waiting: SNI filter matched, but peer is not SSLCom");
