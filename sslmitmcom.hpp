@@ -53,7 +53,7 @@ public:
    virtual bool check_cert(const char*);
    virtual bool spoof_cert(X509* cert_orig, SpoofOptions& spo);
    virtual baseCom* replicate() { return new SSLMitmCom(); };
-   virtual const char* name() { return "ssl+insp"; };
+   virtual const char* name() { return opt_bypass ? "ssl" : "ssl+insp"; };
 
     virtual ~SSLMitmCom() {};
 
