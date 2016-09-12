@@ -295,6 +295,7 @@ public:
     
     // total bypass
     bool opt_bypass = false;
+    bool bypass_me_and_peer();
     
     static std::string ci_def_filter;;
     

@@ -1313,17 +1313,20 @@ bool SSLCom::writable(int s) {
 
     return r;
 };
-/**/
 
-/* TESTING set
-bool SSLCom::readable(int s) {
-	return ((FD_ISSET(s,&read_socketSet) && sslcom_write_blocked_on_read) ||
-        (!sslcom_read_blocked_on_write && FD_ISSET(s,&write_socketSet)) || sslcom_waiting);
-};
-bool SSLCom::writable(int s) {
-	return (FD_ISSET(s,&write_socketSet) || (sslcom_read_blocked_on_write ));
-};
- */
+bool SSLCom::bypass_me_and_peer() {
+    if(peer()) {
+        SSLCom* speer = dynamic_cast<SSLCom*>(peer());
+        
+        if(speer) {
+            opt_bypass = true;
+            speer->opt_bypass = true;
+            return true;
+        }
+    }
+    
+    return false;
+}
 
 
 void SSLCom::accept_socket ( int sockfd )  {
