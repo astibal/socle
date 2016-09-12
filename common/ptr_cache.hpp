@@ -89,6 +89,11 @@ public:
 
     void clear() {
         std::lock_guard<std::recursive_mutex> l(lock_);
+        
+        if(auto_delete()) {
+            invalidate();
+        }
+            
         cache().clear();
         items_.clear();
     }
