@@ -44,4 +44,10 @@ std::string get_kernel_version();
 // compare dot-formated @target version with against @real version. @returns false if real version is lower than target.
 bool version_check(std::string real, std::string target);
 
+template <typename T> inline void flag_set(T* variable, T check) { *variable |= (T)check; }
+template <typename T> inline bool flag_check(T* variable, T check) { return (*variable & check); }
+
+#define  int_check flag_check<int> 
+#define  int_set   flag_set<int> 
+
 #endif
