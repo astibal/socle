@@ -60,7 +60,7 @@ int TCPCom::connect(const char* host, const char* port, bool blocking) {
             DEB_("TCPCom::connect[%s:%s]: about to name socket[%d] after: %s:%d",host,port,sfd,nonlocal_src_host().c_str(),nonlocal_src_port());
             int bind_status = namesocket(sfd,nonlocal_src_host(),nonlocal_src_port());
             if (bind_status != 0) {
-                    WAR_("cannot bind this port: %s",strerror(bind_status));
+                    WAR_("cannot bind this socket to %s:%d: %s", nonlocal_src_host().c_str(), nonlocal_src_port(),strerror(bind_status));
             } else {
                 DIA_("TCPCom::connect[%s:%s]: socket[%d] transparency for %s:%d OK",host,port,sfd,nonlocal_src_host().c_str(),nonlocal_src_port());
             }
