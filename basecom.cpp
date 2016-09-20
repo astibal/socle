@@ -134,18 +134,23 @@ bool baseCom::resolve_socket(bool source, int s, std::string* target_host, std::
             
             DEB_("baseCom::resolve_socket(ipv4): %s returns %s:%d",op,orig_host,orig_port);
             
+            l3_proto(AF_INET);
         } 
         else if(ptr_peer_info->ss_family == AF_INET6){
             inet_ntop(AF_INET6, &(((struct sockaddr_in6*) ptr_peer_info)->sin6_addr), orig_host, INET6_ADDRSTRLEN);
             orig_port = ntohs(((struct sockaddr_in6*) ptr_peer_info)->sin6_port);
             
             DEB_("baseCom::resolve_socket(ipv6): %s returns %s:%d",op,orig_host,orig_port);
+
+            l3_proto(AF_INET6);
         }
 
         std::string mapped4_temp = orig_host;
         if(mapped4_temp.find("::ffff:") == 0) {
             DEBS_("baseCom::resolve_socket: mapped IPv4 detected, removing mapping prefix");
             mapped4_temp = mapped4_temp.substr(7);
+            
+            l3_proto(AF_INET);
         }
         
         *target_host = mapped4_temp;

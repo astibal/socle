@@ -97,6 +97,8 @@ protected:
     unsigned short nonlocal_dst_port_;
     struct sockaddr_storage nonlocal_dst_peer_info_;
     
+    int l3_proto_ = 0;
+    
     bool nonlocal_src_ = false;
     std::string nonlocal_src_host_;
     unsigned short nonlocal_src_port_;
@@ -266,6 +268,9 @@ public:
 
     virtual int nonlocal_bind(unsigned short port);
     virtual bool resolve_nonlocal_dst_socket(int sock);
+    
+    inline int l3_proto() const { return l3_proto_; };
+    inline void l3_proto(int p) { l3_proto_ = p; }
 };
 
 # endif
