@@ -69,7 +69,7 @@ protected:
     int tcpcom_fd = 0;
     unsigned int connect_sock_family = AF_UNSPEC;
     unsigned int connect_sock_type = SOCK_STREAM;
-    unsigned int bind_sock_family = AF_INET;
+    unsigned int bind_sock_family = AF_INET6;
     unsigned int bind_sock_type = SOCK_STREAM;
     unsigned int bind_sock_protocol = IPPROTO_TCP;
 };

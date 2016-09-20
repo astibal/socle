@@ -357,7 +357,8 @@ public:
                                 
     int verify_status = VERIFY_OK;
     inline void verify_set(int s) { verify_status |= (verify_status_t)s; }
-    inline bool verify_check(int s) { return (verify_status & s); }
+    inline bool verify_check(int s) const { return (verify_status & s); }
+    inline int verify_get() const { return (int) verify_status; }
 
 public:
     static unsigned int& log_level_ref() { return log_level; }

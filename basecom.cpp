@@ -132,17 +132,23 @@ bool baseCom::resolve_socket(bool source, int s, std::string* target_host, std::
             inet_ntop(AF_INET, &(((struct sockaddr_in*) ptr_peer_info)->sin_addr),orig_host, INET_ADDRSTRLEN);
             orig_port = ntohs(((struct sockaddr_in*) ptr_peer_info)->sin_port);
             
-            DEB_("baseCom::resolve_socket: %s returns %s:%d",op,orig_host,orig_port);
+            DEB_("baseCom::resolve_socket(ipv4): %s returns %s:%d",op,orig_host,orig_port);
             
         } 
         else if(ptr_peer_info->ss_family == AF_INET6){
             inet_ntop(AF_INET6, &(((struct sockaddr_in6*) ptr_peer_info)->sin6_addr), orig_host, INET6_ADDRSTRLEN);
             orig_port = ntohs(((struct sockaddr_in6*) ptr_peer_info)->sin6_port);
             
-            DEB_("baseCom::resolve_socket: %s returns %s:%d",op,orig_host,orig_port);
+            DEB_("baseCom::resolve_socket(ipv6): %s returns %s:%d",op,orig_host,orig_port);
         }
 
-        *target_host = orig_host;
+        std::string mapped4_temp = orig_host;
+        if(mapped4_temp.find("::ffff:") == 0) {
+            DEBS_("baseCom::resolve_socket: mapped IPv4 detected, removing mapping prefix");
+            mapped4_temp = mapped4_temp.substr(7);
+        }
+        
+        *target_host = mapped4_temp;
         *target_port = std::to_string(orig_port);
         if(target_storage != NULL) *target_storage = peer_info_;
         return true;
