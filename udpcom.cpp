@@ -18,6 +18,7 @@
 
 #include <udpcom.hpp>
 #include <display.hpp>
+#include <internet.hpp>
 
 std::map<uint64_t,Datagram> DatagramCom::datagrams_received;
 std::mutex DatagramCom::lock;
@@ -28,13 +29,22 @@ int UDPCom::accept(int sockfd, sockaddr* addr, socklen_t* addrlen_) {
 
 int UDPCom::bind(short unsigned int port) {
     int s;
-    sockaddr_in sockName;
+    sockaddr_storage sa;
 
-    sockName.sin_family = AF_INET;
-    sockName.sin_port = htons(port);
-    sockName.sin_addr.s_addr = INADDR_ANY;
+    //sa.ss_family = bind_sock_family;
+    sa.ss_family = AF_INET;
+    
+    if(sa.ss_family == AF_INET) {
+        inet::to_sockaddr_in(&sa)->sin_port = htons(port);
+        inet::to_sockaddr_in(&sa)->sin_addr.s_addr = INADDR_ANY;
+    }
+    else
+    if(sa.ss_family == AF_INET6) {
+        inet::to_sockaddr_in6(&sa)->sin6_port = htons(port);
+        inet::to_sockaddr_in6(&sa)->sin6_addr = in6addr_any;
+    }
 
-    if ((s = socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP)) == -1) return -129;
+    if ((s = socket(sa.ss_family, bind_sock_type, bind_sock_protocol)) == -1) return -129;
     
     int optval = 1;
     setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof optval);
@@ -52,7 +62,7 @@ int UDPCom::bind(short unsigned int port) {
     if (setsockopt(s, SOL_IP,IP_RECVORIGDSTADDR, &optval, sizeof optval) != 0) return -131;
 
     
-    if (::bind(s, (sockaddr *)&sockName, sizeof(sockName)) == -1) return -130;
+    if (::bind(s, (sockaddr *)&sa, sizeof(sa)) == -1) return -130;
 
     return s;    
 }
@@ -158,12 +168,35 @@ bool UDPCom::resolve_nonlocal_socket(int sock) {
     auto it_record = DatagramCom::datagrams_received.find((unsigned int)sock);
     if(it_record != DatagramCom::datagrams_received.end()) {  
         Datagram& record = (*it_record).second;
+        char b[64]; memset(b,0,64);
         
         DIA_("UDPCom::resolve_nonlocal_socket[%x]: found datagram pool entry",sock);
         
+        if(record.dst_family() == AF_INET || record.dst_family() == 0) {
+            inet_ntop(AF_INET, &record.dst_in_addr4(), b, 64);
+            nonlocal_dst_host().assign(b);
+            nonlocal_dst_port() = ntohs(record.dst_port4());
+            
+            l3_proto(AF_INET);
+        }
+        else if(record.dst_family() == AF_INET6) {
+            inet_ntop(AF_INET6, &record.dst_in_addr6(), b, 64);
+            
+            std::string mapped4_temp = b;
+            if(mapped4_temp.find("::ffff:") == 0) {
+                DEBS_("udpCom::resolve_socket: mapped IPv4 detected, removing mapping prefix");
+                mapped4_temp = mapped4_temp.substr(7);
+                
+                l3_proto(AF_INET);
+            }                
+            
+            nonlocal_dst_host().assign(mapped4_temp);
+            nonlocal_dst_port() = ntohs(record.dst_port6());
+        }
+        
 
-        nonlocal_dst_host() = inet_ntoa(record.dst_in_addr4());
-        nonlocal_dst_port() = ntohs(record.dst_port4());
+//         nonlocal_dst_host() = inet_ntoa(record.dst_in_addr4());
+//         nonlocal_dst_port() = ntohs(record.dst_port4());
         nonlocal_dst_resolved_ = true;
          
         return true;
@@ -302,7 +335,8 @@ int UDPCom::write_to_pool(int __fd, const void* __buf, size_t __n, int __flags) 
     if(it_record != DatagramCom::datagrams_received.end()) {  
         Datagram& record = (*it_record).second;
         
-        DIA_("UDPCom::write_to_pool[%d]: about to write %d bytes into socket %d",__fd,__n,record.socket);
+        std::string str_af = inet_family_str(record.src_family());
+        INF_("UDPCom::write_to_pool[%d]: about to write %d bytes into socket %d record family %s",__fd,__n,record.socket, str_af.c_str());
         
         msghdr m;
         struct iovec io;
@@ -315,12 +349,13 @@ int UDPCom::write_to_pool(int __fd, const void* __buf, size_t __n, int __flags) 
         m.msg_iov = &io;
         m.msg_iovlen = 1;
         m.msg_name = (void*)&record.src;
-        m.msg_namelen = sizeof(struct sockaddr_in);
+        m.msg_namelen = sizeof(struct sockaddr_storage);
         m.msg_control = cmbuf;
         m.msg_controllen = sizeof(cmbuf);            
         
         struct cmsghdr *cmsg;
         struct in_pktinfo *pktinfo;
+
         cmsg = CMSG_FIRSTHDR(&m);
         cmsg->cmsg_level = IPPROTO_IP;
         cmsg->cmsg_type = IP_PKTINFO;
@@ -342,13 +377,13 @@ int UDPCom::write_to_pool(int __fd, const void* __buf, size_t __n, int __flags) 
         std::recursive_mutex send_lock;
         send_lock.lock();
         
-        ret = ::bind (d, (struct sockaddr*)&(record.dst), sizeof (struct sockaddr_in));
+        ret = ::bind (d, (struct sockaddr*)&(record.dst), sizeof (struct sockaddr_storage));
         if(ret != 0) {
             ERRS_("UDPCom::write_to_pool[%d]: cannot bind to destination!",__fd);
         } else {
             DIA_("UDPCom::write_to_pool[%d]: custom transparent socket: %d",__fd,d);
             l = ::sendmsg(d,&m,0);
-            DIA_("UDPCom::write_to_pool[%d]: socket: %d: written %d bytes",__fd,d,l);
+            INF_("UDPCom::write_to_pool[%d]: socket: %d: written %d bytes",__fd,d,l);
         }
         ::close(d);
         send_lock.unlock();
@@ -369,12 +404,55 @@ bool UDPCom::resolve_socket(bool source, int s, std::string* target_host, std::s
     if(it_record != DatagramCom::datagrams_received.end()) {  
         Datagram& record = (*it_record).second;
         
+        char b[64]; memset(b,0,64);
+        
         if(source == true) {
-            target_host->assign(inet_ntoa(record.src_in_addr4()));
-            target_port->assign(std::to_string(ntohs(record.src_port4())));
+            
+            if(record.src_family() == AF_INET || record.src_family() == 0) {
+                inet_ntop(AF_INET, &record.src_in_addr4(), b, 64);
+                target_host->assign(b);
+                target_port->assign(std::to_string(ntohs(record.src_port4())));
+                
+                l3_proto(AF_INET);
+            }
+            else if(record.src_family() == AF_INET6) {
+                inet_ntop(AF_INET6, &record.src_in_addr6(), b, 64);
+                
+                std::string mapped4_temp = b;
+                if(mapped4_temp.find("::ffff:") == 0) {
+                    DEBS_("udpCom::resolve_socket: mapped IPv4 detected, removing mapping prefix");
+                    mapped4_temp = mapped4_temp.substr(7);
+                    
+                    l3_proto(AF_INET);
+                }                
+                
+                target_host->assign(mapped4_temp);
+                target_port->assign(std::to_string(ntohs(record.src_port6())));
+            }
+            
         } else {
-            target_host->assign(inet_ntoa(record.dst_in_addr4()));
-            target_port->assign(std::to_string(ntohs(record.dst_port4())));
+            
+            if(record.dst_family() == AF_INET || record.dst_family() == 0) {
+                inet_ntop(AF_INET, &record.dst_in_addr4(), b, 64);
+                target_host->assign(b);
+                target_port->assign(std::to_string(ntohs(record.dst_port4())));
+                
+                l3_proto(AF_INET);
+            }
+            else if(record.dst_family() == AF_INET6) {
+                inet_ntop(AF_INET6, &record.dst_in_addr6(), b, 64);
+                
+                std::string mapped4_temp = b;
+                if(mapped4_temp.find("::ffff:") == 0) {
+                    DEBS_("udpCom::resolve_socket: mapped IPv4 detected, removing mapping prefix");
+                    mapped4_temp = mapped4_temp.substr(7);
+                    
+                    l3_proto(AF_INET);
+                }                
+                
+                target_host->assign(mapped4_temp);
+                target_port->assign(std::to_string(ntohs(record.dst_port6())));
+            }
         }
         
     } else {
