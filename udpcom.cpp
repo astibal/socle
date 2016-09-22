@@ -336,7 +336,7 @@ int UDPCom::write_to_pool(int __fd, const void* __buf, size_t __n, int __flags) 
         Datagram& record = (*it_record).second;
         
         std::string str_af = inet_family_str(record.src_family());
-        INF_("UDPCom::write_to_pool[%d]: about to write %d bytes into socket %d record family %s",__fd,__n,record.socket, str_af.c_str());
+        DEB_("UDPCom::write_to_pool[%d]: about to write %d bytes into socket %d record family %s",__fd,__n,record.socket, str_af.c_str());
         
         msghdr m;
         struct iovec io;
@@ -381,9 +381,9 @@ int UDPCom::write_to_pool(int __fd, const void* __buf, size_t __n, int __flags) 
         if(ret != 0) {
             ERRS_("UDPCom::write_to_pool[%d]: cannot bind to destination!",__fd);
         } else {
-            DIA_("UDPCom::write_to_pool[%d]: custom transparent socket: %d",__fd,d);
+            DEB_("UDPCom::write_to_pool[%d]: custom transparent socket: %d",__fd,d);
             l = ::sendmsg(d,&m,0);
-            INF_("UDPCom::write_to_pool[%d]: socket: %d: written %d bytes",__fd,d,l);
+            DEB_("UDPCom::write_to_pool[%d]: socket: %d: written %d bytes",__fd,d,l);
         }
         ::close(d);
         send_lock.unlock();
