@@ -83,14 +83,15 @@ public:
 
             unsigned char* records = &data()[sizeof(struct shared_table_header)];
             for (int n = 0 ; n < header_entries() ; n++) {
-                RowType* rec = (RowType*)records;
+                RowType rec;
+                int sz = rec.load(records);
                 //printf("%s: %16s \t groups: %s\n",inet_ntoa(*(in_addr*)rec->ip),rec->username,rec->groups);
 
-                if(on_new_entry(rec)) {
-                    entries().push_back(*rec);
+                if(on_new_entry(&rec)) {
+                    entries().push_back(rec);
                 }
 
-                records+=sizeof(RowType);
+                records+=sz;
             }
 
             on_new_finished();
@@ -139,8 +140,8 @@ public:
   };
 
   virtual unsigned int on_write_entry(unsigned char* ptr, RowType& r) {
-      memcpy(ptr,&r,sizeof(RowType));
-      return sizeof(RowType);
+      memcpy(ptr,r.data()->data(),r.data()->size());
+      return r.data()->size();
   }
   
   // reuturn true if table should be cleared (yes!)
