@@ -50,4 +50,6 @@ template <typename T> inline bool flag_check(T* variable, T check) { return (*va
 #define  int_check flag_check<int> 
 #define  int_set   flag_set<int> 
 
+std::string inet_family_str(int fa);
+
 #endif

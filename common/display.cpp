@@ -26,6 +26,7 @@
 
 #include <execinfo.h>
 #include <sys/utsname.h>
+#include <arpa/inet.h>
 
 #include "display.hpp"
 #include "buffer.hpp"
@@ -384,4 +385,16 @@ bool version_check(std::string real_string ,std::string v) {
     }
 
     return true;
+}
+
+std::string inet_family_str(int fa) {
+    switch(fa) {
+        case AF_INET:
+            return std::string("IPv4");
+        case AF_INET6:
+            return std::string("IPv6");
+            
+        default:
+            return string_format("Proto%d",fa);
+    }
 }
