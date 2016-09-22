@@ -117,7 +117,7 @@ int UDPCom::connect(const char* host, const char* port, bool blocking) {
         
         if(nonlocal_src()) {
             DEB_("UDPCom::connect[%s:%s]: About to name socket[%d] after: %s:%d",host,port,sfd,nonlocal_src_host().c_str(),nonlocal_src_port());
-            int bind_status = namesocket(sfd,nonlocal_src_host(),nonlocal_src_port());
+            int bind_status = namesocket(sfd,nonlocal_src_host(),nonlocal_src_port(),l3_proto());
             if (bind_status != 0) {
                 DIA_("UDPCom::connect[%s:%s]: socket[%d] transparency for %s:%d failed, cannot bind",host,port,sfd,nonlocal_src_host().c_str(),nonlocal_src_port());
             } else {
