@@ -21,6 +21,8 @@
 
 #include <string>
 #include <vector>
+#include <arpa/inet.h>
+
 
 class buffer;
 
@@ -51,5 +53,6 @@ template <typename T> inline bool flag_check(T* variable, T check) { return (*va
 #define  int_set   flag_set<int> 
 
 std::string inet_family_str(int fa);
+int inet_ss_address_str(sockaddr_storage *ptr, std::string*);
 
 #endif

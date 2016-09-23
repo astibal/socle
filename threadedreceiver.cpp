@@ -101,16 +101,26 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
 //     hdr.client_addr_ = from.sin_addr.s_addr;
 //     hdr.client_port_ = ntohs(from.sin_port);
     
+    
+    if(LEV_(DEB)) {
+        std::string from_str;
+        int         from_family = inet_ss_address_str(&from,&from_str);
+        std::string str_from_family = inet_family_str(from_family);
+        DEB_("ThreadedReceiver::on_left_new_raw[%d]: received %d bytes from %s %s",sock,len,str_from_family.c_str(),from_str.c_str());
+    }
+    
+    
     // iterate through all the control headers
     for ( struct cmsghdr* cmsg = CMSG_FIRSTHDR(&msg); cmsg != NULL; cmsg = CMSG_NXTHDR(&msg, cmsg))   {
 
+        DEB_("ThreadedReceiver::on_left_new_raw[%d]: ancillary data level=%d, type=%d",sock,cmsg->cmsg_level,cmsg->cmsg_type);
+            
         // ignore the control headers that don't match what we need .. SOL_IP 
         if ( cmsg->cmsg_level == SOL_IP && cmsg->cmsg_type ==  IP_RECVORIGDSTADDR ) {
 
             found_origdst = true;
             memcpy(&orig,(struct sockaddr_in*)CMSG_DATA(cmsg),sizeof(struct sockaddr_in));
 
-            DEB_("ThreadedReceiver::on_left_new_raw[%d]: ancillary data level=%d, type=%d",sock,cmsg->cmsg_level,cmsg->cmsg_type);
             
             std::string str_src_host(inet_ntoa(inet::to_sockaddr_in(&from)->sin_addr));
             std::string str_dst_host(inet_ntoa(inet::to_sockaddr_in(&orig)->sin_addr));

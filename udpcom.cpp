@@ -355,19 +355,30 @@ int UDPCom::write_to_pool(int __fd, const void* __buf, size_t __n, int __flags) 
         
         struct cmsghdr *cmsg;
         struct in_pktinfo *pktinfo;
-
+        struct in6_pktinfo *pktinfo6;
+        
         cmsg = CMSG_FIRSTHDR(&m);
-        cmsg->cmsg_level = IPPROTO_IP;
         cmsg->cmsg_type = IP_PKTINFO;
-        cmsg->cmsg_len = CMSG_LEN(sizeof(struct in_pktinfo));
-        pktinfo = (struct in_pktinfo*) CMSG_DATA(cmsg);
-        pktinfo->ipi_spec_dst = record.dst_in_addr4();
-        pktinfo->ipi_ifindex = 0;
-        m.msg_controllen = CMSG_SPACE(sizeof(struct in_pktinfo));
+        
+        //IPV4
+       cmsg->cmsg_level = IPPROTO_IP;
+       cmsg->cmsg_len = CMSG_LEN(sizeof(struct in_pktinfo));
+       pktinfo = (struct in_pktinfo*) CMSG_DATA(cmsg);
+       pktinfo->ipi_spec_dst = record.dst_in_addr4();
+       pktinfo->ipi_ifindex = 0;
+       m.msg_controllen = CMSG_SPACE(sizeof(struct in_pktinfo));
+        
+        //IPv6
+//         cmsg->cmsg_level = IPPROTO_IPV6;
+//         cmsg->cmsg_len = CMSG_LEN(sizeof(struct in6_pktinfo));
+//         pktinfo6 = (struct in6_pktinfo*) CMSG_DATA(cmsg);
+//         pktinfo6->ipi6_addr = record.dst_in_addr6();
+//         pktinfo6->ipi6_ifindex = 0;
+//         m.msg_controllen = CMSG_SPACE(sizeof(struct in6_pktinfo));
 
         int l = 0;
         int n = 1;
-        int d = socket (AF_INET, SOCK_DGRAM, 0);
+        int d = socket (record.dst_family(), SOCK_DGRAM, 0);
         int ret = setsockopt (d, SOL_IP, IP_TRANSPARENT, &n, sizeof(n));
         setsockopt(d, SOL_SOCKET, SO_REUSEADDR, &n, sizeof(n));
         setsockopt(d, SOL_SOCKET, SO_BROADCAST, &n, sizeof(n));         
@@ -383,7 +394,12 @@ int UDPCom::write_to_pool(int __fd, const void* __buf, size_t __n, int __flags) 
         } else {
             DEB_("UDPCom::write_to_pool[%d]: custom transparent socket: %d",__fd,d);
             l = ::sendmsg(d,&m,0);
-            DEB_("UDPCom::write_to_pool[%d]: socket: %d: written %d bytes",__fd,d,l);
+            
+            if(l < 0) {
+                ERR_("UDPCom::write_to_pool[%d]: socket: %d: written %d bytes",__fd,d,l);
+            } else {
+                DEB_("UDPCom::write_to_pool[%d]: socket: %d: written %d bytes",__fd,d,l);
+            }
         }
         ::close(d);
         send_lock.unlock();

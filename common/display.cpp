@@ -398,3 +398,28 @@ std::string inet_family_str(int fa) {
             return string_format("Proto%d",fa);
     }
 }
+
+
+int inet_ss_address_str(sockaddr_storage* ptr, std::string* dst) {
+    char b[64]; memset(b,0,64);
+    int family = ptr->ss_family;
+    
+    if(family == AF_INET6) {
+        inet_ntop(ptr->ss_family,&(((struct sockaddr_in6*) ptr)->sin6_addr),b,64);
+    }
+    else if(family == AF_INET) {
+        inet_ntop(ptr->ss_family,&(((struct sockaddr_in*) ptr)->sin_addr),b,64);
+    }
+    
+    std::string mapped4_temp = b;
+    if(mapped4_temp.find("::ffff:") == 0) {
+        mapped4_temp = mapped4_temp.substr(7);
+        family = AF_INET;
+    }    
+    
+    if(dst != nullptr) {
+        // function can be useful just to detect mapped IP
+        dst->assign(mapped4_temp);
+    }
+    return family;
+}
