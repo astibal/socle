@@ -37,6 +37,13 @@
 #include <basecom.hpp>
 #include <baseproxy.hpp>
 
+// FIXME: including linux/ipv6.h fails
+// #include <linux/ipv6.h>
+
+#define IPV6_ORIGDSTADDR        74
+#define IPV6_RECVORIGDSTADDR    IPV6_ORIGDSTADDR
+
+
 struct Datagram {
     sockaddr_storage dst;
     sockaddr_storage src;

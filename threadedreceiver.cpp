@@ -75,7 +75,7 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
     DIA_("ThreadedReceiver::on_left_new_raw[%d]: start",sock);
     
     unsigned char recv_buf_[2048];
-    char cmbuf[128];
+    char cmbuf[256];
     struct sockaddr_storage from;
     struct iovec io;
     struct msghdr msg;
@@ -101,55 +101,55 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
 //     hdr.client_addr_ = from.sin_addr.s_addr;
 //     hdr.client_port_ = ntohs(from.sin_port);
     
-    
-    if(LEV_(DEB)) {
-        std::string from_str;
-        int         from_family = inet_ss_address_str(&from,&from_str);
-        std::string str_from_family = inet_family_str(from_family);
-        DEB_("ThreadedReceiver::on_left_new_raw[%d]: received %d bytes from %s %s",sock,len,str_from_family.c_str(),from_str.c_str());
-    }
-    
-    
     // iterate through all the control headers
     for ( struct cmsghdr* cmsg = CMSG_FIRSTHDR(&msg); cmsg != NULL; cmsg = CMSG_NXTHDR(&msg, cmsg))   {
 
         DEB_("ThreadedReceiver::on_left_new_raw[%d]: ancillary data level=%d, type=%d",sock,cmsg->cmsg_level,cmsg->cmsg_type);
             
         // ignore the control headers that don't match what we need .. SOL_IP 
-        if ( cmsg->cmsg_level == SOL_IP && cmsg->cmsg_type ==  IP_RECVORIGDSTADDR ) {
+        if (
+            ( cmsg->cmsg_level == SOL_IP && cmsg->cmsg_type ==  IP_RECVORIGDSTADDR ) ||
+            ( cmsg->cmsg_level == SOL_IPV6 && cmsg->cmsg_type ==  IPV6_RECVORIGDSTADDR )
+           ){
 
             found_origdst = true;
-            memcpy(&orig,(struct sockaddr_in*)CMSG_DATA(cmsg),sizeof(struct sockaddr_in));
+            memcpy(&orig,(struct sockaddr_storage*)CMSG_DATA(cmsg),sizeof(struct sockaddr_storage));
 
             
-            std::string str_src_host(inet_ntoa(inet::to_sockaddr_in(&from)->sin_addr));
-            std::string str_dst_host(inet_ntoa(inet::to_sockaddr_in(&orig)->sin_addr));
+            std::string str_src_host; unsigned short sport;
+            int src_family = inet_ss_address_unpack(&from,&str_src_host,&sport);
+            std::string str_dst_host; unsigned short dport;
+            int dst_family = inet_ss_address_unpack(&orig,&str_dst_host,&dport);
             
-            DIA_("ThreadedReceiver::on_left_new_raw[%d]: datagram from: %s:%u to %s:%u", 
+            DIA_("ThreadedReceiver::on_left_new_raw[%d]: datagram from: %s/%s:%u to %s/%s:%u", 
                         sock, 
-                        str_src_host.c_str(), 
-                        ntohs(inet::to_sockaddr_in(&from)->sin_port), 
-                        str_dst_host.c_str(), 
-                        ntohs(inet::to_sockaddr_in(&orig)->sin_port)
+                        inet_family_str(src_family).c_str(),str_src_host.c_str(), sport,
+                        inet_family_str(dst_family).c_str(),str_dst_host.c_str(), dport
                         );
-            
-            uint32_t s = inet::to_sockaddr_in(&from)->sin_addr.s_addr;
-            uint16_t sp = ntohs(inet::to_sockaddr_in(&from)->sin_port);
-            s = s << 16;
-            s += sp;
-            
-            s |= (1 << 31); //this will produce negative number, which should determine  if it's normal socket or not
-            
-    //         uint64_t d = orig->sin_addr.s_addr;
-    //         uint32_t dp = orig->sin_port;
-    //         d  = d << 32;
-    //         d += dp;
-            
-            session_key = s;
+
+            if(src_family == AF_INET) {
+                uint32_t s = inet::to_sockaddr_in(&from)->sin_addr.s_addr;
+                uint16_t sp = ntohs(inet::to_sockaddr_in(&from)->sin_port);
+                s = s << 16;
+                s += sp;
                 
-            DIA_("ThreadedReceiver::on_left_new_raw[%d]: session key %d", sock, session_key );
+                s |= (1 << 31); //this will produce negative number, which should determine  if it's normal socket or not
+                session_key = s;
+            }
+            else if(src_family == AF_INET6) {
+                uint32_t s = ((uint32_t*)&inet::to_sockaddr_in6(&from)->sin6_addr)[4];
+                uint16_t sp = sport;
+
+                s = s << 16;
+                s += sp;
+                
+                s |= (1 << 31); //this will produce negative number, which should determine  if it's normal socket or not
+                session_key = s;                
+            }
+
+            DEB_("ThreadedReceiver::on_left_new_raw[%d]: session key %d", sock, session_key );
+            break;
         }
-        
     }
     
     if (!found_origdst) {

@@ -97,7 +97,7 @@ protected:
     unsigned short nonlocal_dst_port_;
     struct sockaddr_storage nonlocal_dst_peer_info_;
     
-    int l3_proto_ = 0;
+    int l3_proto_ = AF_INET;
     
     bool nonlocal_src_ = false;
     std::string nonlocal_src_host_;

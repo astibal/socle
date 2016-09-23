@@ -400,15 +400,18 @@ std::string inet_family_str(int fa) {
 }
 
 
-int inet_ss_address_str(sockaddr_storage* ptr, std::string* dst) {
+int inet_ss_address_unpack(sockaddr_storage* ptr, std::string* dst, unsigned short* port) {
     char b[64]; memset(b,0,64);
     int family = ptr->ss_family;
+    unsigned short val_port = 0;
     
     if(family == AF_INET6) {
         inet_ntop(ptr->ss_family,&(((struct sockaddr_in6*) ptr)->sin6_addr),b,64);
+        val_port = ((struct sockaddr_in6*) ptr)->sin6_port;
     }
     else if(family == AF_INET) {
         inet_ntop(ptr->ss_family,&(((struct sockaddr_in*) ptr)->sin_addr),b,64);
+        val_port = ((struct sockaddr_in*) ptr)->sin_port;
     }
     
     std::string mapped4_temp = b;
@@ -420,6 +423,9 @@ int inet_ss_address_str(sockaddr_storage* ptr, std::string* dst) {
     if(dst != nullptr) {
         // function can be useful just to detect mapped IP
         dst->assign(mapped4_temp);
+    }
+    if(port != nullptr) {
+        *port = ntohs(val_port);
     }
     return family;
 }

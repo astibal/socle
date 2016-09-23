@@ -19,6 +19,7 @@
 #include <basecom.hpp>
 #include <hostcx.hpp>
 #include <internet.hpp>
+#include <linux/in6.h>
 
 bool baseCom::debug_log_data_crc = false;
 
@@ -85,6 +86,7 @@ int baseCom::namesocket(int sockfd, std::string& addr, unsigned short port, sa_f
     
     int optval = 1;
     setsockopt(sockfd, SOL_IP, IP_TRANSPARENT, &optval, sizeof(optval));
+    setsockopt(sockfd, SOL_IPV6, IPV6_TRANSPARENT, &optval, sizeof(optval));
     
     if (::bind(sockfd, (sockaddr*)&sa, sizeof(sockaddr_storage)) == 0) {
         return 0;
@@ -153,8 +155,8 @@ bool baseCom::resolve_socket(bool source, int s, std::string* target_host, std::
             l3_proto(AF_INET);
         }
         
-        *target_host = mapped4_temp;
-        *target_port = std::to_string(orig_port);
+        if(target_host != NULL) *target_host = mapped4_temp;
+        if(target_port != NULL) *target_port = std::to_string(orig_port);
         if(target_storage != NULL) *target_storage = peer_info_;
         return true;
     }
