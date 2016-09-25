@@ -2006,7 +2006,12 @@ int SSLCom::read ( int __fd, void* __buf, size_t __n, int __flags )  {
                 if(r > 0)
                     total_r += r;
 
-                sslcom_read_blocked_on_write=0;
+                
+                if(sslcom_read_blocked_on_write > 0) {
+                    master()->poller.modify(__fd,EPOLLIN);
+                    sslcom_read_blocked_on_write=0;
+                }
+                
                 sslcom_read_blocked=0;
                 break;
 
@@ -2053,10 +2058,9 @@ int SSLCom::read ( int __fd, void* __buf, size_t __n, int __flags )  {
 
             case SSL_ERROR_WANT_WRITE:
                 DEB___("SSLCom::read[%d]: want write, last read retured %d, total read %4d",__fd,r,total_r);
-                sslcom_read_blocked_on_write=1;
 
-                //forced_write(true);  // we can opportinistically enforce write operation regardless of select result
                 forced_read_on_write(true);
+                sslcom_read_blocked_on_write=1;
                 master()->poller.modify(__fd,EPOLLIN|EPOLLET|EPOLLOUT);
 
                 if(total_r > 0) return total_r;
@@ -2171,14 +2175,28 @@ int SSLCom::write ( int __fd, const void* __buf, size_t __n, int __flags )  {
                 );
             is_problem = false;
 
-            sslcom_write_blocked_on_read = 0;
+            if(sslcom_write_blocked_on_read > 0) {
+                sslcom_write_blocked_on_read = 0;
+                forced_write_on_read(false);
+                DIA___("SSLCom::write[%d]: want read: cleared",__fd);
+            }
+            if(sslcom_write_blocked_on_write > 0) {
+                sslcom_write_blocked_on_write = 0;
+                master()->poller.modify(__fd,EPOLLIN);
+                DIA___("SSLCom::write[%d]: want write: cleared",__fd);
+            }
+            
+            
 
             break;
 
             /* We would have blocked */
         case SSL_ERROR_WANT_WRITE:
             DIA___("SSLCom::write[%d]: want write: %d (written %4d)",__fd,err,r);
+
+            // trigger write again
             master()->poller.modify(__fd,EPOLLIN|EPOLLET|EPOLLOUT);
+            sslcom_write_blocked_on_write=1;
 
             if (r > 0) {
                 normalized__n = normalized__n - r;
@@ -2187,8 +2205,6 @@ int SSLCom::write ( int __fd, const void* __buf, size_t __n, int __flags )  {
                 DUM___("SSLCom::write[%d]: want write: repeating last operation",__fd);
             }
 
-            // dont loop, rather wait for socket is writable
-            //goto again;
             break;
 
             /* We get a WANT_READ if we're
@@ -2202,6 +2218,7 @@ int SSLCom::write ( int __fd, const void* __buf, size_t __n, int __flags )  {
             sslcom_write_blocked_on_read=1;
 
             forced_write_on_read(true);
+            master()->poller.modify(__fd,EPOLLIN);
             break;
 
             /* Some other error */

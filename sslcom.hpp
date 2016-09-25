@@ -120,7 +120,10 @@ protected:
     
 	// states of read/writes
 	int sslcom_read_blocked_on_write=0;
-	int sslcom_write_blocked_on_read=0;
+	
+        int sslcom_write_blocked_on_read=0;
+        int sslcom_write_blocked_on_write=0;
+        
 	int sslcom_read_blocked=0;
 	
     //handshake pending flag
