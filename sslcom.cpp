@@ -2029,6 +2029,9 @@ int SSLCom::read ( int __fd, void* __buf, size_t __n, int __flags )  {
                 }
                 sslcom_read_blocked=1;
                 
+                // defer read operation
+                rescan_read(sslcom_fd);
+                
                 // this is nonsense - it means that we should wait socket has data. So don't set force_read.
                 //forced_read(true);
 

@@ -514,6 +514,12 @@ bool baseProxy::handle_cx_read_once(unsigned char side, baseCom* xcom, baseHostC
     bool ret = true;
 
     EXT___("%c: %d",side, cx->socket());
+    if(cx->socket() == 0) {
+        DIA___("baseProxy::handle_cx_once[%c]: monitored socket changed to zero - terminating.",side);
+        cx->error(true);
+        ret = false;
+        goto failure;
+    }
     
     // paused cx is subject to timeout only, no r/w is done on it ( it would return -1/0 anyway, so spare some cycles)
     if(! cx->paused_read()) {
@@ -558,6 +564,13 @@ bool baseProxy::handle_cx_read_once(unsigned char side, baseCom* xcom, baseHostC
 bool baseProxy::handle_cx_write_once(unsigned char side, baseCom* xcom, baseHostCX* cx) {
 
     bool ret = true;
+    
+    if(cx->socket() == 0) {
+        DIA___("baseProxy::handle_cx_once[%c]: monitored socket changed to zero - terminating.",side);
+        cx->error(true);
+        ret = false;
+        goto failure;
+    }    
 
     if(! cx->paused_write()) {
         if(xcom->in_writeset(cx->socket()) || cx->com()->forced_write_reset()) {

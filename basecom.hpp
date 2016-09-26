@@ -47,7 +47,8 @@ public:
     
     friend class baseHostCX;
     
-    int poll_msec = 100;
+    static int poll_msec;
+    static int rescan_poll_multiplier;
     int     poll_sockmax = 0;
     int     poll_result = 0;
     baseHostCX* owner_cx_ = nullptr;
@@ -225,6 +226,13 @@ public:
             master()->poller.modify(s,EPOLLOUT); 
         } 
     }    
+
+    inline void change_monitor(int s, int new_mode) { 
+        DIA_("basecom::change_monitor: change mode of %d to %d",s, new_mode);
+        if (s > 0 ) { 
+            master()->poller.modify(s, new_mode);
+        } 
+    };       
     
     inline void set_hint_monitor(int s) {
         DIA_("basecom::set_hint_monitor: called: %d",s);
@@ -240,6 +248,20 @@ public:
         } 
     };
 
+    inline void rescan_read(int s) {
+        DIA_("basecom::rescan_read: called to rescan EPOLLIN %d",s);
+        if (s > 0 ) { 
+            master()->poller.rescan_in(s);
+        } 
+    }
+
+    inline void rescan_write(int s) {
+        DIA_("basecom::rescan_read: called to rescan EPOLLOUT %d",s);
+        if (s > 0 ) { 
+            master()->poller.rescan_out(s);
+        } 
+    }
+        
     virtual bool resolve_socket(bool source,int s, std::string *target_host, std::string *target_port, struct sockaddr_storage *target_storage = NULL );    
     bool resolve_socket_src(int s, std::string *target_host, std::string *target_port, struct sockaddr_storage *target_storage = NULL ) { 
         return resolve_socket(true, s, target_host, target_port, target_storage);

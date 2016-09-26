@@ -282,6 +282,12 @@ int baseHostCX::read() {
         DUM_("HostCX::read[%s]: read operation is paused, returning -1",c_name());
         return -1;
     }
+    
+    if(peer() && peer()->writebuf()->size() > 200000) {
+        DEB_("baseHostCX::read[%d]: deferring read operation",socket());
+        com()->rescan_read(socket());
+        return -1;
+    }
 
     DUM_("HostCX::read[%s]: calling pre_read",c_name());
     pre_read();
@@ -477,14 +483,24 @@ int baseHostCX::write() {
         if(l < static_cast<ssize_t>(writebuf_.size())) {
             DIA_("HostCX::write[%s]: %d bytes written out of %d -> setting socket write monitor",c_name(),l,writebuf_.size());
             // we need to check once more when socket is fully writable
-            com()->set_write_monitor(socket());
+            
+            //com()->set_write_monitor(socket());
+            com()->rescan_write(socket());
+            rescan_out_flag_ = true;
+            
+        } else {
+            // write buffer is empty
+            if(rescan_out_flag_) {
+                rescan_out_flag_ = false;
+                
+                // stop monitoring write which results in loop an unnecesary write() calls
+                com()->change_monitor(socket(), EPOLLIN);
+            }
         }
 
         writebuf_.flush(l);
 
-        if(com()->debug_log_data_crc) {
-            DEB_("HostCX::write[%s]: after: buffer crc = %X",c_name(), socle_crc32(0,writebuf()->data(),writebuf()->size()));
-        }
+        if(com()->debug_log_data_crc) DEB_("HostCX::write[%s]: after: buffer crc = %X",c_name(), socle_crc32(0,writebuf()->data(),writebuf()->size()));
 
         if(close_after_write() && writebuf()->size() == 0) {
             shutdown();
@@ -493,7 +509,10 @@ int baseHostCX::write() {
     else if(l == 0 && writebuf()->size() > 0) {
         // write unsuccessful, we have to try immediatelly socket is writable!
         DIA_("HostCX::write[%s]: %d bytes written out of %d -> setting socket write monitor",c_name(),l,writebuf_.size());
-        com()->set_write_monitor(socket());
+        // com()->set_write_monitor(socket());
+
+        com()->rescan_write(socket());
+        rescan_out_flag_ = true;
     }
     else if(l < 0) {
         DIA_("write failed: %s. Unrecoverable.", string_error().c_str());

@@ -168,6 +168,8 @@ class baseHostCX : public Host
 protected:
     
     baseCom* com_;
+    bool rescan_in_flag_ = false;
+    bool rescan_out_flag_ = false;
     
 public:
     

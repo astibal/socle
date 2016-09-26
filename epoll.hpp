@@ -52,7 +52,7 @@ struct epoll {
 
     int init();
     virtual int wait(int timeout = -1);
-    virtual bool add(int socket, int mask=(EPOLLIN|EPOLLET));
+    virtual bool add(int socket, int mask=EPOLLIN);
     virtual bool modify(int socket, int mask);
     virtual bool del(int socket);
     virtual bool rescan_in(int socket);

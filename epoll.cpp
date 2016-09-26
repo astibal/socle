@@ -16,6 +16,8 @@ int epoll::init() {
 }
 
 int epoll::wait(int timeout) {
+    DUM_("epoll::wait: == begin, timeout %dms", timeout);
+    
     clear();
     
     // Prepopulate epoll from rescan lists 
@@ -23,13 +25,13 @@ int epoll::wait(int timeout) {
     if(should_rescan_now()) {
         for (auto isock: rescan_set_in) {
             DEB_("epoll::wait rescanning EPOLLIN socket %d",isock);
-            add(isock);
+            add(isock,EPOLLIN);
         }
         rescan_set_in.clear();
         
         for (auto osock: rescan_set_out) {
             DEB_("epoll::wait rescanning EPOLLOUT socket %d",osock);
-            add(osock, EPOLLOUT);
+            add(osock, EPOLLIN|EPOLLOUT);
         }
         rescan_set_out.clear();
     }
@@ -71,9 +73,7 @@ int epoll::wait(int timeout) {
             in_set.insert(events[i].data.fd);
         }
         else if(events[i].events & EPOLLOUT) {
-            if(auto_epollout_remove) {
-                DEB_("epoll::wait: socket %d writable",events[i].data.fd);
-            }
+            DIA_("epoll::wait: socket %d writable",events[i].data.fd);
             
             out_set.insert(events[i].data.fd);
             
@@ -85,6 +85,7 @@ int epoll::wait(int timeout) {
         }
     }
    
+   DUMS_("epoll::wait: == end");
     return nfds;
 }
 
@@ -146,9 +147,11 @@ bool epoll::del(int socket) {
     DEB_("epoll:del:%x: epoll_ctl(%d): called to delete socket %d ",this, fd, socket);
     
     if (::epoll_ctl(fd, EPOLL_CTL_DEL, socket, &ev) == -1) {
-        ERR_("epoll:del:%x: epoll_ctl(%d): cannot delete socket %d: %s",this, fd, socket, string_error().c_str());
+
+        //ERR_("epoll:del:%x: epoll_ctl(%d): cannot delete socket %d: %s",this, fd, socket, string_error().c_str());        
         //std::string str_bt = bt();
         //ERRS_(str_bt.c_str());
+        
         return false;
     } else {
         DIA_("epoll:del:%x: epoll_ctl(%d): socket deleted %d",this, fd, socket);
@@ -242,7 +245,7 @@ bool epoll::should_rescan_now() {
     ftime(&now);
     
     int ms_diff = (int) (1000.0 * (now.time - rescan_timer.time) + (now.millitm - rescan_timer.millitm));
-    if(ms_diff > 2) {
+    if(ms_diff > baseCom::rescan_poll_multiplier*baseCom::poll_msec) {
         ftime(&rescan_timer);
         EXT_("epoll::should_rescan_now: rescanning, diff = %d",ms_diff);
         return true;
