@@ -1860,7 +1860,7 @@ int SSLCom::parse_peer_hello() {
         } else {
             SSLCom* p = dynamic_cast<SSLCom*>(peer());
             if(p != nullptr) 
-                master()->poller.poller->rescan(p->sslcom_fd);
+                master()->poller.poller->rescan_in(p->sslcom_fd);
             
             DIA___("SSLCom::parse_peer_hello: only %d bytes in peek:\n%s",b.size(),hex_dump(b.data(),b.size()).c_str());
             if(timeval_msdelta_now(&timer_start) > SSLCOM_CLIENTHELLO_TIMEOUT) {

@@ -43,7 +43,8 @@ struct epoll {
     // this set is used for sockets where ARE already some data, but we wait for more.
     // because of this, socket will be REMOVED from in_set (so avoiding CPU spikes when there are still not enough of data)
     // but those sockets will be added latest after time set in @rescan_timeout microseconds.
-    std::set<int> rescan_set;
+    std::set<int> rescan_set_in;
+    std::set<int> rescan_set_out;
     struct timeb rescan_timer;
     
     bool in_read_set(int check);
@@ -54,7 +55,8 @@ struct epoll {
     virtual bool add(int socket, int mask=(EPOLLIN|EPOLLET));
     virtual bool modify(int socket, int mask);
     virtual bool del(int socket);
-    virtual bool rescan(int socket);
+    virtual bool rescan_in(int socket);
+    virtual bool rescan_out(int socket);
     virtual bool should_rescan_now(); // return true if we should add them back to in_set (scan their readability again). If yes, reset timer.
     
     inline void clear() { memset(events,0,EPOLLER_MAX_EVENTS*sizeof(epoll_event)); in_set.clear(); out_set.clear(); }
@@ -79,7 +81,8 @@ struct epoller {
     virtual bool add(int socket, int mask=(EPOLLIN|EPOLLET));
     virtual bool modify(int socket, int mask);
     virtual bool del(int socket);
-    virtual bool rescan(int socket);
+    virtual bool rescan_in(int socket);
+    virtual bool rescan_out(int socket);
     virtual bool should_rescan_now(); // return true if we should add them back to in_set (scan their readability again). If yes, reset timer.
     
     virtual int wait(int timeout = -1);

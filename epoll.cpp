@@ -17,6 +17,25 @@ int epoll::init() {
 
 int epoll::wait(int timeout) {
     clear();
+    
+    // Prepopulate epoll from rescan lists 
+    
+    if(should_rescan_now()) {
+        for (auto isock: rescan_set_in) {
+            DEB_("epoll::wait rescanning EPOLLIN socket %d",isock);
+            add(isock);
+        }
+        rescan_set_in.clear();
+        
+        for (auto osock: rescan_set_out) {
+            DEB_("epoll::wait rescanning EPOLLOUT socket %d",osock);
+            add(osock, EPOLLOUT);
+        }
+        rescan_set_out.clear();
+    }
+    
+    // wait for epoll
+    
     int nfds = epoll_wait(fd, events, EPOLLER_MAX_EVENTS, timeout);
     
     if(nfds > 0) {
@@ -173,19 +192,19 @@ bool epoll::hint_socket(int socket) {
 }
 
 
-bool epoll::rescan(int socket) {
+bool epoll::rescan_in(int socket) {
     if(socket > 0) {
 
         del(socket);
         
         // re-init timer, otherwise let it be
-        if(rescan_set.empty()) {
+        if(rescan_set_in.empty()) {
             ftime(&rescan_timer);
         }
         
-        auto it = rescan_set.find(socket);
-        if(it == rescan_set.end()) {
-            rescan_set.insert(socket);
+        auto it = rescan_set_in.find(socket);
+        if(it == rescan_set_in.end()) {
+            rescan_set_in.insert(socket);
         }
         
         return true;
@@ -193,6 +212,29 @@ bool epoll::rescan(int socket) {
     
     return false;
 }
+
+bool epoll::rescan_out(int socket) {
+    if(socket > 0) {
+
+        del(socket);
+        
+        // re-init timer, otherwise let it be
+        if(rescan_set_out.empty()) {
+            ftime(&rescan_timer);
+        }
+        
+        auto it = rescan_set_out.find(socket);
+        if(it == rescan_set_out.end()) {
+            rescan_set_out.insert(socket);
+        }
+        
+        return true;
+    }
+    
+    return false;
+}
+
+
 
 bool epoll::should_rescan_now() {
 
@@ -257,12 +299,23 @@ bool epoller::del(int socket)
     return false;
 };
 
-bool epoller::rescan(int socket)
+bool epoller::rescan_in(int socket)
 {
     init_if_null();
     
     if(poller != nullptr) {
-        return poller->rescan(socket);
+        return poller->rescan_in(socket);
+    }
+    
+    return false;
+};
+
+bool epoller::rescan_out(int socket)
+{
+    init_if_null();
+    
+    if(poller != nullptr) {
+        return poller->rescan_out(socket);
     }
     
     return false;
