@@ -78,7 +78,7 @@ struct epoller {
     
     bool in_read_set(int check);
     bool in_write_set(int check);
-    virtual bool add(int socket, int mask=(EPOLLIN|EPOLLET));
+    virtual bool add(int socket, int mask=(EPOLLIN));
     virtual bool modify(int socket, int mask);
     virtual bool del(int socket);
     virtual bool rescan_in(int socket);
