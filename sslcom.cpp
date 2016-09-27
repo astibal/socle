@@ -826,6 +826,10 @@ int SSLCom::ocsp_explicit_check(SSLCom* com) {
         }
     }
     
+    if(is_revoked > 0) {
+        com->verify_set(REVOKED);
+    }
+    
     return is_revoked;
 }
 
@@ -837,7 +841,11 @@ int SSLCom::ocsp_resp_callback_explicit(SSLCom* com, int cur_status) {
             int is_revoked = SSLCom::ocsp_explicit_check(com);
             
             if(is_revoked > 0) {
-                return 0;
+                com->verify_set(REVOKED);
+                if(com->opt_failed_certcheck_replacement) {
+                    ERR_clear_error();
+                    return 1;
+                }
             } else
             if(is_revoked == 0) {
                 return 1;
@@ -889,7 +897,6 @@ int SSLCom::ocsp_resp_callback(SSL *s, void *arg) {
         ERRS_("SSLCom::ocsp_resp_callback: argument data is not SSLCom*!");
         return 1;
     }
-
 
     
     const unsigned char *p;
@@ -963,8 +970,10 @@ int SSLCom::ocsp_resp_callback(SSL *s, void *arg) {
             ERR__("[%s] OCSP stapling response failed verification",name);
         }
 
-        //com->opt_ocsp_enforce_in_verify = true;
-        return SSLCom::ocsp_resp_callback_explicit(com,r);
+        int ocsp_check =  SSLCom::ocsp_resp_callback_explicit(com,r);
+        DIA__("SSLCom::ocsp_resp_callback: OCSP returned %d", ocsp_check);
+        
+        return ocsp_check;
     }
 
     DIA__("[%s] OCSP response verification succeeded",name);
@@ -980,7 +989,10 @@ int SSLCom::ocsp_resp_callback(SSL *s, void *arg) {
             ERR_clear_error();
 
         com->opt_ocsp_enforce_in_verify = true;
-        return SSLCom::ocsp_resp_callback_explicit(com,r);
+        int ocsp_check = SSLCom::ocsp_resp_callback_explicit(com,r);
+        DIA__("SSLCom::ocsp_resp_callback: OCSP returned %d", ocsp_check);
+        
+        return ocsp_check;        
     }
 
 
@@ -995,7 +1007,10 @@ int SSLCom::ocsp_resp_callback(SSL *s, void *arg) {
             ERR_clear_error();
 
         com->opt_ocsp_enforce_in_verify = true;
-        return SSLCom::ocsp_resp_callback_explicit(com,r);
+        int ocsp_check =  SSLCom::ocsp_resp_callback_explicit(com,r);
+        DIA__("SSLCom::ocsp_resp_callback: OCSP returned %d", ocsp_check);
+        
+        return ocsp_check;
     }
 
     if (!OCSP_check_validity(this_update, next_update, 5 * 60, -1)) {
@@ -1008,7 +1023,10 @@ int SSLCom::ocsp_resp_callback(SSL *s, void *arg) {
             ERR_clear_error();
 
         com->opt_ocsp_enforce_in_verify = true;
-        return SSLCom::ocsp_resp_callback_explicit(com,r);
+        int ocsp_check = SSLCom::ocsp_resp_callback_explicit(com,r);
+        DIA__("SSLCom::ocsp_resp_callback: OCSP returned %d", ocsp_check);
+        
+        return ocsp_check;        
     }
 
     OCSP_CERTID_free(id);
@@ -1032,18 +1050,27 @@ int SSLCom::ocsp_resp_callback(SSL *s, void *arg) {
         DIA__("[%s] OCSP status is revoked",name);
         if(com != nullptr){
             com->ocsp_cert_is_revoked = 1;
+            com->verify_set(REVOKED);
             WAR__("Connection from %s: certificate %s is revoked (stapling OCSP))",name,cn.c_str());
+            return com->opt_failed_certcheck_replacement;
         }
         return 0;
     } else
     if (opt_ocsp_require) {
         ERR__("[%s] OCSP status unknown, but OCSP required, failing", name);
-        return SSLCom::ocsp_resp_callback_explicit(com,0);
+        
+        int ocsp_check = SSLCom::ocsp_resp_callback_explicit(com,0);
+        DIA__("SSLCom::ocsp_resp_callback: OCSP returned %d", ocsp_check);
+        
+        return ocsp_check;             
     }
 
     DIA__("[%s] OCSP status unknown, but OCSP was not required, continue", name);
 
-    return SSLCom::ocsp_resp_callback_explicit(com,1);
+    int ocsp_check = SSLCom::ocsp_resp_callback_explicit(com,1);
+    DIA__("SSLCom::ocsp_resp_callback: OCSP returned %d", ocsp_check);
+    
+    return ocsp_check;         
 }
 
 int SSLCom::ssl_client_cert_callback(SSL* ssl, X509** x509, EVP_PKEY** pkey) {
