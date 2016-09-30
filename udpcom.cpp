@@ -154,11 +154,11 @@ int UDPCom::connect(const char* host, const char* port, bool blocking) {
                     
                     if(it_fd != connect_fd_cache.end()) {
                         int cached_fd = it_fd->second;
-                        INF_("UDPCom::connect[%s:%s]: socket[%d] transparency for %s failed, but found fd %d in connect cache.",host,port,sfd,connect_cache_key.c_str(),cached_fd);
+                        DIA_("UDPCom::connect[%s:%s]: socket[%d] transparency for %s failed, but found fd %d in connect cache.",host,port,sfd,connect_cache_key.c_str(),cached_fd);
                         ::close(sfd);
                         sfd = cached_fd;
                     } else {
-                        INF_("UDPCom::connect[%s:%s]: socket[%d] transparency for %s failed and not cached.",host,port,sfd, connect_cache_key.c_str());
+                        DIA_("UDPCom::connect[%s:%s]: socket[%d] transparency for %s failed and not cached.",host,port,sfd, connect_cache_key.c_str());
                     }
                     
                     connect_fd_cache_lock.unlock();
@@ -622,12 +622,12 @@ void UDPCom::shutdown(int __fd) {
         
             std::string key = string_format("%s:%s-%s:%s", sip.c_str(), sport.c_str(),dip.c_str(), dport.c_str());
 
-            INF_("UDPCom::shutdown[%d]: removing connect cache %s",__fd,key.c_str());
+            DEB_("UDPCom::shutdown[%d]: removing connect cache %s",__fd,key.c_str());
             connect_fd_cache_lock.lock();
             int count = connect_fd_cache.erase(key);
             connect_fd_cache_lock.unlock();
 
-            INF_("UDPCom::shutdown[%d]: %d removed",__fd,count);
+            DEB_("UDPCom::shutdown[%d]: %d removed",__fd,count);
         }
         
         int r = ::shutdown(__fd,SHUT_RDWR);
