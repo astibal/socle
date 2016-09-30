@@ -385,32 +385,35 @@ bool baseProxy::handle_cx_events(unsigned char side, baseHostCX* cx) {
         // treat non-blocking still opening sockets 
         if( cx->opening_timeout() ) {
             DIA___("baseProxy::handle_cx_events[%d]: opening timeout!",cx->socket());
-            cx->shutdown();
             
                  if(side == 'l')  { on_left_error(cx);  }
             else if(side == 'r')  { on_right_error(cx); }
             else if(side == 'x')  { on_left_pc_error(cx); }
             else if(side == 'y')  { on_right_pc_error(cx); }
+
+            cx->shutdown();
             return false;
         }
         if( cx->idle_timeout() ) {
             DIA___("baseProxy::handle_cx_events[%d]: idle timeout!",cx->socket());
-            cx->shutdown();
 
                  if(side == 'l')  { on_left_error(cx);  }
             else if(side == 'r')  { on_right_error(cx); }
             else if(side == 'x')  { on_left_pc_error(cx); }
             else if(side == 'y')  { on_right_pc_error(cx); }
+
+            cx->shutdown();
             return false;
         }
         if( cx->error() ) {
             DIA___("baseProxy::handle_cx_events[%d]: error!",cx->socket());
-            cx->shutdown();
 
                  if(side == 'l')  { on_left_error(cx);  }
             else if(side == 'r')  { on_right_error(cx); }
             else if(side == 'x')  { on_left_pc_error(cx); }
             else if(side == 'y')  { on_right_pc_error(cx); }
+
+            cx->shutdown();
             return false;
         }
         
