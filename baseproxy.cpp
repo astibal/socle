@@ -515,7 +515,7 @@ bool baseProxy::handle_cx_read_once(unsigned char side, baseCom* xcom, baseHostC
 
     EXT___("%c: %d",side, cx->socket());
     if(cx->socket() == 0) {
-        DIA___("baseProxy::handle_cx_once[%c]: monitored socket changed to zero - terminating.",side);
+        DIA___("baseProxy::handle_cx_read_once[%c]: monitored socket changed to zero - terminating.",side);
         cx->error(true);
         ret = false;
         goto failure;
@@ -530,9 +530,9 @@ bool baseProxy::handle_cx_read_once(unsigned char side, baseCom* xcom, baseHostC
 
             if(forced_read) {
                 if(! in_read_set) {
-                    DIA___("baseProxy::handle_cx_once[%c]: forced read, NOT in read set",side);
+                    DIA___("baseProxy::handle_cx_read_once[%c]: forced read, NOT in read set",side);
                 } else {
-                    DEB___("baseProxy::handle_cx_once[%c]: forced read, but in read set too",side);
+                    DEB___("baseProxy::handle_cx_read_once[%c]: forced read, but in read set too",side);
                 }
             }
             
@@ -542,7 +542,7 @@ bool baseProxy::handle_cx_read_once(unsigned char side, baseCom* xcom, baseHostC
             }
             
             if(cx->com()->forced_write_on_read()) {
-                DIA___("baseProxy::handle_cx_once[%c]: write on read enforced on socket %d",side,cx->socket());
+                DIA___("baseProxy::handle_cx_read_once[%c]: write on read enforced on socket %d",side,cx->socket());
                 if(! handle_cx_write(side,cx)) {
                     ret = false;
                     goto failure;
@@ -566,7 +566,7 @@ bool baseProxy::handle_cx_write_once(unsigned char side, baseCom* xcom, baseHost
     bool ret = true;
     
     if(cx->socket() == 0) {
-        DIA___("baseProxy::handle_cx_once[%c]: monitored socket changed to zero - terminating.",side);
+        DIA___("baseProxy::handle_cx_write_once[%c]: monitored socket changed to zero - terminating.",side);
         cx->error(true);
         ret = false;
         goto failure;
@@ -580,7 +580,7 @@ bool baseProxy::handle_cx_write_once(unsigned char side, baseCom* xcom, baseHost
             }
 
             if(cx->com()->forced_read_on_write()) {
-                DIA___("baseProxy::handle_cx_once[%c]: read on write enforced on socket %d",side,cx->socket());
+                DIA___("baseProxy::handle_cx_write_once[%c]: read on write enforced on socket %d",side,cx->socket());
                 if(! handle_cx_read(side,cx)) {
                     ret = false;
                     goto failure;
