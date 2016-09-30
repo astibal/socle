@@ -26,6 +26,10 @@
 std::map<uint64_t,Datagram> DatagramCom::datagrams_received;
 std::mutex DatagramCom::lock;
 
+std::map<std::string,int> UDPCom::connect_fd_cache;
+std::mutex UDPCom::connect_fd_cache_lock;
+
+
 int UDPCom::accept(int sockfd, sockaddr* addr, socklen_t* addrlen_) {
     return sockfd;
 }
@@ -126,14 +130,50 @@ int UDPCom::connect(const char* host, const char* port, bool blocking) {
         }        
         
         if(nonlocal_src()) {
+            
+            const int bind_count_max = 20;
+            int bind_count = bind_count_max;
+            bind_again:
+            
             DIA_("UDPCom::connect[%s:%s]: About to name socket[%d] after: %s:%d",host,port,sfd,nonlocal_src_host().c_str(),nonlocal_src_port());
+            
             int bind_status = namesocket(sfd,nonlocal_src_host(),nonlocal_src_port(),l3_proto());
+            
+            std::string connect_cache_key = string_format("%s:%d-%s:%s",nonlocal_src_host().c_str(),nonlocal_src_port(),host,port);
             if (bind_status != 0) {
+                bind_count--;
                 ERR_("UDPCom::connect[%s:%s]: socket[%d] transparency for %s/%s:%d failed, cannot bind",host,port,
                                                     sfd,
                                                         inet_family_str(l3_proto()).c_str(),nonlocal_src_host().c_str(),nonlocal_src_port());
+                
+                if(bind_count > 0) {
+                    //goto bind_again;
+                    
+                    connect_fd_cache_lock.lock();
+                    auto it_fd = connect_fd_cache.find(connect_cache_key);
+                    
+                    if(it_fd != connect_fd_cache.end()) {
+                        int cached_fd = it_fd->second;
+                        INF_("UDPCom::connect[%s:%s]: socket[%d] transparency for %s failed, but found fd %d in connect cache.",host,port,sfd,connect_cache_key.c_str(),cached_fd);
+                        ::close(sfd);
+                        sfd = cached_fd;
+                    } else {
+                        INF_("UDPCom::connect[%s:%s]: socket[%d] transparency for %s failed and not cached.",host,port,sfd, connect_cache_key.c_str());
+                    }
+                    
+                    connect_fd_cache_lock.unlock();
+                }
             } else {
-                DIA_("UDPCom::connect[%s:%s]: socket[%d] transparency for %s:%d OK",host,port,sfd,nonlocal_src_host().c_str(),nonlocal_src_port());
+                
+                connect_fd_cache_lock.lock();
+                connect_fd_cache[connect_cache_key] = sfd;
+                connect_fd_cache_lock.unlock();
+                
+                if(bind_count != bind_count_max) {
+                    NOT_("UDPCom::connect[%s:%s]: socket[%d] transparency for %s:%d OK (attempt %d)",host,port,sfd,nonlocal_src_host().c_str(),nonlocal_src_port(),bind_count_max-bind_count);
+                } else {
+                    DIA_("UDPCom::connect[%s:%s]: socket[%d] transparency for %s:%d OK",host,port,sfd,nonlocal_src_host().c_str(),nonlocal_src_port());
+                }
             }
         }        
         
@@ -573,8 +613,26 @@ bool UDPCom::resolve_socket(bool source, int s, std::string* target_host, std::s
 
 void UDPCom::shutdown(int __fd) {
     if(__fd > 0) {
+        std::string sip, sport;
+        std::string dip, dport;
+        
+        // it's oposite in this case, so following is CORRECT
+        
+        if(resolve_socket_dst(__fd,&sip,&sport) && resolve_socket_src(__fd,&dip,&dport)) {
+        
+            std::string key = string_format("%s:%s-%s:%s", sip.c_str(), sport.c_str(),dip.c_str(), dport.c_str());
+
+            INF_("UDPCom::shutdown[%d]: removing connect cache %s",__fd,key.c_str());
+            connect_fd_cache_lock.lock();
+            int count = connect_fd_cache.erase(key);
+            connect_fd_cache_lock.unlock();
+
+            INF_("UDPCom::shutdown[%d]: %d removed",__fd,count);
+        }
+        
         int r = ::shutdown(__fd,SHUT_RDWR);
         if(r > 0) DIA_("UDPCom::close[%d]: %s",__fd,string_error().c_str());
+        
     } else {
         
         std::lock_guard<std::mutex> l(DatagramCom::lock);
