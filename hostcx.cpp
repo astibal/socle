@@ -42,7 +42,6 @@ baseHostCX::baseHostCX(baseCom* c, const char* h, const char* p): Host(h, p) {
     processed_bytes_ = 0;
     next_read_limit_ = 0;
     auto_finish_ = true;
-    adm_status_ = true;
     paused_read_ = false;
     paused_write_ = false;
 
@@ -71,7 +70,6 @@ baseHostCX::baseHostCX(baseCom* c, unsigned int s) {
     processed_bytes_ = 0;
     next_read_limit_ = 0;
     auto_finish_ = true;
-    adm_status_ = true;
     paused_read_ = false;
     paused_write_ = false;
 
@@ -200,6 +198,10 @@ void baseHostCX::shutdown() {
         DEB_("HostCX::shutdown[%s]: socket shutdown",c_name());
         closing_fds_ = fds_;
         fds_ = 0;
+        
+        if(com()) {
+            com()->master()->unset_monitor(closing_fds_);
+        }
     } else {
         DEB_("HostCX::shutdown[%s]: no-op, cannot be shutdown",c_name());
     }

@@ -150,8 +150,6 @@ class baseHostCX : public Host
 	
 	/* Custom state facility */
 	
-	// administrative status of the CX. It's not functional attribute inside HostCX framework -- free for use
-	bool adm_status_ = true;
 	
 	// paused hostcx won't be read/written until unpaused.
 	bool paused_read_ = false;
@@ -225,14 +223,6 @@ public:
 	virtual bool new_message() { return false; }
 
 	inline int unblock() { return com()->unblock(fds_);}
-	
-	inline bool status() { return adm_status_; }
-	inline void status(bool b) { adm_status_ = b; }
-	inline bool up() { return status(); }
-	inline void up(bool b) { status(b); }
-	inline bool down() { return !up(); };
-	inline void down(bool b) { status(!b); }
-		
 	
 	void shutdown();
 	inline bool valid() { return ( fds_ > 0 && !error() ); };
