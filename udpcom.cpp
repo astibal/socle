@@ -23,6 +23,8 @@
 #include <linux/in6.h>
 
 
+const char* UDPCom::udpcom_name_ = "udp";
+
 std::map<uint64_t,Datagram> DatagramCom::datagrams_received;
 std::mutex DatagramCom::lock;
 
@@ -131,49 +133,37 @@ int UDPCom::connect(const char* host, const char* port, bool blocking) {
         
         if(nonlocal_src()) {
             
-            const int bind_count_max = 20;
-            int bind_count = bind_count_max;
-            bind_again:
-            
             DIA_("UDPCom::connect[%s:%s]: About to name socket[%d] after: %s:%d",host,port,sfd,nonlocal_src_host().c_str(),nonlocal_src_port());
             
             int bind_status = namesocket(sfd,nonlocal_src_host(),nonlocal_src_port(),l3_proto());
             
             std::string connect_cache_key = string_format("%s:%d-%s:%s",nonlocal_src_host().c_str(),nonlocal_src_port(),host,port);
             if (bind_status != 0) {
-                bind_count--;
                 ERR_("UDPCom::connect[%s:%s]: socket[%d] transparency for %s/%s:%d failed, cannot bind",host,port,
                                                     sfd,
                                                         inet_family_str(l3_proto()).c_str(),nonlocal_src_host().c_str(),nonlocal_src_port());
+                    
+                connect_fd_cache_lock.lock();
+                auto it_fd = connect_fd_cache.find(connect_cache_key);
                 
-                if(bind_count > 0) {
-                    //goto bind_again;
-                    
-                    connect_fd_cache_lock.lock();
-                    auto it_fd = connect_fd_cache.find(connect_cache_key);
-                    
-                    if(it_fd != connect_fd_cache.end()) {
-                        int cached_fd = it_fd->second;
-                        DIA_("UDPCom::connect[%s:%s]: socket[%d] transparency for %s failed, but found fd %d in connect cache.",host,port,sfd,connect_cache_key.c_str(),cached_fd);
-                        ::close(sfd);
-                        sfd = cached_fd;
-                    } else {
-                        DIA_("UDPCom::connect[%s:%s]: socket[%d] transparency for %s failed and not cached.",host,port,sfd, connect_cache_key.c_str());
-                    }
-                    
-                    connect_fd_cache_lock.unlock();
+                if(it_fd != connect_fd_cache.end()) {
+                    int cached_fd = it_fd->second;
+                    DIA_("UDPCom::connect[%s:%s]: socket[%d] transparency for %s failed, but found fd %d in connect cache.",host,port,sfd,connect_cache_key.c_str(),cached_fd);
+                    ::close(sfd);
+                    sfd = cached_fd;
+                } else {
+                    DIA_("UDPCom::connect[%s:%s]: socket[%d] transparency for %s failed and not cached.",host,port,sfd, connect_cache_key.c_str());
                 }
+                
+                connect_fd_cache_lock.unlock();
+                
             } else {
                 
                 connect_fd_cache_lock.lock();
                 connect_fd_cache[connect_cache_key] = sfd;
                 connect_fd_cache_lock.unlock();
                 
-                if(bind_count != bind_count_max) {
-                    NOT_("UDPCom::connect[%s:%s]: socket[%d] transparency for %s:%d OK (attempt %d)",host,port,sfd,nonlocal_src_host().c_str(),nonlocal_src_port(),bind_count_max-bind_count);
-                } else {
-                    DIA_("UDPCom::connect[%s:%s]: socket[%d] transparency for %s:%d OK",host,port,sfd,nonlocal_src_host().c_str(),nonlocal_src_port());
-                }
+                DIA_("UDPCom::connect[%s:%s]: socket[%d] transparency for %s:%d OK",host,port,sfd,nonlocal_src_host().c_str(),nonlocal_src_port());
             }
         }        
         
@@ -182,9 +172,13 @@ int UDPCom::connect(const char* host, const char* port, bool blocking) {
         udpcom_addrlen = rp->ai_addrlen;
         ::memcpy(&udpcom_addr,rp->ai_addr,udpcom_addrlen);
         
-        std::string rps; unsigned short port;
-        int fa = inet_ss_address_unpack(((sockaddr_storage*)&udpcom_addr),&rps,&port);
-        DEB_("connect[%d]: rp contains: %s/%s:%d", sfd, inet_family_str(fa).c_str(),rps.c_str(),port );
+        //INF_("UDPCom::connect: rp->aiaddrlen = %d",rp->ai_addrlen);
+        //INF_("UDPCom::connect: sizeof udpcom_add = %d",sizeof(udpcom_addr));
+        //INF_("UDPCom::connect: sizeof sockaddr_storage = %d",sizeof(sockaddr_storage));
+        
+        //std::string rps; unsigned short port;
+        //int fa = inet_ss_address_unpack(((sockaddr_storage*)&udpcom_addr),&rps,&port);
+        //DEB_("connect[%d]: rp contains: %s/%s:%d", sfd, inet_family_str(fa).c_str(),rps.c_str(),port );
         
         ::connect(sfd,(sockaddr*)&udpcom_addr,sizeof(sockaddr));
         
@@ -197,6 +191,7 @@ int UDPCom::connect(const char* host, const char* port, bool blocking) {
         break;
     }
 
+    freeaddrinfo(gai_result);
     
     if(sfd <= 0) {
         ERRS_("UDPCom::connect failed");
@@ -207,7 +202,6 @@ int UDPCom::connect(const char* host, const char* port, bool blocking) {
         return -2;
     }
 
-    freeaddrinfo(gai_result);
 
     udpcom_fd = sfd;
     
@@ -394,9 +388,9 @@ int UDPCom::write(int __fd, const void* __buf, size_t __n, int __flags)
         
         std::string rps;
         unsigned short port;
-        int fa = inet_ss_address_unpack(((sockaddr_storage*)&udpcom_addr),&rps, &port);
+        int fa = inet_ss_address_unpack(&udpcom_addr,&rps, &port);
         
-        int ret =  ::sendto(__fd,__buf,__n,__flags, &udpcom_addr, sizeof(sockaddr_storage));
+        int ret =  ::sendto(__fd,__buf,__n,__flags, (sockaddr*)&udpcom_addr, sizeof(sockaddr_storage));
         DEB_("write[%d]: sendto %s/%s:%d returned %d", __fd,inet_family_str(fa).c_str(),rps.c_str(), port, ret);
         
         if(ret < 0) {

@@ -91,9 +91,12 @@ public:
 
 class UDPCom : public baseCom, public DatagramCom {
 public:
+    
+    static const char* udpcom_name_;
+    
     virtual void init(baseHostCX* owner);
     virtual baseCom* replicate() { return new UDPCom(); };
-    virtual const char* name() { return "udp"; };
+    virtual const char* name() { return udpcom_name_; };
     
     virtual int connect(const char* host, const char* port, bool blocking = false);
     virtual int bind(unsigned short port);
@@ -127,7 +130,7 @@ protected:
     unsigned int bind_sock_type = SOCK_DGRAM;
     unsigned int bind_sock_protocol = IPPROTO_UDP;
     
-    sockaddr udpcom_addr;
+    sockaddr_storage udpcom_addr;
     socklen_t udpcom_addrlen;
     
     // Connection socket pool
