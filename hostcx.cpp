@@ -209,7 +209,7 @@ void baseHostCX::shutdown() {
 
 std::string& baseHostCX::name(bool force) {
 
-    if(name__.size() == 0 || online_name | force) {
+    if(name__.size() == 0 || online_name || force) {
         if (reduced()) {
             std::string com_name = "?";
             if(com() != nullptr) {
