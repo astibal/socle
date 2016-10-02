@@ -28,7 +28,7 @@ const char* UDPCom::udpcom_name_ = "udp";
 std::map<uint64_t,Datagram> DatagramCom::datagrams_received;
 std::mutex DatagramCom::lock;
 
-std::map<std::string,int> UDPCom::connect_fd_cache;
+std::map<std::string,std::pair<int,int>> UDPCom::connect_fd_cache;
 std::mutex UDPCom::connect_fd_cache_lock;
 
 
@@ -134,38 +134,44 @@ int UDPCom::connect(const char* host, const char* port, bool blocking) {
         if(nonlocal_src()) {
             
             DIA_("UDPCom::connect[%s:%s]: About to name socket[%d] after: %s:%d",host,port,sfd,nonlocal_src_host().c_str(),nonlocal_src_port());
-            
-            int bind_status = namesocket(sfd,nonlocal_src_host(),nonlocal_src_port(),l3_proto());
-            
+
             std::string connect_cache_key = string_format("%s:%d-%s:%s",nonlocal_src_host().c_str(),nonlocal_src_port(),host,port);
+            
+            connect_fd_cache_lock.lock();
+            int bind_status = namesocket(sfd,nonlocal_src_host(),nonlocal_src_port(),l3_proto());
+
             if (bind_status != 0) {
-                ERR_("UDPCom::connect[%s:%s]: socket[%d] transparency for %s/%s:%d failed, cannot bind",host,port,
+                DIA_("UDPCom::connect[%s:%s]: socket[%d] transparency for %s/%s:%d failed, cannot bind",host,port,
                                                     sfd,
                                                         inet_family_str(l3_proto()).c_str(),nonlocal_src_host().c_str(),nonlocal_src_port());
                     
-                connect_fd_cache_lock.lock();
                 auto it_fd = connect_fd_cache.find(connect_cache_key);
                 
                 if(it_fd != connect_fd_cache.end()) {
-                    int cached_fd = it_fd->second;
-                    DIA_("UDPCom::connect[%s:%s]: socket[%d] transparency for %s failed, but found fd %d in connect cache.",host,port,sfd,connect_cache_key.c_str(),cached_fd);
+                    std::pair<int,int>& cached_fd_ref = it_fd->second;
+                    
+                    
+                    int cached_fd = cached_fd_ref.first;
+                    cached_fd_ref.second++;
+                    
+                    DIA_("UDPCom::connect[%s:%s]: socket[%d] transparency for %s failed, but found fd %d in connect cache (refcount %d).",host,port,sfd,connect_cache_key.c_str(),cached_fd,cached_fd_ref.second);
                     ::close(sfd);
+                    
+                    // reuse already opened socket
                     sfd = cached_fd;
                 } else {
-                    DIA_("UDPCom::connect[%s:%s]: socket[%d] transparency for %s failed and not cached.",host,port,sfd, connect_cache_key.c_str());
+                    ERR_("UDPCom::connect[%s:%s]: socket[%d] transparency for %s failed and not cached.",host,port,sfd, connect_cache_key.c_str());
                 }
                 
-                connect_fd_cache_lock.unlock();
                 
             } else {
                 
-                connect_fd_cache_lock.lock();
-                connect_fd_cache[connect_cache_key] = sfd;
-                connect_fd_cache_lock.unlock();
+                connect_fd_cache[connect_cache_key] = std::pair<int,int>(sfd,1);
                 
                 DIA_("UDPCom::connect[%s:%s]: socket[%d] transparency for %s:%d OK",host,port,sfd,nonlocal_src_host().c_str(),nonlocal_src_port());
             }
         }        
+        connect_fd_cache_lock.unlock();
         
         //udpcom_addr =    rp->ai_addr;
         //udpcom_addrlen = rp->ai_addrlen;
@@ -618,14 +624,37 @@ void UDPCom::shutdown(int __fd) {
 
             DEB_("UDPCom::shutdown[%d]: removing connect cache %s",__fd,key.c_str());
             connect_fd_cache_lock.lock();
-            int count = connect_fd_cache.erase(key);
-            connect_fd_cache_lock.unlock();
+            int count = 0;
+            
+            auto it_fd = connect_fd_cache.find(key);
+            if(it_fd != connect_fd_cache.end()) {
+                std::pair<int,int>& cached_fd_ref = it_fd->second;            
+            
+                if(cached_fd_ref.second <= 1) {
+                    count = connect_fd_cache.erase(key);
+                    DEB_("UDPCom::shutdown[%d]: %d removed",__fd,count);
 
-            DEB_("UDPCom::shutdown[%d]: %d removed",__fd,count);
+                    int r = ::shutdown(__fd,SHUT_RDWR);
+                    if(r > 0) {
+                        DEB_("UDPCom::shutdown[%d]: %s",__fd,string_error().c_str());
+                    } else {
+                        DEB_("UDPCom::shutdown[%d]: shutdown",__fd);                        
+                    }
+                    
+                } else {
+                    cached_fd_ref.second--;
+                    DEB_("UDPCom::shutdown[%d]: still in use, recount now %d",__fd,cached_fd_ref.second);
+                }
+            } else {
+                DEB_("UDPCom::shutdown[%d]: key %s not found in connect cache.",__fd,key.c_str());
+                
+                // should we close it here too, or not? What if socket is already used somewhere else?
+                // For now, don't touch socket in this situation.
+            }
+            
+            connect_fd_cache_lock.unlock();
         }
         
-        int r = ::shutdown(__fd,SHUT_RDWR);
-        if(r > 0) DIA_("UDPCom::close[%d]: %s",__fd,string_error().c_str());
         
     } else {
         

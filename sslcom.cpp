@@ -2526,3 +2526,11 @@ bool SSLCom::com_status() {
     DEBS___("SSLCom::com_status: L4 layer not ready, returning 0");
     return false;
 }
+
+void SSLCom::shutdown(int __fd) {
+    
+    if(sslcom_ssl != nullptr) {
+        SSL_shutdown(sslcom_ssl);
+    }
+    TCPCom::shutdown(__fd);
+}

@@ -275,6 +275,8 @@ public:
 
     virtual bool com_status();
     
+    
+    virtual void shutdown(int __fd);    
     virtual ~SSLCom() {
         if(sslcom_ecdh != nullptr) {
             EC_KEY_free(sslcom_ecdh);;

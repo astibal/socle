@@ -138,7 +138,10 @@ protected:
     // If the same source IP:PORT connection is already in place
     // transparent bind to source IP:PORT fails, delaying DNS resolution. 
     // this connection database maintains opened sockets, which will be reused.
-    static std::map<std::string,int> connect_fd_cache;
+    
+    // Since we don't want one Com to close another's Com opened socket,
+    // we implement value as tuple of <fd,refcount>.
+    static std::map<std::string,std::pair<int,int>> connect_fd_cache;
     static std::mutex connect_fd_cache_lock;
 };
 
