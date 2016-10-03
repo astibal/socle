@@ -41,6 +41,9 @@
 class UxCom : public TCPCom {
 public:
     UxCom(): TCPCom() {
+        l3_proto(AF_UNIX);
+        l4_proto(SOCK_STREAM);
+        
         // change socket properties
         connect_sock_family = AF_UNIX;
         connect_sock_type = SOCK_STREAM;

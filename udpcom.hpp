@@ -91,6 +91,7 @@ public:
 
 class UDPCom : public baseCom, public DatagramCom {
 public:
+    UDPCom(): baseCom() { l4_proto(SOCK_DGRAM); };
     
     static const char* udpcom_name_;
     

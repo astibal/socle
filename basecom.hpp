@@ -85,6 +85,7 @@ public:
     int error_flags() { return error_flag_; };    
     inline void error(baseCom::err_flags e) { error_flag_ = e;}
     
+    baseCom() {}
     virtual ~baseCom() {};
     virtual std::string flags_str() { return "0"; };
     virtual std::string full_flags_str();
@@ -99,6 +100,7 @@ protected:
     struct sockaddr_storage nonlocal_dst_peer_info_;
     
     int l3_proto_ = AF_INET;
+    int l4_proto_ = 0;
     
     bool nonlocal_src_ = false;
     std::string nonlocal_src_host_;
@@ -293,6 +295,9 @@ public:
     
     inline int l3_proto() const { return l3_proto_; };
     inline void l3_proto(int p) { l3_proto_ = p; }
+    
+    inline int l4_proto() const { return l4_proto_; };
+    inline void l4_proto(int p) { l4_proto_ = p; }    
 };
 
 # endif

@@ -158,7 +158,7 @@ int THREAD_cleanup ( void ) {
 
 
 
-SSLCom::SSLCom() {
+SSLCom::SSLCom(): TCPCom() {
     sslcom_peer_hello_buffer.capacity(1500);
     gettimeofday(&timer_start,nullptr);
 }

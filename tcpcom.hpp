@@ -38,6 +38,8 @@
 
 class TCPCom : public baseCom {
 public:
+    TCPCom(): baseCom() { l4_proto(SOCK_STREAM); };
+    
     virtual void init(baseHostCX* owner);
     virtual baseCom* replicate() { return new TCPCom(); };
     virtual const char* name() { return "tcp"; };
