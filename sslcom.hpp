@@ -16,8 +16,8 @@
     License along with this library.
 */
 
-#ifndef SSHCOM_HPP
-#define SSHCOM_HPP
+#ifndef SSLCOM_HPP
+#define SSLCOM_HPP
 
 #include <map>
 #include <string>
@@ -93,10 +93,11 @@ struct CRYPTO_dynlock_value
 
 extern int SSLCOM_CLIENTHELLO_TIMEOUT;
 
-class SSLCom : public TCPCom {
+template <class L4Proto>
+class baseSSLCom : public L4Proto, public virtual baseCom {
 
 public:
-    SSLCom();
+    baseSSLCom();
     
 protected:
 	SSL_CTX* sslcom_ctx = NULL;
@@ -139,8 +140,26 @@ protected:
     struct timeval timer_start;
         
     //if we are actively waiting for something, it doesn't make sense to process peer events (which creates unnecessary load)
-    inline bool unmonitor_peer() { if(peer()) { SSLCom* p = (SSLCom*)peer(); unset_monitor(p->sslcom_fd); return true; } return false; }
-    inline bool monitor_peer()   { if(peer()) { SSLCom* p = (SSLCom*)peer();   set_monitor(p->sslcom_fd); return true; } return false; } 
+    inline bool unmonitor_peer() { 
+        if(peer()) { 
+            baseSSLCom* p = dynamic_cast<baseSSLCom*>(peer()); 
+            if(p != nullptr) {
+                unset_monitor(p->sslcom_fd); 
+                return true; 
+            }
+        } 
+        return false; 
+    }
+    inline bool monitor_peer() { 
+        if(peer()) { 
+            baseSSLCom* p = dynamic_cast<baseSSLCom*>(peer());   
+            if(p != nullptr) {
+                set_monitor(p->sslcom_fd); 
+                return true; 
+            }
+        } 
+        return false; 
+    } 
 
     //if enabled, upgreade_client_socket or upgreade_server_socket are called automatically
     //during waiting().
@@ -212,7 +231,7 @@ public:
     
     //com has to be init() before used
 	virtual void init(baseHostCX* owner);
-    virtual baseCom* replicate() { return new SSLCom(); } ;
+    virtual baseCom* replicate() { return new baseSSLCom(); } ;
     virtual const char* name() { return "ssl"; };
     virtual const char* hr();
     std::string hr_;
@@ -277,7 +296,7 @@ public:
     
     
     virtual void shutdown(int __fd);    
-    virtual ~SSLCom() {
+    virtual ~baseSSLCom() {
         if(sslcom_ecdh != nullptr) {
             EC_KEY_free(sslcom_ecdh);;
         }
@@ -330,8 +349,8 @@ public:
     int ocsp_cert_is_revoked = -1;
     
     int opt_ocsp_mode = 0;
-    static int ocsp_explicit_check(SSLCom* com);
-    static int ocsp_resp_callback_explicit(SSLCom* com, int required);
+    static int ocsp_explicit_check(baseSSLCom* com);
+    static int ocsp_resp_callback_explicit(baseSSLCom* com, int required);
     
     // unknown issuers
     bool opt_allow_unknown_issuer = false;
@@ -372,6 +391,7 @@ private:
 };
 
 
+typedef baseSSLCom<TCPCom> SSLCom;
 
 /* 
  * this has been stolen from sources, since there is no ssl_locl.h header around! 
@@ -453,4 +473,6 @@ typedef struct sess_cert_st
   
 #endif 
   
+
+#include <sslcom.tpp>
 #endif

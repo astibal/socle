@@ -36,7 +36,7 @@
 #include <basecom.hpp>
 #include <display.hpp>
 
-class TCPCom : public baseCom {
+class TCPCom : public virtual baseCom {
 public:
     TCPCom(): baseCom() { l4_proto(SOCK_STREAM); };
     

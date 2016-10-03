@@ -89,7 +89,7 @@ public:
     static std::map<uint64_t,Datagram> datagrams_received;
 };
 
-class UDPCom : public baseCom, public DatagramCom {
+class UDPCom : public virtual baseCom, public DatagramCom {
 public:
     UDPCom(): baseCom() { l4_proto(SOCK_DGRAM); };
     
