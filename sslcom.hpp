@@ -35,6 +35,7 @@
 #include <buffer.hpp>
 #include <basecom.hpp>
 #include <tcpcom.hpp>
+#include <udpcom.hpp>
 #include <sslcertstore.hpp>
 #include <sslcertval.hpp>
 #include <logger.hpp>
@@ -392,6 +393,7 @@ private:
 
 
 typedef baseSSLCom<TCPCom> SSLCom;
+typedef baseSSLCom<UDPCom> DTLSCom;
 
 /* 
  * this has been stolen from sources, since there is no ssl_locl.h header around! 

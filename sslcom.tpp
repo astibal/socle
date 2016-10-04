@@ -101,7 +101,7 @@ void baseSSLCom<L4Proto>::static_init() {
 template <class L4Proto>
 void baseSSLCom<L4Proto>::init(baseHostCX* owner)  {
 
-    TCPCom::init(owner);
+    L4Proto::init(owner);
 }
 
 
@@ -2085,7 +2085,7 @@ int baseSSLCom<L4Proto>::write ( int __fd, const void* __buf, size_t __n, int __
 
 
     if(opt_bypass) {
-        return TCPCom::write(__fd,__buf,__n,__flags);
+        return L4Proto::write(__fd,__buf,__n,__flags);
     }
 
     // this one will be much trickier than just single call of SSL_read
@@ -2340,7 +2340,7 @@ int baseSSLCom<L4Proto>::upgrade_client_socket(int sock) {
 
 template <class L4Proto>
 int baseSSLCom<L4Proto>::connect ( const char* host, const char* port, bool blocking )  {
-    int sock = TCPCom::connect( host, port, blocking );
+    int sock = L4Proto::connect( host, port, blocking );
 
     DIA___("SSLCom::connect[%d]: tcp connected",sock);
     sock = upgrade_client_socket(sock);
@@ -2452,7 +2452,7 @@ void baseSSLCom<L4Proto>::certstore_setup(void ) {
 
 template <class L4Proto>
 bool baseSSLCom<L4Proto>::com_status() {
-    if(TCPCom::com_status()) {
+    if(L4Proto::com_status()) {
         if(opt_bypass) {
             DIAS___("SSLCom::com_status: L4 OK, bypassed")
             return true;
@@ -2482,7 +2482,7 @@ void baseSSLCom<L4Proto>::shutdown(int __fd) {
     if(sslcom_ssl != nullptr) {
         SSL_shutdown(sslcom_ssl);
     }
-    TCPCom::shutdown(__fd);
+    L4Proto::shutdown(__fd);
 }
 
 #endif // __SSLCOM_INCL__

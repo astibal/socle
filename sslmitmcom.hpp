@@ -48,19 +48,26 @@ struct SpoofOptions {
   std::vector<std::string> sans;
 };
 
-class SSLMitmCom : public SSLCom {
+
+template <class SSLProto>
+class baseSSLMitmCom : public SSLProto {
 public:
    virtual bool check_cert(const char*);
    virtual bool spoof_cert(X509* cert_orig, SpoofOptions& spo);
-   virtual baseCom* replicate() { return new SSLMitmCom(); };
-   virtual const char* name() { return opt_bypass ? "ssl" : "ssl+insp"; };
+   virtual baseCom* replicate() { return new baseSSLMitmCom(); };
+   virtual const char* name() { return this->opt_bypass ? "ssl" : "ssl+insp"; };
 
-    virtual ~SSLMitmCom() {};
+    virtual ~baseSSLMitmCom() {};
 
 public:
     static int& log_level_ref() { return log_level; }
 private:
     static int log_level;
 };
+
+#include <sslmitmcom.tpp>
+
+typedef baseSSLMitmCom<SSLCom> SSLMitmCom;
+typedef baseSSLMitmCom<DTLSCom> DTLSMitmCom;
 
 #endif // __SSLMITMCOM_HPP__
