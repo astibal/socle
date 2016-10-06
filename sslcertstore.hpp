@@ -84,10 +84,12 @@ public:
     X509*     def_sr_cert = nullptr; // default server certificate
     EVP_PKEY* def_sr_key = nullptr;  // default server key
     SSL_CTX*  def_sr_ctx = nullptr;  // default server ctx
+    SSL_CTX*  def_dtls_sr_ctx = nullptr;  // default server ctx for DTLS
     
     X509*     def_cl_cert = nullptr;  // default client certificate
     EVP_PKEY* def_cl_key = nullptr;   // default client key
     SSL_CTX*  def_cl_ctx = nullptr;   // default client ctx
+    SSL_CTX*  def_dtls_cl_ctx = nullptr;   // default client ctx for DTLS
 
     static std::string def_cl_capath;
     

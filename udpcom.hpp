@@ -49,6 +49,8 @@ struct Datagram {
     sockaddr_storage src;
     buffer rx;
     int socket;
+    bool real_socket = false;   // indicate if inbound connection was suceessfully bound, so we can use
+                                // real socket instead of virtual.
     
     bool embryonic = true;
     bool reuse = false;         // make this true if there is e.g. clash and closed CX/Com should not
@@ -103,6 +105,7 @@ public:
     virtual int bind(unsigned short port);
     virtual int bind(const char* path) { return -1; };  
     virtual int accept ( int sockfd, sockaddr* addr, socklen_t* addrlen_ );
+    virtual int translate_socket(int vsock);
     
     virtual bool in_readset(int s);
     virtual bool in_writeset(int s);
@@ -110,6 +113,7 @@ public:
     virtual int poll();
     virtual int read(int __fd, void* __buf, size_t __n, int __flags);
     virtual int read_from_pool(int __fd, void* __buf, size_t __n, int __flags);
+    virtual int recv(int __fd, void* __buf, size_t __n, int __flags) { return ::recv(__fd,__buf,__n,__flags);}; 
     virtual int peek(int __fd, void* __buf, size_t __n, int __flags) { return read(__fd,__buf,__n, __flags | MSG_PEEK );};
     
     
@@ -144,6 +148,10 @@ protected:
     // we implement value as tuple of <fd,refcount>.
     static std::map<std::string,std::pair<int,int>> connect_fd_cache;
     static std::mutex connect_fd_cache_lock;
+
+// later    
+//     DECLARE_C_NAME("baseProxy");
+//     DECLARE_LOGGING(c_name);
 };
 
 #endif

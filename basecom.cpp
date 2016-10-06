@@ -209,7 +209,7 @@ void baseCom::close(int __fd) {
         shutdown(__fd);
         
         int r = ::close(__fd);
-        if(r < 0) DIA_("baseCom::close[%d]: error: %s",string_error().c_str());
+        if(r < 0) DIA_("baseCom::close[%d]: error: %s",__fd, string_error().c_str());
     }
 }
 

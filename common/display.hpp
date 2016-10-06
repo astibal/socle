@@ -54,5 +54,7 @@ template <typename T> inline bool flag_check(T* variable, T check) { return (*va
 
 std::string inet_family_str(int fa);
 int inet_ss_address_unpack(sockaddr_storage *ptr, std::string* = nullptr, unsigned short* port = nullptr);
+int inet_ss_address_remap(sockaddr_storage *orig, sockaddr_storage *mapped);
+std::string inet_ss_str(sockaddr_storage *s);
 
 #endif

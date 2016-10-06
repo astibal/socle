@@ -73,72 +73,91 @@ baseProxy::~baseProxy() {
 
 
 void baseProxy::ladd(baseHostCX* cs) {
-	cs->unblock();
-    com()->set_monitor(cs->socket());
-    com()->set_poll_handler(cs->socket(),this);
+    cs->unblock();
+    
+    int s = cs->com()->translate_socket(cs->socket());
+    com()->set_monitor(s);
+    com()->set_poll_handler(s,this);
     left_sockets.push_back(cs);
-	DIA___("baseProxy::ladd: added socket: %s",cs->c_name());
+    DIA___("baseProxy::ladd: added socket: %s",cs->c_name());
 };
 
 
 void baseProxy::radd(baseHostCX* cs) {
-	cs->unblock();
-//     INF___("baseProxy::radd: master com: %x",com()->master());
-//     INF___("baseProxy::radd: poller: %x",com()->master()->poller.poller);
-//     INF___("baseProxy::radd: socket to monitor: %d",cs->socket());
-    com()->set_monitor(cs->socket());
-    com()->set_poll_handler(cs->socket(),this);
+    cs->unblock();
+    
+    int s = cs->com()->translate_socket(cs->socket());
+    com()->set_monitor(s);
+    com()->set_poll_handler(s,this);
     right_sockets.push_back(cs);
-	DIA___("baseProxy::radd: added socket: %s",cs->c_name());
+    DIA___("baseProxy::radd: added socket: %s",cs->c_name());
 };
 
 
 void baseProxy::lbadd(baseHostCX* cs) {
-    com()->set_monitor(cs->socket());
-    com()->set_poll_handler(cs->socket(),this);
+    
+    int s = cs->com()->translate_socket(cs->socket());
+    
+    com()->set_monitor(s);
+    com()->set_poll_handler(s,this);
     left_bind_sockets.push_back(cs);
 	DIA___("baseProxy::lbadd: added bound socket: %s",cs->c_name());
 };
 
 
 void baseProxy::rbadd(baseHostCX* cs) {
-    com()->set_monitor(cs->socket());
-    com()->set_poll_handler(cs->socket(),this);
+    
+    int s = cs->com()->translate_socket(cs->socket());
+    
+    com()->set_monitor(s);
+    com()->set_poll_handler(s,this);
     right_bind_sockets.push_back(cs);
 	DIA___("baseProxy::rbadd: added bound socket: %s",cs->c_name());
 };
 
 
 void baseProxy::lpcadd(baseHostCX* cx) {
-	cx->permanent(true);
+    cx->permanent(true);
+    int s = cx->com()->translate_socket(cx->socket());
+    
+    com()->set_monitor(s);
+    com()->set_poll_handler(s,this);
     left_pc_cx.push_back(cx);
-    com()->set_monitor(cx->socket());
-    com()->set_poll_handler(cx->socket(),this);
-	DIA___("baseProxy::lpcadd: added perma socket: %s", cx->c_name());
+    DIA___("baseProxy::lpcadd: added perma socket: %s", cx->c_name());
 };
 
 
 void baseProxy::rpcadd(baseHostCX* cx) {
-	cx->permanent(true);
+    cx->permanent(true);
+    int s = cx->com()->translate_socket(cx->socket());
+    
+    com()->set_monitor(s);
+    com()->set_poll_handler(s,this);
+    
     right_pc_cx.push_back(cx);
-    com()->set_monitor(cx->socket());
-    com()->set_poll_handler(cx->socket(),this);
-	DIA___("baseProxy::rpcadd: added perma socket %s", cx->c_name());
+    DIA___("baseProxy::rpcadd: added perma socket %s", cx->c_name());
 };
 
 
 void baseProxy::ldaadd(baseHostCX* cs) {
+    
+    int s = cs->com()->translate_socket(cs->socket());
+    
+    com()->set_monitor(s);
+    com()->set_poll_handler(s,this);
+
     left_delayed_accepts.push_back(cs);
-    com()->set_monitor(cs->socket());
-    com()->set_poll_handler(cs->socket(),this);
     DIA___("baseProxy::ldaadd: added delayed socket: %s",cs->c_name());
 };
 
 
 void baseProxy::rdaadd(baseHostCX* cs) {
+    int s = cs->com()->translate_socket(cs->socket());
+    
+    com()->set_monitor(s);
+    com()->set_poll_handler(s,this);
+    
     right_delayed_accepts.push_back(cs);
-    com()->set_monitor(cs->socket());
-    com()->set_poll_handler(cs->socket(),this);
     DIA___("baseProxy::rdaadd: added delayed socket: %s",cs->c_name());
 };
 

@@ -19,6 +19,8 @@
 #ifndef __SSLCOM_INCL__
 #define __SSLCOM_INCL__
 
+#include <linux/in6.h>
+
 #include <openssl/rsa.h>
 #include <openssl/crypto.h>
 #include <openssl/x509.h>
@@ -1076,8 +1078,14 @@ void baseSSLCom<L4Proto>::init_client() {
     }
 
 
-    sslcom_ctx = certstore()->def_cl_ctx;
-    sslcom_ssl = SSL_new(sslcom_ctx);
+    if(l4_proto() == SOCK_STREAM) {
+        sslcom_ctx = certstore()->def_cl_ctx;
+        sslcom_ssl = SSL_new(sslcom_ctx);
+    } else 
+    if(l4_proto() == SOCK_DGRAM) {
+        sslcom_ctx = certstore()->def_dtls_cl_ctx;
+        sslcom_ssl = SSL_new(sslcom_ctx);
+    }
     
     std::string my_filter = ci_def_filter;
     
@@ -1127,8 +1135,20 @@ void baseSSLCom<L4Proto>::init_server() {
         SSL_free(sslcom_ssl);
     }
 
-    sslcom_ctx = certstore()->def_sr_ctx;
-    sslcom_ssl = SSL_new(sslcom_ctx);
+    
+    INF___("baseSSLCom<L4Proto>::init_server: l4 proto = %d", l4_proto());
+    
+    if(l4_proto() == SOCK_STREAM) {
+        sslcom_ctx = certstore()->def_sr_ctx;
+        sslcom_ssl = SSL_new(sslcom_ctx);
+    } else
+    if(l4_proto() == SOCK_DGRAM) {
+        sslcom_ctx = certstore()->def_dtls_sr_ctx;
+        sslcom_ssl = SSL_new(sslcom_ctx);
+        SSL_set_options(sslcom_ssl, SSL_OP_COOKIE_EXCHANGE);
+    }
+    
+    //if(l4_proto() == SOCK_DGRAM) INF___("DTLS sslcom_ssl 0x%x",sslcom_ssl);
 
     std::string my_filter = ci_def_filter;
     
@@ -1180,6 +1200,7 @@ void baseSSLCom<L4Proto>::init_server() {
     is_server(true);
 
     init_ssl_callbacks();
+    
 }
 
 template <class L4Proto>
@@ -1291,12 +1312,40 @@ void baseSSLCom<L4Proto>::accept_socket ( int sockfd )  {
 
     L4Proto::accept_socket(sockfd);
 
+    if(l4_proto() == SOCK_DGRAM && sockfd < 0) {
+        UDPCom* l4com = dynamic_cast<UDPCom*>(this);
+        if(l4com) {
+            INFS___("Underlying com is UDPCom using virtual sockets");
+            
+            auto it_rec = l4com->datagrams_received.find(sockfd);
+            if(it_rec != l4com->datagrams_received.end()) {
+                Datagram& rec = it_rec->second;
+                sslcom_fd = socket(rec.dst_family(),SOCK_DGRAM,IPPROTO_UDP);
+                int n = 1;
+                setsockopt(sslcom_fd,SOL_IP,IP_TRANSPARENT,&n,sizeof(n));
+                setsockopt(sslcom_fd,SOL_IPV6,IPV6_TRANSPARENT,&n,sizeof(n));
+                int ret_con = ::connect(sslcom_fd, (sockaddr*)&rec.src,sizeof(sockaddr_storage));
+                int ret_bind = ::bind(sslcom_fd,(sockaddr*)&rec.dst,sizeof(sockaddr_storage));
+                
+                INF___("Masked socket: connect=%d, bind=%d",ret_con, ret_bind);
+            }
+        }
+    }
+    
     upgrade_server_socket(sockfd);
     if(opt_bypass) {
         prof_accept_bypass_cnt++;
         return;
     }
 
+    
+    if(l4_proto() == SOCK_DGRAM) {
+        sockaddr_storage ss;
+        if (!DTLSv1_listen(sslcom_ssl,(sockaddr_in6*)&ss)) {
+            return;
+        }
+    }
+    
 
     ERR_clear_error();
     int r = SSL_accept (sslcom_ssl);
@@ -1453,7 +1502,7 @@ int baseSSLCom<L4Proto>::waiting() {
     else if(is_server()) {
 
         if(auto_upgrade() && !upgraded()) {
-            DIAS___("SSLCom::waiting: server auto upgrade");
+            INF___("SSLCom::waiting: server auto upgrade socket %d",sslcom_fd);
             upgrade_server_socket(sslcom_fd);
         }
 
@@ -1683,7 +1732,13 @@ bool baseSSLCom<L4Proto>::waiting_peer_hello() {
                 }
 
             } else {
-                DIAS___("SSLCom::waiting_peer_hello: SSLCom peer doesn't have sslcom_fd set");
+                DIA___("SSLCom::waiting_peer_hello: SSLCom peer doesn't have sslcom_fd set, socket %d",p->sslcom_fd);
+               
+                // FIXME: definitely not correct
+                if(p->l4_proto() == SOCK_DGRAM) {
+                    // atm don't wait for hello
+                    sslcom_peer_hello_received(true);
+                }
             }
         } else {
             DIAS___("SSLCom::waiting_peer_hello: peer not SSLCom type");
@@ -2342,7 +2397,7 @@ template <class L4Proto>
 int baseSSLCom<L4Proto>::connect ( const char* host, const char* port, bool blocking )  {
     int sock = L4Proto::connect( host, port, blocking );
 
-    DIA___("SSLCom::connect[%d]: tcp connected",sock);
+    DIA___("SSLCom::connect[%d]: %s connected",sock,L4Proto::name());
     sock = upgrade_client_socket(sock);
 
     if(upgraded()) {
@@ -2388,10 +2443,47 @@ SSL_CTX* baseSSLCom<L4Proto>::client_ctx_setup(EVP_PKEY* priv, X509* cert, const
     return ctx;
 }
 
+template <class L4Proto>
+SSL_CTX* baseSSLCom<L4Proto>::client_dtls_ctx_setup(EVP_PKEY* priv, X509* cert, const char* ciphers) {
+//SSL_CTX* SSLCom::client_ctx_setup() {
+
+    // SSLv3 -> latest TLS
+    const SSL_METHOD *method = DTLSv1_client_method();
+
+    SSL_CTX* ctx = SSL_CTX_new (method);
+
+    if (!ctx) {
+        ERRS__("SSLCom::client_ctx_setup: Error creating SSL context!");
+        //log_if_error(ERR,"SSLCom::init_client");
+        exit(2);
+    }
+
+    ciphers == nullptr ? SSL_CTX_set_cipher_list(ctx,"ALL:!ADH:!LOW:!aNULL:!EXP:!MD5:@STRENGTH") : SSL_CTX_set_cipher_list(ctx,ciphers);
+
+    // testing for LogJam:
+    // SSL_CTX_set_cipher_list(ctx,"kEECDH kEECDH kEDH HIGH !kRSA !RC4 !aNULL !eNULL !LOW !3DES !MD5 !EXP !DSS !PSK !SRP !kECDH !CAMELLIA !IDEA !SEED");
+    // SSL_CTX_set_options(ctx,certstore()->def_cl_options); //used to be also SSL_OP_NO_TICKET+
+    SSL_CTX_set_session_cache_mode(ctx,SSL_SESS_CACHE_CLIENT);
+    
+
+
+//     DIAS__("SSLCom::client_ctx_setup: loading default key/cert");
+//     priv == nullptr ? SSL_CTX_use_PrivateKey(ctx,certstore()->def_cl_key) : SSL_CTX_use_PrivateKey(ctx,priv);
+//     cert == nullptr ? SSL_CTX_use_certificate(ctx,certstore()->def_cl_cert) : SSL_CTX_use_certificate(ctx,cert);
+// 
+//     if (!SSL_CTX_check_private_key(ctx)) {
+//         ERRS__("SSLCom::client_ctx_setup: Private key does not match the certificate public key\n");
+//         exit(5);
+//     }
+
+    return ctx;
+}
+
+
 
 template <class L4Proto>
 SSL_CTX* baseSSLCom<L4Proto>::server_ctx_setup(EVP_PKEY* priv, X509* cert, const char* ciphers) {
-
+    
     // SSLv3 -> latest TLS
     const SSL_METHOD *method = SSLv23_server_method();
     SSL_CTX* ctx = SSL_CTX_new (method);
@@ -2417,6 +2509,35 @@ SSL_CTX* baseSSLCom<L4Proto>::server_ctx_setup(EVP_PKEY* priv, X509* cert, const
     return ctx;
 }
 
+
+template <class L4Proto>
+SSL_CTX* baseSSLCom<L4Proto>::server_dtls_ctx_setup(EVP_PKEY* priv, X509* cert, const char* ciphers) {
+    
+    // DTLS method
+    const SSL_METHOD *method = DTLSv1_server_method();
+    SSL_CTX* ctx = SSL_CTX_new (method);
+
+    if (!ctx) {
+        ERRS__("SSLCom::server_dtls_ctx_setup: Error creating SSL context!");
+        exit(2);
+    }
+
+    ciphers == nullptr ? SSL_CTX_set_cipher_list(ctx,"ALL:!ADH:!LOW:!EXP:!MD5:@STRENGTH") : SSL_CTX_set_cipher_list(ctx,ciphers);
+    //SSL_CTX_set_options(ctx,certstore()->def_sr_options);
+
+    DEBS__("SSLCom::server_dtls_ctx_setup: loading default key/cert");
+    priv == nullptr ? SSL_CTX_use_PrivateKey(ctx,certstore()->def_sr_key) : SSL_CTX_use_PrivateKey(ctx,priv);
+    cert == nullptr ? SSL_CTX_use_certificate(ctx,certstore()->def_sr_cert) : SSL_CTX_use_certificate(ctx,cert);
+
+
+    if (!SSL_CTX_check_private_key(ctx)) {
+        ERRS__("SSLCom::server_dtls_ctx_setup: private key does not match the certificate public key\n");
+        exit(5);
+    }
+
+    return ctx;
+}
+
 template <class L4Proto>
 void baseSSLCom<L4Proto>::certstore_setup(void ) {
 
@@ -2431,6 +2552,8 @@ void baseSSLCom<L4Proto>::certstore_setup(void ) {
     }
 
     certstore()->def_cl_ctx = client_ctx_setup();
+    certstore()->def_dtls_cl_ctx = client_dtls_ctx_setup();
+    
     DIAS__("SSLCom: default ssl client context: ok");
 
     if(certstore()->def_cl_capath.size() > 0) {
@@ -2445,6 +2568,7 @@ void baseSSLCom<L4Proto>::certstore_setup(void ) {
 
 
     certstore()->def_sr_ctx = server_ctx_setup();
+    certstore()->def_dtls_sr_ctx = server_dtls_ctx_setup();
     DIAS__("SSLCom: default ssl server context: ok");
 
 }
@@ -2484,5 +2608,6 @@ void baseSSLCom<L4Proto>::shutdown(int __fd) {
     }
     L4Proto::shutdown(__fd);
 }
+
 
 #endif // __SSLCOM_INCL__

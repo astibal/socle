@@ -31,6 +31,36 @@ std::mutex DatagramCom::lock;
 std::map<std::string,std::pair<int,int>> UDPCom::connect_fd_cache;
 std::mutex UDPCom::connect_fd_cache_lock;
 
+int UDPCom::translate_socket(int vsock) {
+    
+    if(vsock >= 0) { 
+        DIA_("UDPCom::translate_socket[%d]: non-virtual",vsock);
+        return vsock; 
+        
+    } else {
+        
+        auto it_dgram = datagrams_received.find((unsigned int)vsock);
+        if(it_dgram != datagrams_received.end())  {
+            Datagram& d = it_dgram->second;
+            
+            DIA_("UDPCom::translate_socket[%d]: found in table",vsock);
+            if(d.real_socket) {
+                DIA_("UDPCom::translate_socket[%d]: translated to real",vsock,d.socket);
+                return d.socket;
+            }
+            else {
+                DIA_("UDPCom::translate_socket[%d]: translated to tproxy socket ",vsock,d.socket);
+            }
+            // real socket is here bound/connected socket back to source IP.
+            // if there is no backward socket, we don't want return TPROXY bound socket, since it can't 
+            // send anything. So resist temptation to return d.socket in else statement.
+        }
+    }
+
+    DIA_("UDPCom::translate_socket[%d]: NOT found in table",vsock);    
+    return baseCom::translate_socket(vsock);
+}
+
 
 int UDPCom::accept(int sockfd, sockaddr* addr, socklen_t* addrlen_) {
     return sockfd;
@@ -74,6 +104,8 @@ int UDPCom::bind(short unsigned int port) {
     
     if (::bind(s, (sockaddr *)&sa, sizeof(sa)) == -1) return -130;
 
+    
+    DIA_("UDPCom::bind[%d]: successfull",s);
     return s;    
 }
 
@@ -282,6 +314,11 @@ bool UDPCom::in_readset(int s) {
     if(it_record != DatagramCom::datagrams_received.end()) {  
         Datagram& record = (*it_record).second;    
         
+        if(record.real_socket) {
+            INF_("UDPCom::in_readset[%d]: record contains real socket %d",s,record.socket);
+            return baseCom::in_readset(record.socket);
+        }
+        
         if(record.rx.size() > 0) {
             DIA_("UDPCom::in_readset[%d]: record found, data size %dB",s,record.rx.size());
         }
@@ -338,10 +375,12 @@ int UDPCom::poll() {
 
 int UDPCom::read(int __fd, void* __buf, size_t __n, int __flags) {
 
+    INF_("UDPCom::read[%d] read",__fd);
+    
     if (__fd < 0) {
         return read_from_pool(__fd,__buf,__n,__flags);
     } else {
-        return ::recv(__fd,__buf,__n,__flags);
+        return recv(__fd,__buf,__n,__flags);
     }
 };
 
@@ -353,6 +392,10 @@ int UDPCom::read_from_pool(int __fd, void* __buf, size_t __n, int __flags) {
     if(it_record != DatagramCom::datagrams_received.end()) {  
         Datagram& record = (*it_record).second;
 
+        if(record.real_socket) {
+            return recv(record.socket,__buf,__n,__flags);
+        }
+        
         if(record.rx.size() == 0) {
 //            return ::recv(record.socket,__buf,__n,__flags);
         } else {
@@ -420,7 +463,9 @@ int UDPCom::write_to_pool(int __fd, const void* __buf, size_t __n, int __flags) 
         std::string ip_src, ip_dst;
         unsigned short port_src, port_dst;
         inet_ss_address_unpack(&record.src,&ip_src,&port_src);
+        
         sockaddr_storage record_src_4fix;
+        bool v4_fix = false;
         
         inet_ss_address_unpack(&record.dst,&ip_dst,&port_dst);
         std::string af_src = inet_family_str(record.src_family());
@@ -469,6 +514,8 @@ int UDPCom::write_to_pool(int __fd, const void* __buf, size_t __n, int __flags) 
                 inet_pton(AF_INET,ip_src.c_str(), &((sockaddr_in*)&record_src_4fix)->sin_addr);
                 ((sockaddr_in*)&record_src_4fix)->sin_port = record.src_port6();
                 m.msg_name = (void*)&record_src_4fix;
+                
+                v4_fix = true;
             }
             
             cmsg->cmsg_level = IPPROTO_IP;
@@ -478,14 +525,11 @@ int UDPCom::write_to_pool(int __fd, const void* __buf, size_t __n, int __flags) 
             pktinfo->ipi_ifindex = 0;
             m.msg_controllen = CMSG_SPACE(sizeof(struct in_pktinfo));
             
-            
-            d = socket (record.dst_family(), SOCK_DGRAM, 0);
-            
-            int n = 1;
-            setsockopt(d, SOL_IP, IP_TRANSPARENT, &n, sizeof(n));
-            setsockopt(d, SOL_SOCKET, SO_REUSEADDR, &n, sizeof(n));
-            setsockopt(d, SOL_SOCKET, SO_BROADCAST, &n, sizeof(n));         
-            
+            if(record.real_socket) {
+                d = record.socket;
+            } else {
+                d = socket (record.dst_family(), SOCK_DGRAM, 0);
+            }
         }
         else if(record.dst_family() == AF_INET6){
             
@@ -499,12 +543,11 @@ int UDPCom::write_to_pool(int __fd, const void* __buf, size_t __n, int __flags) 
             pktinfo6->ipi6_ifindex = 0;
             m.msg_controllen = CMSG_SPACE(sizeof(struct in6_pktinfo));
             
-            d = socket (record.dst_family(), SOCK_DGRAM, 0);
-            
-            int n = 1;
-            setsockopt(d, SOL_IPV6, IPV6_TRANSPARENT, &n, sizeof(n));
-            setsockopt(d, SOL_SOCKET, SO_REUSEADDR, &n, sizeof(n));
-            setsockopt(d, SOL_SOCKET, SO_BROADCAST, &n, sizeof(n));         
+            if(record.real_socket) {
+                d = record.socket;
+            } else {
+                d = socket (record.dst_family(), SOCK_DGRAM, 0);
+            }
         }
 
 
@@ -513,21 +556,70 @@ int UDPCom::write_to_pool(int __fd, const void* __buf, size_t __n, int __flags) 
         send_lock.lock();
         
         int l = 0;
-        int ret = ::bind (d, (struct sockaddr*)&(record.dst), sizeof (struct sockaddr_storage));
-        if(ret != 0) {
+        int ret_bind = 0;
+
+        INF_("UDPCom::write_to_pool[%d]: real=%d, embryonic=%d",__fd,record.real_socket,record.embryonic);
+        if(record.real_socket && record.embryonic) {
+            INF_("UDPCom::write_to_pool[%d]: changing background embryonic socket %d to %d",__fd,record.socket,d);
+            
+            sockaddr_storage ss_s, ss_d;
+            inet_ss_address_remap(&record.dst, &ss_d);
+            inet_ss_address_remap(&record.src, &ss_s);
+            
+            int n = 1;
+            int d = socket (ss_d.ss_family, SOCK_DGRAM, 0);
+            
+            if(ss_d.ss_family == AF_INET6) {  setsockopt(d, SOL_IPV6, IPV6_TRANSPARENT, &n, sizeof(n)); n = 1; }
+            if(ss_d.ss_family == AF_INET ) {  setsockopt(d, SOL_IP, IP_TRANSPARENT, &n, sizeof(n)); n = 1; }
+            
+            setsockopt(d, SOL_SOCKET, SO_REUSEADDR, &n, sizeof(n));
+            setsockopt(d, SOL_SOCKET, SO_BROADCAST, &n, sizeof(n));   
+            
+            INF_("UDPCom::write_to_pool[%d]: background embryonic socket %s-%s",__fd, inet_ss_str(&ss_s).c_str(), inet_ss_str(&ss_d).c_str());
+            
+            ret_bind = ::bind (d, (struct sockaddr*)&(ss_d), sizeof (struct sockaddr_storage));
+            int ret_conn = ::connect(d, (struct sockaddr*)&(ss_s), sizeof (struct sockaddr_storage));
+            
+            if (ret_bind != 0) INF_("UDPCom::write_to_pool[%d]: %s",__fd,string_error().c_str());
+            
+            record.embryonic = false;
+            
+            int old_socket = record.socket;
+            record.socket = d;
+            
+            
+            INF_("UDPCom::write_to_pool[%d]: background mature socket %d bind status %d, conn status %d",__fd,record.socket,ret_bind,ret_conn);
+            
+            master()->set_monitor(record.socket);
+            master()->set_poll_handler(record.socket,master()->get_poll_handler(old_socket));
+            
+            master()->unset_monitor(old_socket);
+            master()->set_poll_handler(old_socket, nullptr);
+            ::close(old_socket);
+        }
+        
+        if(ret_bind != 0) {
             ERRS_("UDPCom::write_to_pool[%d]: cannot bind to destination!",__fd);
         } else {
             DEB_("UDPCom::write_to_pool[%d]: about to write %d bytes into socket %d",__fd,__n,record.socket);
             DEB_("UDPCom::write_to_pool[%d]: custom transparent socket: %d",__fd,d);
-            l = ::sendmsg(d,&m,0);
+            
+            if(record.real_socket) {
+                l = ::send(record.socket,__buf,__n, 0);
+            } else {
+                l = ::sendmsg(record.socket,&m,0);
+            }
             
             if(l < 0) {
-                ERR_("UDPCom::write_to_pool[%d]: socket: %d: written %d bytes",__fd,d,l);
+                ERR_("UDPCom::write_to_pool[%d]: socket: %d: written %d bytes: %s",__fd,d,l, string_error().c_str());
             } else {
                 DEB_("UDPCom::write_to_pool[%d]: socket: %d: written %d bytes",__fd,d,l);
             }
         }
-        ::close(d);
+        
+        if(!record.real_socket) {
+            ::close(d);
+        }
         send_lock.unlock();
         
         //l = send(record.socket,__buf,__n,__flags);
@@ -618,6 +710,8 @@ void UDPCom::shutdown(int __fd) {
         
         // it's oposite in this case, so following is CORRECT
         
+        DIA_("UDPCom::shutdown[%d]: request to shutdown socket",__fd);
+        
         if(resolve_socket_dst(__fd,&sip,&sport) && resolve_socket_src(__fd,&dip,&dport)) {
         
             std::string key = string_format("%s:%s-%s:%s", sip.c_str(), sport.c_str(),dip.c_str(), dport.c_str());
@@ -641,6 +735,7 @@ void UDPCom::shutdown(int __fd) {
                         DEB_("UDPCom::shutdown[%d]: shutdown",__fd);                        
                     }
                     
+                    ::close(__fd);
                 } else {
                     cached_fd_ref.second--;
                     DEB_("UDPCom::shutdown[%d]: still in use, recount now %d",__fd,cached_fd_ref.second);
@@ -648,13 +743,17 @@ void UDPCom::shutdown(int __fd) {
             } else {
                 DEB_("UDPCom::shutdown[%d]: key %s not found in connect cache.",__fd,key.c_str());
                 
-                // should we close it here too, or not? What if socket is already used somewhere else?
-                // For now, don't touch socket in this situation.
+                // What if socket is already used somewhere else?
+                ::close(__fd);
+                
             }
             
             connect_fd_cache_lock.unlock();
+        } else {
+            
+            DIA_("UDPCom::shutdown[%d]: socket not resolved, still closing",__fd);
+            ::close(__fd);
         }
-        
         
     } else {
         
@@ -667,6 +766,11 @@ void UDPCom::shutdown(int __fd) {
                 if(! it.reuse) {
                     DIA_("UDPCom::close[%d]: datagrams_received entry erased",__fd);
                     DatagramCom::datagrams_received.erase((unsigned int)__fd);
+                    
+                    if(it.real_socket && it.socket > 0) {
+                        ::close(it.socket);
+                    }
+                    
                 } else {
                     DIA_("UDPCom::close[%d]: datagrams_received entry reuse flag set, entry  not deleted.",__fd);
                     it.reuse = false;

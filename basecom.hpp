@@ -173,6 +173,10 @@ public:
     virtual int bind(unsigned short __port) = 0;
     virtual int bind(const char* __path) = 0;
     
+    // support for pseudo-socket, we call it virtual socket. It's negative numbered socket 
+    // which can ne used by Com classes for socket translations (see UDPCom, for example)
+    virtual int translate_socket(int vsock) { INFS_("baseCom::translate_socket"); return vsock; };
+    
     // syscall wrapper 
     virtual int accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen_) = 0;
 
@@ -250,6 +254,17 @@ public:
         } 
     };
 
+    inline epoll_handler* get_poll_handler(int s) {
+        DEB_("basecom::set_poll_handler: called to get handler of %d",s);
+        if (s > 0 ) { 
+            epoll_handler* h =  master()->poller.get_handler(s);
+            DIA_("basecom::set_poll_handler: handler of %d is 0x%x",s,h);
+            return h;
+        } 
+        DIA_("basecom::set_poll_handler: handler of %d is 0x%x",s,nullptr);
+        return nullptr;
+    };
+    
     inline void rescan_read(int s) {
         DIA_("basecom::rescan_read: called to rescan EPOLLIN %d",s);
         if (s > 0 ) { 

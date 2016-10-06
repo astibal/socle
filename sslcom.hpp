@@ -223,6 +223,9 @@ public:
     //static SSL_CTX* client_ctx_setup();
     static SSL_CTX* client_ctx_setup(EVP_PKEY* priv = nullptr, X509* cert = nullptr, const char* ciphers = nullptr);
     static SSL_CTX* server_ctx_setup(EVP_PKEY* priv = nullptr, X509* cert = nullptr, const char* ciphers = nullptr);
+    static SSL_CTX* client_dtls_ctx_setup(EVP_PKEY* priv = nullptr, X509* cert = nullptr, const char* ciphers = nullptr);
+    static SSL_CTX* server_dtls_ctx_setup(EVP_PKEY* priv = nullptr, X509* cert = nullptr, const char* ciphers = nullptr);
+
     
     static SSLCertStore* certstore() { return sslcom_certstore_; };
     static void certstore(SSLCertStore* c) { if (sslcom_certstore_ != NULL) { delete sslcom_certstore_; }  sslcom_certstore_ = c; };
@@ -285,7 +288,6 @@ public:
     bool should_wait_for_peer_hello() { return should_wait_for_peer_hello_; }
     void should_wait_for_peer_hello(bool b) { should_wait_for_peer_hello_ = b; }
     socle::sref_vector_string& sni_filter_to_bypass() { return sni_filter_to_bypass_; }
-    
     
     virtual int connect ( const char* host, const char* port, bool blocking = false );
 	virtual int read ( int __fd, void* __buf, size_t __n, int __flags );

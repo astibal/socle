@@ -28,6 +28,7 @@
 #include <logger.hpp>
 #include <threadedreceiver.hpp>
 
+#include <linux/in6.h>
 #include <udpcom.hpp>
 
 template<class SubWorker>
@@ -92,7 +93,7 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
     io.iov_base = recv_buf_;
     io.iov_len = sizeof(recv_buf_);
     
-    int len = ::recvmsg(sock, &msg, 0);
+    int len = ::recvmsg(sock, &msg, MSG_PEEK);
     
    
     uint32_t session_key = 0;
@@ -182,20 +183,143 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
             d.rx.size(0);
              d.socket = sock;
             
-            // highly experimental
-//             int n_sock = ::socket (AF_INET, SOCK_DGRAM, 0);
-//             int n = 1;
-//             ::setsockopt (n_sock, SOL_IP, IP_TRANSPARENT, &n, sizeof(int));
-//             ::connect(n_sock,(struct sockaddr*)&(d.src),sizeof (struct sockaddr_in));
-//             ::bind (n_sock, (struct sockaddr*)&(d.dst), sizeof (struct sockaddr_in));
-//             
-//             d.socket = n_sock;
+            std::string str_src_host; unsigned short sport;
+            int src_family = inet_ss_address_unpack(&from,&str_src_host,&sport);
+            std::string str_dst_host; unsigned short dport;
+            int dst_family = inet_ss_address_unpack(&orig,&str_dst_host,&dport);             
+             
+            int n_sock = 0;    
+            int ret_con = -127;
+            int ret_bin = -127;
+            
+            if(dst_family == AF_INET) {
+                // highly experimental
+                //n_sock = ::socket (AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+                
+                n_sock = sock;
+                //new_bound_sock = ::socket (AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+                
+                
+                int n = 1;
+                ::setsockopt(n_sock, SOL_SOCKET, SO_REUSEADDR, &n, sizeof(int)); n = 1;
+                ::setsockopt(n_sock, SOL_IP,IP_RECVORIGDSTADDR, &n, sizeof(int)); n = 1;
+                ::setsockopt(n_sock, SOL_IP, SO_BROADCAST, &n, sizeof(int)); n = 1;
+                ::setsockopt(n_sock, SOL_IP, IP_TRANSPARENT, &n, sizeof(int)); n = 1;
+                ::setsockopt(n_sock, SOL_IPV6, IPV6_TRANSPARENT, &n, sizeof(int)); n = 1;
+                
+                struct sockaddr_in ss_src;
+                struct sockaddr_in ss_dst; 
+                memset(&ss_src,0,sizeof(struct sockaddr_in));
+                memset(&ss_dst,0,sizeof(struct sockaddr_in));
+                
+                int pton = inet_pton(AF_INET,str_src_host.c_str(),&ss_src.sin_addr);
+                if(pton != 1) {
+                    ERR___("inet_pton error for src: %d:%s",pton,string_error().c_str());
+                } else {
+                    char b[64]; memset(b,0,64);
+                    inet_ntop(AF_INET,&ss_src.sin_addr,b,64);
+                    
+                    INF___("inet_pton  okay for src: %s", b);
+                } 
+                ss_src.sin_port = htons(sport); 
+                ss_src.sin_family = AF_INET;
+
+                pton = inet_pton(AF_INET,str_dst_host.c_str(),&ss_dst.sin_addr);
+                if( pton != 1) {
+                    ERR___("inet_pton error for dst: %d:%s",pton,string_error().c_str());
+                }else {
+                    char b[64]; memset(b,0,64);
+                    inet_ntop(AF_INET,&ss_dst.sin_addr,b,64);
+                    
+                    INF___("inet_pton  okay for dst: %s", b);
+                } 
+                ss_dst.sin_port = htons(dport);
+                ss_dst.sin_family = AF_INET;
+                
+                ret_bin = ::bind (n_sock, (sockaddr*)&ss_dst, sizeof (struct sockaddr_in));
+                ERR___("transparenting: bind error: %s",string_error().c_str());
+                ret_con = ::connect(n_sock,(sockaddr*)&ss_src,sizeof (struct sockaddr_in));
+                ERR___("transparenting: connect error: %s",string_error().c_str());
+                
+            } else {
+                //n_sock = ::socket (AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
+                n_sock = sock;
+                int n = 1;
+                ::setsockopt (n_sock, SOL_SOCKET, SO_REUSEADDR, &n, sizeof(int)); n = 1;
+                ::setsockopt(n_sock, SOL_IP,IPV6_RECVORIGDSTADDR, &n, sizeof(int)); n = 1;
+                //::setsockopt(n_sock, SOL_IP, SO_BROADCAST, &n, sizeof(int)); n = 1;
+                ::setsockopt (n_sock, SOL_IPV6, IPV6_TRANSPARENT, &n, sizeof(int));
+
+                sockaddr_storage ss_src,ss_dst;
+                inet_pton(AF_INET6,str_src_host.c_str(),&ss_src); ss_src.ss_family=AF_INET6; ((sockaddr_in6*)&ss_src)->sin6_port = htons(sport);
+                inet_pton(AF_INET6,str_dst_host.c_str(),&ss_dst); ss_dst.ss_family=AF_INET6; ((sockaddr_in6*)&ss_dst)->sin6_port = htons(dport);
+
+                ret_bin = ::bind (n_sock, (struct sockaddr*)&(d.dst), sizeof (struct sockaddr_storage));
+                ret_con = ::connect(n_sock,(struct sockaddr*)&(d.src),sizeof (struct sockaddr_storage));
+            }
+
+            INF___("ThreadedReceiver::on_left_new_raw[new %d]: datagram from: %s/%s:%u to %s/%s:%u", 
+                        n_sock, 
+                        inet_family_str(src_family).c_str(),str_src_host.c_str(), sport,
+                        inet_family_str(dst_family).c_str(),str_dst_host.c_str(), dport
+                        );            
+            INF___("ThreadedReceiver transparenting for inbound connection: connect=%d, bind=%d",ret_con,ret_bin);
+            
+            if( /*ret_bin == 0 && */ ret_con == 0) {
+                d.socket = n_sock;
+                d.real_socket = true;
+
+
+                // for now, don't monitor this rebuilt socket. It should be handled by new proxy object later.
+                com()->master()->unset_monitor(n_sock);
+                // also remove this proxy as handler
+                com()->set_poll_handler(n_sock,nullptr);
+                
+                // don't look for data in this socket anymore
+                bool copied = false;
+                baseCom*    n_com = nullptr;
+                baseHostCX* n_bound = nullptr;
+                
+                for (auto bound_cx: left_bind_sockets) {
+                    
+//                     if(!copied) {
+//                         
+//                         INFS___("Creating new listener");
+//                         
+//                         int s = com->bind(50081);
+//                         n_bound = new baseHostCX(n_com,s);
+//                         
+//                         copied = true;
+//                         INF___("Creating new listener done, on socket %d", s);
+//                     }
+                    
+                    bound_cx->remove_socket();
+                    delete bound_cx;
+                }
+                left_bind_sockets.clear(); // all objects are invalidated
+                int s = bind(50081,'L');
+                com()->unblock(s);
+                
+                
+                if(ret_bin == 0) {
+                    // if bind succeeded, we have full back-channel socket to the client/client_port_
+                    d.embryonic = false;
+                }
+                
+                
+                
+                
+            } else {
+                
+                // append data only if socket is virtual
+                len = recv(sock, recv_buf_,len,0);
+                d.rx.append(recv_buf_,len);
+            }
             
             
             DatagramCom::datagrams_received[session_key] = d;
             Datagram& n_it = DatagramCom::datagrams_received[session_key];
             
-            n_it.rx.append(recv_buf_,len);
             
             if (clashed) {
                 n_it.reuse = true;
@@ -398,16 +522,19 @@ int ThreadedReceiverProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
                     Datagram& record = (*it_record).second;
                     
                     if (record.embryonic) {
-                        record.embryonic = false; // it's not embryonic anymore, when we pick it up!
+                        //record.embryonic = false; // it's not embryonic anymore, when we pick it up!
                         
                         DIA_("ThreadedReceiverProxy::handle_sockets_once[%d]: embryonic connection, creating new CX with bound socket %d",s,record.socket);
                         
                         // create new cx
-                        auto cx = this->new_cx(s);
+                        
+                        int socket = s;
+                        
+                        auto cx = this->new_cx(socket);
                         record.cx = cx;
                         
                         if(!cx->paused_read()) {
-                            cx->on_accept_socket(s);
+                            cx->on_accept_socket(socket);
                         }
                         cx->idle_delay(120);
                         auto cx_dcom = dynamic_cast<DatagramCom*>(cx->com());

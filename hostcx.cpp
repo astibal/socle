@@ -200,7 +200,7 @@ void baseHostCX::shutdown() {
         fds_ = 0;
         
         if(com()) {
-            com()->master()->unset_monitor(closing_fds_);
+            com()->master()->unset_monitor(com()->translate_socket(closing_fds_));
         }
     } else {
         DEB_("HostCX::shutdown[%s]: no-op, cannot be shutdown",c_name());
