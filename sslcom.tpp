@@ -626,7 +626,7 @@ int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
         if(is_revoked > 0) {
             WAR__("Connection from %s: certificate %s is revoked (%s OCSP))",name,cn.c_str(),str_status);
         } else if (is_revoked == 0){
-            INF__("Connection from %s: certificate %s is valid (%s OCSP))",name,cn.c_str(),str_status);
+            DIA__("Connection from %s: certificate %s is valid (%s OCSP))",name,cn.c_str(),str_status);
         } else {
             /*< 0*/
             if(com->opt_ocsp_mode > 1) {
@@ -672,7 +672,7 @@ int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
                     const int tolerated_dnld_time = 3;
                     time_t start = ::time(nullptr);
                     
-                    INF__("Connection from %s: downloading CRL at %s)",name,crl_printable.c_str());
+                    DIA__("Connection from %s: downloading CRL at %s)",name,crl_printable.c_str());
 
                     buffer b;
                     bool dnld_failed = false;
@@ -683,7 +683,7 @@ int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
                         time_t t_dif = ::time(nullptr) - start;
                         
                         int crl_size = b.size();
-                        INF__("CRL downloaded: size %d bytes in %d seconds",crl_size,t_dif);
+                        DIA__("CRL downloaded: size %d bytes in %d seconds",crl_size,t_dif);
                         if(t_dif > tolerated_dnld_time) {
                             WARS__("it took long time to download CRL. You should consider to disable CRL check :(");
                         }
@@ -730,7 +730,7 @@ int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
                     WAR__("Connection from %s: certificate %s revocation status is revoked (%s CRL))",name,cn.c_str(),str_status);
                 } else
                 if(is_revoked_by_crl == 0) {
-                    INF__("Connection from %s: certificate %s revocation status is valid (%s CRL))",name,cn.c_str(),str_status);
+                    DIA__("Connection from %s: certificate %s revocation status is valid (%s CRL))",name,cn.c_str(),str_status);
                 } else {
                     WAR__("Connection from %s: certificate %s revocation status is still unknown (%s CRL))",name,cn.c_str(),str_status);
                 }
@@ -962,7 +962,7 @@ int baseSSLCom<L4Proto>::ocsp_resp_callback(SSL *s, void *arg) {
         DIA__("[%s] OCSP status is good",name);
         if(com != nullptr){
             com->ocsp_cert_is_revoked = 0;
-            INF__("Connection from %s: certificate %s is valid (stapling OCSP))",name,cn.c_str());            
+            DIA__("Connection from %s: certificate %s is valid (stapling OCSP))",name,cn.c_str());            
             
         }
         return 1;
@@ -1003,6 +1003,10 @@ int baseSSLCom<L4Proto>::ssl_client_cert_callback(SSL* ssl, X509** x509, EVP_PKE
     void* data = SSL_get_ex_data(ssl, sslcom_ssl_extdata_index);
     const char *name = "unknown_cx";
 
+    *x509 = nullptr;
+    *pkey = nullptr;
+
+    
     baseSSLCom* com = static_cast<baseSSLCom*>(data);
     if(com != nullptr) {
         baseSSLCom* pcom = dynamic_cast<baseSSLCom*>(com->peer());
@@ -1019,15 +1023,31 @@ int baseSSLCom<L4Proto>::ssl_client_cert_callback(SSL* ssl, X509** x509, EVP_PKE
         }
         
         com->verify_set(baseSSLCom::CLIENT_CERT_RQ);
-
-        if(com->opt_client_cert_action == 0 && !com->opt_failed_certcheck_replacement) {
-            com->error(ERROR_UNSPEC);
+        switch(com->opt_client_cert_action) {
+            
+            case 0:
+                INF__("[%s] sending empty client certificate disabled", name);
+                if(com->opt_failed_certcheck_replacement) {
+                    INF__("[%s] replacement will be displayed", name);
+                    return 0;
+                }
+                else {
+                    com->error(ERROR_UNSPEC);
+                    return 1;
+                }
+                break;
+                
+            case 1:
+                INF__("[%s] sending empty client certificate", name);
+                return 0;
+                
+            default:
+                return 1;
         }
     }
     
-    INF__("[%s] server asks for client certificate", name);
-    
-    return 0;
+    ERR__("[%s], Oops. Com object not SSL, sending client certificate disabled", name);
+    return 1;
 }
 
 
@@ -1136,7 +1156,7 @@ void baseSSLCom<L4Proto>::init_server() {
     }
 
     
-    INF___("baseSSLCom<L4Proto>::init_server: l4 proto = %d", l4_proto());
+    DEB___("baseSSLCom<L4Proto>::init_server: l4 proto = %d", l4_proto());
     
     if(l4_proto() == SOCK_STREAM) {
         sslcom_ctx = certstore()->def_sr_ctx;
@@ -1502,7 +1522,7 @@ int baseSSLCom<L4Proto>::waiting() {
     else if(is_server()) {
 
         if(auto_upgrade() && !upgraded()) {
-            INF___("SSLCom::waiting: server auto upgrade socket %d",sslcom_fd);
+            DIA___("SSLCom::waiting: server auto upgrade socket %d",sslcom_fd);
             upgrade_server_socket(sslcom_fd);
         }
 

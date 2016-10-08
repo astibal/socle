@@ -219,7 +219,7 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
                     char b[64]; memset(b,0,64);
                     inet_ntop(AF_INET,&ss_src.sin_addr,b,64);
                     
-                    INF___("inet_pton  okay for src: %s", b);
+                    DUM___("inet_pton  okay for src: %s", b);
                 } 
                 ss_src.sin_port = htons(sport); 
                 ss_src.sin_family = AF_INET;
@@ -231,15 +231,15 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
                     char b[64]; memset(b,0,64);
                     inet_ntop(AF_INET,&ss_dst.sin_addr,b,64);
                     
-                    INF___("inet_pton  okay for dst: %s", b);
+                    DUM___("inet_pton  okay for dst: %s", b);
                 } 
                 ss_dst.sin_port = htons(dport);
                 ss_dst.sin_family = AF_INET;
                 
                 ret_bin = ::bind (n_sock, (sockaddr*)&ss_dst, sizeof (struct sockaddr_in));
-                ERR___("transparenting: bind error: %s",string_error().c_str());
+                if(ret_bin != 0) DIA___("ipv4 transparenting: bind error: %s",string_error().c_str()); // bind is not succeeding with already bound socket ... => this will create empbryonic connection
                 ret_con = ::connect(n_sock,(sockaddr*)&ss_src,sizeof (struct sockaddr_in));
-                ERR___("transparenting: connect error: %s",string_error().c_str());
+                if(ret_con != 0) ERR___("ipv4 transparenting: connect error: %s",string_error().c_str());
                 
             } else {
                 //n_sock = ::socket (AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
@@ -255,15 +255,17 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
                 inet_pton(AF_INET6,str_dst_host.c_str(),&ss_dst); ss_dst.ss_family=AF_INET6; ((sockaddr_in6*)&ss_dst)->sin6_port = htons(dport);
 
                 ret_bin = ::bind (n_sock, (struct sockaddr*)&(d.dst), sizeof (struct sockaddr_storage));
+                if(ret_bin != 0) DIA___("ipv6 transparenting: bind error: %s",string_error().c_str()); // bind is not succeeding with already bound socket ... => this will create empbryonic connection
                 ret_con = ::connect(n_sock,(struct sockaddr*)&(d.src),sizeof (struct sockaddr_storage));
+                if(ret_con != 0) ERR___("ipv6 transparenting: connect error: %s",string_error().c_str());
             }
 
-            INF___("ThreadedReceiver::on_left_new_raw[new %d]: datagram from: %s/%s:%u to %s/%s:%u", 
+            DIA___("ThreadedReceiver::on_left_new_raw[new %d]: datagram from: %s/%s:%u to %s/%s:%u", 
                         n_sock, 
                         inet_family_str(src_family).c_str(),str_src_host.c_str(), sport,
                         inet_family_str(dst_family).c_str(),str_dst_host.c_str(), dport
                         );            
-            INF___("ThreadedReceiver transparenting for inbound connection: connect=%d, bind=%d",ret_con,ret_bin);
+            DIA___("ThreadedReceiver transparenting for inbound connection: connect=%d, bind=%d",ret_con,ret_bin);
             
             if( /*ret_bin == 0 && */ ret_con == 0) {
                 d.socket = n_sock;
