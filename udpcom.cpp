@@ -315,12 +315,12 @@ bool UDPCom::in_readset(int s) {
         Datagram& record = (*it_record).second;    
         
         if(record.real_socket) {
-            INF_("UDPCom::in_readset[%d]: record contains real socket %d",s,record.socket);
+            DEB_("UDPCom::in_readset[%d]: record contains real socket %d",s,record.socket);
             return baseCom::in_readset(record.socket);
         }
         
         if(record.rx.size() > 0) {
-            DIA_("UDPCom::in_readset[%d]: record found, data size %dB",s,record.rx.size());
+            DEB_("UDPCom::in_readset[%d]: record found, data size %dB",s,record.rx.size());
         }
         
         return (record.rx.size() > 0);
@@ -375,7 +375,7 @@ int UDPCom::poll() {
 
 int UDPCom::read(int __fd, void* __buf, size_t __n, int __flags) {
 
-    INF_("UDPCom::read[%d] read",__fd);
+    DUM_("UDPCom::read[%d] read",__fd);
     
     if (__fd < 0) {
         return read_from_pool(__fd,__buf,__n,__flags);
@@ -558,9 +558,9 @@ int UDPCom::write_to_pool(int __fd, const void* __buf, size_t __n, int __flags) 
         int l = 0;
         int ret_bind = 0;
 
-        INF_("UDPCom::write_to_pool[%d]: real=%d, embryonic=%d",__fd,record.real_socket,record.embryonic);
+        DIA_("UDPCom::write_to_pool[%d]: real=%d, embryonic=%d",__fd,record.real_socket,record.embryonic);
         if(record.real_socket && record.embryonic) {
-            INF_("UDPCom::write_to_pool[%d]: changing background embryonic socket %d to %d",__fd,record.socket,d);
+            DIA_("UDPCom::write_to_pool[%d]: changing background embryonic socket %d to %d",__fd,record.socket,d);
             
             sockaddr_storage ss_s, ss_d;
             inet_ss_address_remap(&record.dst, &ss_d);
@@ -575,12 +575,12 @@ int UDPCom::write_to_pool(int __fd, const void* __buf, size_t __n, int __flags) 
             setsockopt(d, SOL_SOCKET, SO_REUSEADDR, &n, sizeof(n));
             setsockopt(d, SOL_SOCKET, SO_BROADCAST, &n, sizeof(n));   
             
-            INF_("UDPCom::write_to_pool[%d]: background embryonic socket %s-%s",__fd, inet_ss_str(&ss_s).c_str(), inet_ss_str(&ss_d).c_str());
+            DIA_("UDPCom::write_to_pool[%d]: background embryonic socket %s-%s",__fd, inet_ss_str(&ss_s).c_str(), inet_ss_str(&ss_d).c_str());
             
             ret_bind = ::bind (d, (struct sockaddr*)&(ss_d), sizeof (struct sockaddr_storage));
             int ret_conn = ::connect(d, (struct sockaddr*)&(ss_s), sizeof (struct sockaddr_storage));
             
-            if (ret_bind != 0) INF_("UDPCom::write_to_pool[%d]: %s",__fd,string_error().c_str());
+            if (ret_bind != 0) DIA_("UDPCom::write_to_pool[%d]: %s",__fd,string_error().c_str());
             
             record.embryonic = false;
             
@@ -588,7 +588,7 @@ int UDPCom::write_to_pool(int __fd, const void* __buf, size_t __n, int __flags) 
             record.socket = d;
             
             
-            INF_("UDPCom::write_to_pool[%d]: background mature socket %d bind status %d, conn status %d",__fd,record.socket,ret_bind,ret_conn);
+            DIA_("UDPCom::write_to_pool[%d]: background mature socket %d bind status %d, conn status %d",__fd,record.socket,ret_bind,ret_conn);
             
             master()->set_monitor(record.socket);
             master()->set_poll_handler(record.socket,master()->get_poll_handler(old_socket));
