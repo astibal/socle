@@ -99,6 +99,10 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
     uint32_t session_key = 0;
     struct sockaddr_storage orig;
     
+    // use virtual socket for plaintext protocols which don't require special treatment (DNS)
+    // virtual sockets can't be used for DTLS, for example
+    bool use_virtual_socket = false;
+    
 //     hdr.client_addr_ = from.sin_addr.s_addr;
 //     hdr.client_port_ = ntohs(from.sin_port);
     
@@ -128,6 +132,12 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
                         inet_family_str(dst_family).c_str(),str_dst_host.c_str(), dport
                         );
 
+            
+            
+            if(dport == 53) {
+                use_virtual_socket = true;
+            }
+            
             if(src_family == AF_INET) {
                 uint32_t s = inet::to_sockaddr_in(&from)->sin_addr.s_addr;
                 uint16_t sp = ntohs(inet::to_sockaddr_in(&from)->sin_port);
@@ -181,135 +191,123 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
             d.src = from;
             d.dst = orig;
             d.rx.size(0);
-             d.socket = sock;
+            d.socket = sock;
+            com()->unblock(d.socket);
             
             std::string str_src_host; unsigned short sport;
             int src_family = inet_ss_address_unpack(&from,&str_src_host,&sport);
             std::string str_dst_host; unsigned short dport;
             int dst_family = inet_ss_address_unpack(&orig,&str_dst_host,&dport);             
              
-            int n_sock = 0;    
             int ret_con = -127;
             int ret_bin = -127;
             
-            if(dst_family == AF_INET) {
-                // highly experimental
-                //n_sock = ::socket (AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-                
-                n_sock = sock;
-                //new_bound_sock = ::socket (AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-                
-                
-                int n = 1;
-                ::setsockopt(n_sock, SOL_SOCKET, SO_REUSEADDR, &n, sizeof(int)); n = 1;
-                ::setsockopt(n_sock, SOL_IP,IP_RECVORIGDSTADDR, &n, sizeof(int)); n = 1;
-                ::setsockopt(n_sock, SOL_IP, SO_BROADCAST, &n, sizeof(int)); n = 1;
-                ::setsockopt(n_sock, SOL_IP, IP_TRANSPARENT, &n, sizeof(int)); n = 1;
-                ::setsockopt(n_sock, SOL_IPV6, IPV6_TRANSPARENT, &n, sizeof(int)); n = 1;
-                
-                struct sockaddr_in ss_src;
-                struct sockaddr_in ss_dst; 
-                memset(&ss_src,0,sizeof(struct sockaddr_in));
-                memset(&ss_dst,0,sizeof(struct sockaddr_in));
-                
-                int pton = inet_pton(AF_INET,str_src_host.c_str(),&ss_src.sin_addr);
-                if(pton != 1) {
-                    ERR___("inet_pton error for src: %d:%s",pton,string_error().c_str());
+            if(!use_virtual_socket) {
+                if(dst_family == AF_INET) {
+
+                    int n = 1;
+                    ::setsockopt(d.socket, SOL_SOCKET, SO_REUSEADDR, &n, sizeof(int)); n = 1;
+                    ::setsockopt(d.socket, SOL_IP,IP_RECVORIGDSTADDR, &n, sizeof(int)); n = 1;
+                    ::setsockopt(d.socket, SOL_IP, SO_BROADCAST, &n, sizeof(int)); n = 1;
+                    ::setsockopt(d.socket, SOL_IP, IP_TRANSPARENT, &n, sizeof(int)); n = 1;
+                    ::setsockopt(d.socket, SOL_IPV6, IPV6_TRANSPARENT, &n, sizeof(int)); n = 1;
+                    
+                    struct sockaddr_in ss_src;
+                    struct sockaddr_in ss_dst; 
+                    memset(&ss_src,0,sizeof(struct sockaddr_in));
+                    memset(&ss_dst,0,sizeof(struct sockaddr_in));
+                    
+                    int pton = inet_pton(AF_INET,str_src_host.c_str(),&ss_src.sin_addr);
+                    if(pton != 1) {
+                        ERR___("inet_pton error for src: %d:%s",pton,string_error().c_str());
+                    } else {
+                        char b[64]; memset(b,0,64);
+                        inet_ntop(AF_INET,&ss_src.sin_addr,b,64);
+                        
+                        DUM___("inet_pton  okay for src: %s", b);
+                    } 
+                    ss_src.sin_port = htons(sport); 
+                    ss_src.sin_family = AF_INET;
+
+                    pton = inet_pton(AF_INET,str_dst_host.c_str(),&ss_dst.sin_addr);
+                    if( pton != 1) {
+                        ERR___("inet_pton error for dst: %d:%s",pton,string_error().c_str());
+                    }else {
+                        char b[64]; memset(b,0,64);
+                        inet_ntop(AF_INET,&ss_dst.sin_addr,b,64);
+                        
+                        DUM___("inet_pton  okay for dst: %s", b);
+                    } 
+                    ss_dst.sin_port = htons(dport);
+                    ss_dst.sin_family = AF_INET;
+                    
+                    ret_bin = ::bind (d.socket, (sockaddr*)&ss_dst, sizeof (struct sockaddr_in));
+                    if(ret_bin != 0) DIA___("ipv4 transparenting: bind error: %s",string_error().c_str()); // bind is not succeeding with already bound socket ... => this will create empbryonic connection
+                    ret_con = ::connect(d.socket,(sockaddr*)&ss_src,sizeof (struct sockaddr_in));
+                    if(ret_con != 0) ERR___("ipv4 transparenting: connect error: %s",string_error().c_str());
+                    
                 } else {
-                    char b[64]; memset(b,0,64);
-                    inet_ntop(AF_INET,&ss_src.sin_addr,b,64);
+
+                    int n = 1;
+                    ::setsockopt(d.socket, SOL_SOCKET, SO_REUSEADDR, &n, sizeof(int)); n = 1;
+                    ::setsockopt(d.socket, SOL_IP, SO_BROADCAST, &n, sizeof(int)); n = 1;
+                    ::setsockopt(d.socket, SOL_IP,IPV6_RECVORIGDSTADDR, &n, sizeof(int)); n = 1;
+                    ::setsockopt(d.socket, SOL_IPV6, IPV6_TRANSPARENT, &n, sizeof(int));
+
+                    sockaddr_storage ss_src,ss_dst;
+                    memset(&ss_src,0,sizeof(struct sockaddr_storage));
+                    memset(&ss_dst,0,sizeof(struct sockaddr_storage));
                     
-                    DUM___("inet_pton  okay for src: %s", b);
-                } 
-                ss_src.sin_port = htons(sport); 
-                ss_src.sin_family = AF_INET;
+                    inet_pton(AF_INET6,str_src_host.c_str(),&ss_src); ss_src.ss_family=AF_INET6; ((sockaddr_in6*)&ss_src)->sin6_port = htons(sport);
+                    inet_pton(AF_INET6,str_dst_host.c_str(),&ss_dst); ss_dst.ss_family=AF_INET6; ((sockaddr_in6*)&ss_dst)->sin6_port = htons(dport);
 
-                pton = inet_pton(AF_INET,str_dst_host.c_str(),&ss_dst.sin_addr);
-                if( pton != 1) {
-                    ERR___("inet_pton error for dst: %d:%s",pton,string_error().c_str());
-                }else {
-                    char b[64]; memset(b,0,64);
-                    inet_ntop(AF_INET,&ss_dst.sin_addr,b,64);
-                    
-                    DUM___("inet_pton  okay for dst: %s", b);
-                } 
-                ss_dst.sin_port = htons(dport);
-                ss_dst.sin_family = AF_INET;
-                
-                ret_bin = ::bind (n_sock, (sockaddr*)&ss_dst, sizeof (struct sockaddr_in));
-                if(ret_bin != 0) DIA___("ipv4 transparenting: bind error: %s",string_error().c_str()); // bind is not succeeding with already bound socket ... => this will create empbryonic connection
-                ret_con = ::connect(n_sock,(sockaddr*)&ss_src,sizeof (struct sockaddr_in));
-                if(ret_con != 0) ERR___("ipv4 transparenting: connect error: %s",string_error().c_str());
-                
-            } else {
-                //n_sock = ::socket (AF_INET6, SOCK_DGRAM, IPPROTO_UDP);
-                n_sock = sock;
-                int n = 1;
-                ::setsockopt (n_sock, SOL_SOCKET, SO_REUSEADDR, &n, sizeof(int)); n = 1;
-                ::setsockopt(n_sock, SOL_IP,IPV6_RECVORIGDSTADDR, &n, sizeof(int)); n = 1;
-                //::setsockopt(n_sock, SOL_IP, SO_BROADCAST, &n, sizeof(int)); n = 1;
-                ::setsockopt (n_sock, SOL_IPV6, IPV6_TRANSPARENT, &n, sizeof(int));
+                    ret_bin = ::bind (d.socket, (struct sockaddr*)&(d.dst), sizeof (struct sockaddr_storage));
+                    if(ret_bin != 0) DIA___("ipv6 transparenting: bind error: %s",string_error().c_str()); // bind is not succeeding with already bound socket ... => this will create empbryonic connection
+                    ret_con = ::connect(d.socket,(struct sockaddr*)&(d.src),sizeof (struct sockaddr_storage));
+                    if(ret_con != 0) ERR___("ipv6 transparenting: connect error: %s",string_error().c_str());
+                }
 
-                sockaddr_storage ss_src,ss_dst;
-                inet_pton(AF_INET6,str_src_host.c_str(),&ss_src); ss_src.ss_family=AF_INET6; ((sockaddr_in6*)&ss_src)->sin6_port = htons(sport);
-                inet_pton(AF_INET6,str_dst_host.c_str(),&ss_dst); ss_dst.ss_family=AF_INET6; ((sockaddr_in6*)&ss_dst)->sin6_port = htons(dport);
-
-                ret_bin = ::bind (n_sock, (struct sockaddr*)&(d.dst), sizeof (struct sockaddr_storage));
-                if(ret_bin != 0) DIA___("ipv6 transparenting: bind error: %s",string_error().c_str()); // bind is not succeeding with already bound socket ... => this will create empbryonic connection
-                ret_con = ::connect(n_sock,(struct sockaddr*)&(d.src),sizeof (struct sockaddr_storage));
-                if(ret_con != 0) ERR___("ipv6 transparenting: connect error: %s",string_error().c_str());
             }
 
             DIA___("ThreadedReceiver::on_left_new_raw[new %d]: datagram from: %s/%s:%u to %s/%s:%u", 
-                        n_sock, 
+                        d.socket, 
                         inet_family_str(src_family).c_str(),str_src_host.c_str(), sport,
                         inet_family_str(dst_family).c_str(),str_dst_host.c_str(), dport
                         );            
-            DIA___("ThreadedReceiver transparenting for inbound connection: connect=%d, bind=%d",ret_con,ret_bin);
             
-            if( /*ret_bin == 0 && */ ret_con == 0) {
-                d.socket = n_sock;
+            if(use_virtual_socket) {
+                DIA___("ThreadedReceiver transparenting for inbound connection: connect=%d, bind=%d",ret_con,ret_bin);
+            } else {
+                DIA___("ThreadedReceiver using virtual socket %d",session_key);
+            }
+            
+            
+            // in case of virtual sockets, default ret_con is -127
+            if(ret_con == 0) {
+                // if bind succeeded, we have full back-channel socket to the client/client_port_
+                if(ret_bin == 0) {
+                    d.embryonic = false;
+                }
+                
+                // d.socket is now connected to originator!
+                com()->unblock(d.socket);
                 d.real_socket = true;
 
 
                 // for now, don't monitor this rebuilt socket. It should be handled by new proxy object later.
-                com()->master()->unset_monitor(n_sock);
+                com()->master()->unset_monitor(d.socket);
                 // also remove this proxy as handler
-                com()->set_poll_handler(n_sock,nullptr);
-                
-                // don't look for data in this socket anymore
-                bool copied = false;
-                baseCom*    n_com = nullptr;
-                baseHostCX* n_bound = nullptr;
+                com()->set_poll_handler(d.socket,nullptr);
                 
                 for (auto bound_cx: left_bind_sockets) {
-                    
-//                     if(!copied) {
-//                         
-//                         INFS___("Creating new listener");
-//                         
-//                         int s = com->bind(50081);
-//                         n_bound = new baseHostCX(n_com,s);
-//                         
-//                         copied = true;
-//                         INF___("Creating new listener done, on socket %d", s);
-//                     }
-                    
                     bound_cx->remove_socket();
                     delete bound_cx;
                 }
                 left_bind_sockets.clear(); // all objects are invalidated
+                
+                
                 int s = bind(50081,'L');
                 com()->unblock(s);
-                
-                
-                if(ret_bin == 0) {
-                    // if bind succeeded, we have full back-channel socket to the client/client_port_
-                    d.embryonic = false;
-                }
-                
-                
-                
                 
             } else {
                 
@@ -340,18 +338,31 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
             } else {
                 DIA_("ThreadedReceiver::on_left_new_raw[%d]: inserting new session key in storage: key=%d, bytes=%d",sock, session_key,n_it.rx.size());
             }
-//             push(session_key);
             push(session_key);
         }
         else {
             Datagram& o_it = DatagramCom::datagrams_received[session_key];
+
+            int dst_family = o_it.dst_family();
+            bool clashed_cond = false;
             
-            if( (o_it.src_in_addr4().s_addr != inet::to_sockaddr_in(&from)->sin_addr.s_addr) ||
-                (o_it.src_port4() != inet::to_sockaddr_in(&from)->sin_port) ||
-                (o_it.dst_in_addr4().s_addr != inet::to_sockaddr_in(&orig)->sin_addr.s_addr) ||
-                (o_it.dst_port4() != inet::to_sockaddr_in(&orig)->sin_port) ||
-                (o_it.src_family() != inet::to_sockaddr_in(&orig)->sin_family)
-            ) {
+            if(dst_family != AF_INET6) {
+                clashed_cond =  (o_it.src_in_addr4().s_addr != inet::to_sockaddr_in(&from)->sin_addr.s_addr) ||
+                                (o_it.src_port4() != inet::to_sockaddr_in(&from)->sin_port) ||
+                                (o_it.dst_in_addr4().s_addr != inet::to_sockaddr_in(&orig)->sin_addr.s_addr) ||
+                                (o_it.dst_port4() != inet::to_sockaddr_in(&orig)->sin_port) ||
+                                (o_it.src_family() != inet::to_sockaddr_in(&orig)->sin_family);
+            } else {
+                // IPv6
+                clashed_cond =  (o_it.src_in_addr6().s6_addr != inet::to_sockaddr_in6(&from)->sin6_addr.s6_addr) ||
+                                (o_it.src_port6() != inet::to_sockaddr_in6(&from)->sin6_port) ||
+                                (o_it.dst_in_addr6().s6_addr != inet::to_sockaddr_in6(&orig)->sin6_addr.s6_addr) ||
+                                (o_it.dst_port6() != inet::to_sockaddr_in6(&orig)->sin6_port) ||
+                                (o_it.src_family() != inet::to_sockaddr_in6(&orig)->sin6_family);
+                
+            }
+            
+            if(clashed_cond) {
                 DIA_("ThreadedReceiver::on_left_new_raw[%d]: key %d: session clash with cx@%x!",sock, session_key,o_it.cx);
                 clashed = true;
                 clashed_cx = o_it.cx;

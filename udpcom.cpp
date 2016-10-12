@@ -465,7 +465,6 @@ int UDPCom::write_to_pool(int __fd, const void* __buf, size_t __n, int __flags) 
         inet_ss_address_unpack(&record.src,&ip_src,&port_src);
         
         sockaddr_storage record_src_4fix;
-        bool v4_fix = false;
         
         inet_ss_address_unpack(&record.dst,&ip_dst,&port_dst);
         std::string af_src = inet_family_str(record.src_family());
@@ -504,48 +503,44 @@ int UDPCom::write_to_pool(int __fd, const void* __buf, size_t __n, int __flags) 
         
         //IPV4
         if(record.dst_family() == AF_INET) {
-
-            
-            DEBS_("Constucting IPv4 pktinfo");
-            
-            if(record.src_family() == AF_INET6) {
-                DEBS_("reconstructing mapped IPv4 src address record");
-                record_src_4fix.ss_family = AF_INET;
-                inet_pton(AF_INET,ip_src.c_str(), &((sockaddr_in*)&record_src_4fix)->sin_addr);
-                ((sockaddr_in*)&record_src_4fix)->sin_port = record.src_port6();
-                m.msg_name = (void*)&record_src_4fix;
-                
-                v4_fix = true;
-            }
-            
-            cmsg->cmsg_level = IPPROTO_IP;
-            cmsg->cmsg_len = CMSG_LEN(sizeof(struct in_pktinfo));
-            pktinfo = (struct in_pktinfo*) CMSG_DATA(cmsg);
-            pktinfo->ipi_spec_dst = record.dst_in_addr4();
-            pktinfo->ipi_ifindex = 0;
-            m.msg_controllen = CMSG_SPACE(sizeof(struct in_pktinfo));
             
             if(record.real_socket) {
                 d = record.socket;
             } else {
+                DEBS_("Constucting IPv4 pktinfo");
+                
+                if(record.src_family() == AF_INET6) {
+                    DEBS_("reconstructing mapped IPv4 src address record");
+                    record_src_4fix.ss_family = AF_INET;
+                    inet_pton(AF_INET,ip_src.c_str(), &((sockaddr_in*)&record_src_4fix)->sin_addr);
+                    ((sockaddr_in*)&record_src_4fix)->sin_port = record.src_port6();
+                    m.msg_name = (void*)&record_src_4fix;
+                }
+                
+                cmsg->cmsg_level = IPPROTO_IP;
+                cmsg->cmsg_len = CMSG_LEN(sizeof(struct in_pktinfo));
+                pktinfo = (struct in_pktinfo*) CMSG_DATA(cmsg);
+                pktinfo->ipi_spec_dst = record.dst_in_addr4();
+                pktinfo->ipi_ifindex = 0;
+                m.msg_controllen = CMSG_SPACE(sizeof(struct in_pktinfo));
+                
                 d = socket (record.dst_family(), SOCK_DGRAM, 0);
             }
         }
         else if(record.dst_family() == AF_INET6){
             
-            DEBS_("Constucting IPv6 pktinfo");
-            
-            cmsg->cmsg_level = IPPROTO_IPV6;
-            cmsg->cmsg_type = IPV6_PKTINFO;
-            cmsg->cmsg_len = CMSG_LEN(sizeof(struct in6_pktinfo));
-            pktinfo6 = (struct in6_pktinfo*) CMSG_DATA(cmsg);
-            pktinfo6->ipi6_addr = record.dst_in_addr6();
-            pktinfo6->ipi6_ifindex = 0;
-            m.msg_controllen = CMSG_SPACE(sizeof(struct in6_pktinfo));
-            
             if(record.real_socket) {
                 d = record.socket;
             } else {
+                DEBS_("Constucting IPv6 pktinfo");
+                
+                cmsg->cmsg_level = IPPROTO_IPV6;
+                cmsg->cmsg_type = IPV6_PKTINFO;
+                cmsg->cmsg_len = CMSG_LEN(sizeof(struct in6_pktinfo));
+                pktinfo6 = (struct in6_pktinfo*) CMSG_DATA(cmsg);
+                pktinfo6->ipi6_addr = record.dst_in_addr6();
+                pktinfo6->ipi6_ifindex = 0;
+                m.msg_controllen = CMSG_SPACE(sizeof(struct in6_pktinfo));
                 d = socket (record.dst_family(), SOCK_DGRAM, 0);
             }
         }
@@ -558,13 +553,14 @@ int UDPCom::write_to_pool(int __fd, const void* __buf, size_t __n, int __flags) 
         int l = 0;
         int ret_bind = 0;
 
+        sockaddr_storage ss_s, ss_d;
+        inet_ss_address_remap(&record.dst, &ss_d);
+        inet_ss_address_remap(&record.src, &ss_s);
+        
         DIA_("UDPCom::write_to_pool[%d]: real=%d, embryonic=%d",__fd,record.real_socket,record.embryonic);
         if(record.real_socket && record.embryonic) {
             DIA_("UDPCom::write_to_pool[%d]: changing background embryonic socket %d to %d",__fd,record.socket,d);
             
-            sockaddr_storage ss_s, ss_d;
-            inet_ss_address_remap(&record.dst, &ss_d);
-            inet_ss_address_remap(&record.src, &ss_s);
             
             int n = 1;
             int d = socket (ss_d.ss_family, SOCK_DGRAM, 0);
@@ -607,7 +603,15 @@ int UDPCom::write_to_pool(int __fd, const void* __buf, size_t __n, int __flags) 
             if(record.real_socket) {
                 l = ::send(record.socket,__buf,__n, 0);
             } else {
-                l = ::sendmsg(record.socket,&m,0);
+                int n = 1;
+                if(ss_d.ss_family == AF_INET6) {  setsockopt(d, SOL_IPV6, IPV6_TRANSPARENT, &n, sizeof(n)); n = 1; }
+                if(ss_d.ss_family == AF_INET ) {  setsockopt(d, SOL_IP, IP_TRANSPARENT, &n, sizeof(n)); n = 1; }                
+                setsockopt(d, SOL_SOCKET, SO_REUSEADDR, &n, sizeof(n));
+                setsockopt(d, SOL_SOCKET, SO_BROADCAST, &n, sizeof(n));
+                ret_bind = ::bind (d, (struct sockaddr*)&(ss_d), sizeof (struct sockaddr_storage));
+                int ret_conn = ::connect(d, (struct sockaddr*)&(ss_s), sizeof (struct sockaddr_storage));
+                
+                l = ::sendmsg(d,&m,0);
             }
             
             if(l < 0) {
