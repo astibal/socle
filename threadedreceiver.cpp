@@ -133,9 +133,27 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
                         );
 
             
-            
-            if(dport == 53) {
-                use_virtual_socket = true;
+            //  if list is set, use it, otherwise use virtual sockets for everything than udp/443 (DTLS)
+            if(get_quick_list() != nullptr) {
+                DEB_("ThreadedReceiver::on_left_new_raw[%d]: reading quick list",sock);
+                std::vector<int>& ref = *get_quick_list();
+                for(int x: ref) {
+                    if(dport == x || 0 == x) {
+                        DIA_("ThreadedReceiver::on_left_new_raw[%d]: using quick mode for port %d",sock, dport);
+                        use_virtual_socket = true;
+                    } else {
+                        DIA_("ThreadedReceiver::on_left_new_raw[%d]: using standard mode for port %d",sock, dport);
+                    }
+                }
+            }
+            else {
+                const int ex_port = 443;
+                if(dport != ex_port) {
+                    DIA_("ThreadedReceiver::on_left_new_raw[%d]: default quick mode for port %d",sock, dport);
+                    use_virtual_socket = true;
+                } else {
+                    DIA_("ThreadedReceiver::on_left_new_raw[%d]: default standard mode for port %d",sock, dport);
+                }
             }
             
             if(src_family == AF_INET) {

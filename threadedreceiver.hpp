@@ -49,9 +49,16 @@ public:
 
     inline void worker_count_preference(int c) { worker_count_preference_ = c; };
     inline int worker_count_preference(void) { return worker_count_preference_; };    
+    
+    
+    void set_quick_list(std::vector<int>* quick_list) { quick_list_ = quick_list; };
+    inline std::vector<int>* get_quick_list() const { return quick_list_;};
+    
+    
 protected:
     mutable std::mutex sq_lock_;
     std::deque<int> sq_;
+    std::vector<int>* quick_list_ = nullptr;    
 
     // pipe created to be monitored by Workers with poll. If pipe is filled with *some* data
     // there is something in the queue to pick-up.
@@ -74,6 +81,7 @@ public:
     virtual int handle_sockets_once(baseCom*);  
 
     static int workers_total;   
+    
 protected:
     int worker_id_ = 0;
  
