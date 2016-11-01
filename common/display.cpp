@@ -210,7 +210,7 @@ std::string number_suffixed(unsigned long xn) {
     if(n >= POW_2 && n < POW_3 ) {
         return string_format("%.2fM",xn/POW_2);
     } else 
-    if (n >= POW_3 && n < POW_3 ) {
+    if (n >= POW_3 && n < POW_4 ) {
         return string_format("%.2fG",xn/POW_3);
     }
     else {
