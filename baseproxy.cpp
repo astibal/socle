@@ -1302,6 +1302,9 @@ std::string baseProxy::to_string(int verbosity) {
 		for(typename std::vector<baseHostCX*>::iterator ii = left_pc_cx.begin(); ii != left_pc_cx.end(); ++ii) { ret += ("x:" + (*ii)->to_string(verbosity) + " "); };
 		empty = false;	
 	}
+	
+	ret += "<+> ";
+	
 	if(rb > 0) {
 		for(typename std::vector<baseHostCX*>::iterator ii = right_bind_sockets.begin(); ii != right_bind_sockets.end(); ++ii) { ret += ("b:" + (*ii)->to_string(verbosity) + " "); };
 		empty = false;	

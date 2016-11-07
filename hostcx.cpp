@@ -584,7 +584,7 @@ void baseHostCX::on_delay_socket(int fd) {
 
 std::string baseHostCX::to_string(int verbosity) {
     std::string r;
-    r+= this->name() + ( verbosity > INF ? string_format(" %d:%d-%d:%d",meter_read_count,meter_read_bytes,
+    r+= this->name() + ( verbosity > INF ? string_format(" | fd=%d | rx_cnt=%d rx_b=%d / tx_cnt=%d tx_b=%d", com() ? com()->translate_socket(socket()) : socket(), meter_read_count,meter_read_bytes,
                          meter_write_count,meter_write_bytes) : "");
     return r;
 }
