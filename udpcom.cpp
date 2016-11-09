@@ -768,9 +768,6 @@ void UDPCom::shutdown(int __fd) {
                 Datagram& it = DatagramCom::datagrams_received[(unsigned int)__fd];
                 
                 if(! it.reuse) {
-                    DIA_("UDPCom::close[%d]: datagrams_received entry erased",__fd);
-                    DatagramCom::datagrams_received.erase((unsigned int)__fd);
-                    
                     if(it.real_socket && it.socket > 0) {
                         ::close(it.socket);
                     }
@@ -780,6 +777,8 @@ void UDPCom::shutdown(int __fd) {
                     it.reuse = false;
                 }
                 
+                DIA_("UDPCom::close[%d]: datagrams_received entry erased",__fd);
+                DatagramCom::datagrams_received.erase((unsigned int)__fd);
         } else {
             DIA_("UDPCom::close[%d]: datagrams_received entry NOT found, thus not erased",__fd);
         }

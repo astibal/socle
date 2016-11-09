@@ -552,7 +552,10 @@ int ThreadedReceiverProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
                     
                     Datagram& record = (*it_record).second;
                     
-                    if (record.embryonic) {
+                    DEB_("Record dump: cx=0x%x dst=%s embryonic=%d real_socket=%d reuse=%d rx_size=0x%x socket=%d src=%s", 
+                                record.cx, inet_ss_str(&record.dst).c_str(),record.embryonic, record.real_socket, record.reuse, record.rx.size(),record.socket, inet_ss_str(&record.src).c_str());
+                    
+                    if (!record.reuse) {
                         //record.embryonic = false; // it's not embryonic anymore, when we pick it up!
                         
                         DIA_("ThreadedReceiverProxy::handle_sockets_once[%d]: embryonic connection, creating new CX with bound socket %d",s,record.socket);
