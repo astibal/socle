@@ -41,7 +41,6 @@
 #define BUFSIZE 9216
 
 extern int errno;
-extern ::logger lout;
 
 DEFINE_LOGGING(baseProxy);
 

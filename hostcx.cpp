@@ -21,8 +21,6 @@
 #include "display.hpp"
 #include "crc32.hpp"
 
-extern logger lout;
-
 bool baseHostCX::socket_in_name = false;
 bool baseHostCX::online_name = false;
 

@@ -33,9 +33,29 @@
 #include <sys/time.h>
 #include <sys/socket.h>
 
-logger lout;
+logger* lout_ = nullptr;
 
 static  std::string level_table[] = {"None    ","Fatal   ","Critical","Error   ","Warning ","Notify  ","Informat","Diagnose","Debug   ","Dumpit  ","Extreme "};
+
+
+
+logger* get_logger() { 
+    if(lout_ == nullptr) { lout_ = create_default_logger(); }
+    return lout_; 
+}; 
+
+logger* create_default_logger() {
+    return new logger();
+}
+
+void set_logger(logger* l) {
+    if (lout_ != nullptr) {
+        delete lout_;
+    }
+    
+    lout_ = l;
+}
+
 
 std::string ESC_(std::string s) {
     std::string t = s;
@@ -78,6 +98,55 @@ bool logger::periodic_end() {
 }
 
 
+int logger::write_log(unsigned int level, std::string& sss) {
+
+    bool really_dup = dup2_cout();
+    
+    for(std::list<std::ostream*>::iterator i = targets().begin(); i != targets().end(); ++i) {
+        if(target_profiles().find((uint64_t)*i) != target_profiles().end()) 
+            if(target_profiles()[(uint64_t)*i]->level_ < level && ! forced_) 
+                continue;
+            if(forced_ && target_profiles()[(uint64_t)*i]->level_ < INF)
+                continue;
+            
+        *(*i) << sss << std::endl;
+        //if(target_profiles()[(uint64_t)*i]->dup_to_cout_) really_dup = true;
+    }
+
+    for(std::list<int>::iterator i = remote_targets().begin(); i != remote_targets().end(); ++i) {
+        
+        if(target_profiles().find((uint64_t)*i) != target_profiles().end()) 
+            if(target_profiles()[(uint64_t)*i]->level_ < level && ! forced_ ) 
+                continue;
+            if(forced_ && target_profiles()[(uint64_t)*i]->level_ == NON)
+                continue;
+            
+        std::stringstream  s;
+        s << sss <<  "\r\n";
+        std::string a = s.str();
+        
+        if(::send(*i,a.c_str(),a.size(),0) < 0) {
+            std::cerr << string_format("logger::write_log: cannot write remote socket: %d",*i);
+        }
+        
+        //if(target_profiles()[(uint64_t)*i]->dup_to_cout_) really_dup = true;
+    }
+    
+    // if set, log extra to stdout/stderr
+    if(really_dup) {
+        std::ostream* o = &std::cout;
+
+        if( level <= ERR) {
+            o = &std::cerr;
+        }
+        *o << sss << std::endl;
+    }
+    
+    forced_ = false;
+
+    return sss.size();
+}
+
 void logger::log(unsigned int l, const std::string& fmt, ...) {
 
     std::lock_guard<std::recursive_mutex> lck(mtx_lout);
@@ -109,53 +178,12 @@ void logger::log(unsigned int l, const std::string& fmt, ...) {
 		desc = level_table[l];
 	}    
     
-    bool really_dup = dup2_cout();
     
     std::stringstream ss;
     ss << std::string(date,date_len) << "." << string_format("%06d",tv.tv_usec) << " <" << std::hex << std::this_thread::get_id() << "> " << desc << " - " << str;
     std::string sss = ss.str();
     
-    for(std::list<std::ostream*>::iterator i = targets().begin(); i != targets().end(); ++i) {
-        if(target_profiles().find((uint64_t)*i) != target_profiles().end()) 
-            if(target_profiles()[(uint64_t)*i]->level_ < l && ! forced_) 
-                continue;
-            if(forced_ && target_profiles()[(uint64_t)*i]->level_ < INF)
-                continue;
-            
-        *(*i) << sss << std::endl;
-        if(target_profiles()[(uint64_t)*i]->dup_to_cout_) really_dup = true;
-    }
-
-    for(std::list<int>::iterator i = remote_targets().begin(); i != remote_targets().end(); ++i) {
-        
-        if(target_profiles().find((uint64_t)*i) != target_profiles().end()) 
-            if(target_profiles()[(uint64_t)*i]->level_ < l && ! forced_ ) 
-                continue;
-            if(forced_ && target_profiles()[(uint64_t)*i]->level_ == NON)
-                continue;
-            
-        std::stringstream  s;
-        s << sss <<  "\r\n";
-        std::string a = s.str();
-        
-        if(::send(*i,a.c_str(),a.size(),0) < 0) {
-            std::cerr << string_format("Error: cannot write remote socket: %d",*i);
-        }
-        
-        if(target_profiles()[(uint64_t)*i]->dup_to_cout_) really_dup = true;
-    }
-    
-    // if set, log extra to stdout/stderr
-    if(really_dup) {
-        std::ostream* o = &std::cout;
-
-        if( l <= ERR) {
-            o = &std::cerr;
-        }
-        *o << sss << std::endl;
-    }
-    
-    forced_ = false;
+    write_log(l,sss);
 };
 
 

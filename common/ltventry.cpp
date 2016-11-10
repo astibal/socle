@@ -25,8 +25,6 @@
 #include "logger.hpp"
 #include "buffer.hpp"
 
-extern logger lout;
-
 LTVEntry::LTVEntry() {
 	len_ = 0;
 	id_ = 0;

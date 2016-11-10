@@ -42,18 +42,18 @@
 #define DUM 9
 #define EXT 10
 
-#define DEB_DO_(x) if(lout.level() >= DEB) { (x); }
-#define LEV_(x) (lout.level() >= (x) ? true : false ) 
-#define LEV lout.level()
+#define DEB_DO_(x) if(get_logger()->level() >= DEB) { (x); }
+#define LEV_(x) (get_logger()->level() >= (x) ? true : false ) 
+#define LEV get_logger()->level()
 
 #define O_LOG_(lev,x,...) \
-    if(lout.level() >= (lev)) { \
-        lout.log(lev,(x),__VA_ARGS__); \
+    if(get_logger()->level() >= (lev)) { \
+        get_logger()->log(lev,(x),__VA_ARGS__); \
     }
 
 #define O_LOGS_(lev,x) \
-    if(lout.level() >= (lev)) { \
-        lout.log(lev,(x)); \
+    if(get_logger()->level() >= (lev)) { \
+        get_logger()->log(lev,(x)); \
     }
 
 #define _FILE_ (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
@@ -62,33 +62,33 @@
 /* Define macros that log without any extra checks in the object */
 
 #define LOG_(lev,x,...) \
-    if(lout.level() >= (lev)) { \
-        if( ( lout.print_srcline() && lout.level() > INF ) || lout.print_srcline_always()) { \
-            lout.log2(lev,_FILE_,__LINE__,(x),__VA_ARGS__); \
+    if(get_logger()->level() >= (lev)) { \
+        if( ( get_logger()->print_srcline() && get_logger()->level() > INF ) || get_logger()->print_srcline_always()) { \
+            get_logger()->log2(lev,_FILE_,__LINE__,(x),__VA_ARGS__); \
         } else { \
-            lout.log(lev,(x),__VA_ARGS__); \
+            get_logger()->log(lev,(x),__VA_ARGS__); \
         } \
     }
 
 #define LOGS_(lev,x) \
-    if(lout.level() >= (lev)) { \
-        if( ( lout.print_srcline() && lout.level() > INF ) || lout.print_srcline_always()) { \
-            lout.log2(lev,_FILE_,__LINE__,(x)); \
+    if(get_logger()->level() >= (lev)) { \
+        if( ( get_logger()->print_srcline() && get_logger()->level() > INF ) || get_logger()->print_srcline_always()) { \
+            get_logger()->log2(lev,_FILE_,__LINE__,(x)); \
         } else { \
-            lout.log(lev,(x)); \
+            get_logger()->log(lev,(x)); \
         } \
     }
 	
 #define T_LOG_(name,interval,lev,x,...) \
-    if(lout.level() >= (lev)) { \
-        if(lout.click_timer(name,interval)) { \
+    if(get_logger()->level() >= (lev)) { \
+        if(get_logger()->click_timer(name,interval)) { \
             LOG_(lev,x,__VA_ARGS__); \
         } \
     }
 
 #define T_LOGS_(name,interval,lev,x) \
-    if(lout.level() >= (lev)) { \
-        if(lout.click_timer(name,interval)) { \
+    if(get_logger()->level() >= (lev)) { \
+        if(get_logger()->click_timer(name,interval)) { \
             LOGS_(lev,x); \
         } \
     }
@@ -97,41 +97,41 @@
 /* Define macros that log in some cases also source file and line number enabling object log_level atribute check */
 
 #define L_LOG_(lev,x,...) \
-    if(log_level >= lev || lout.level() >= lev) { \
-        lout.force(log_level >= lev); \
-        if( ( lout.print_srcline() && lout.level() > INF ) || ( lout.print_srcline() && log_level > INF ) || lout.print_srcline_always()) { \
-            lout.log2(lev,_FILE_,__LINE__,(x),__VA_ARGS__); \
+    if(log_level >= lev || get_logger()->level() >= lev) { \
+        get_logger()->force(log_level >= lev); \
+        if( ( get_logger()->print_srcline() && get_logger()->level() > INF ) || ( get_logger()->print_srcline() && log_level > INF ) || get_logger()->print_srcline_always()) { \
+            get_logger()->log2(lev,_FILE_,__LINE__,(x),__VA_ARGS__); \
         } else { \
-            lout.log(lev,(x),__VA_ARGS__); \
+            get_logger()->log(lev,(x),__VA_ARGS__); \
         } \
     }
 
 #define L_LOGS_(lev,x) \
-    if(log_level >= lev || lout.level() >= lev) { \
-        lout.force(log_level >= lev); \
-        if( ( lout.print_srcline() && lout.level() > INF ) || ( lout.print_srcline() && log_level > INF ) || lout.print_srcline_always()) { \
-            lout.log2(lev,_FILE_,__LINE__,(x)); \
+    if(log_level >= lev || get_logger()->level() >= lev) { \
+        get_logger()->force(log_level >= lev); \
+        if( ( get_logger()->print_srcline() && get_logger()->level() > INF ) || ( get_logger()->print_srcline() && log_level > INF ) || get_logger()->print_srcline_always()) { \
+            get_logger()->log2(lev,_FILE_,__LINE__,(x)); \
         } else { \
-            lout.log(lev,(x)); \
+            get_logger()->log(lev,(x)); \
         } \
     }    
     
 
 #define _T_L_LOG_(name,interval,lev,x,...) \
-    if(this->log_level >= lev || lout.level() >= lev) { \
-        lout.force(log_level >= lev); \
-        if( ( lout.print_srcline() && lout.level() > INF ) || ( lout.print_srcline() && log_level > INF ) || lout.print_srcline_always()) { \
-            if(lout.click_timer(name,interval)) { \
+    if(this->log_level >= lev || get_logger()->level() >= lev) { \
+        get_logger()->force(log_level >= lev); \
+        if( ( get_logger()->print_srcline() && get_logger()->level() > INF ) || ( get_logger()->print_srcline() && log_level > INF ) || get_logger()->print_srcline_always()) { \
+            if(get_logger()->click_timer(name,interval)) { \
                 LOG_(lev,x,__VA_ARGS__); \
             } \
         }\
     }
 
 #define T_L_LOGS_(name,interval,lev,x) \
-    if(this->log_level >= lev || lout.level() >= lev) { \
-        lout.force(log_level >= lev); \
-        if( ( lout.print_srcline() && lout.level() > INF ) || ( lout.print_srcline() && log_level > INF ) || lout.print_srcline_always()) { \
-            if(lout.click_timer(name,interval)) { \
+    if(this->log_level >= lev || get_logger()->level() >= lev) { \
+        get_logger()->force(log_level >= lev); \
+        if( ( get_logger()->print_srcline() && get_logger()->level() > INF ) || ( get_logger()->print_srcline() && log_level > INF ) || get_logger()->print_srcline_always()) { \
+            if(get_logger()->click_timer(name,interval)) { \
                 LOGS_(lev,x); \
             } \
         } \
@@ -141,41 +141,41 @@
 /* Define macros that log objects with hr() function */    
     
 #define LN_LOG_(lev,x,...) \
-    if(log_level >= lev || lout.level() >= lev) { \
-        lout.force(log_level >= lev); \
-        if( ( lout.print_srcline() && lout.level() > INF ) || ( lout.print_srcline() && log_level > INF ) || lout.print_srcline_always()) { \
-            lout.log2_w_name(lev,_FILE_,__LINE__,(hr()),(x),__VA_ARGS__); \
+    if(log_level >= lev || get_logger()->level() >= lev) { \
+        get_logger()->force(log_level >= lev); \
+        if( ( get_logger()->print_srcline() && get_logger()->level() > INF ) || ( get_logger()->print_srcline() && log_level > INF ) || get_logger()->print_srcline_always()) { \
+            get_logger()->log2_w_name(lev,_FILE_,__LINE__,(hr()),(x),__VA_ARGS__); \
         } else { \
-            lout.log_w_name(lev,(hr()),(x),__VA_ARGS__); \
+            get_logger()->log_w_name(lev,(hr()),(x),__VA_ARGS__); \
         } \
     }
 
 #define LN_LOGS_(lev,x) \
-    if(log_level >= lev || lout.level() >= lev) { \
-        lout.force(log_level >= lev); \
-        if( ( lout.print_srcline() && lout.level() > INF ) || ( lout.print_srcline() && log_level > INF ) || lout.print_srcline_always()) { \
-            lout.log2_w_name(lev,_FILE_,__LINE__,(hr()),(x)); \
+    if(log_level >= lev || get_logger()->level() >= lev) { \
+        get_logger()->force(log_level >= lev); \
+        if( ( get_logger()->print_srcline() && get_logger()->level() > INF ) || ( get_logger()->print_srcline() && log_level > INF ) || get_logger()->print_srcline_always()) { \
+            get_logger()->log2_w_name(lev,_FILE_,__LINE__,(hr()),(x)); \
         } else { \
-            lout.log_w_name(lev,(hr()),(x)); \
+            get_logger()->log_w_name(lev,(hr()),(x)); \
         } \
     }    
     
         
 #define T_LN_LOG_(name,interval,lev,x,...) \
-    if(this->log_level >= lev || lout.level() >= lev) { \
-        lout.force(log_level >= lev); \
-        if( ( lout.print_srcline() && lout.level() > INF ) || ( lout.print_srcline() && log_level > INF ) || lout.print_srcline_always()) { \
-            if(lout.click_timer(name,interval)) { \
+    if(this->log_level >= lev || get_logger()->level() >= lev) { \
+        get_logger()->force(log_level >= lev); \
+        if( ( get_logger()->print_srcline() && get_logger()->level() > INF ) || ( get_logger()->print_srcline() && log_level > INF ) || get_logger()->print_srcline_always()) { \
+            if(get_logger()->click_timer(name,interval)) { \
                 LN_LOG_(lev,x,__VA_ARGS__); \
             } \
         }\
     }
 
 #define T_LN_LOGS_(name,interval,lev,x) \
-    if(this->log_level >= lev || lout.level() >= lev) { \
-        lout.force(log_level >= lev); \
-        if( ( lout.print_srcline() && lout.level() > INF ) || ( lout.print_srcline() && log_level > INF ) || lout.print_srcline_always()) { \
-            if(lout.click_timer(name,interval)) { \
+    if(this->log_level >= lev || get_logger()->level() >= lev) { \
+        get_logger()->force(log_level >= lev); \
+        if( ( get_logger()->print_srcline() && get_logger()->level() > INF ) || ( get_logger()->print_srcline() && log_level > INF ) || get_logger()->print_srcline_always()) { \
+            if(get_logger()->click_timer(name,interval)) { \
                 LN_LOGS_(lev,x); \
             } \
         } \
@@ -380,8 +380,8 @@
 #define T_NONS___(n,i,x) T_LN_LOGS_(n,i,NON,(x))
 
 
-#define PERIOD_START(interval) lout.periodic_start(interval);
-#define PERIOD_END lout.periodic_end();
+#define PERIOD_START(interval) get_logger()->periodic_start(interval);
+#define PERIOD_END get_logger()->periodic_end();
 
 
 #define VA_BUFFSIZE 2048
@@ -516,6 +516,8 @@ public:
     std::list<int>& remote_targets() { return remote_targets_; }
     void remote_targets(std::string name, int s) { remote_targets_.push_back(s); target_names_[s] = name; }
 
+    int virtual write_log(unsigned int level, std::string& sss);
+    
     void log(unsigned int l, const std::string& fmt, ...);
     void log_w_name(unsigned int l, const char* n, const std::string& fmt, ...);
     void log_w_name(unsigned int l, std::string n, const std::string& fmt, ...);
@@ -544,6 +546,12 @@ public:
     bool periodic_end();
 };
 
-extern logger lout;
+extern logger* lout_;
+
+extern logger* get_logger();
+extern logger* create_default_logger();
+extern void set_logger(logger*);
+
+
 
 #endif // LOGGER_HPP
