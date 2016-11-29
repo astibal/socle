@@ -24,6 +24,7 @@
 
 
 const char* UDPCom::udpcom_name_ = "udp";
+unsigned int UDPCom::default_sock_family = AF_INET6;
 
 std::map<uint64_t,Datagram> DatagramCom::datagrams_received;
 std::mutex DatagramCom::lock;
@@ -94,13 +95,17 @@ int UDPCom::bind(short unsigned int port) {
         // allows socket to accept connections for non-local IPs
         DIA_("UDPCom::bind[%d]: setting it transparent",s);
         setsockopt(s, SOL_IP, IP_TRANSPARENT, &optval, sizeof(optval));
-        setsockopt(s, SOL_IPV6, IPV6_TRANSPARENT, &optval, sizeof(optval));
+        if(sa.ss_family == AF_INET6) {
+            setsockopt(s, SOL_IPV6, IPV6_TRANSPARENT, &optval, sizeof(optval));
+        }
     }
 
     optval = 1;
 //     setsockopt(s, IPPROTO_IP,IP_RECVORIGDSTADDR, &optval, sizeof optval);
     if (setsockopt(s, SOL_IP,IP_RECVORIGDSTADDR, &optval, sizeof optval) != 0) return -131;
-    if (setsockopt(s, SOL_IPV6,IPV6_RECVORIGDSTADDR, &optval, sizeof optval) != 0) return -132;
+    if(sa.ss_family == AF_INET6) {
+        if (setsockopt(s, SOL_IPV6,IPV6_RECVORIGDSTADDR, &optval, sizeof optval) != 0) return -132;
+    }
     
     if (::bind(s, (sockaddr *)&sa, sizeof(sa)) == -1) return -130;
 

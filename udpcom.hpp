@@ -93,7 +93,7 @@ public:
 
 class UDPCom : public virtual baseCom, public DatagramCom {
 public:
-    UDPCom(): baseCom() { l4_proto(SOCK_DGRAM); };
+    UDPCom(): baseCom() { l4_proto(SOCK_DGRAM); bind_sock_family = default_sock_family; };
     
     static const char* udpcom_name_;
     
@@ -148,6 +148,10 @@ protected:
     // we implement value as tuple of <fd,refcount>.
     static std::map<std::string,std::pair<int,int>> connect_fd_cache;
     static std::mutex connect_fd_cache_lock;
+    
+public:
+    // allow older kernels to use UDP -- we have to set bind_sock_family to IPv4 variant
+    static unsigned int default_sock_family;
 
 // later    
 //     DECLARE_C_NAME("baseProxy");
