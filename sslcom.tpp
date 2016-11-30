@@ -1204,7 +1204,12 @@ void baseSSLCom<L4Proto>::init_server() {
         DEB__("SSLCom::init_server[%x]: loading preferred key/cert",this);
         SSL_use_PrivateKey(sslcom_ssl,sslcom_pref_key);
         SSL_use_certificate(sslcom_ssl,sslcom_pref_cert);
-
+        
+        if(!sslcom_refcount_incremented__) {
+            CRYPTO_add(&sslcom_pref_key->references,+1,CRYPTO_LOCK_EVP_PKEY);
+            CRYPTO_add(&sslcom_pref_cert->references,+1,CRYPTO_LOCK_X509);
+            sslcom_refcount_incremented__ = true;
+        }
     }
 
     SSL_set_session(sslcom_ssl, NULL);

@@ -207,6 +207,8 @@ protected:
 private:
     typedef enum { HSK_REUSED = 0x4 } sslcom_flags;
     unsigned long flags_ = 0;
+    
+    bool sslcom_refcount_incremented__ = false;
 public:    
     // debug counters
     static int counter_ssl_connect;
@@ -300,6 +302,11 @@ public:
     
     virtual void shutdown(int __fd);    
     virtual ~baseSSLCom() {
+        if(sslcom_refcount_incremented__) {
+            CRYPTO_add(&sslcom_pref_key->references,-1,CRYPTO_LOCK_EVP_PKEY);
+            CRYPTO_add(&sslcom_pref_cert->references,-1,CRYPTO_LOCK_X509);
+        }        
+        
         if(sslcom_ecdh != nullptr) {
             EC_KEY_free(sslcom_ecdh);;
         }

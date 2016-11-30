@@ -122,26 +122,30 @@ bool baseSSLMitmCom<SSLProto>::spoof_cert(X509* cert_orig, SpoofOptions& spo) {
         this->sslcom_pref_key = parek->first;
         
         return true;
-    }
-    
-  
-    DIA__("SSLMitmCom::spoof_cert[%x]: NOT in my certstore '%s'",this,store_key.c_str());    
-    
-    parek = this->certstore()->spoof(cert_orig,spo.self_signed,&spo.sans);
-    if(!parek) {
-        WAR__("SSLMitmCom::spoof_cert[%x]: certstore failed to spoof '%d' - default will be used",this,store_key.c_str()); 
-        return false;
     } 
     else {
-        this->sslcom_pref_cert = parek->second;
-        this->sslcom_pref_key  = parek->first;
-    }
     
-    if (! this->certstore()->add(store_key,parek)) {
-        DIA__("SSLMitmCom::spoof_cert[%x]: spoof was successful, but cache add failed for %s",this,store_key.c_str());
-        return true;
+        DIA__("SSLMitmCom::spoof_cert[%x]: NOT in my certstore '%s'",this,store_key.c_str());    
+        
+        parek = this->certstore()->spoof(cert_orig,spo.self_signed,&spo.sans);
+        if(!parek) {
+            WAR__("SSLMitmCom::spoof_cert[%x]: certstore failed to spoof '%d' - default will be used",this,store_key.c_str()); 
+            return false;
+        } 
+        else {
+            this->sslcom_pref_cert = parek->second;
+            this->sslcom_pref_key  = parek->first;
+
+            // just increment key refcount, cert is new (made from key), thus refcount is already 1
+            CRYPTO_add(&this->sslcom_pref_key->references,+1,CRYPTO_LOCK_EVP_PKEY);
+        }
+        
+        if (! this->certstore()->add(store_key,parek)) {
+            DIA__("SSLMitmCom::spoof_cert[%x]: spoof was successful, but cache add failed for %s",this,store_key.c_str());
+            return true;
+        }
     }
-    
+        
     return true;
 }
 
