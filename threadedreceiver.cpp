@@ -74,330 +74,341 @@ template<class Worker, class SubWorker>
 void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
     
     DIA_("ThreadedReceiver::on_left_new_raw[%d]: start",sock);
-    
-    unsigned char recv_buf_[2048];
-    char cmbuf[256];
-    struct sockaddr_storage from;
-    struct iovec io;
-    struct msghdr msg;
-    bool found_origdst = false;
-    memset(&msg, 0, sizeof(msg));
-    
-    msg.msg_name = &from;
-    msg.msg_namelen = sizeof(from);
-    msg.msg_control = cmbuf;
-    msg.msg_controllen = sizeof(cmbuf);
-    msg.msg_iov = &io;
-    msg.msg_iovlen = 1;
-    
-    io.iov_base = recv_buf_;
-    io.iov_len = sizeof(recv_buf_);
-    
-    int len = ::recvmsg(sock, &msg, MSG_PEEK);
-    
-   
-    uint32_t session_key = 0;
-    struct sockaddr_storage orig;
-    
-    // use virtual socket for plaintext protocols which don't require special treatment (DNS)
-    // virtual sockets can't be used for DTLS, for example
-    bool use_virtual_socket = false;
-    
-//     hdr.client_addr_ = from.sin_addr.s_addr;
-//     hdr.client_port_ = ntohs(from.sin_port);
-    
-    // iterate through all the control headers
-    for ( struct cmsghdr* cmsg = CMSG_FIRSTHDR(&msg); cmsg != NULL; cmsg = CMSG_NXTHDR(&msg, cmsg))   {
 
-        DEB_("ThreadedReceiver::on_left_new_raw[%d]: ancillary data level=%d, type=%d",sock,cmsg->cmsg_level,cmsg->cmsg_type);
-            
-        // ignore the control headers that don't match what we need .. SOL_IP 
-        if (
-            ( cmsg->cmsg_level == SOL_IP && cmsg->cmsg_type ==  IP_RECVORIGDSTADDR ) ||
-            ( cmsg->cmsg_level == SOL_IPV6 && cmsg->cmsg_type ==  IPV6_RECVORIGDSTADDR )
-           ){
+    unsigned char dummy_buffer[32];
+    int iter = 0;
+    
+    do {
+        DEB___("receiver read iteration %d",iter++);
+        
+        unsigned char recv_buf_[2048];
+        char cmbuf[256];
+        struct sockaddr_storage from;
+        struct iovec io;
+        struct msghdr msg;
+        bool found_origdst = false;
+        memset(&msg, 0, sizeof(msg));
+        
+        msg.msg_name = &from;
+        msg.msg_namelen = sizeof(from);
+        msg.msg_control = cmbuf;
+        msg.msg_controllen = sizeof(cmbuf);
+        msg.msg_iov = &io;
+        msg.msg_iovlen = 1;
+        
+        io.iov_base = recv_buf_;
+        io.iov_len = sizeof(recv_buf_);
+        
+        int len = ::recvmsg(sock, &msg, MSG_PEEK);
+        
+    
+        uint32_t session_key = 0;
+        struct sockaddr_storage orig;
+        
+        // use virtual socket for plaintext protocols which don't require special treatment (DNS)
+        // virtual sockets can't be used for DTLS, for example
+        bool use_virtual_socket = false;
+        
+    //     hdr.client_addr_ = from.sin_addr.s_addr;
+    //     hdr.client_port_ = ntohs(from.sin_port);
+        
+        // iterate through all the control headers
+        for ( struct cmsghdr* cmsg = CMSG_FIRSTHDR(&msg); cmsg != NULL; cmsg = CMSG_NXTHDR(&msg, cmsg))   {
 
-            found_origdst = true;
-            memcpy(&orig,(struct sockaddr_storage*)CMSG_DATA(cmsg),sizeof(struct sockaddr_storage));
+            DEB_("ThreadedReceiver::on_left_new_raw[%d]: ancillary data level=%d, type=%d",sock,cmsg->cmsg_level,cmsg->cmsg_type);
+                
+            // ignore the control headers that don't match what we need .. SOL_IP 
+            if (
+                ( cmsg->cmsg_level == SOL_IP && cmsg->cmsg_type ==  IP_RECVORIGDSTADDR ) ||
+                ( cmsg->cmsg_level == SOL_IPV6 && cmsg->cmsg_type ==  IPV6_RECVORIGDSTADDR )
+            ){
 
-            
-            std::string str_src_host; unsigned short sport;
-            int src_family = inet_ss_address_unpack(&from,&str_src_host,&sport);
-            std::string str_dst_host; unsigned short dport;
-            int dst_family = inet_ss_address_unpack(&orig,&str_dst_host,&dport);
-            
-            DIA_("ThreadedReceiver::on_left_new_raw[%d]: datagram from: %s/%s:%u to %s/%s:%u", 
-                        sock, 
-                        inet_family_str(src_family).c_str(),str_src_host.c_str(), sport,
-                        inet_family_str(dst_family).c_str(),str_dst_host.c_str(), dport
-                        );
+                found_origdst = true;
+                memcpy(&orig,(struct sockaddr_storage*)CMSG_DATA(cmsg),sizeof(struct sockaddr_storage));
 
-            
-            //  if list is set, use it, otherwise use virtual sockets for everything than udp/443 (DTLS)
-            if(get_quick_list() != nullptr) {
-                DEB_("ThreadedReceiver::on_left_new_raw[%d]: reading quick list",sock);
-                std::vector<int>& ref = *get_quick_list();
-                for(int x: ref) {
-                    if(dport == x || 0 == x) {
-                        DIA_("ThreadedReceiver::on_left_new_raw[%d]: using quick mode for port %d",sock, dport);
-                        use_virtual_socket = true;
-                    } else {
-                        DIA_("ThreadedReceiver::on_left_new_raw[%d]: using standard mode for port %d",sock, dport);
+                
+                std::string str_src_host; unsigned short sport;
+                int src_family = inet_ss_address_unpack(&from,&str_src_host,&sport);
+                std::string str_dst_host; unsigned short dport;
+                int dst_family = inet_ss_address_unpack(&orig,&str_dst_host,&dport);
+                
+                DIA_("ThreadedReceiver::on_left_new_raw[%d]: datagram from: %s/%s:%u to %s/%s:%u", 
+                            sock, 
+                            inet_family_str(src_family).c_str(),str_src_host.c_str(), sport,
+                            inet_family_str(dst_family).c_str(),str_dst_host.c_str(), dport
+                            );
+
+                
+                //  if list is set, use it, otherwise use virtual sockets for everything than udp/443 (DTLS)
+                if(get_quick_list() != nullptr) {
+                    DEB_("ThreadedReceiver::on_left_new_raw[%d]: reading quick list",sock);
+                    std::vector<int>& ref = *get_quick_list();
+                    for(int x: ref) {
+                        if(dport == x || 0 == x) {
+                            DIA_("ThreadedReceiver::on_left_new_raw[%d]: using quick mode for port %d",sock, dport);
+                            use_virtual_socket = true;
+                        } else {
+                            DIA_("ThreadedReceiver::on_left_new_raw[%d]: using standard mode for port %d",sock, dport);
+                        }
                     }
                 }
+                else {
+                    const int ex_port = 443;
+                    if(dport != ex_port) {
+                        DIA_("ThreadedReceiver::on_left_new_raw[%d]: default quick mode for port %d",sock, dport);
+                        use_virtual_socket = true;
+                    } else {
+                        DIA_("ThreadedReceiver::on_left_new_raw[%d]: default standard mode for port %d",sock, dport);
+                    }
+                }
+                
+                if(src_family == AF_INET) {
+                    uint32_t s = inet::to_sockaddr_in(&from)->sin_addr.s_addr;
+                    uint16_t sp = ntohs(inet::to_sockaddr_in(&from)->sin_port);
+                    s = s << 16;
+                    s += sp;
+                    
+                    s |= (1 << 31); //this will produce negative number, which should determine  if it's normal socket or not
+                    session_key = s;
+                }
+                else if(src_family == AF_INET6) {
+                    uint32_t s = ((uint32_t*)&inet::to_sockaddr_in6(&from)->sin6_addr)[4];
+                    uint16_t sp = sport;
+
+                    s = s << 16;
+                    s += sp;
+                    
+                    s |= (1 << 31); //this will produce negative number, which should determine  if it's normal socket or not
+                    session_key = s;                
+                }
+
+                DEB_("ThreadedReceiver::on_left_new_raw[%d]: session key %d", sock, session_key );
+                break;
+            }
+        }
+        
+        if (!found_origdst) {
+            ERR_("ThreadedReceiver::on_left_new_raw[%d]: getting original destination failed, (cmsg->cmsg_type==IP_ORIGDSTADDR)",sock);
+        } else {
+
+            DIA_("ThreadedReceiver::on_left_new_raw[%d]: new data for key %d",sock,session_key);
+            
+            DatagramCom* c = dynamic_cast<DatagramCom*>(com());
+            if(c == nullptr) {
+                WAR_("ThreadedReceiver::on_left_new_raw[%d]: my com() is not Datagram storage!",sock);
+                exit(1);
+            }
+            
+            Datagram dgram;
+            struct Datagram& d = dgram;
+            auto it = DatagramCom::datagrams_received.find(session_key);
+            bool clashed = false;
+            baseHostCX* clashed_cx = nullptr;
+            
+            
+            if(it == DatagramCom::datagrams_received.end()) {
+                // new session key (new udp "connection")
+                DEB_("ThreadedReceiver::on_left_new_raw[%d]: inserting new session key in storage: %d",sock, session_key);
+
+                clash:
+                
+                d.src = from;
+                d.dst = orig;
+                d.rx.size(0);
+                d.socket = sock;
+                com()->unblock(d.socket);
+                
+                std::string str_src_host; unsigned short sport;
+                int src_family = inet_ss_address_unpack(&from,&str_src_host,&sport);
+                std::string str_dst_host; unsigned short dport;
+                int dst_family = inet_ss_address_unpack(&orig,&str_dst_host,&dport);             
+                
+                int ret_con = -127;
+                int ret_bin = -127;
+                
+                if(!use_virtual_socket) {
+                    if(dst_family == AF_INET) {
+
+                        int n = 1;
+                        ::setsockopt(d.socket, SOL_SOCKET, SO_REUSEADDR, &n, sizeof(int)); n = 1;
+                        ::setsockopt(d.socket, SOL_IP,IP_RECVORIGDSTADDR, &n, sizeof(int)); n = 1;
+                        ::setsockopt(d.socket, SOL_IP, SO_BROADCAST, &n, sizeof(int)); n = 1;
+                        ::setsockopt(d.socket, SOL_IP, IP_TRANSPARENT, &n, sizeof(int)); n = 1;
+                        ::setsockopt(d.socket, SOL_IPV6, IPV6_TRANSPARENT, &n, sizeof(int)); n = 1;
+                        
+                        struct sockaddr_in ss_src;
+                        struct sockaddr_in ss_dst; 
+                        memset(&ss_src,0,sizeof(struct sockaddr_in));
+                        memset(&ss_dst,0,sizeof(struct sockaddr_in));
+                        
+                        int pton = inet_pton(AF_INET,str_src_host.c_str(),&ss_src.sin_addr);
+                        if(pton != 1) {
+                            ERR___("inet_pton error for src: %d:%s",pton,string_error().c_str());
+                        } else {
+                            char b[64]; memset(b,0,64);
+                            inet_ntop(AF_INET,&ss_src.sin_addr,b,64);
+                            
+                            DUM___("inet_pton  okay for src: %s", b);
+                        } 
+                        ss_src.sin_port = htons(sport); 
+                        ss_src.sin_family = AF_INET;
+
+                        pton = inet_pton(AF_INET,str_dst_host.c_str(),&ss_dst.sin_addr);
+                        if( pton != 1) {
+                            ERR___("inet_pton error for dst: %d:%s",pton,string_error().c_str());
+                        }else {
+                            char b[64]; memset(b,0,64);
+                            inet_ntop(AF_INET,&ss_dst.sin_addr,b,64);
+                            
+                            DUM___("inet_pton  okay for dst: %s", b);
+                        } 
+                        ss_dst.sin_port = htons(dport);
+                        ss_dst.sin_family = AF_INET;
+                        
+                        ret_bin = ::bind (d.socket, (sockaddr*)&ss_dst, sizeof (struct sockaddr_in));
+                        if(ret_bin != 0) DIA___("ipv4 transparenting: bind error: %s",string_error().c_str()); // bind is not succeeding with already bound socket ... => this will create empbryonic connection
+                        ret_con = ::connect(d.socket,(sockaddr*)&ss_src,sizeof (struct sockaddr_in));
+                        if(ret_con != 0) ERR___("ipv4 transparenting: connect error: %s",string_error().c_str());
+                        
+                    } else {
+
+                        int n = 1;
+                        ::setsockopt(d.socket, SOL_SOCKET, SO_REUSEADDR, &n, sizeof(int)); n = 1;
+                        ::setsockopt(d.socket, SOL_IP, SO_BROADCAST, &n, sizeof(int)); n = 1;
+                        ::setsockopt(d.socket, SOL_IP,IPV6_RECVORIGDSTADDR, &n, sizeof(int)); n = 1;
+                        ::setsockopt(d.socket, SOL_IPV6, IPV6_TRANSPARENT, &n, sizeof(int));
+
+                        sockaddr_storage ss_src,ss_dst;
+                        memset(&ss_src,0,sizeof(struct sockaddr_storage));
+                        memset(&ss_dst,0,sizeof(struct sockaddr_storage));
+                        
+                        inet_pton(AF_INET6,str_src_host.c_str(),&ss_src); ss_src.ss_family=AF_INET6; ((sockaddr_in6*)&ss_src)->sin6_port = htons(sport);
+                        inet_pton(AF_INET6,str_dst_host.c_str(),&ss_dst); ss_dst.ss_family=AF_INET6; ((sockaddr_in6*)&ss_dst)->sin6_port = htons(dport);
+
+                        ret_bin = ::bind (d.socket, (struct sockaddr*)&(d.dst), sizeof (struct sockaddr_storage));
+                        if(ret_bin != 0) DIA___("ipv6 transparenting: bind error: %s",string_error().c_str()); // bind is not succeeding with already bound socket ... => this will create empbryonic connection
+                        ret_con = ::connect(d.socket,(struct sockaddr*)&(d.src),sizeof (struct sockaddr_storage));
+                        if(ret_con != 0) ERR___("ipv6 transparenting: connect error: %s",string_error().c_str());
+                    }
+
+                }
+
+                DIA___("ThreadedReceiver::on_left_new_raw[new %d]: datagram from: %s/%s:%u to %s/%s:%u", 
+                            d.socket, 
+                            inet_family_str(src_family).c_str(),str_src_host.c_str(), sport,
+                            inet_family_str(dst_family).c_str(),str_dst_host.c_str(), dport
+                            );            
+                
+                if(use_virtual_socket) {
+                    DIA___("ThreadedReceiver transparenting for inbound connection: connect=%d, bind=%d",ret_con,ret_bin);
+                } else {
+                    DIA___("ThreadedReceiver using virtual socket %d",session_key);
+                }
+                
+                
+                // in case of virtual sockets, default ret_con is -127
+                if(ret_con == 0) {
+                    // if bind succeeded, we have full back-channel socket to the client/client_port_
+                    if(ret_bin == 0) {
+                        d.embryonic = false;
+                    }
+                    
+                    // d.socket is now connected to originator!
+                    com()->unblock(d.socket);
+                    d.real_socket = true;
+
+
+                    // for now, don't monitor this rebuilt socket. It should be handled by new proxy object later.
+                    com()->master()->unset_monitor(d.socket);
+                    // also remove this proxy as handler
+                    com()->set_poll_handler(d.socket,nullptr);
+                    
+                    for (auto bound_cx: left_bind_sockets) {
+                        bound_cx->remove_socket();
+                        delete bound_cx;
+                    }
+                    left_bind_sockets.clear(); // all objects are invalidated
+                    
+                    
+                    int s = bind(50081,'L');
+                    com()->unblock(s);
+                    
+                } else {
+                    
+                    // append data only if socket is virtual
+                    len = recv(sock, recv_buf_,len,0);
+                    d.rx.append(recv_buf_,len);
+                }
+                
+                
+                DatagramCom::datagrams_received[session_key] = d;
+                Datagram& n_it = DatagramCom::datagrams_received[session_key];
+                
+                
+                if (clashed) {
+                    n_it.reuse = true;
+                    
+                    // fix crash when cx is already deleted, but not removed for some reason
+                    // clashed_cx->error() is no-op anyway, it just returns error state!
+                    if(clashed_cx != nullptr) {
+                        //clashed_cx->error();
+                    } else {
+                        n_it.embryonic = true;
+                    }
+                }
+                
+                if(clashed) {
+                    DIA_("ThreadedReceiver::on_left_new_raw[%d]: re-inserting clashed session key in storage: key=%d, bytes=%d",sock, session_key,n_it.rx.size());
+                } else {
+                    DIA_("ThreadedReceiver::on_left_new_raw[%d]: inserting new session key in storage: key=%d, bytes=%d",sock, session_key,n_it.rx.size());
+                }
+                push(session_key);
             }
             else {
-                const int ex_port = 443;
-                if(dport != ex_port) {
-                    DIA_("ThreadedReceiver::on_left_new_raw[%d]: default quick mode for port %d",sock, dport);
-                    use_virtual_socket = true;
+                Datagram& o_it = DatagramCom::datagrams_received[session_key];
+
+                int dst_family = o_it.dst_family();
+                bool clashed_cond = false;
+                
+                if(dst_family != AF_INET6) {
+                    clashed_cond =  (o_it.src_in_addr4().s_addr != inet::to_sockaddr_in(&from)->sin_addr.s_addr) ||
+                                    (o_it.src_port4() != inet::to_sockaddr_in(&from)->sin_port) ||
+                                    (o_it.dst_in_addr4().s_addr != inet::to_sockaddr_in(&orig)->sin_addr.s_addr) ||
+                                    (o_it.dst_port4() != inet::to_sockaddr_in(&orig)->sin_port) ||
+                                    (o_it.src_family() != inet::to_sockaddr_in(&orig)->sin_family);
                 } else {
-                    DIA_("ThreadedReceiver::on_left_new_raw[%d]: default standard mode for port %d",sock, dport);
+                    // IPv6
+                    clashed_cond =  (o_it.src_in_addr6().s6_addr != inet::to_sockaddr_in6(&from)->sin6_addr.s6_addr) ||
+                                    (o_it.src_port6() != inet::to_sockaddr_in6(&from)->sin6_port) ||
+                                    (o_it.dst_in_addr6().s6_addr != inet::to_sockaddr_in6(&orig)->sin6_addr.s6_addr) ||
+                                    (o_it.dst_port6() != inet::to_sockaddr_in6(&orig)->sin6_port) ||
+                                    (o_it.src_family() != inet::to_sockaddr_in6(&orig)->sin6_family);
+                    
                 }
-            }
-            
-            if(src_family == AF_INET) {
-                uint32_t s = inet::to_sockaddr_in(&from)->sin_addr.s_addr;
-                uint16_t sp = ntohs(inet::to_sockaddr_in(&from)->sin_port);
-                s = s << 16;
-                s += sp;
                 
-                s |= (1 << 31); //this will produce negative number, which should determine  if it's normal socket or not
-                session_key = s;
-            }
-            else if(src_family == AF_INET6) {
-                uint32_t s = ((uint32_t*)&inet::to_sockaddr_in6(&from)->sin6_addr)[4];
-                uint16_t sp = sport;
-
-                s = s << 16;
-                s += sp;
+                if(clashed_cond) {
+                    DIA_("ThreadedReceiver::on_left_new_raw[%d]: key %d: session clash with cx@%x!",sock, session_key,o_it.cx);
+                    clashed = true;
+                    clashed_cx = o_it.cx;
+                    
+                    goto clash;
+                }
                 
-                s |= (1 << 31); //this will produce negative number, which should determine  if it's normal socket or not
-                session_key = s;                
-            }
-
-            DEB_("ThreadedReceiver::on_left_new_raw[%d]: session key %d", sock, session_key );
-            break;
-        }
-    }
-    
-    if (!found_origdst) {
-        ERR_("ThreadedReceiver::on_left_new_raw[%d]: getting original destination failed, (cmsg->cmsg_type==IP_ORIGDSTADDR)",sock);
-    } else {
-
-        DIA_("ThreadedReceiver::on_left_new_raw[%d]: new data for key %d",sock,session_key);
-        
-        DatagramCom* c = dynamic_cast<DatagramCom*>(com());
-        if(c == nullptr) {
-            WAR_("ThreadedReceiver::on_left_new_raw[%d]: my com() is not Datagram storage!",sock);
-            exit(1);
-        }
-        
-        Datagram dgram;
-        struct Datagram& d = dgram;
-        auto it = DatagramCom::datagrams_received.find(session_key);
-        bool clashed = false;
-        baseHostCX* clashed_cx = nullptr;
-        
-        
-        if(it == DatagramCom::datagrams_received.end()) {
-            // new session key (new udp "connection")
-            DEB_("ThreadedReceiver::on_left_new_raw[%d]: inserting new session key in storage: %d",sock, session_key);
-
-            clash:
-            
-            d.src = from;
-            d.dst = orig;
-            d.rx.size(0);
-            d.socket = sock;
-            com()->unblock(d.socket);
-            
-            std::string str_src_host; unsigned short sport;
-            int src_family = inet_ss_address_unpack(&from,&str_src_host,&sport);
-            std::string str_dst_host; unsigned short dport;
-            int dst_family = inet_ss_address_unpack(&orig,&str_dst_host,&dport);             
-             
-            int ret_con = -127;
-            int ret_bin = -127;
-            
-            if(!use_virtual_socket) {
-                if(dst_family == AF_INET) {
-
-                    int n = 1;
-                    ::setsockopt(d.socket, SOL_SOCKET, SO_REUSEADDR, &n, sizeof(int)); n = 1;
-                    ::setsockopt(d.socket, SOL_IP,IP_RECVORIGDSTADDR, &n, sizeof(int)); n = 1;
-                    ::setsockopt(d.socket, SOL_IP, SO_BROADCAST, &n, sizeof(int)); n = 1;
-                    ::setsockopt(d.socket, SOL_IP, IP_TRANSPARENT, &n, sizeof(int)); n = 1;
-                    ::setsockopt(d.socket, SOL_IPV6, IPV6_TRANSPARENT, &n, sizeof(int)); n = 1;
-                    
-                    struct sockaddr_in ss_src;
-                    struct sockaddr_in ss_dst; 
-                    memset(&ss_src,0,sizeof(struct sockaddr_in));
-                    memset(&ss_dst,0,sizeof(struct sockaddr_in));
-                    
-                    int pton = inet_pton(AF_INET,str_src_host.c_str(),&ss_src.sin_addr);
-                    if(pton != 1) {
-                        ERR___("inet_pton error for src: %d:%s",pton,string_error().c_str());
-                    } else {
-                        char b[64]; memset(b,0,64);
-                        inet_ntop(AF_INET,&ss_src.sin_addr,b,64);
+                if(o_it.rx.size() != 0) {
+                        DIA_("ThreadedReceiver::on_left_new_raw[%d]: key %d: dropped %dB of non-proxied data",sock, session_key,o_it.rx.size());
                         
-                        DUM___("inet_pton  okay for src: %s", b);
-                    } 
-                    ss_src.sin_port = htons(sport); 
-                    ss_src.sin_family = AF_INET;
-
-                    pton = inet_pton(AF_INET,str_dst_host.c_str(),&ss_dst.sin_addr);
-                    if( pton != 1) {
-                        ERR___("inet_pton error for dst: %d:%s",pton,string_error().c_str());
-                    }else {
-                        char b[64]; memset(b,0,64);
-                        inet_ntop(AF_INET,&ss_dst.sin_addr,b,64);
-                        
-                        DUM___("inet_pton  okay for dst: %s", b);
-                    } 
-                    ss_dst.sin_port = htons(dport);
-                    ss_dst.sin_family = AF_INET;
-                    
-                    ret_bin = ::bind (d.socket, (sockaddr*)&ss_dst, sizeof (struct sockaddr_in));
-                    if(ret_bin != 0) DIA___("ipv4 transparenting: bind error: %s",string_error().c_str()); // bind is not succeeding with already bound socket ... => this will create empbryonic connection
-                    ret_con = ::connect(d.socket,(sockaddr*)&ss_src,sizeof (struct sockaddr_in));
-                    if(ret_con != 0) ERR___("ipv4 transparenting: connect error: %s",string_error().c_str());
-                    
-                } else {
-
-                    int n = 1;
-                    ::setsockopt(d.socket, SOL_SOCKET, SO_REUSEADDR, &n, sizeof(int)); n = 1;
-                    ::setsockopt(d.socket, SOL_IP, SO_BROADCAST, &n, sizeof(int)); n = 1;
-                    ::setsockopt(d.socket, SOL_IP,IPV6_RECVORIGDSTADDR, &n, sizeof(int)); n = 1;
-                    ::setsockopt(d.socket, SOL_IPV6, IPV6_TRANSPARENT, &n, sizeof(int));
-
-                    sockaddr_storage ss_src,ss_dst;
-                    memset(&ss_src,0,sizeof(struct sockaddr_storage));
-                    memset(&ss_dst,0,sizeof(struct sockaddr_storage));
-                    
-                    inet_pton(AF_INET6,str_src_host.c_str(),&ss_src); ss_src.ss_family=AF_INET6; ((sockaddr_in6*)&ss_src)->sin6_port = htons(sport);
-                    inet_pton(AF_INET6,str_dst_host.c_str(),&ss_dst); ss_dst.ss_family=AF_INET6; ((sockaddr_in6*)&ss_dst)->sin6_port = htons(dport);
-
-                    ret_bin = ::bind (d.socket, (struct sockaddr*)&(d.dst), sizeof (struct sockaddr_storage));
-                    if(ret_bin != 0) DIA___("ipv6 transparenting: bind error: %s",string_error().c_str()); // bind is not succeeding with already bound socket ... => this will create empbryonic connection
-                    ret_con = ::connect(d.socket,(struct sockaddr*)&(d.src),sizeof (struct sockaddr_storage));
-                    if(ret_con != 0) ERR___("ipv6 transparenting: connect error: %s",string_error().c_str());
+                        // remove from socket too to prevent endless loop reading peek data and appending them to very same data in rx 
+                        unsigned char* drop_buffer[2048];
+                        ::recv(sock, drop_buffer, len < 2048 ? len : 2048, O_NONBLOCK);
                 }
 
-            }
+                o_it.rx.size(0);
+                o_it.rx.append(recv_buf_,len);
+                DIA_("ThreadedReceiver::on_left_new_raw[%d]: existing key %d: %dB data buffered",sock, session_key,o_it.rx.size());
 
-            DIA___("ThreadedReceiver::on_left_new_raw[new %d]: datagram from: %s/%s:%u to %s/%s:%u", 
-                        d.socket, 
-                        inet_family_str(src_family).c_str(),str_src_host.c_str(), sport,
-                        inet_family_str(dst_family).c_str(),str_dst_host.c_str(), dport
-                        );            
-            
-            if(use_virtual_socket) {
-                DIA___("ThreadedReceiver transparenting for inbound connection: connect=%d, bind=%d",ret_con,ret_bin);
-            } else {
-                DIA___("ThreadedReceiver using virtual socket %d",session_key);
             }
-            
-            
-            // in case of virtual sockets, default ret_con is -127
-            if(ret_con == 0) {
-                // if bind succeeded, we have full back-channel socket to the client/client_port_
-                if(ret_bin == 0) {
-                    d.embryonic = false;
-                }
-                
-                // d.socket is now connected to originator!
-                com()->unblock(d.socket);
-                d.real_socket = true;
-
-
-                // for now, don't monitor this rebuilt socket. It should be handled by new proxy object later.
-                com()->master()->unset_monitor(d.socket);
-                // also remove this proxy as handler
-                com()->set_poll_handler(d.socket,nullptr);
-                
-                for (auto bound_cx: left_bind_sockets) {
-                    bound_cx->remove_socket();
-                    delete bound_cx;
-                }
-                left_bind_sockets.clear(); // all objects are invalidated
-                
-                
-                int s = bind(50081,'L');
-                com()->unblock(s);
-                
-            } else {
-                
-                // append data only if socket is virtual
-                len = recv(sock, recv_buf_,len,0);
-                d.rx.append(recv_buf_,len);
-            }
-            
-            
-            DatagramCom::datagrams_received[session_key] = d;
-            Datagram& n_it = DatagramCom::datagrams_received[session_key];
-            
-            
-            if (clashed) {
-                n_it.reuse = true;
-                
-                // fix crash when cx is already deleted, but not removed for some reason
-                // clashed_cx->error() is no-op anyway, it just returns error state!
-                if(clashed_cx != nullptr) {
-                    //clashed_cx->error();
-                } else {
-                    n_it.embryonic = true;
-                }
-            }
-            
-            if(clashed) {
-                DIA_("ThreadedReceiver::on_left_new_raw[%d]: re-inserting clashed session key in storage: key=%d, bytes=%d",sock, session_key,n_it.rx.size());
-            } else {
-                DIA_("ThreadedReceiver::on_left_new_raw[%d]: inserting new session key in storage: key=%d, bytes=%d",sock, session_key,n_it.rx.size());
-            }
-            push(session_key);
         }
-        else {
-            Datagram& o_it = DatagramCom::datagrams_received[session_key];
-
-            int dst_family = o_it.dst_family();
-            bool clashed_cond = false;
-            
-            if(dst_family != AF_INET6) {
-                clashed_cond =  (o_it.src_in_addr4().s_addr != inet::to_sockaddr_in(&from)->sin_addr.s_addr) ||
-                                (o_it.src_port4() != inet::to_sockaddr_in(&from)->sin_port) ||
-                                (o_it.dst_in_addr4().s_addr != inet::to_sockaddr_in(&orig)->sin_addr.s_addr) ||
-                                (o_it.dst_port4() != inet::to_sockaddr_in(&orig)->sin_port) ||
-                                (o_it.src_family() != inet::to_sockaddr_in(&orig)->sin_family);
-            } else {
-                // IPv6
-                clashed_cond =  (o_it.src_in_addr6().s6_addr != inet::to_sockaddr_in6(&from)->sin6_addr.s6_addr) ||
-                                (o_it.src_port6() != inet::to_sockaddr_in6(&from)->sin6_port) ||
-                                (o_it.dst_in_addr6().s6_addr != inet::to_sockaddr_in6(&orig)->sin6_addr.s6_addr) ||
-                                (o_it.dst_port6() != inet::to_sockaddr_in6(&orig)->sin6_port) ||
-                                (o_it.src_family() != inet::to_sockaddr_in6(&orig)->sin6_family);
-                
-            }
-            
-            if(clashed_cond) {
-                DIA_("ThreadedReceiver::on_left_new_raw[%d]: key %d: session clash with cx@%x!",sock, session_key,o_it.cx);
-                clashed = true;
-                clashed_cx = o_it.cx;
-                
-                goto clash;
-            }
-            
-            if(o_it.rx.size() != 0) {
-                    DIA_("ThreadedReceiver::on_left_new_raw[%d]: key %d: dropped %dB of non-proxied data",sock, session_key,o_it.rx.size());
-            }
-
-            o_it.rx.size(0);
-            o_it.rx.append(recv_buf_,len);
-            DIA_("ThreadedReceiver::on_left_new_raw[%d]: existing key %d: %dB data buffered",sock, session_key,o_it.rx.size());
-
-        }
-    }
+    } while(::recv(sock, dummy_buffer,32,O_NONBLOCK|MSG_PEEK) > 0);
 }
 
 template<class Worker, class SubWorker>
