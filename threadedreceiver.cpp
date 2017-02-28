@@ -163,19 +163,21 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
                 }
                 
                 if(src_family == AF_INET) {
-                    uint32_t s = inet::to_sockaddr_in(&from)->sin_addr.s_addr;
-                    uint16_t sp = ntohs(inet::to_sockaddr_in(&from)->sin_port);
-                    s = s << 16;
+                    DEBS_("session key: source socket is IPv4");
+                    uint32_t s = inet::to_sockaddr_in(&from)->sin_addr.s_addr | inet::to_sockaddr_in(&orig)->sin_addr.s_addr;
+                    uint16_t sp = ntohs(inet::to_sockaddr_in(&from)->sin_port) | ntohs(inet::to_sockaddr_in(&orig)->sin_port);
+                    //s = s << 16;
                     s += sp;
                     
                     s |= (1 << 31); //this will produce negative number, which should determine  if it's normal socket or not
                     session_key = s;
                 }
                 else if(src_family == AF_INET6) {
-                    uint32_t s = ((uint32_t*)&inet::to_sockaddr_in6(&from)->sin6_addr)[4];
-                    uint16_t sp = sport;
+                    DEBS_("session key: source socket is IPv6");
+                    uint32_t s = ((uint32_t*)&inet::to_sockaddr_in6(&from)->sin6_addr)[4] | ((uint32_t*)&inet::to_sockaddr_in6(&orig)->sin6_addr)[4];
+                    uint16_t sp = sport | dport;
 
-                    s = s << 16;
+                    //s = s << 16;
                     s += sp;
                     
                     s |= (1 << 31); //this will produce negative number, which should determine  if it's normal socket or not
@@ -370,21 +372,19 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
                 int dst_family = o_it.dst_family();
                 bool clashed_cond = false;
                 
-                if(dst_family != AF_INET6) {
-                    clashed_cond =  (o_it.src_in_addr4().s_addr != inet::to_sockaddr_in(&from)->sin_addr.s_addr) ||
-                                    (o_it.src_port4() != inet::to_sockaddr_in(&from)->sin_port) ||
-                                    (o_it.dst_in_addr4().s_addr != inet::to_sockaddr_in(&orig)->sin_addr.s_addr) ||
-                                    (o_it.dst_port4() != inet::to_sockaddr_in(&orig)->sin_port) ||
-                                    (o_it.src_family() != inet::to_sockaddr_in(&orig)->sin_family);
-                } else {
-                    // IPv6
-                    clashed_cond =  (o_it.src_in_addr6().s6_addr != inet::to_sockaddr_in6(&from)->sin6_addr.s6_addr) ||
-                                    (o_it.src_port6() != inet::to_sockaddr_in6(&from)->sin6_port) ||
-                                    (o_it.dst_in_addr6().s6_addr != inet::to_sockaddr_in6(&orig)->sin6_addr.s6_addr) ||
-                                    (o_it.dst_port6() != inet::to_sockaddr_in6(&orig)->sin6_port) ||
-                                    (o_it.src_family() != inet::to_sockaddr_in6(&orig)->sin6_family);
-                    
-                }
+                
+                std::string s_dst, s_src;
+                std::string d_dst, d_src;
+                s_src = inet_ss_str(&from);
+                s_dst = inet_ss_str(&orig);
+                
+                d_src = inet_ss_str(&o_it.src);
+                d_dst = inet_ss_str(&o_it.dst);
+                
+                DEB_("ThreadedReceiver::on_left_new_raw[%d]: key %d: clash test %s:%s vs. %s:%s", sock, session_key, s_src.c_str(),s_dst.c_str(),d_src.c_str(),d_dst.c_str());
+                                
+                
+                if( s_src != d_src || s_dst != d_dst) { clashed_cond = true; }
                 
                 if(clashed_cond) {
                     DIA_("ThreadedReceiver::on_left_new_raw[%d]: key %d: session clash with cx@%x!",sock, session_key,o_it.cx);
