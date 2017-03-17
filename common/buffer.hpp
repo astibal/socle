@@ -577,11 +577,20 @@ inline void buffer::flush(buffer::size_type b) {
 }
 
 inline buffer buffer::view(unsigned int pos, buffer::size_type len) {
-    if (pos+len <= size_) {
-        return buffer(data_ +pos,len,len,false);
-    } else {
-//      throw std::out_of_range ("index out of range: too few bytes to create a view");     
-        return buffer(data_+pos,size_- pos,size_ - pos,false);
+    if (pos < size_ - 1) {
+        // starting pos in the buffer
+        
+        if( pos+len <= size_) {
+            // view inside buffer
+            return buffer(data_ +pos, len, len, false);
+        } else {
+            // end of view outside buffer
+            return buffer(data_ +pos, size_ - pos, false);
+        }
+    }
+    else {
+        // start out of buffer margins!
+        return buffer();
     }
 }
 
