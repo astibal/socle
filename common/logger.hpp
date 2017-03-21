@@ -141,7 +141,7 @@
 /* Define macros that log objects with hr() function */    
     
 #define LN_LOG_(lev,x,...) \
-    if(log_level >= lev || get_logger()->level() >= lev) { \
+    if(this->get_this_log_level() >= lev || get_logger()->level() >= lev) { \
         get_logger()->force(log_level >= lev); \
         if( ( get_logger()->print_srcline() && get_logger()->level() > INF ) || ( get_logger()->print_srcline() && log_level > INF ) || get_logger()->print_srcline_always()) { \
             get_logger()->log2_w_name(lev,_FILE_,__LINE__,(hr()),(x),__VA_ARGS__); \
@@ -151,7 +151,7 @@
     }
 
 #define LN_LOGS_(lev,x) \
-    if(log_level >= lev || get_logger()->level() >= lev) { \
+    if(this->get_this_log_level() >= lev || get_logger()->level() >= lev) { \
         get_logger()->force(log_level >= lev); \
         if( ( get_logger()->print_srcline() && get_logger()->level() > INF ) || ( get_logger()->print_srcline() && log_level > INF ) || get_logger()->print_srcline_always()) { \
             get_logger()->log2_w_name(lev,_FILE_,__LINE__,(hr()),(x)); \
@@ -162,7 +162,7 @@
     
         
 #define T_LN_LOG_(name,interval,lev,x,...) \
-    if(this->log_level >= lev || get_logger()->level() >= lev) { \
+    if(this->get_this_log_level() >= lev || get_logger()->level() >= lev) { \
         get_logger()->force(log_level >= lev); \
         if( ( get_logger()->print_srcline() && get_logger()->level() > INF ) || ( get_logger()->print_srcline() && log_level > INF ) || get_logger()->print_srcline_always()) { \
             if(get_logger()->click_timer(name,interval)) { \
@@ -172,7 +172,7 @@
     }
 
 #define T_LN_LOGS_(name,interval,lev,x) \
-    if(this->log_level >= lev || get_logger()->level() >= lev) { \
+    if(this->get_this_log_level() >= lev || get_logger()->level() >= lev) { \
         get_logger()->force(log_level >= lev); \
         if( ( get_logger()->print_srcline() && get_logger()->level() > INF ) || ( get_logger()->print_srcline() && log_level > INF ) || get_logger()->print_srcline_always()) { \
             if(get_logger()->click_timer(name,interval)) { \
@@ -412,9 +412,10 @@
 // takes argument of pointer to function which returns std::string, indicate object name. 
 #define DECLARE_LOGGING(get_name_func)  \
 public:                                      \
-    const char* hr() { hr_ = get_name_func(); return hr_.c_str(); }; \
+    const char* hr() { hr_ = this->get_name_func(); return hr_.c_str(); }; \
     static unsigned int& log_level_ref() { return log_level; } \
     static unsigned int log_level;                             \
+    virtual unsigned int get_this_log_level() { return log_level; }     \
 private:                                                       \
     std::string hr_;
 

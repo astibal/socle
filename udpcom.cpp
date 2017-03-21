@@ -23,7 +23,7 @@
 #include <linux/in6.h>
 
 
-const char* UDPCom::udpcom_name_ = "udp";
+std::string UDPCom::udpcom_name_ = "udp";
 unsigned int UDPCom::default_sock_family = AF_INET6;
 
 std::map<uint64_t,Datagram> DatagramCom::datagrams_received;

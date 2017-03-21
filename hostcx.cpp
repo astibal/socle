@@ -221,9 +221,9 @@ std::string& baseHostCX::name(bool force) {
                 }
 
                 if(socket_in_name) {
-                    name__ = string_format("%d::%s_%s:%s",socket(), com()->name() , host().c_str(),port().c_str());
+                    name__ = string_format("%d::%s_%s:%s",socket(), com()->name().c_str() , host().c_str(),port().c_str());
                 } else {
-                    name__ = string_format("%s_%s:%s",com()->name() , host().c_str(),port().c_str());
+                    name__ = string_format("%s_%s:%s",com()->name().c_str() , host().c_str(),port().c_str());
                 }
 
                 //name__ = string_format("%d:<reduced>",socket());
@@ -235,9 +235,9 @@ std::string& baseHostCX::name(bool force) {
         } else {
 
             if(socket_in_name) {
-                name__ = string_format("%d::%s_%s:%s",socket(), com()->name() ,host().c_str(),port().c_str());
+                name__ = string_format("%d::%s_%s:%s",socket(), com()->name().c_str() ,host().c_str(),port().c_str());
             } else {
-                name__ = string_format("%s_%s:%s",com()->name() ,host().c_str(),port().c_str());
+                name__ = string_format("%s_%s:%s",com()->name().c_str() ,host().c_str(),port().c_str());
             }
         }
     }
@@ -593,7 +593,7 @@ std::string baseHostCX::full_name(unsigned char side) {
     int t_s = socket();
     std::string  t_ss;
     if(socket_in_name) t_ss  = string_format("::%d:",t_s);
-    const char* t_c = "";
+    std::string t_c = "";
     if (com() != nullptr)  t_c = com()->name();
 
     const char* p = "?";
@@ -610,22 +610,22 @@ std::string baseHostCX::full_name(unsigned char side) {
 
         if (peer()->com() != nullptr) {
             if(peer()->com() != nullptr) {
-                p_c = peer()->com()->name();
+                p_c = peer()->com()->name().c_str();
             }
         }
 //         p =  "peerip";
 //         p_p =  "pport";
 
     } else {
-        return string_format("%s_%s%s:%s",t_c,t_ss.c_str(),t,t_p);
+        return string_format("%s_%s%s:%s",t_c.c_str(),t_ss.c_str(),t,t_p);
     }
 
     if ( (side == 'l') || ( side == 'L') ) {
-        return string_format("%s_%s%s:%s to %s_%s%s:%s",t_c,t_ss.c_str(),t,t_p,p_c,p_ss.c_str(),p,p_p);
+        return string_format("%s_%s%s:%s to %s_%s%s:%s",t_c.c_str(),t_ss.c_str(),t,t_p,p_c,p_ss.c_str(),p,p_p);
     }
 
     //else
-    return string_format("%s_%s%s:%s to %s_%s%s:%s",p_c,p_ss.c_str(),p,p_p,t_c,t_ss.c_str(),t,t_p);
+    return string_format("%s_%s%s:%s to %s_%s%s:%s",p_c,p_ss.c_str(),p,p_p,t_c.c_str(),t_ss.c_str(),t,t_p);
 
 }
 

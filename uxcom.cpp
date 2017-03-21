@@ -18,6 +18,9 @@
 
 #include <uxcom.hpp>
 
+
+std::string UxCom::uxcom_name_ = "uxcom";
+
 // obviously, port is ignored
 int UxCom::connect(const char* host, const char* noop_port, bool blocking) { 
 

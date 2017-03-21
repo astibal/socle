@@ -51,9 +51,10 @@ public:
         bind_sock_type = SOCK_STREAM;
         bind_sock_protocol = 0;
     };
+    static std::string uxcom_name_;
     
     virtual baseCom* replicate() { return new UxCom(); };
-    virtual const char* name() { return "unix"; };
+    virtual std::string& name() { return uxcom_name_; };
     
     virtual int connect(const char* host, const char* port, bool blocking = false);
     virtual int bind(unsigned short port);  //this bind is deprecated, returning always -1. Use bind(const char*).

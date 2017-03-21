@@ -39,10 +39,11 @@
 class TCPCom : public virtual baseCom {
 public:
     TCPCom(): baseCom() { l4_proto(SOCK_STREAM); };
+    static std::string tcpcom_name_;
     
     virtual void init(baseHostCX* owner);
     virtual baseCom* replicate() { return new TCPCom(); };
-    virtual const char* name() { return "tcp"; };
+    virtual std::string& name() { return tcpcom_name_; };
     
     virtual int connect(const char* host, const char* port, bool blocking = false);
     virtual int bind(unsigned short port);  
@@ -60,7 +61,7 @@ public:
         }
         return r;
     };
-    virtual void shutdown(int __fd) { int r = ::shutdown(__fd,SHUT_RDWR); if(r > 0) DIA_("%s::shutdown[%d]: %s",name(),__fd,string_error().c_str()); };
+    virtual void shutdown(int __fd) { int r = ::shutdown(__fd,SHUT_RDWR); if(r > 0) DIA_("%s::shutdown[%d]: %s",name().c_str(),__fd,string_error().c_str()); };
     
     virtual void cleanup() {};  
     

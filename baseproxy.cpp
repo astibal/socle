@@ -216,10 +216,10 @@ void baseProxy::right_shutdown() {
 
 
 void baseProxy::shutdown() {
-    DIAS_("baseProxy::shutdown");
+    DIAS___("baseProxy::shutdown");
 	left_shutdown();
 	right_shutdown();
-    DEBS_("baseProxy::shutdown finished");
+    DEBS___("baseProxy::shutdown finished");
 }
 
 
@@ -300,101 +300,7 @@ void baseProxy::run_timers(void) {
 int baseProxy::prepare_sockets(baseCom* fdset_owner) {
      int max = 1;
 
-    
-//     DUM___("baseProxy::prepare_sockets: preparing my sockets for Com: %x",fdset_owner);
-//     
-//     if(left_sockets.size() > 0)
-// 	for(typename std::vector<baseHostCX*>::iterator i = left_sockets.begin(); i != left_sockets.end(); ++i) {
-// 		int s = (*i)->socket();
-//         fdset_owner->set_monitor(s);
-// 		EXT___("baseProxy::prepare_sockets: left -> preparing %d",s);
-// 
-//         if (s > max) {
-//             max = s;
-//         }
-//     }
-// 
-//     if(left_delayed_accepts.size() > 0)
-//     for(typename std::vector<baseHostCX*>::iterator i = left_delayed_accepts.begin(); i != left_delayed_accepts.end(); ++i) {
-//         int s = (*i)->socket();
-//         fdset_owner->set_monitor(s);
-//         EXT___("baseProxy::prepare_sockets: left -> preparing %d",s);
-// 
-//         if (s > max) {
-//             max = s;
-//         }
-//     }    
-//     
-//     if (left_bind_sockets.size() > 0)
-// 	for(typename std::vector<baseHostCX*>::iterator ii = left_bind_sockets.begin(); ii != left_bind_sockets.end(); ++ii) {
-// 		int s = (*ii)->socket();
-//         fdset_owner->set_monitor(s);
-// 		EXT___("baseProxy::prepare_sockets: left, bound -> preparing %d",s);
-// 		
-//         if (s > max) {
-//             max = s;
-//         }
-//     }
-// 
-//     if(right_sockets.size() > 0)
-//     for(typename std::vector<baseHostCX*>::iterator j = right_sockets.begin(); j != right_sockets.end(); ++j) {
-// 		int s = (*j)->socket();
-//         fdset_owner->set_monitor(s);
-// 		EXT___("baseProxy::prepare_sockets: right -> preparing %d",s);
-// 
-//         if (s > max) {
-//             max = s;
-//         }
-//     }
-//     
-//     if(right_delayed_accepts.size() > 0)
-//     for(typename std::vector<baseHostCX*>::iterator j = right_delayed_accepts.begin(); j != right_delayed_accepts.end(); ++j) {
-//         int s = (*j)->socket();
-//         fdset_owner->set_monitor(s);
-//         EXT___("baseProxy::prepare_sockets: right -> preparing %d",s);
-// 
-//         if (s > max) {
-//             max = s;
-//         }
-//     }    
-//     
-//     if(right_bind_sockets.size() > 0)
-// 	for(typename std::vector<baseHostCX*>::iterator jj = right_bind_sockets.begin(); jj != right_bind_sockets.end(); ++jj) {
-// 		int s = (*jj)->socket();
-//         fdset_owner->set_monitor(s);
-// 		EXT___("baseProxy::prepare_sockets: right, bound -> preparing %d",s);
-// 		
-//         if (s > max) {
-//             max = s;
-//         }
-//     }
-//     
-//     if(left_pc_cx.size() > 0)
-// 	for(typename std::vector<baseHostCX*>::iterator k = left_pc_cx.begin(); k != left_pc_cx.end(); ++k) {
-// 		int k_s = (*k)->socket();
-// 		if (k_s <= 0) { continue; };
-//         fdset_owner->set_monitor(k_s);
-// 		
-// 		EXT___("baseProxy::prepare_sockets: left, perma -> preparing %d",k_s);
-// 		if (k_s > max) {
-//             max = k_s;
-//         }
-// 	}
-// 	
-// 	if(right_pc_cx.size() > 0)
-// 	for(typename std::vector<baseHostCX*>::iterator l = right_pc_cx.begin(); l != right_pc_cx.end(); ++l) {    
-// 		int l_s = (*l)->socket();
-// 		if (l_s <= 0) { continue; };
-//         fdset_owner->set_monitor(l_s);
-// 		
-// 		EXT___("baseProxy::prepare_sockets: right, perma -> preparing %d",l_s);
-// 		if (l_s > max) {
-//             max = l_s;
-//         }
-// 	}
-// 	
-// 	// Note: delayed accepts are not subject to be read/written, they are not yet fully accepted by higher level CX
-// 		
+
      return max;
 };
 
@@ -1069,10 +975,6 @@ int baseProxy::run(void) {
         
         if(pollroot()) {
             
-//             com()->zeroize_exset();
-//             com()->zeroize_readset();
-//             com()->zeroize_writeset();            
-            
             EXTS___("baseProxy::run: preparing sockets");
             int s_max = prepare_sockets(com());
             EXTS___("baseProxy::run: sockets prepared");
@@ -1094,32 +996,32 @@ int baseProxy::run(void) {
             
             for (auto current_set: sets) {
                 for (auto s: current_set) {
-                    DIA_("baseProxy::run: %s socket %d ",setname[name_iter],s);
+                    DIA___("baseProxy::run: %s socket %d ",setname[name_iter],s);
                     epoll_handler* ptr = com()->poller.get_handler(s);
                     
                     if(ptr != nullptr) {
                         auto seg = ptr->fence__;
-                        EXT_("baseProxy::run: socket %d has registered handler 0x%x (fence %x)",s,ptr,seg);
+                        EXT___("baseProxy::run: socket %d has registered handler 0x%x (fence %x)",s,ptr,seg);
                         
                         if(seg != HANDLER_FENCE) {
-                            ERR_("baseProxy::run: socket %d magic fence doesn't match!!",s);
+                            ERR___("baseProxy::run: socket %d magic fence doesn't match!!",s);
                         } else {
                             baseProxy* proxy = dynamic_cast<baseProxy*>(ptr);
                             if(proxy != nullptr) {
-                                EXT_("baseProxy::run: socket %d has baseProxy handler!!",s);
+                                EXT___("baseProxy::run: socket %d has baseProxy handler!!",s);
                                 
                                 // call poller-carried proxy handler!
                                 proxy->handle_sockets_once(com());
                                 counter_proxy_handler++;
                                 
                             } else {
-                                DIA_("baseProxy::run: socket %d has NOT baseProxy handler!!",s);
+                                DIA___("baseProxy::run: socket %d has NOT baseProxy handler!!",s);
                                 back_in_set.push_back(s);
                             }
                         }
                         
                     } else {
-                        DEB_("baseProxy::run: socket %d NO handler!!",s);
+                        DEB___("baseProxy::run: socket %d NO handler!!",s);
                         
                         // all sockets without ANY handler should be re-inserted
                         back_in_set.push_back(s);
@@ -1127,10 +1029,10 @@ int baseProxy::run(void) {
                         if (com()->poller.poller != nullptr) {
                             if(s != com()->poller.poller->hint_socket()) {
                                 // hint filedescriptor don't have handler
-                                ERR_("baseProxy::run: socket %d has registered NULL handler",s);
+                                ERR___("baseProxy::run: socket %d has registered NULL handler",s);
                             }
                         } else {
-                            ERRS_("com()->poller.poller is null!");                        
+                            ERRS___("com()->poller.poller is null!");                        
                         }
                     }
                 }
@@ -1149,17 +1051,28 @@ int baseProxy::run(void) {
             }
             
             // add back sockets to rescan
-//             if(com()->poller.poller->should_rescan_now()) {
-//                 for(int a: com()->poller.poller->rescan_set) {
-//                     counter_back_handler++;
-//                     
-//                     DIA_("baseProxy::run: adding back to poller to rescan socket %d",a);
-//                     com()->poller.poller->in_set.insert(a);
-//                     com()->poller.poller->add(a);
-//                 }
-//                 com()->poller.poller->rescan_set.clear();
-//             }
-//             
+            if(com()->poller.poller->should_rescan_now()) {
+                for(int a: com()->poller.poller->rescan_set_in) {
+                    counter_back_handler++;
+                    
+                    DIA___("baseProxy::run: adding back to poller to rescan IN socket %d",a);
+                    com()->poller.poller->in_set.insert(a);
+                    com()->poller.poller->add(a);
+                }
+                com()->poller.poller->rescan_set_in.clear();
+                
+                
+                for(int a: com()->poller.poller->rescan_set_out) {
+                    counter_back_handler++;
+                    
+                    DIA___("baseProxy::run: adding back to poller to rescan OUT socket %d",a);
+                    com()->poller.poller->out_set.insert(a);
+                    com()->poller.poller->add(a);
+                }
+                com()->poller.poller->rescan_set_out.clear();
+                
+            }
+            
             // run REST of all sockets. in_read_set and out_read_set is called, so if it's cleared handled (and not re-inserted back)
             // proxies will not be processed, unless they are forced.
             // 

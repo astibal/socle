@@ -59,6 +59,7 @@ template <class L4Proto> int baseSSLCom<L4Proto>::counter_ssl_accept = 0;
 template <class L4Proto> unsigned int baseSSLCom<L4Proto>::log_level = NON;
 template <class L4Proto> std::string baseSSLCom<L4Proto>::ci_def_filter = "HIGH RC4 !aNULL !eNULL !LOW !3DES !MD5 !EXP !DSS !PSK !SRP !kECDH !CAMELLIA !IDEA !SEED @STRENGTH";
 
+
 template <class L4Proto>
 baseSSLCom<L4Proto>::baseSSLCom(): L4Proto() {
     sslcom_peer_hello_buffer.capacity(1500);
@@ -108,7 +109,7 @@ void baseSSLCom<L4Proto>::init(baseHostCX* owner)  {
 
 
 template <class L4Proto>
-const char* baseSSLCom<L4Proto>::hr()  {
+std::string& baseSSLCom<L4Proto>::to_string()  {
 
     bool online = false;
     if(owner_cx() != nullptr) {
@@ -116,15 +117,18 @@ const char* baseSSLCom<L4Proto>::hr()  {
     }
 
     if(hr_.size() > 0 && ! online) {
-        return hr_.c_str();
+        return hr_;
     }
 
     if(owner_cx() != nullptr) {
         hr_ = owner_cx()->full_name('L');
-        return hr_.c_str();
+        return hr_;
     }
 
-    return nullptr;
+    // last resort
+    
+    hr_ = "baseSSLCom";
+    return hr_;
 }
 
 template <class L4Proto>
@@ -2422,7 +2426,7 @@ template <class L4Proto>
 int baseSSLCom<L4Proto>::connect ( const char* host, const char* port, bool blocking )  {
     int sock = L4Proto::connect( host, port, blocking );
 
-    DIA___("SSLCom::connect[%d]: %s connected",sock,L4Proto::name());
+    DIA___("SSLCom::connect[%d]: %s connected",sock,L4Proto::name().c_str());
     sock = upgrade_client_socket(sock);
 
     if(upgraded()) {

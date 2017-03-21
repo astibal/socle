@@ -100,6 +100,8 @@ class baseSSLCom : public L4Proto, public virtual baseCom {
 public:
     baseSSLCom();
     
+    virtual std::string& to_string();
+    
 protected:
 	SSL_CTX* sslcom_ctx = NULL;
 	SSL*     sslcom_ssl = NULL;
@@ -238,9 +240,9 @@ public:
     //com has to be init() before used
 	virtual void init(baseHostCX* owner);
     virtual baseCom* replicate() { return new baseSSLCom(); } ;
-    virtual const char* name() { return "ssl"; };
-    virtual const char* hr();
-    std::string hr_;
+    // virtual const char* name() { return "ssl"; };
+    // virtual const char* hr();
+    // std::string hr_;
     
     
     //initialize callbacks. Basically it sets external data for SSL object.
@@ -394,10 +396,8 @@ public:
     inline bool verify_check(int s) const { return (verify_status & s); }
     inline int verify_get() const { return (int) verify_status; }
 
-public:
-    static unsigned int& log_level_ref() { return log_level; }
-private:
-    static unsigned int log_level;
+    DECLARE_C_NAME("SSLCom");
+    DECLARE_LOGGING(to_string);  
 };
 
 

@@ -19,6 +19,8 @@
 #include <tcpcom.hpp>
 #include <internet.hpp>
 
+std::string TCPCom::tcpcom_name_ = "tcp";
+
 void TCPCom::init(baseHostCX* owner) { 
     
     baseCom::init(owner); 

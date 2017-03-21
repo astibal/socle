@@ -162,7 +162,7 @@ public:
     };
 
     virtual baseCom* replicate() = 0;
-    virtual const char* name() = 0;
+    virtual std::string& name() = 0;
     
     virtual int connect(const char* , const char* , bool = false) = 0;
     virtual int read(int __fd, void* __buf, size_t __n, int __flags) = 0;

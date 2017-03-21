@@ -52,10 +52,13 @@ struct SpoofOptions {
 template <class SSLProto>
 class baseSSLMitmCom : public SSLProto {
 public:
+   static std::string sslmitmcom_name_;
+   static std::string sslmitmcom_insp_name_;
+    
    virtual bool check_cert(const char*);
    virtual bool spoof_cert(X509* cert_orig, SpoofOptions& spo);
    virtual baseCom* replicate() { return new baseSSLMitmCom(); };
-   virtual const char* name() { return this->opt_bypass ? "ssl" : "ssl+insp"; };
+   virtual std::string& name() { if (this->opt_bypass) return this->sslmitmcom_name_; else return this->sslmitmcom_insp_name_; };
 
     virtual ~baseSSLMitmCom() {};
 

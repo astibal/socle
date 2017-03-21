@@ -95,11 +95,11 @@ class UDPCom : public virtual baseCom, public DatagramCom {
 public:
     UDPCom(): baseCom() { l4_proto(SOCK_DGRAM); bind_sock_family = default_sock_family; };
     
-    static const char* udpcom_name_;
+    static std::string udpcom_name_;
     
     virtual void init(baseHostCX* owner);
     virtual baseCom* replicate() { return new UDPCom(); };
-    virtual const char* name() { return udpcom_name_; };
+    virtual std::string& name() { return udpcom_name_; };
     
     virtual int connect(const char* host, const char* port, bool blocking = false);
     virtual int bind(unsigned short port);
