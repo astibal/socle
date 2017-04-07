@@ -1567,7 +1567,7 @@ int baseSSLCom<L4Proto>::waiting() {
             // forced_write(true);
             // sslcom_waiting_write = true;
             
-            //master()->poller.modify(sslcom_fd,EPOLLIN|EPOLLET|EPOLLOUT);
+            //master()->poller.modify(sslcom_fd,EPOLLIN|EPOLLOUT);
             set_write_monitor_only(sslcom_fd);
             return 0;
         }
@@ -2115,7 +2115,7 @@ int baseSSLCom<L4Proto>::read ( int __fd, void* __buf, size_t __n, int __flags )
 
                 forced_read_on_write(true);
                 sslcom_read_blocked_on_write=1;
-                master()->poller.modify(__fd,EPOLLIN|EPOLLET|EPOLLOUT);
+                master()->poller.modify(__fd,EPOLLIN|EPOLLOUT);
 
                 if(total_r > 0) return total_r;
                 return r;
@@ -2251,7 +2251,7 @@ int baseSSLCom<L4Proto>::write ( int __fd, const void* __buf, size_t __n, int __
             DIA___("SSLCom::write[%d]: want write: %d (written %4d)",__fd,err,r);
 
             // trigger write again
-            master()->poller.modify(__fd,EPOLLIN|EPOLLET|EPOLLOUT);
+            master()->poller.modify(__fd,EPOLLIN|EPOLLOUT);
             sslcom_write_blocked_on_write=1;
 
             if (r > 0) {
