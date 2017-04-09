@@ -189,6 +189,9 @@ void logger::log(unsigned int l, const std::string& fmt, ...) {
 
 
 void logger::log2(unsigned int l, const char* src, int line, const std::string& fmt, ...) {
+  
+    std::lock_guard<std::recursive_mutex> lck(mtx_lout);
+  
     std::string src_info = string_format("%20s:%-4d: ",src,line);
 
     std::string str;
@@ -201,6 +204,8 @@ void logger::log2(unsigned int l, const char* src, int line, const std::string& 
 
 void logger::log_w_name(unsigned int l, std::string name, const std::string& fmt, ...) {
 
+    std::lock_guard<std::recursive_mutex> lck(mtx_lout);
+  
     std::string  str;
     PROCESS_VALIST(str,fmt);
     log_w_name(l, name.c_str(), str);
@@ -208,6 +213,8 @@ void logger::log_w_name(unsigned int l, std::string name, const std::string& fmt
 
 void logger::log_w_name(unsigned int l, const char* name, const std::string& fmt, ...) {
 
+    std::lock_guard<std::recursive_mutex> lck(mtx_lout);
+  
     const char* n = "(null)";
     if (name != nullptr) {
         n = name;
@@ -219,6 +226,9 @@ void logger::log_w_name(unsigned int l, const char* name, const std::string& fmt
 }
 
 void logger::log2_w_name(unsigned int l, const char* f, int li, std::string n, const std::string& fmt, ...) {
+  
+    std::lock_guard<std::recursive_mutex> lck(mtx_lout);  
+  
     std::string  str;
     PROCESS_VALIST(str,fmt);
     log2_w_name(l, f,li, n.c_str(), str);
@@ -226,6 +236,9 @@ void logger::log2_w_name(unsigned int l, const char* f, int li, std::string n, c
 
 
 void logger::log2_w_name(unsigned int l, const char* f, int li, const char* name, const std::string& fmt, ...) {
+  
+    std::lock_guard<std::recursive_mutex> lck(mtx_lout);  
+  
     const char* n = "(null)";
     if (name != nullptr) {
         n = name;
