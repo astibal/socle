@@ -500,7 +500,7 @@ bool baseProxy::handle_cx_write_once(unsigned char side, baseCom* xcom, baseHost
     }    
 
     if(! cx->paused_write()) {
-        if(xcom->in_writeset(cx->socket()) || cx->com()->forced_write_reset()) {
+        if(xcom->in_writeset(cx->socket()) || cx->com()->forced_write_reset() || cx->writebuf()->size() > 0) {
             if(! handle_cx_write(side,cx)) {
                 ret = false;
                 goto failure;
