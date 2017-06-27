@@ -1145,7 +1145,7 @@ void baseSSLCom<L4Proto>::init_client() {
         load_session_if_needed();
     }
     
-    SSL_set_mode(sslcom_ssl, SSL_MODE_ENABLE_PARTIAL_WRITE|SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
+    SSL_set_mode(sslcom_ssl, SSL_MODE_ENABLE_PARTIAL_WRITE|SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER|SSL_MODE_RELEASE_BUFFERS);
 
     init_ssl_callbacks();
 }
