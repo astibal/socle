@@ -56,6 +56,9 @@ bool is_ipv4_address(const std::string& str)
 
 int socket_connect(std::string ip_address, int port)
 {
+    
+    DIA_("internet::connect: connecting to %s:%d",ip_address.c_str(),port);
+    
     int err=-1,sd=-1;
     struct sockaddr_in sa;
  
@@ -65,21 +68,25 @@ int socket_connect(std::string ip_address, int port)
     sa.sin_port        = htons     (port);   /* Server Port number */
  
     sd = ::socket(AF_INET, SOCK_STREAM, 0);
-    if (sd)
+    if (sd > 0)
     {
         err = ::connect(sd, (struct sockaddr*) &sa, sizeof(sa));
     }
     if (err!=-1)//success
     {
+        DEB_("internet::socket_connect: socket %d", sd);
         return sd;
     }
-    std::cout << "socket connect error: " << std::endl;
+    NOTS_("internet::socket_connect: error");
     return -1;
-    //if (errno==EINPROGRESS) { return 0; }//errno is a global set by connect
+    
 }
 
 int download(const std::string& url, buffer& buf, int timeout)
 {
+    
+    DIA_("internet::download downloading file %s",url.c_str());
+    
     int ret = 0;
     
     int ipv,port;
@@ -124,7 +131,7 @@ int download(const std::string& url, buffer& buf, int timeout)
     {
         port = std::stoi(url_port);
         
-        std::string request  = "GET " + path + " HTTP/1.1\r\n";
+        std::string request  = "GET " + path + " HTTP/1.0\r\n";
         request += "Host: " + domain + "\r\n\r\n";
  
         for(int i=0,r=0, ix=ip_addresses.size(); i<ix && r==0; i++)
@@ -135,6 +142,8 @@ int download(const std::string& url, buffer& buf, int timeout)
                 break;
         }
     }
+    
+    DEB_("internet::download: returning %d", ret);
     
     return ret;
 }
@@ -164,6 +173,7 @@ int http_get(const std::string& request, const std::string& ip_address, int port
     int bytes_received=-1;
     int bytes_sofar=0;
     int bytes_expected=-1;
+    int bytes_total=0;
     int state=0;
  
     time_t start_time = time(nullptr);
@@ -182,15 +192,22 @@ int http_get(const std::string& request, const std::string& ip_address, int port
             FD_ZERO(&rfds);
             FD_SET(sd, &rfds);
 
-            /* Wait up to five seconds. */
+            // Wait up to defined timeout
             tv.tv_sec = 1;
             tv.tv_usec = 0;
 
-            retval = select(1, &rfds, NULL, NULL, &tv);
+            retval = select(sd+1, &rfds, NULL, NULL, &tv);
             if(retval) {
                 /* Don't rely on the value of tv now! */
-                bytes_received = ::recv(sd, buffer, sizeof(buffer), 0);
+                bytes_received = ::recv(sd, buffer, sizeof(buffer), 0); 
+                bytes_total += bytes_received;
+                
+                DEB_("internet::download(%s): received %dB, %dB total",request.c_str(),bytes_received, bytes_total);
+                
             } else {
+                
+                NOT_("internet::download(%s): timeout on socket",request.c_str());
+                
                 if(time(nullptr) > start_time + timeout) {
                     bytes_sofar = -1;
                     break;
