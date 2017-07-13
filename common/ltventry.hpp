@@ -115,7 +115,7 @@ public:
 	//FIXME: return single string (hr = human readable)
 	std::string hr(int=0);
 	
-	LTVEntry* search(const char*);
+        LTVEntry* search(const std::vector<int>&);
 };
 
 #endif // LTVENTRY_HPP

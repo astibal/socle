@@ -363,41 +363,35 @@ int LTVEntry::pack(::buffer* buf) {
 	}
 }
 
-LTVEntry* LTVEntry::search(const char* c_s) {
-	
-	DEBS_("LTVEntry::search:");
-	size_t c_s_len = strlen(c_s);
-	char *s = new char[c_s_len+1];
-	strncpy(s,c_s,c_s_len+1);
-	
-	
-	LTVEntry* current = this;
-	
-	
-	for (char* token = std::strtok(s,"/"); token != NULL; token = std::strtok(NULL,"/")) {
 
-		DEB_("LTVEntry::search: token %s",token);
-		
-		int t = std::stoi(token);
-		bool found = false;
-		
-		for(std::vector<LTVEntry*>::iterator j = current->contains().begin(); j != current->contains().end(); j++ ) {
-			if ((*j)->id() == t) {
-				current = (*j);
-				DEB_("LTVEntry::search: hit at %x",(*j));
-				found = true;
-				break;
-			}
-		}
-		
-		if (! found) {
-			DEBS_("LTVEntry::search: failed");
-			delete[] s;
-			return NULL;
-		} 
-	}
-	
-	DEB_("LTVEntry::search: found match at %x",current);	
-	delete[] s;
-	return current;
+LTVEntry* LTVEntry::search(const std::vector<int>& path) {
+        
+        DEBS_("LTVEntry::search:");
+        
+        LTVEntry* current = this;
+        
+        
+        for (int t: path) {
+
+                DEB_("LTVEntry::search: token %d",t);
+                
+                bool found = false;
+                
+                for(std::vector<LTVEntry*>::iterator j = current->contains().begin(); j != current->contains().end(); j++ ) {
+                        if ((*j)->id() == t) {
+                                current = (*j);
+                                DEB_("LTVEntry::search: hit at %x",(*j));
+                                found = true;
+                                break;
+                        }
+                }
+                
+                if (! found) {
+                        DEBS_("LTVEntry::search: failed");
+                        return NULL;
+                } 
+        }
+        
+        DEB_("LTVEntry::search: found match at %x",current);    
+        return current;
 }
