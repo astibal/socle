@@ -67,11 +67,11 @@ int LTVEntry::unpack(uint8_t* buffer, unsigned int buflen) {
 	if (buflen < 4) {
 		return -1;
 	}
-	DUMS_("S1");
+	DUMS_("stage1: can read length field");
 	
 	len_ = ltv_get_length(buffer);
 	
-	DUMS_("S2 len detected: %l ", len_);
+	DUMS_("stage2: len detected: %d ", len_);
 	DUMS_(hex_dump(buffer,4));
 	DUMS_(hex_dump(buffer+4,4));
 		
@@ -86,7 +86,7 @@ int LTVEntry::unpack(uint8_t* buffer, unsigned int buflen) {
 		id_ = ltv_get_id(buffer);
 		type_ = ltv_get_type(buffer);
 		
-		DUM_("S3 Buffer len %l detected",len_);
+		DUM_("stage3: buffer of size %d could be fully read",len_);
 		
 		// if we are owning the buffer, fine, we will allocate.
 		if ( owner () ) {
