@@ -41,18 +41,25 @@ int MasterProxy::prepare_sockets(baseCom* xcom)
 
 
 int MasterProxy::handle_sockets_once(baseCom* xcom) {
-	
+
+    int my_handle_returned = baseProxy::handle_sockets_once(xcom);
+    EXT_("handling own sockets: returned %d", my_handle_returned);
     
     int r = 0;
-
+    int proxies_handled= 0;
+    int proxies_shutdown=0;
+    int proxies_deleted=0;
+    
 	for(typename std::vector<baseProxy*>::iterator ii = proxies().begin(); ii != proxies().end(); ++ii) {
 		
 		baseProxy *p = (*ii); 
 		
 		if (p->dead()) { 
 			p->shutdown();
+                        proxies_shutdown++;
 		} else {
 			r += p->handle_sockets_once(xcom);
+                        proxies_handled++;
 		}
 	}
 	
@@ -62,12 +69,14 @@ int MasterProxy::handle_sockets_once(baseCom* xcom) {
 		
 		if (p->dead()) { 
 			delete(p);
-			proxies().erase(ii);			
+			proxies().erase(ii);	
+                        
+                        proxies_deleted++;
 			break;
 		}
 	}
 	
-	EXT_("MasterProxy::run_once: returning %d",r);
+	EXT_("MasterProxy::handle_sockets_once: returning %d, sub-proxies: handled=%d, shutdown=%d, deleted=%d",r,proxies_handled,proxies_shutdown,proxies_deleted);
 	return r;
 }
 
