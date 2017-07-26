@@ -1773,7 +1773,8 @@ bool baseSSLCom<L4Proto>::waiting_peer_hello() {
             DIAS___("SSLCom::waiting_peer_hello: peer not SSLCom type");
         }
     } else {
-        DIAS___("SSLCom::waiting_peer_hello: no peers");
+        DIAS___("SSLCom::waiting_peer_hello: no peers, setting hello received.");
+        sslcom_peer_hello_received(true);
     }
 
     return sslcom_peer_hello_received_;
@@ -1852,10 +1853,11 @@ int baseSSLCom<L4Proto>::parse_peer_hello() {
                 }
             }
 
-            if(message_type == 22) {
+            unsigned char handshake_type = b.get_at<unsigned char>(curpos);
+            curpos+=(sizeof(unsigned char) + 1); //@6 (there is padding 0x00, or length is 24bit :-O)
+            
+            if(message_type == 22 && handshake_type == 1) {
 
-                unsigned char handshake_type = b.get_at<unsigned char>(curpos);
-                curpos+=(sizeof(unsigned char) + 1); //@6 (there is padding 0x00, or length is 24bit :-O)
                 unsigned short handshake_length = ntohs(b.get_at<unsigned short>(curpos));
                 curpos+=sizeof(unsigned short); //@9
                 unsigned char handshake_version_maj = b.get_at<unsigned char>(curpos);
@@ -1871,8 +1873,8 @@ int baseSSLCom<L4Proto>::parse_peer_hello() {
                 curpos+=sizeof(unsigned char);
 
                 // we already know it's handshake, it's ok to return true
+                DIA___("SSLCom::parse_peer_hello: handshake (type %u), version %u.%u, length %u",handshake_type,handshake_version_maj,handshake_version_min,handshake_length);
                 if(handshake_type == 1) {
-                    DIA___("SSLCom::parse_peer_hello: handshake (type %u), version %u.%u, length %u",handshake_type,handshake_version_maj,handshake_version_min,handshake_length);
                     ret = 1;
                 }
 
@@ -1905,7 +1907,20 @@ int baseSSLCom<L4Proto>::parse_peer_hello() {
                         curpos += parse_peer_hello_extensions(b,curpos);
                     }
                 }
+            } 
+            else if(message_type == 22 && handshake_type != 1) {
+                ERR___("SSLCom::parse_peer_hello: handshake message, but not ClientHello; message_type %d, handshake_type %d", message_type, handshake_type);
+                ret = 1; // we need to assume we are late, so let continue wihout SNI. 
             }
+            else if(message_type > 22) {
+                ERR___("SSLCom::parse_peer_hello: post-handshake message; message_type %d, handshake_type %d", message_type, handshake_type);
+                ret = 1; // we need to assume we are late, so let continue wihout SNI. 
+            } else {
+                ERR___("SSLCom::parse_peer_hello: unknown message; message_type %d, handshake_type %d", message_type, handshake_type);
+                ret = 1; // we need to assume we are late, so let continue wihout SNI. 
+            }
+            
+                
         } else {
             baseSSLCom* p = dynamic_cast<baseSSLCom*>(peer());
             if(p != nullptr) 
@@ -1922,6 +1937,7 @@ int baseSSLCom<L4Proto>::parse_peer_hello() {
     }
     catch (std::out_of_range e) {
         DIAS___(string_format("SSLCom::parse_peer_hello: failed to parse hello: %s",e.what()).c_str());
+        error(ERROR_UNSPEC);
     }
 
     return ret;
@@ -1996,6 +2012,7 @@ int baseSSLCom<L4Proto>::read ( int __fd, void* __buf, size_t __n, int __flags )
         DIA___("SSLCom::read[%d]: handshake finished, continue with %s from socket",__fd, __flags & MSG_PEEK ? "peek" : "read");
         // if we were waiting, force next round of read
         forced_read(true);
+        monitor_peer();
     }
 
     // if we are peeking, just do it and return, no magic done is here
@@ -2190,6 +2207,7 @@ int baseSSLCom<L4Proto>::write ( int __fd, const void* __buf, size_t __n, int __
         DIA___("SSLCom::write[%d]: handshake finished, continue with writing to socket",__fd);
         // if we were waiting, force next round of write
         forced_write(true);
+        monitor_peer();
     }
 
     sslcom_write_blocked_on_read=0;
