@@ -1029,7 +1029,8 @@ int baseProxy::run(void) {
                         if (com()->poller.poller != nullptr) {
                             if(s != com()->poller.poller->hint_socket()) {
                                 // hint filedescriptor don't have handler
-                                ERR___("baseProxy::run: socket %d has registered NULL handler",s);
+                                ERR___("baseProxy::run: socket %d has registered NULL handler, removing",s);
+                                com()->poller.poller->del(s);
                             }
                         } else {
                             ERRS___("com()->poller.poller is null!");                        
