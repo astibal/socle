@@ -677,55 +677,50 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
         if(right_pc_cx.size() > 0)
         for(typename std::vector<baseHostCX*>::iterator l = right_pc_cx.begin(); l != right_pc_cx.end(); ++l) {
 
-            handle_cx_events('y',*l);
-
+        
+            // if socket is already in error, don't read, instead just raise again error, if we should reconnect
+            if ((*l)->error() and (*l)->should_reconnect_now()) {
+                on_right_pc_error(*l);
+                break;
+            } else if ((*l)->error()) {
+                break;
+            }
             
-                // if socket is already in error, don't read, instead just raise again error, if we should reconnect
-                if ((*l)->error() and (*l)->should_reconnect_now()) {
-                    on_right_pc_error(*l);
-                    break;
-                } else if ((*l)->error()) {
-                    break;
-                }
+            if (!handle_cx_read_once('y',xcom,*l)) {
+                handle_last_status |= HANDLE_RIGHT_PC_ERROR;
                 
-                if (handle_cx_read_once('y',xcom,*l)) {
-                    handle_last_status |= HANDLE_RIGHT_PC_ERROR;
-                    
-                    error_on_read = true;
-                    on_right_pc_error(*l);
-                    break;
-                } else {
-                    if ((*l)->opening()) {
-                        on_right_pc_restore(*l);
-                    }
+                error_on_read = true;
+                on_right_pc_error(*l);
+                break;
+            } else {
+                if ((*l)->opening()) {
+                    on_right_pc_restore(*l);
                 }
+            }
 
-            
-                // if socket is already in error, don't read, instead just raise again error, if we should reconnect
-                if ((*l)->error() and (*l)->should_reconnect_now()) {
-                    on_right_pc_error(*l);
-                    break;
-                } else if ((*l)->error()) {
-                    break;
-                }            
-
-
-                if (handle_cx_write_once('y',xcom,*l)) {
-                    handle_last_status |= HANDLE_RIGHT_PC_ERROR;
-                    
-                    error_on_write = true;
-                    on_right_pc_error(*l);
-                    break;
-                } 
-                else {
-                    
-                    if ((*l)->opening()) {
-                        on_right_pc_restore(*l);
-                    }
-                }       
-   
+        
+            // if socket is already in error, don't read, instead just raise again error, if we should reconnect
+            if ((*l)->error() and (*l)->should_reconnect_now()) {
+                on_right_pc_error(*l);
+                break;
+            } else if ((*l)->error()) {
+                break;
+            }            
 
 
+            if (!handle_cx_write_once('y',xcom,*l)) {
+                handle_last_status |= HANDLE_RIGHT_PC_ERROR;
+                
+                error_on_write = true;
+                on_right_pc_error(*l);
+                break;
+            } 
+            else {
+                
+                if ((*l)->opening()) {
+                    on_right_pc_restore(*l);
+                }
+            }       
         } 
         
         
