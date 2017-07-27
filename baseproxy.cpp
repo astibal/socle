@@ -624,77 +624,54 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
         if(left_pc_cx.size() > 0)
         for(typename std::vector<baseHostCX*>::iterator k = left_pc_cx.begin(); k != left_pc_cx.end(); ++k) {
 
-            handle_cx_events('x',*k);
-
             
-                
-            int k_s = (*k)->socket();            
-                
-            // paused cx is subject to timeout only, no r/w is done on it ( it would return -1/0 anyway, so spare some cycles)
-            if( ! (*k)->paused_read()) {
+            //READS
+            
+            // if socket is already in error, don't read, instead just raise again error, if we should reconnect
+            if ((*k)->error() and (*k)->should_reconnect_now()) {
+                on_left_pc_error(*k);
+                break;
+            } else if ((*k)->error()) {
+                break;
+            }
 
-                // if socket is already in error, don't read, instead just raise again error, if we should reconnect
-                if ((*k)->error() and (*k)->should_reconnect_now()) {
-                    on_left_pc_error(*k);
-                    break;
-                } else if ((*k)->error()) {
-                    break;
-                }
+            if (!handle_cx_read_once('x',xcom, *k)) {
+                handle_last_status |= HANDLE_LEFT_PC_ERROR;
                 
-                if(xcom->in_readset(k_s) || (*k)->com()->forced_read_reset()) {
-                    if ((*k)->readable()) {
-                        int red = (*k)->read();
-                        if (red == 0) {
-                            handle_last_status |= HANDLE_LEFT_PC_ERROR;
-                            
-                            error_on_read = true;
-                            on_left_pc_error(*k);
-                            break;
-                        } else {
-                            bool opening_status = (*k)->opening();
-                            if (opening_status) {
-                                on_left_pc_restore(*k);
-                            }
-                            if (red > 0) {
-                                meter_last_read += red;
-                                on_left_bytes(*k);
-                            }
-                        }
-                    }
+                error_on_read = true;
+                on_left_pc_error(*k);
+                break;
+            } else {
+                bool opening_status = (*k)->opening();
+                if (opening_status) {
+                    on_left_pc_restore(*k);
                 }
             }
             
-            if( ! (*k)->paused_write()) {
 
-                // if socket is already in error, don't read, instead just raise again error, if we should reconnect
-                if ((*k)->error() and (*k)->should_reconnect_now()) {
-                    on_left_pc_error(*k);
-                    break;
-                } else if ((*k)->error()) {
-                    break;
-                }
-                            
-                if(xcom->in_writeset(k_s) || (*k)->com()->forced_write_reset()) {
-                    if ((*k)->writable()) {
-                        int wrt = (*k)->write();
-                        if (wrt < 0) {
-                            handle_last_status |= HANDLE_LEFT_PC_ERROR;
-                            
-                            error_on_write = true;
-                            on_left_pc_error(*k);
-                            break;
-                        } 
-                        else {
-                            
-                            meter_last_write += wrt;
-                            
-                            if ((*k)->opening()) {
-                                on_left_pc_restore(*k);
-                            }
-                        }       
-                    }
-                }               
+            //WRITES
+
+            // if socket is already in error, don't read, instead just raise again error, if we should reconnect
+            if ((*k)->error() and (*k)->should_reconnect_now()) {
+                on_left_pc_error(*k);
+                break;
+            } else if ((*k)->error()) {
+                break;
             }
+                        
+            if(!handle_cx_write_once('x',xcom,*k)) {
+                        handle_last_status |= HANDLE_LEFT_PC_ERROR;
+                        
+                        error_on_write = true;
+                        on_left_pc_error(*k);
+                        break;
+            } 
+            else {
+                
+                if ((*k)->opening()) {
+                    on_left_pc_restore(*k);
+                }
+            }       
         }
         
         if(right_pc_cx.size() > 0)
@@ -703,10 +680,6 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
             handle_cx_events('y',*l);
 
             
-            int l_s = (*l)->socket();            
-            // paused cx is subject to timeout only, no r/w is done on it ( it would return -1/0 anyway, so spare some cycles)
-            if((*l)->paused_read()) {
-
                 // if socket is already in error, don't read, instead just raise again error, if we should reconnect
                 if ((*l)->error() and (*l)->should_reconnect_now()) {
                     on_right_pc_error(*l);
@@ -715,32 +688,19 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
                     break;
                 }
                 
-                if(xcom->in_readset(l_s)  || (*l)->com()->forced_read_reset()) {
-                    if ((*l)->readable()) {
-                        int red = (*l)->read();
-                        if (red == 0) {
-                            //(*l)->close();
-                            //right_pc_cx.erase(l);
-                            handle_last_status |= HANDLE_RIGHT_PC_ERROR;
-                            
-                            error_on_read = true;
-                            on_right_pc_error(*l);
-                            break;
-                        } else {
-                            if ((*l)->opening() && red > 0) {
-                                on_right_pc_restore(*l);
-                            }
-                            if (red > 0) {
-                                meter_last_read += red;
-                                on_right_bytes(*l);
-                            }
-                        }
+                if (handle_cx_read_once('y',xcom,*l)) {
+                    handle_last_status |= HANDLE_RIGHT_PC_ERROR;
+                    
+                    error_on_read = true;
+                    on_right_pc_error(*l);
+                    break;
+                } else {
+                    if ((*l)->opening()) {
+                        on_right_pc_restore(*l);
                     }
                 }
-            }
-            
-            if((*l)->paused_read()) {
 
+            
                 // if socket is already in error, don't read, instead just raise again error, if we should reconnect
                 if ((*l)->error() and (*l)->should_reconnect_now()) {
                     on_right_pc_error(*l);
@@ -749,29 +709,23 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
                     break;
                 }            
 
-                if(xcom->in_writeset(l_s)  || (*l)->com()->forced_write_reset()) {
-                    if ((*l)->writable()) {
-                        int wrt = (*l)->write();
-                        if (wrt < 0) {
-        //                  (*l)->close();
-        //                  right_pc_cx.erase(l);
-                            handle_last_status |= HANDLE_RIGHT_PC_ERROR;
-                            
-                            error_on_write = true;
-                            on_right_pc_error(*l);
-                            break;
-                        } 
-                        else {
-                            
-                            meter_last_write += wrt;
-                            
-                            if ((*l)->opening() && wrt > 0) {
-                                on_right_pc_restore(*l);
-                            }
-                        }       
-                    }   
-                }
-            }
+
+                if (handle_cx_write_once('y',xcom,*l)) {
+                    handle_last_status |= HANDLE_RIGHT_PC_ERROR;
+                    
+                    error_on_write = true;
+                    on_right_pc_error(*l);
+                    break;
+                } 
+                else {
+                    
+                    if ((*l)->opening()) {
+                        on_right_pc_restore(*l);
+                    }
+                }       
+   
+
+
         } 
         
         
@@ -948,12 +902,18 @@ void baseProxy::on_right_pc_error(baseHostCX* cx) {
 
 
 void baseProxy::on_left_pc_restore(baseHostCX* cx) {
-	DIA___("Left permanent connection restored: %s",cx->c_name());
+    DIA___("Left permanent connection restored: %s",cx->c_name());
+    cx->opening(false);
+    com()->set_monitor(cx->socket());
+    com()->set_poll_handler(cx->socket(),this);
 }
 
 
 void baseProxy::on_right_pc_restore(baseHostCX* cx) {
-	DIA___("Right permanent connection restored: %s",cx->c_name());
+    DIA___("Right permanent connection restored: %s",cx->c_name());
+    cx->opening(false);
+    com()->set_monitor(cx->socket());
+    com()->set_poll_handler(cx->socket(),this);    
 }
 
 
@@ -1169,18 +1129,31 @@ int baseProxy::connect ( const char* host, const char* port, char side,bool bloc
 int baseProxy::left_connect ( const char* host, const char* port, bool blocking)
 {
 	baseHostCX* cx = new_cx(host,port);
-	lpcadd(cx);
 	
-	return cx->connect(blocking);
+	int sock = cx->connect(blocking);
+        if(sock > 0) {
+            DIA___("baseProxy::left_connect: successfully created socket %d", sock);
+            lpcadd(cx);
+        } else {
+            ERR___("baseProxy::left_connect: socket not created, returned %s", sock);
+        } 
+        
+        return sock;
 };
 
 
 int baseProxy::right_connect ( const char* host, const char* port, bool blocking)
 {
 	baseHostCX* cx = new_cx(host,port);
-	rpcadd(cx);
-	
-	return cx->connect(blocking);
+        int sock = cx->connect(blocking);
+        if(sock > 0) {
+            DIA___("baseProxy::left_connect: successfully created socket %d", sock);
+            rpcadd(cx);
+        } else {
+            ERR___("baseProxy::left_connect: socket not created, returned %s", sock);
+        } 
+        
+        return sock;
 };
 
 
