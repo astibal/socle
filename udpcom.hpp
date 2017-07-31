@@ -47,7 +47,7 @@
 struct Datagram {
     sockaddr_storage dst;
     sockaddr_storage src;
-    buffer rx;
+    lockbuffer rx;
     int socket;
     bool real_socket = false;   // indicate if inbound connection was suceessfully bound, so we can use
                                 // real socket instead of virtual.

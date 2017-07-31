@@ -32,10 +32,10 @@ baseHostCX::baseHostCX(baseCom* c, const char* h, const char* p): Host(h, p) {
     fds_ = 0;
     error_ = false;
 
-    writebuf_ = buffer(HOSTCX_BUFFSIZE);
+    writebuf_ = lockbuffer(HOSTCX_BUFFSIZE);
     writebuf_.clear();
 
-    readbuf_ = buffer(HOSTCX_BUFFSIZE);
+    readbuf_ = lockbuffer(HOSTCX_BUFFSIZE);
     readbuf_.clear();
     processed_bytes_ = 0;
     next_read_limit_ = 0;
@@ -60,10 +60,10 @@ baseHostCX::baseHostCX(baseCom* c, unsigned int s) {
     fds_ = s;
     error_ = false;
 
-    writebuf_ = buffer(HOSTCX_BUFFSIZE);
+    writebuf_ = lockbuffer(HOSTCX_BUFFSIZE);
     writebuf_.clear();
 
-    readbuf_ = buffer(HOSTCX_BUFFSIZE);
+    readbuf_ = lockbuffer(HOSTCX_BUFFSIZE);
     readbuf_.clear();
     processed_bytes_ = 0;
     next_read_limit_ = 0;
@@ -288,6 +288,9 @@ int baseHostCX::read() {
         com()->rescan_read(socket());
         return -1;
     }
+    
+    buffer_guard bg(readbuf());
+    
 
     DUM_("HostCX::read[%s]: calling pre_read",c_name());
     pre_read();
@@ -438,6 +441,8 @@ int baseHostCX::write() {
         DEB_("HostCX::write[%s]: write operation is paused, returning 0",c_name());
         return 0;
     }
+    
+    buffer_guard bg(writebuf());
 
 
     int tx_size_orig = writebuf_.size();

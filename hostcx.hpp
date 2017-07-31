@@ -32,7 +32,7 @@
 
 #include <basecom.hpp>
 #include <logger.hpp>
-#include <buffer.hpp>
+#include <lockbuffer.hpp>
 #include <display.hpp>
 
 #define HOSTCX_BUFFSIZE 20480
@@ -136,8 +136,8 @@ class baseHostCX : public Host
 	
 	/* socket I/O facility */
 	
-	buffer readbuf_;  //!< read buffer
-	buffer writebuf_; //!< write buffer
+	lockbuffer readbuf_;  //!< read buffer
+	lockbuffer writebuf_; //!< write buffer
 	
 	
 	ssize_t processed_bytes_; //!< number of bytes processed by last process()
@@ -262,8 +262,8 @@ public:
     
 	inline bool should_reconnect_now() { time_t now = time(NULL); return (now - last_reconnect_ > reconnect_delay() && !reduced()); }
 	
-	inline buffer* readbuf() { return &readbuf_; }
-	inline buffer* writebuf() { return &writebuf_; } 
+	inline lockbuffer* readbuf() { return &readbuf_; }
+	inline lockbuffer* writebuf() { return &writebuf_; } 
 	
 	inline void send(buffer& b) { writebuf_.append(b); }
 	inline int  peek(buffer& b) { int r = com()->peek(this->socket(),b.data(),b.capacity(),0); if (r > 0) { b.size(r); } return r; }

@@ -54,7 +54,7 @@ public:
   void counter_alloc(int s);
   void counter_free(int s);
 
-  ~buffer ();
+  virtual ~buffer ();
 
   explicit buffer (size_type size = 0);
   buffer (size_type size, size_type capacity);
@@ -105,7 +105,7 @@ public:
   buffer view(unsigned int, buffer::size_type);
   buffer view();
   
-private:
+protected:
   unsigned char* data_ = nullptr;;
   size_type size_ = 0;
   size_type capacity_ = 0;

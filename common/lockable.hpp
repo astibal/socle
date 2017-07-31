@@ -23,7 +23,7 @@
 
 class lockable {
 public:
-    virtual ~lockable() {};
+    virtual ~lockable() { lock_.unlock(); };
     void lock() { lock_.lock(); }
     void unlock() { lock_.unlock(); }
     

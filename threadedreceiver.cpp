@@ -404,7 +404,10 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
                         ::recv(sock, drop_buffer, len < 2048 ? len : 2048, O_NONBLOCK);
                 }
 
-                o_it.rx.size(0);
+                //o_it.rx.size(0);
+                
+                buffer_guard bg(o_it.rx);
+                
                 o_it.rx.append(recv_buf_,len);
                 DIA_("ThreadedReceiver::on_left_new_raw[%d]: existing key %d: %dB data buffered",sock, session_key,o_it.rx.size());
 
