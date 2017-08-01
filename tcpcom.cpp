@@ -195,7 +195,7 @@ bool TCPCom::is_connected(int s) {
         if(error_code == EINPROGRESS) return false;
 
         if(LEV_(DEB)) {
-            if(poller.in_write_set(s)) {
+            if(master()->poller.in_write_set(s)) {
                 DEB_("TCP::is_connected[%d]: writable",s);
             } else {
                 DEB_("TCP::is_connected[%d]: not writable",s);
