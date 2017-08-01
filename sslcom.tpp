@@ -1235,7 +1235,7 @@ void baseSSLCom<L4Proto>::init_server() {
 template <class L4Proto>
 bool baseSSLCom<L4Proto>::check_cert (const char* host) {
     X509 *peer;
-    char peer_CN[256];
+    char peer_CN[256]; memset(peer_CN,0,256);
 
     if ( !is_server() && SSL_get_verify_result ( sslcom_ssl ) !=X509_V_OK ) {
         DIAS___( "check_cert: ssl client: target server's certificate cannot be verified!" );
@@ -1256,16 +1256,21 @@ bool baseSSLCom<L4Proto>::check_cert (const char* host) {
     };
 
     X509_NAME* x509_name = X509_get_subject_name(peer);
-    X509_NAME_get_text_by_NID(x509_name,NID_commonName, peer_CN, 256);
+    
+    X509_NAME_get_text_by_NID(x509_name,NID_commonName, peer_CN, 255);
 
     // X509_NAME_oneline(X509_get_subject_name(peer),peer_CERT,1024);
     // DIA___("Peer certificate:\n%s",peer_CERT);
 
-    DIA___("peer CN: %s",peer_CN);
+    //DIA___("peer CN: %s",ESC(str_peer));
     if(host != NULL) {
-        DIA___("peer host: %s",host);
+//     ERR_("what:\n%s",hex_dump((unsigned char*)peer_CN,256).c_str());
+	std::string str_host(host);
+	std::string str_peer(peer_CN,255);
 
-        if ( strcasecmp ( peer_CN,host ) ) {
+	DIA___("peer host: %s",host);
+
+        if ( str_host != str_peer ) {
             DIAS___( "Common name doesn't match host name" );
         }
     }
@@ -1554,6 +1559,9 @@ int baseSSLCom<L4Proto>::waiting() {
 
             sslcom_waiting = true;
             prof_want_read_cnt++;
+            
+            rescan_read(sslcom_fd);
+            
             // forced_read(true);
             // sslcom_waiting_read = true;
             
