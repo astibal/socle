@@ -753,7 +753,7 @@ void UDPCom::shutdown(int __fd) {
                 DEB_("UDPCom::shutdown[%d]: key %s not found in connect cache.",__fd,key.c_str());
                 
                 // What if socket is already used somewhere else?
-                ::close(__fd);
+                //::close(__fd) can't be used. Doing nothing is better.
                 
             }
             
