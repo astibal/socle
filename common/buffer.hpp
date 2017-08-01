@@ -577,7 +577,7 @@ inline void buffer::flush(buffer::size_type b) {
 }
 
 inline buffer buffer::view(unsigned int pos, buffer::size_type len) {
-    if (pos < size_ - 1) {
+    if (pos < size_) {
         // starting pos in the buffer
         
         if( pos+len <= size_) {
