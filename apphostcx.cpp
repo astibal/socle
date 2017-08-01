@@ -222,6 +222,11 @@ void AppHostCX::pre_read() {
                 this->next_read_limit(l); 
                 
                 updated = true;
+		
+		if(com()->l4_proto() == SOCK_DGRAM) {
+		  // don't limit reads, packets are dropped in case of tension, so flow could be incorrect a bit (it will be fixed on read).
+		  this->next_read_limit(0);
+		}
             }
         }
         
