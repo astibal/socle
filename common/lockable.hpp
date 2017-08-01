@@ -27,7 +27,8 @@ public:
     void lock() { lock_.lock(); }
     void unlock() { lock_.unlock(); }
     
-private:
+    #define lock_guard_me std::lock_guard<std::recursive_mutex> ll(this->lock_)
+protected:
     std::recursive_mutex lock_;
 };
 
