@@ -205,8 +205,8 @@ public:
     virtual bool writable(int s) { return true; }; 
     
     // operate on FD_SETs
-    virtual bool in_readset(int s) { return poller.in_read_set(s); };
-    virtual bool in_writeset(int s) { return poller.in_write_set(s); };
+    virtual bool in_readset(int s) { return master()->poller.in_read_set(s); };
+    virtual bool in_writeset(int s) { return master()->poller.in_write_set(s); };
 
     inline void set_monitor(int s) { 
         DIA_("basecom::set_monitor: called to add %d",s);
