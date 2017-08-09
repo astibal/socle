@@ -87,7 +87,7 @@ struct Datagram {
 
 class DatagramCom {
 public:
-    static std::mutex lock;
+    static std::recursive_mutex lock;
     static std::map<uint64_t,Datagram> datagrams_received;
 };
 
@@ -147,7 +147,7 @@ protected:
     // Since we don't want one Com to close another's Com opened socket,
     // we implement value as tuple of <fd,refcount>.
     static std::map<std::string,std::pair<int,int>> connect_fd_cache;
-    static std::mutex connect_fd_cache_lock;
+    static std::recursive_mutex connect_fd_cache_lock;
     
 public:
     // allow older kernels to use UDP -- we have to set bind_sock_family to IPv4 variant

@@ -27,10 +27,10 @@ std::string UDPCom::udpcom_name_ = "udp";
 unsigned int UDPCom::default_sock_family = AF_INET6;
 
 std::map<uint64_t,Datagram> DatagramCom::datagrams_received;
-std::mutex DatagramCom::lock;
+std::recursive_mutex DatagramCom::lock;
 
 std::map<std::string,std::pair<int,int>> UDPCom::connect_fd_cache;
-std::mutex UDPCom::connect_fd_cache_lock;
+std::recursive_mutex UDPCom::connect_fd_cache_lock;
 
 int UDPCom::translate_socket(int vsock) {
     
@@ -264,7 +264,7 @@ bool UDPCom::is_connected(int s) {
 
 bool UDPCom::resolve_nonlocal_socket(int sock) {
 
-    std::lock_guard<std::mutex> l(DatagramCom::lock);
+    std::lock_guard<std::recursive_mutex> l(DatagramCom::lock);
     
     auto it_record = DatagramCom::datagrams_received.find((unsigned int)sock);
     if(it_record != DatagramCom::datagrams_received.end()) {  
@@ -313,7 +313,7 @@ bool UDPCom::resolve_nonlocal_socket(int sock) {
 
 bool UDPCom::in_readset(int s) {
     
-    std::lock_guard<std::mutex> l(DatagramCom::lock);
+    std::lock_guard<std::recursive_mutex> l(DatagramCom::lock);
     
     auto it_record = DatagramCom::datagrams_received.find((unsigned int)s);
     if(it_record != DatagramCom::datagrams_received.end()) {  
@@ -340,7 +340,7 @@ bool UDPCom::in_readset(int s) {
 
 bool UDPCom::in_writeset(int s) {
     
-    std::lock_guard<std::mutex> l(DatagramCom::lock);
+    std::lock_guard<std::recursive_mutex> l(DatagramCom::lock);
 
     auto it_record = DatagramCom::datagrams_received.find((unsigned int)s);
     if(it_record != DatagramCom::datagrams_received.end()) {  
@@ -355,7 +355,7 @@ bool UDPCom::in_writeset(int s) {
 
 bool UDPCom::in_exset(int s) {
     
-    std::lock_guard<std::mutex> l(DatagramCom::lock);
+    std::lock_guard<std::recursive_mutex> l(DatagramCom::lock);
     
     auto it_record = DatagramCom::datagrams_received.find((unsigned int)s);
     if(it_record != DatagramCom::datagrams_received.end()) {  
@@ -391,7 +391,7 @@ int UDPCom::read(int __fd, void* __buf, size_t __n, int __flags) {
 
 int UDPCom::read_from_pool(int __fd, void* __buf, size_t __n, int __flags) {
 
-    std::lock_guard<std::mutex> l(DatagramCom::lock);
+    std::lock_guard<std::recursive_mutex> l(DatagramCom::lock);
     
     auto it_record = DatagramCom::datagrams_received.find((unsigned int)__fd);
     if(it_record != DatagramCom::datagrams_received.end()) {  
@@ -459,7 +459,7 @@ int UDPCom::write(int __fd, const void* __buf, size_t __n, int __flags)
 
 int UDPCom::write_to_pool(int __fd, const void* __buf, size_t __n, int __flags) {
     
-    std::lock_guard<std::mutex> l(DatagramCom::lock);
+    std::lock_guard<std::recursive_mutex> l(DatagramCom::lock);
     
     auto it_record = DatagramCom::datagrams_received.find((unsigned int)__fd);
     if(it_record != DatagramCom::datagrams_received.end()) {  
@@ -641,7 +641,7 @@ int UDPCom::write_to_pool(int __fd, const void* __buf, size_t __n, int __flags) 
 
 bool UDPCom::resolve_socket(bool source, int s, std::string* target_host, std::string* target_port, sockaddr_storage* target_storage) {
     
-    std::lock_guard<std::mutex> l(DatagramCom::lock);
+    std::lock_guard<std::recursive_mutex> l(DatagramCom::lock);
     
     auto it_record = DatagramCom::datagrams_received.find((unsigned int)s);
     if(it_record != DatagramCom::datagrams_received.end()) {  
@@ -766,7 +766,7 @@ void UDPCom::shutdown(int __fd) {
         
     } else {
         
-        std::lock_guard<std::mutex> l(DatagramCom::lock);
+        std::lock_guard<std::recursive_mutex> l(DatagramCom::lock);
         
         auto it_record = DatagramCom::datagrams_received.find((unsigned int)__fd);
         if(it_record != DatagramCom::datagrams_received.end()) {  

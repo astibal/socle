@@ -201,7 +201,7 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
                 exit(1);
             }
             
-            std::lock_guard<std::mutex> l(DatagramCom::lock);
+            std::lock_guard<std::recursive_mutex> l(DatagramCom::lock);
             
             Datagram dgram;
             struct Datagram& d = dgram;
