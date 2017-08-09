@@ -259,14 +259,25 @@ void baseSSLCom<L4Proto>::ssl_msg_callback(int write_p, int version, int content
     DEB__("[%s]: SSLCom::ssl_msg_callback: %s/%s has been %s",name,msg_version,msg_content_type,msg_direction);
 
     if(content_type == 21) {
-        DEB__("[%s]: SSLCom::ssl_msg_callback: alert dump: %s",name,hex_dump((unsigned char*)buf,len).c_str());
-        unsigned short code = ntohs(buffer::get_at_ptr<unsigned short>((unsigned char*)buf));
+        DEB__("[%s]: SSLCom::ssl_msg_callback: alert dump:\n%s",name,hex_dump((unsigned char*)buf,len).c_str());
+        uint16_t int_code = ntohs(buffer::get_at_ptr<uint16_t>((unsigned char*)buf));
+        uint8_t level = buffer::get_at_ptr<uint8_t>((unsigned char*)buf);
+        uint8_t code = buffer::get_at_ptr<uint8_t>((unsigned char*)buf+1);
         if(com) {
-            DIA__("[%s]: SSLCom::ssl_msg_callback: alert info: %s/%s[%u]",name,SSL_alert_type_string_long(code),SSL_alert_desc_string_long(code),code);
-            if(code == 522) {
+            DIA__("[%s]: SSLCom::ssl_msg_callback: alert info: %s/%s [%d/%d]",name,SSL_alert_type_string_long(int_code),SSL_alert_desc_string_long(int_code),level,code);
+
+            
+            if(code == 10) {
                 // unexpected message
                 com->log_profiling_stats(DEB);
             }
+            
+            // if level is Fatal, log com error and close. 
+            if(level > 1) {
+                ERR__("[%s]: SSL alert: %s/%s [%d/%d]",name,SSL_alert_type_string_long(int_code),SSL_alert_desc_string_long(int_code),level,code);
+                com->error(ERROR_UNSPEC);
+            }
+            
         }
     }
     else if(content_type ==20) {
