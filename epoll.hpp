@@ -26,11 +26,6 @@
 
 
 class baseCom;
-class epoll_handler {
-public:
-    int fence__ = HANDLER_FENCE;
-    virtual void handle_event(baseCom*) = 0;
-};
 
 struct epoll {
     struct epoll_event events[EPOLLER_MAX_EVENTS];
@@ -68,6 +63,8 @@ struct epoll {
     static int log_level;
 };
 
+
+class epoll_handler;
 /*
  * Class poller is HOLDER of epoll pointer. Reason for this is to have single point of self-initializing 
  * code. It's kind of wrapper, which doesn't init anything until there is an attempt to ADD something into it.
@@ -95,6 +92,25 @@ struct epoller {
     void set_handler(int check, epoll_handler*);
     
     virtual ~epoller() { if(poller) delete poller; }
+};
+
+class epoll_handler {
+public:
+    int fence__ = HANDLER_FENCE;
+    virtual void handle_event(baseCom*) = 0;
+    virtual ~epoll_handler() { 
+        if(registrant != nullptr) { 
+            for(auto s: registered_sockets) { 
+                registrant->clear_handler(s); 
+            }
+        }
+    }
+    
+    friend class epoller;
+protected:
+    epoller* registrant = nullptr;
+    std::set<int> registered_sockets;
+    
 };
 
 #endif //EPOLL_HPP

@@ -298,6 +298,7 @@ bool epoller::del(int socket)
     if(poller != nullptr) {
         return poller->del(socket);
     }
+    clear_handler(socket);
     
     return false;
 };
@@ -390,4 +391,23 @@ void epoller::clear_handler(int check) {
 
 void epoller::set_handler(int check, epoll_handler* h) {
     handler_hints[check] = h;
+    
+    
+    if(h != nullptr) {
+        if(h->registrant && h->registrant != this) {
+            ERRS_("epoller::set_handler: setting handler over already existing, different handler. This should not happen!");
+            // since registrant will be modified, we need to clear old registrant handlers.
+            
+            for(auto cur_socket: h->registered_sockets) {
+                ERR_("epoller::set_handler:  moving old socket %d handler to new one", cur_socket);
+                handler_hints[cur_socket] = h;
+            }
+        }
+        h->registrant = this;
+        h->registered_sockets.insert(check);
+    }
+    else {
+        clear_handler(check);
+    }
+    
 }
