@@ -309,9 +309,25 @@ public:
             CRYPTO_add(&sslcom_pref_cert->references,-1,CRYPTO_LOCK_X509);
         }        
         
+        if(sslcom_ssl != nullptr) {
+            SSL_free(sslcom_ssl);
+            sslcom_ssl = nullptr;
+        }
+        
         if(sslcom_ecdh != nullptr) {
             EC_KEY_free(sslcom_ecdh);;
+            sslcom_ecdh = nullptr;
         }
+        
+        if(ocsp_trust_store) {
+            X509_STORE_free(ocsp_trust_store);
+            ocsp_trust_store = nullptr;
+        }
+        
+        if(sslcom_peer_cert != nullptr) X509_free(sslcom_peer_cert);
+        if(sslcom_peer_issuer != nullptr) X509_free(sslcom_peer_issuer);
+        if(sslcom_peer_issuer_issuer != nullptr) X509_free(sslcom_peer_issuer_issuer);
+        
     };
     
    

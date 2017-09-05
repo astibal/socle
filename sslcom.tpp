@@ -376,17 +376,20 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx) {
         }
     }
 
-    X509* cert = X509_STORE_CTX_get_current_cert(ctx);
+    X509* xcert = X509_STORE_CTX_get_current_cert(ctx);
 
     if(com != nullptr) {
         if (depth == 0) {
-            com->sslcom_peer_cert = cert;
+            if(com->sslcom_peer_cert) { ERRS__("already having peer cert"); X509_free(com->sslcom_peer_cert); }
+            com->sslcom_peer_cert = X509_dup(xcert);
         }
         else if (depth == 1) {
-            com->sslcom_peer_issuer = cert;
+            if(com->sslcom_peer_issuer) { ERRS__("already having peer issuer"); X509_free(com->sslcom_peer_issuer); }
+            com->sslcom_peer_issuer = X509_dup(xcert);
         }
         else if (depth == 2) {
-            com->sslcom_peer_issuer_issuer = cert;
+            if(com->sslcom_peer_issuer_issuer)  { ERRS__("already having peer issuer_issuer"); X509_free(com->sslcom_peer_issuer_issuer); }
+            com->sslcom_peer_issuer_issuer = X509_dup(xcert);
         }
     }
 
@@ -480,8 +483,8 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx) {
     }
 
     std::string cn = "unknown";
-    if(cert != nullptr) {   
-        cn = SSLCertStore::print_cn(cert) + ";"+ fingerprint(cert);
+    if(xcert != nullptr) {   
+        cn = SSLCertStore::print_cn(xcert) + ";"+ fingerprint(xcert);
     }
     DIA__("[%s]: SSLCom::ssl_client_vrfy_callback[%d:%s]: returning %s (pre-verify %d)",name,depth,cn.c_str(),(ret > 0 ? "ok" : "failed" ),ok);
     if(ret <= 0) {
@@ -880,10 +883,6 @@ int baseSSLCom<L4Proto>::ocsp_resp_callback(SSL *s, void *arg) {
         return baseSSLCom::ocsp_resp_callback_explicit(com,opt_ocsp_strict ? 0 : 1);
     }
 
-    X509_STORE* x_st = X509_STORE_new();
-    X509_STORE_load_locations(x_st,nullptr,SSLCertStore::def_cl_capath.c_str());
-    //DEB__("Store is at 0x%x",st);
-
     status = OCSP_basic_verify(basic, NULL, com->ocsp_trust_store ,0);
 
 
@@ -1090,15 +1089,20 @@ void baseSSLCom<L4Proto>::init_ssl_callbacks() {
 
         if(opt_ocsp_stapling_enabled || opt_ocsp_mode > 0) {
 
-            ocsp_trust_store = X509_STORE_new();
-            if(X509_STORE_load_locations(ocsp_trust_store,nullptr,SSLCertStore::def_cl_capath.c_str()) == 0)  {
-                ERRS___("cannot load OCSP trusted store. Fail-open.");
-                opt_ocsp_stapling_mode = 0;
-            } else {
-                DIA__("[%s]: OCSP stapling enabled, mode %d",hr(),opt_ocsp_stapling_mode);
-                SSL_set_tlsext_status_type(sslcom_ssl, TLSEXT_STATUSTYPE_ocsp);
-                SSL_CTX_set_tlsext_status_cb(sslcom_ctx,ocsp_resp_callback);
-                SSL_CTX_set_tlsext_status_arg(sslcom_ctx, this);
+            if(ocsp_trust_store == nullptr) {
+                ocsp_trust_store = X509_STORE_new();
+                if(X509_STORE_load_locations(ocsp_trust_store,nullptr,SSLCertStore::def_cl_capath.c_str()) == 0)  {
+                    ERRS___("cannot load OCSP trusted store. Fail-open.");
+                    opt_ocsp_stapling_mode = 0;
+                } else {
+                    DIA__("[%s]: OCSP stapling enabled, mode %d",hr(),opt_ocsp_stapling_mode);
+                    SSL_set_tlsext_status_type(sslcom_ssl, TLSEXT_STATUSTYPE_ocsp);
+                    SSL_CTX_set_tlsext_status_cb(sslcom_ctx,ocsp_resp_callback);
+                    SSL_CTX_set_tlsext_status_arg(sslcom_ctx, this);
+                }
+            }
+            else {
+                ERRS__("OCSP truststore already set!");
             }
         }
     } 
@@ -1165,9 +1169,15 @@ void baseSSLCom<L4Proto>::init_client() {
 template <class L4Proto>
 void baseSSLCom<L4Proto>::init_server() {
 
+    if(sslcom_ecdh) {
+        EC_KEY_free(sslcom_ecdh);
+        sslcom_ecdh = nullptr;
+    }
+    
     if(sslcom_ssl) {
         DEBS___("SSLCom::init_server: freeing old sslcom_ssl");
         SSL_free(sslcom_ssl);
+        sslcom_ssl = nullptr;
     }
 
     
@@ -2355,6 +2365,7 @@ void baseSSLCom<L4Proto>::cleanup()  {
 
     if(ocsp_trust_store) {
         X509_STORE_free(ocsp_trust_store);
+        ocsp_trust_store = nullptr;
     }
 
 // 	if (sslcom_ctx) {
@@ -2466,6 +2477,9 @@ int baseSSLCom<L4Proto>::connect ( const char* host, const char* port, bool bloc
     DIA___("SSLCom::connect[%d]: %s connected",sock,L4Proto::name().c_str());
     sock = upgrade_client_socket(sock);
 
+//     ERRS___("DIABLING MEM CHECK");
+//     CRYPTO_mem_ctrl(CRYPTO_MEM_CHECK_DISABLE);
+    
     if(upgraded()) {
         DIA___("SSLCom::connect[%d]: socket upgraded at 1st attempt!",sock);
     }

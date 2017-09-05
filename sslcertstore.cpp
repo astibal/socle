@@ -662,6 +662,7 @@ std::string SSLCertStore::print_cert(X509* x) {
     std::string s;
 
     // get info from the peer certificate
+    // TODO: should be replaced, as per https://linux.die.net/man/3/x509_name_get_text_by_nid - examples section
     X509_NAME_get_text_by_NID(X509_get_subject_name(x),NID_commonName, tmp,SSLCERTSTORE_BUFSIZE-1);
     s.append("Common Name: ");
     s.append(tmp);
