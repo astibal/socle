@@ -92,17 +92,47 @@ sobject::~sobject() {
 }
 
 
-std::string sobject_db_to_string(const char* criteria,const char* delimiter,int verbosity) {
+std::string sobject_db_list(const char* class_criteria,const char* delimiter,int verbosity,const char* content_criteria) {
     
     std::string ret;
+    std::string criteria = "";
     sobject_db.lock();
+    
+    if(class_criteria)
+        criteria = class_criteria;
     
     for(auto it: sobject_db.cache()) {
         sobject*       ptr = it.first;
+
+        if(!ptr) continue;
         
-        if( criteria == nullptr || ptr->class_name() == criteria ) {
+        bool matched = true;
+        
+        //if wehave criteria, select if it's name match, or pointer match
+        if(criteria.length()) {
+            matched = false;
+
+            if(criteria.compare(0,2,"0x") == 0) {
+                std::string str_ptr = string_format("0x%lx",ptr);
+                
+                //DIA_("comparing pointer: %s and %s",str_ptr.c_str(), criteria.c_str());
+                matched = (str_ptr == criteria);
+            } else {
+                //DIA_("comparing classname: %s and %s",ptr->class_name().c_str(), criteria.c_str());
+                matched = (ptr->class_name() == criteria || criteria == "*");
+            }
+        }
+        
+        
+        if(matched) {
             sobject_info*  si = it.second;
-            ret += string_format("Id: 0x%lx | ",ptr) + ptr->to_string(verbosity);
+            std::string obj_string = ptr->to_string(verbosity);
+            
+            if(content_criteria) {
+                if(obj_string.find(content_criteria) == std::string::npos) { continue; }
+            }
+
+            ret += string_format("Id: 0x%lx | ",ptr) + obj_string;
 
             if(verbosity >= DEB) {
                 ret += "\n";
