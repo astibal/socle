@@ -20,6 +20,8 @@
 #ifndef SOBJECT_HPP_
 #define SOBJECT_HPP_
 
+#include <set>
+
 #include <time.h>
 
 #include <logger.hpp>
@@ -176,6 +178,8 @@ class sref {
 };
 
 typedef spointer<std::vector<std::string>> spointer_vector_string;
+typedef spointer<std::vector<int>> spointer_vector_int;
+typedef spointer<std::set<int>> spointer_set_int;
 typedef sref<std::vector<std::string>> sref_vector_string;
 
 extern ptr_cache<sobject*,sobject_info> sobject_db;

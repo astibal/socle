@@ -413,7 +413,7 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx) {
                 if(com->opt_allow_unknown_issuer) {
                     ret = 1;
                 } 
-                if(com->opt_failed_certcheck_replacement && com->owner_cx() && com->owner_cx()->port() == "443") {
+                if(com->opt_failed_certcheck_replacement) {
                     ret = 1;
                 }            
             }
@@ -424,7 +424,7 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx) {
                 if(com->opt_allow_self_signed_chain) {
                     ret = 1;
                 }
-                if(com->opt_failed_certcheck_replacement && com->owner_cx() && com->owner_cx()->port() == "443") {
+                if(com->opt_failed_certcheck_replacement) {
                     ret = 1;
                 }
             }
@@ -436,7 +436,7 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx) {
                 if(com->opt_allow_self_signed_cert) {
                     ret = 1;
                 }
-                if(com->opt_failed_certcheck_replacement && com->owner_cx() && com->owner_cx()->port() == "443") {
+                if(com->opt_failed_certcheck_replacement) {
                     ret = 1;
                 }
             }
@@ -451,7 +451,7 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx) {
                 if(com->opt_allow_not_valid_cert) {
                     ret = 1;
                 }
-                if(com->opt_failed_certcheck_replacement && com->owner_cx() && com->owner_cx()->port() == "443") {
+                if(com->opt_failed_certcheck_replacement) {
                     ret = 1;
                 }
             }
@@ -465,7 +465,7 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx) {
                 if(com->opt_allow_not_valid_cert) {
                     ret = 1;
                 }
-                if(com->opt_failed_certcheck_replacement && com->owner_cx() && com->owner_cx()->port() == "443") {
+                if(com->opt_failed_certcheck_replacement) {
                     ret = 1;
                 }
             }
@@ -504,7 +504,7 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx) {
                 com->verify_set(REVOKED);
                 ret = 0;
                 
-                if(com->opt_failed_certcheck_replacement && com->owner_cx() && com->owner_cx()->port() == "443") {
+                if(com->opt_failed_certcheck_replacement) {
                     ret = 1;
                 }
                 
