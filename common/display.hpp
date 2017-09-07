@@ -41,6 +41,8 @@ inline std::string printable(std::string orig) {
     return escape(orig,true);
 }
 
+int safe_val(std::string s, int default_val=-1);
+
 // get sanitized, dot-separated kernel version. 
 std::string get_kernel_version();
 // compare dot-formated @target version with against @real version. @returns false if real version is lower than target.

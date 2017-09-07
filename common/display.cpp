@@ -459,3 +459,18 @@ std::string inet_ss_str(sockaddr_storage* s) {
     
     return string_format("%s/%s:%d", inet_family_str(fa).c_str(),ip.c_str(),port);
 }
+
+
+int safe_val(std::string s, int default_val) {
+    int ret = default_val;
+    
+    try {
+        ret = std::stoi(s);
+    }
+    catch(std::invalid_argument) {}
+    catch(std::out_of_range) {}
+    catch(std::exception) {}
+
+    return ret;
+}
+
