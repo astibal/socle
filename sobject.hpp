@@ -63,7 +63,7 @@ struct sobject_info {
     DECLARE_C_NAME("sobject_info");
 };
 
-
+struct meter;
 
 class sobject {
 
@@ -77,16 +77,9 @@ public:
     // return string representation of the object on single line
     virtual std::string to_string(int verbosity=INF) = 0;
 
-
-    static unsigned long meter_created_second; 
-    static unsigned long curr_meter_created_second; 
-    static time_t cnt_created_second;
-    static unsigned long get_meter_created_second() { return time_get_counter_sec(&cnt_created_second,&curr_meter_created_second,1); };
     
-    static unsigned long meter_deleted_second;    
-    static unsigned long curr_meter_deleted_second;
-    static time_t cnt_deleted_second;
-    static unsigned long get_meter_deleted_second() { return time_get_counter_sec(&cnt_deleted_second,&curr_meter_deleted_second,1); };
+    static meter mtr_created;
+    static meter mtr_deleted;
     
 DECLARE_C_NAME("sobject");
 // DECLARE_LOGGING(name);
@@ -176,6 +169,22 @@ class sref {
         
     private:
         spointer<T>* reference_ = nullptr;
+};
+
+
+struct meter {
+    
+    meter(int interval=1): interval_(interval) { last_update = time(nullptr); };
+    
+    unsigned long prev_counter_{};
+    unsigned long curr_counter_{};
+    
+    time_t last_update;
+    int interval_{1};
+    
+    
+    unsigned long update(unsigned long val);
+    unsigned long get() const { if(time(nullptr) > last_update + interval_) { return 0; } return prev_counter_; };
 };
 
 typedef spointer<std::vector<std::string>> spointer_vector_string;

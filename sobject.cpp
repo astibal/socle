@@ -22,13 +22,9 @@ namespace socle {
 
 ptr_cache<sobject*,sobject_info> sobject_db("global object db",0,true);
 
-unsigned long sobject::meter_created_second = 0;
-unsigned long sobject::meter_deleted_second = 0;
-unsigned long sobject::curr_meter_created_second = 0;
-unsigned long sobject::curr_meter_deleted_second = 0;
+meter sobject::mtr_created;
+meter sobject::mtr_deleted;
 
-time_t sobject::cnt_created_second = 0;
-time_t sobject::cnt_deleted_second = 0;
 
 std::string sobject_info::to_string(int verbosity) { 
     std::string r;
@@ -81,7 +77,7 @@ unsigned long time_get_counter_sec(time_t* last_time, unsigned long* counter, in
 sobject::sobject() {
     sobject_db.lock();
     sobject_db.set(this,new sobject_info());
-    time_update_counter_sec(&cnt_created_second, &meter_created_second, &curr_meter_created_second,1);
+    mtr_created.update(1);
     sobject_db.unlock();
 }
 
@@ -89,7 +85,7 @@ sobject::sobject() {
 sobject::~sobject() {
     sobject_db.lock();
     sobject_db.erase(this);
-    time_update_counter_sec(&cnt_deleted_second,&meter_deleted_second, &curr_meter_deleted_second,1);
+    mtr_deleted.update(1);
     sobject_db.unlock();
 }
 
@@ -186,7 +182,7 @@ std::string sobject_db_stats_string(const char* criteria) {
         avg_age = sum_age/object_counter;
     
     ret += string_format("Performance: %ld new objects per second, %ld deleted objects per second.\n",
-                            socle::sobject::get_meter_created_second(), socle::sobject::get_meter_deleted_second());
+                            socle::sobject::mtr_created.get(),socle::sobject::mtr_deleted.get());
     ret += string_format("Database contains: %ld entries, oldest %ds, youngest age %ds, average age is %.1fs.",
                          object_counter, oldest_age, youngest_age, avg_age);
     return ret;
@@ -210,6 +206,26 @@ int sobject_db_ask_destroy(void* ptr) {
     
     return ret;
 }
+
+long unsigned int meter::update(unsigned long val) {
+    
+    time_t now = time(nullptr);
+    
+    if( now - last_update > interval_) {
+        // threshold is reached => counter contains all bytes in previous second
+        last_update = now;
+        prev_counter_  = curr_counter_;
+        
+        curr_counter_ = val;
+        
+    } else {
+        curr_counter_ += val;
+    }
+    
+    return prev_counter_;
+}
+
+
 
 //DEFINE_LOGGING(sobject);
 
