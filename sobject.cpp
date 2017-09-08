@@ -21,8 +21,11 @@
 namespace socle {
 
 ptr_cache<sobject*,sobject_info> sobject_db("global object db",0,true);
+
 unsigned long sobject::meter_created_second = 0;
 unsigned long sobject::meter_deleted_second = 0;
+unsigned long sobject::curr_meter_created_second = 0;
+unsigned long sobject::curr_meter_deleted_second = 0;
 
 time_t sobject::cnt_created_second = 0;
 time_t sobject::cnt_deleted_second = 0;
@@ -47,22 +50,21 @@ std::string sobject_info::to_string(int verbosity) {
 // increment counter @counter according to time @last_time value. 
 // If @last_time difference from now is higher than @seconds from now,
 // threshold is reached and new @last_time is set to now.
-unsigned long time_update_counter_sec(time_t* last_time, unsigned long* counter, int seconds, int increment) {
+unsigned long time_update_counter_sec(time_t* last_time, unsigned long* prev_counter, unsigned long* curr_counter, int seconds, int increment) {
     time_t now = time(nullptr);
     
     if( now - *last_time > seconds  ) {
-        // threshold is reached
+        // threshold is reached => counter contains all bytes in previous second
         *last_time = now;
+        *prev_counter  = *curr_counter;
         
-        unsigned long ret = *counter;
-        *counter = increment;
+        *curr_counter = increment;
         
-        return ret;
     } else {
-        (*counter)+=increment;
+        (*curr_counter)+=increment;
     }
     
-    return *counter;
+    return *prev_counter;
 }
 
 
@@ -79,7 +81,7 @@ unsigned long time_get_counter_sec(time_t* last_time, unsigned long* counter, in
 sobject::sobject() {
     sobject_db.lock();
     sobject_db.set(this,new sobject_info());
-    time_update_counter_sec(&cnt_created_second,&meter_created_second,1);
+    time_update_counter_sec(&cnt_created_second, &meter_created_second, &curr_meter_created_second,1);
     sobject_db.unlock();
 }
 
@@ -87,7 +89,7 @@ sobject::sobject() {
 sobject::~sobject() {
     sobject_db.lock();
     sobject_db.erase(this);
-    time_update_counter_sec(&cnt_deleted_second,&meter_deleted_second,1);
+    time_update_counter_sec(&cnt_deleted_second,&meter_deleted_second, &curr_meter_deleted_second,1);
     sobject_db.unlock();
 }
 

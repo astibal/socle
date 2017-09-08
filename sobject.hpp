@@ -33,7 +33,7 @@ namespace socle {
 std::string sobject_db_list(const char* class_criteria = nullptr,const char* delimiter = nullptr,int verbosity=INF,const char* content_criteria=nullptr);
 std::string sobject_db_stats_string(const char* criteria);
 
-unsigned long time_update_counter_sec(time_t* last_time, unsigned long* counter, int seconds, int increment=1);
+unsigned long time_update_counter_sec(time_t* last_time, unsigned long* prev_counter, unsigned long* curr_counter, int seconds, int increment=1);
 unsigned long time_get_counter_sec(time_t* last_time, unsigned long* counter, int seconds);
 
 int sobject_db_ask_destroy(void* ptr);
@@ -77,14 +77,16 @@ public:
     // return string representation of the object on single line
     virtual std::string to_string(int verbosity=INF) = 0;
 
-    
+
     static unsigned long meter_created_second; 
+    static unsigned long curr_meter_created_second; 
     static time_t cnt_created_second;
-    static unsigned long get_meter_created_second() { return time_get_counter_sec(&cnt_created_second,&meter_created_second,1); };
+    static unsigned long get_meter_created_second() { return time_get_counter_sec(&cnt_created_second,&curr_meter_created_second,1); };
     
-    static unsigned long meter_deleted_second;
+    static unsigned long meter_deleted_second;    
+    static unsigned long curr_meter_deleted_second;
     static time_t cnt_deleted_second;
-    static unsigned long get_meter_deleted_second() { return time_get_counter_sec(&cnt_deleted_second,&meter_deleted_second,1); };
+    static unsigned long get_meter_deleted_second() { return time_get_counter_sec(&cnt_deleted_second,&curr_meter_deleted_second,1); };
     
 DECLARE_C_NAME("sobject");
 // DECLARE_LOGGING(name);
