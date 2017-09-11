@@ -118,9 +118,9 @@ protected:
     EC_KEY *sslcom_ecdh = nullptr;
     
     //Peer information
-    X509* sslcom_peer_cert = nullptr;
-    X509* sslcom_peer_issuer = nullptr;
-    X509* sslcom_peer_issuer_issuer = nullptr;
+    X509* sslcom_target_cert = nullptr;
+    X509* sslcom_target_issuer = nullptr;
+    X509* sslcom_target_issuer_issuer = nullptr;
     
 	// states of read/writes
 	int sslcom_read_blocked_on_write=0;
@@ -324,9 +324,9 @@ public:
             ocsp_trust_store = nullptr;
         }
         
-        if(sslcom_peer_cert != nullptr) X509_free(sslcom_peer_cert);
-        if(sslcom_peer_issuer != nullptr) X509_free(sslcom_peer_issuer);
-        if(sslcom_peer_issuer_issuer != nullptr) X509_free(sslcom_peer_issuer_issuer);
+        if(sslcom_target_cert != nullptr) X509_free(sslcom_target_cert);
+        if(sslcom_target_issuer != nullptr) X509_free(sslcom_target_issuer);
+        if(sslcom_target_issuer_issuer != nullptr) X509_free(sslcom_target_issuer_issuer);
         
     };
     

@@ -380,16 +380,16 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx) {
 
     if(com != nullptr) {
         if (depth == 0) {
-            if(com->sslcom_peer_cert) { ERRS__("already having peer cert"); X509_free(com->sslcom_peer_cert); }
-            com->sslcom_peer_cert = X509_dup(xcert);
+            if(com->sslcom_target_cert) { ERRS__("already having peer cert"); X509_free(com->sslcom_target_cert); }
+            com->sslcom_target_cert = X509_dup(xcert);
         }
         else if (depth == 1) {
-            if(com->sslcom_peer_issuer) { ERRS__("already having peer issuer"); X509_free(com->sslcom_peer_issuer); }
-            com->sslcom_peer_issuer = X509_dup(xcert);
+            if(com->sslcom_target_issuer) { ERRS__("already having peer issuer"); X509_free(com->sslcom_target_issuer); }
+            com->sslcom_target_issuer = X509_dup(xcert);
         }
         else if (depth == 2) {
-            if(com->sslcom_peer_issuer_issuer)  { ERRS__("already having peer issuer_issuer"); X509_free(com->sslcom_peer_issuer_issuer); }
-            com->sslcom_peer_issuer_issuer = X509_dup(xcert);
+            if(com->sslcom_target_issuer_issuer)  { ERRS__("already having peer issuer_issuer"); X509_free(com->sslcom_target_issuer_issuer); }
+            com->sslcom_target_issuer_issuer = X509_dup(xcert);
         }
     }
 
@@ -493,7 +493,7 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx) {
     
     
     if(depth == 0 && com != nullptr) {
-        if(com->opt_ocsp_mode > 0 &&  com->sslcom_peer_cert && com->sslcom_peer_issuer
+        if(com->opt_ocsp_mode > 0 &&  com->sslcom_target_cert && com->sslcom_target_issuer
             && com->ocsp_cert_is_revoked == -1 && com->opt_ocsp_enforce_in_verify) {
          
             int is_revoked = baseSSLCom::ocsp_explicit_check(com);
@@ -617,8 +617,8 @@ int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
         }
 
         std::string cn = "unknown";
-        if(com->sslcom_peer_cert != nullptr) {   
-            cn = SSLCertStore::print_cn(com->sslcom_peer_cert) + ";" + fingerprint(com->sslcom_peer_cert);
+        if(com->sslcom_target_cert != nullptr) {   
+            cn = SSLCertStore::print_cn(com->sslcom_target_cert) + ";" + fingerprint(com->sslcom_target_cert);
         }
 
         const char* str_cached = "cached";
@@ -634,7 +634,7 @@ int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
             str_status = str_cached;                  //   |
         } else {                                      //   |
             certstore()->ocsp_result_cache.unlock();  //WARNING
-            is_revoked = ocsp_check_cert(com->sslcom_peer_cert,com->sslcom_peer_issuer);
+            is_revoked = ocsp_check_cert(com->sslcom_target_cert,com->sslcom_target_issuer);
             str_status = str_fresh;
         }
         
@@ -667,7 +667,7 @@ int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
             
             NOT__("Connection from %s: certificate OCSP revocation status cannot be obtained)",name);
             
-            std::vector<std::string> crls = crl_urls(com->sslcom_peer_cert);
+            std::vector<std::string> crls = crl_urls(com->sslcom_target_cert);
             
             expiring_crl* crl_h = nullptr;
             X509_CRL* crl = nullptr;
@@ -723,8 +723,8 @@ int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
                 
                 int is_revoked_by_crl = -1;
                 
-                if(crl != nullptr && com->sslcom_peer_cert != nullptr && com->sslcom_peer_issuer != nullptr) {
-                    int crl_trust = crl_verify_trust(com->sslcom_peer_cert,com->sslcom_peer_issuer,crl,com->certstore()->def_cl_capath.c_str());
+                if(crl != nullptr && com->sslcom_target_cert != nullptr && com->sslcom_target_issuer != nullptr) {
+                    int crl_trust = crl_verify_trust(com->sslcom_target_cert,com->sslcom_target_issuer,crl,com->certstore()->def_cl_capath.c_str());
                     DIA__("CRL 0x%x trusted = %d",crl, crl_trust);
                     
                     bool trust_blindly_downloaded_CRL = true;
@@ -737,7 +737,7 @@ int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
                             NOT__("CRL %s is not verified, but we are instructed to trust it.",crl_printable.c_str());
                         }
                         DIA__("Checking revocation status: CRL 0x%x", crl);
-                        is_revoked_by_crl = crl_is_revoked_by(com->sslcom_peer_cert,com->sslcom_peer_issuer,crl);
+                        is_revoked_by_crl = crl_is_revoked_by(com->sslcom_target_cert,com->sslcom_target_issuer,crl);
                     }
                 }
                 
@@ -821,8 +821,8 @@ int baseSSLCom<L4Proto>::ocsp_resp_callback(SSL *s, void *arg) {
         }
         opt_ocsp_strict = (com->opt_ocsp_stapling_mode >= 1);
         opt_ocsp_require = (com->opt_ocsp_stapling_mode == 2);
-        peer_cert   = com->sslcom_peer_cert;
-        issuer_cert = com->sslcom_peer_issuer;
+        peer_cert   = com->sslcom_target_cert;
+        issuer_cert = com->sslcom_target_issuer;
 
         if (!peer_cert || !issuer_cert) {
             DIA__("[%s]: ocsp_resp_callback: verify hasn't been yet called",name);
@@ -913,7 +913,7 @@ int baseSSLCom<L4Proto>::ocsp_resp_callback(SSL *s, void *arg) {
 
     DIA__("[%s] OCSP response verification succeeded",name);
 
-    id = OCSP_cert_to_id(NULL, com->sslcom_peer_cert, com->sslcom_peer_issuer);
+    id = OCSP_cert_to_id(NULL, com->sslcom_target_cert, com->sslcom_target_issuer);
     if (!id) {
         ERR__("[%s] could not create OCSP certificate identifier",name);
         OCSP_BASICRESP_free(basic);
@@ -970,7 +970,7 @@ int baseSSLCom<L4Proto>::ocsp_resp_callback(SSL *s, void *arg) {
 
     DIA__("[%s] OCSP status for server certificate: %s", name, OCSP_cert_status_str(status));
 
-    std::string cn = SSLCertStore::print_cn(com->sslcom_peer_cert) + ";" + fingerprint(com->sslcom_peer_cert);
+    std::string cn = SSLCertStore::print_cn(com->sslcom_target_cert) + ";" + fingerprint(com->sslcom_target_cert);
     
     if (status == V_OCSP_CERTSTATUS_GOOD) {
         DIA__("[%s] OCSP status is good",name);
