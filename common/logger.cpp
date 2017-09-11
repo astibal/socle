@@ -103,11 +103,10 @@ int logger::write_log(unsigned int level, std::string& sss) {
     bool really_dup = dup2_cout();
     
     for(std::list<std::ostream*>::iterator i = targets().begin(); i != targets().end(); ++i) {
-        if(target_profiles().find((uint64_t)*i) != target_profiles().end()) 
-            if(target_profiles()[(uint64_t)*i]->level_ < level && ! forced_) 
-                continue;
-            if(forced_ && target_profiles()[(uint64_t)*i]->level_ < INF)
-                continue;
+        if(target_profiles().find((uint64_t)*i) != target_profiles().end()) {
+            if(target_profiles()[(uint64_t)*i]->level_ < level && ! forced_) { continue; }
+            if(target_profiles()[(uint64_t)*i]->level_ == NON)    { continue; }
+        }
             
         *(*i) << sss << std::endl;
         //if(target_profiles()[(uint64_t)*i]->dup_to_cout_) really_dup = true;
@@ -115,14 +114,25 @@ int logger::write_log(unsigned int level, std::string& sss) {
 
     for(std::list<int>::iterator i = remote_targets().begin(); i != remote_targets().end(); ++i) {
         
-        if(target_profiles().find((uint64_t)*i) != target_profiles().end()) 
-            if(target_profiles()[(uint64_t)*i]->level_ < level && ! forced_ ) 
-                continue;
-            if(forced_ && target_profiles()[(uint64_t)*i]->level_ == NON)
-                continue;
+        if(target_profiles().find((uint64_t)*i) != target_profiles().end()) { 
+            if(target_profiles()[(uint64_t)*i]->level_ < level && ! forced_ ) { continue; }
+            if(target_profiles()[(uint64_t)*i]->level_ == NON)     { continue; }
+        }
             
         std::stringstream  s;
-        s << sss <<  "\r\n";
+
+        // prefixes
+        if(target_profiles()[(uint64_t)*i]->logger_type == REMOTE_SYSLOG) {
+            s <<  string_format("<%d> ",target_profiles()[(uint64_t)*i]->syslog_settings.prival());
+        } 
+        
+        s << sss ;
+        
+        // suffixes
+        if(target_profiles()[(uint64_t)*i]->logger_type != REMOTE_SYSLOG) {
+            s <<  "\r\n";
+        } 
+        
         std::string a = s.str();
         
         if(::send(*i,a.c_str(),a.size(),0) < 0) {

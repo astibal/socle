@@ -455,10 +455,21 @@ struct timer {
 
 typedef struct timer timer_tt;
 
+struct logger_profile_syslog {
+    int facility = 23; // local7
+    int severity = 6;  // information;
+    
+    inline int prival() const { return facility * 8 + ( (severity > DEB) ? DEB : severity ); };
+};
 
 class logger_profile {
 
 public:  
+    typedef enum { FILE=0, REMOTE_RAW=1, REMOTE_SYSLOG=3 } logger_type_t;
+    logger_type_t logger_type = FILE;
+    
+    logger_profile_syslog syslog_settings;
+    
     virtual ~logger_profile();    
     unsigned int level_ = 6;
     unsigned int period_ = 5;
