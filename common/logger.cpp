@@ -303,3 +303,32 @@ bool logger::click_timer ( std::string xname , int interval) {
 		return true;
 	}
 }
+
+
+int logger::adjust_level() {
+
+    int curr_level = level();
+    int max_common_level = 0;
+    
+    for(auto i = remote_targets().begin(); i != remote_targets().end(); ++i) {
+        int this_level = target_profiles()[(uint64_t)(*i)]->level_;
+        if ( this_level > max_common_level) {
+            max_common_level = this_level;
+        }
+    }
+    for(auto i = targets().begin(); i != targets().end(); ++i) {
+        int this_level = target_profiles()[(uint64_t)(*i)]->level_;
+        if ( this_level > max_common_level) {
+            max_common_level = this_level;
+        }
+    }
+    
+    // if we detect necessity
+    if(max_common_level != curr_level) {
+        level(max_common_level);
+    } 
+    
+    // return log level difference, therefore negative if we decreased logging level, zero if unchanged, positive if log level is raised.
+    return max_common_level - curr_level;
+}
+    

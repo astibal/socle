@@ -558,6 +558,15 @@ public:
 
     bool periodic_start(unsigned int s);	
     bool periodic_end();
+    
+    // any change in target profiles could imply adjusting internal logging level.
+    // For example: having internal level set to 5 (NOTify), so is the file logging level. 
+    // Someone adds syslog and remote raw loggers, one from them set to 6 (INF).
+    // Unless we change internal logging level, he will not see on remotes any INF messages, because
+    // internal logging level prohibits processing of INF level, writer receives only NOT.
+    // This methods interates through targets and sets logging level to highest level used by targets.
+    // @return log level difference, therefore negative if we decreased logging level, zero if unchanged, positive if log level is raised.
+    int adjust_level();
 };
 
 extern logger* lout_;
