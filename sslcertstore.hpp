@@ -131,6 +131,7 @@ public:
      static std::string print_issuer(X509* x);
      static std::string print_not_after(X509* x);
      static std::string print_not_before(X509* x);
+     static std::vector<std::string> get_sans(X509* x);
      
      bool add(std::string& subject, EVP_PKEY* cert_privkey,X509* cert,X509_REQ* req=NULL);
      bool add(std::string& subject, X509_PAIR* p,X509_REQ* req=NULL);

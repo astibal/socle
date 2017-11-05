@@ -327,6 +327,55 @@ int add_ext(STACK_OF(X509_EXTENSION) *sk, int nid, char *value) {
   return 1;
 }
 
+std::vector<std::string> SSLCertStore::get_sans(X509* x) {
+    
+    std::vector<std::string> ret;
+    
+    // Copy extensions
+    STACK_OF(X509_EXTENSION) *exts = x->cert_info->extensions;
+    int num_of_exts;
+
+    if (exts) {   
+        num_of_exts = sk_X509_EXTENSION_num(exts);    
+        if(num_of_exts > 0) {
+            for (int i=0; i < num_of_exts; i++) {
+                X509_EXTENSION *ex = sk_X509_EXTENSION_value(exts, i);
+                if(!ex) {
+                    ERR__("SSLCertStore::get_sans: error obtaining certificate extension [%d] value ",i)
+                    continue;
+                }
+                ASN1_OBJECT *obj = X509_EXTENSION_get_object(ex);
+                if(!obj) {
+                    ERR__("SSLCertStore::get_sans: unable to extract ASN1 object from extension [%d]",i);
+                    continue;
+                }
+                
+                unsigned nid = OBJ_obj2nid(obj); 
+                if(nid == NID_subject_alt_name) {
+                    DEBS__("SSLCertStore::get_sans: adding subjAltName to extensions");
+                    BIO *ext_bio = BIO_new(BIO_s_mem());
+                    if (!X509V3_EXT_print(ext_bio, ex, 0, 0)) {
+                        M_ASN1_OCTET_STRING_print(ext_bio, ex->value);
+                    }
+                    BUF_MEM *bptr;
+                    BIO_get_mem_ptr(ext_bio, &bptr);
+                    BIO_set_close(ext_bio, BIO_NOCLOSE);
+                    
+                    
+                    std::string san(bptr->data,bptr->length);
+                    ret.push_back(san);
+                    
+                    BIO_free(ext_bio);
+                }                
+            }
+        }
+    }   
+    
+    return ret;
+}
+
+
+
 X509_PAIR* SSLCertStore::spoof(X509* cert_orig, bool self_sign, std::vector<std::string>* additional_sans) {
     char tmp[2048];
     DEB__("SSLCertStore::spoof[%x]: about to spoof certificate!",this);
