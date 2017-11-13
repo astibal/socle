@@ -33,7 +33,8 @@ class trafLog {
 public:
 	trafLog(baseProxy *p,const char* d_dir, const char* f_prefix, const char* f_suffix) :
     proxy_(p),
-	active_(false),
+	opened_(false),
+	status_(true),
 	data_dir(d_dir),
 	file_prefix(f_prefix),
 	file_suffix(f_suffix),
@@ -52,7 +53,8 @@ public:
   
 private:
 	baseProxy *proxy_;
-	bool active_;
+	bool opened_;
+    bool status_;
     
     std::string data_dir;
     std::string file_prefix;
@@ -132,11 +134,11 @@ private:
 		
 		writer_ = new std::ofstream(hostdir + datedir + file_prefix + file_datepart + writer_key_l_ + "." + file_suffix);
 		if(writer_->is_open()) {
-			active_ = true;
+			opened_ = true;
 			return true;
 		}
 		
-		active_ = false;
+		opened_ = false;
 		delete writer_;
         writer_ = nullptr;
 		return false;
@@ -144,8 +146,12 @@ private:
 	
 
 public:
-	inline bool active() { return active_; }
-	inline void active(bool b) { active_ = b; }
+	inline bool opened() { return opened_; }
+	inline void opened(bool b) { opened_ = b; }
+
+	inline bool status() { return status_; }
+    inline void status(bool b) { status_ = b; }
+
   
 	void left_write(buffer b) {  write('L',b); };
 	void right_write(buffer b) {  write('R',b); };
@@ -176,19 +182,22 @@ public:
 			k2 = writer_key_l_;
 		}
 		
-		if(! active()) {
-			if (create_writer()) {
-				DIA_("writer '%s' created",writer_key_l_.c_str());
-			} else {
-				ERR_("write '%s' failed to create dump file!",writer_key_l_.c_str());
-			}
-		}
-		
-		if (active()) {
-			
-			*writer_ << d << "+" << now.tv_usec << ": "<< k1 << "(" << k2 << ")\n";
-			*writer_ << s << '\n';
-		}
+		if(status()) {
+            
+            if(! opened()) {
+                if (create_writer()) {
+                    DIA_("writer '%s' created",writer_key_l_.c_str());
+                } else {
+                    ERR_("write '%s' failed to create dump file!",writer_key_l_.c_str());
+                }
+            }
+            
+            if (opened()) {
+                
+                *writer_ << d << "+" << now.tv_usec << ": "<< k1 << "(" << k2 << ")\n";
+                *writer_ << s << '\n';
+            }
+        }   
 	}
 };
 
