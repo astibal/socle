@@ -108,9 +108,19 @@ bool baseSSLMitmCom<SSLProto>::spoof_cert(X509* cert_orig, SpoofOptions& spo) {
     if(spo.self_signed == true) {
         store_key += "+self_signed";
     }
+    
+    std::vector<std::string> cert_sans = this->certstore()->get_sans(cert_orig);
+    for(auto s1: cert_sans) {
+        DUM__("SAN: '%s'",s1.c_str());
+        uint32_t c = socle_crc32(0xCABA1A,s1.c_str(),s1.size());
+       
+        DUM__("SAN CRC32: 0x%x",c);
+        store_key += string_format("+san32:%x",c);
+    }
+    
     if(spo.sans.size() > 0) {
         for(auto san: spo.sans) {
-            store_key += string_format("+SAN:%s",san.c_str());
+            store_key += string_format("+san:%s",san.c_str());
         }
     }
 
