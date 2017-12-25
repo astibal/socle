@@ -277,8 +277,8 @@ int crl_is_revoked_by(X509 *x509, X509 *issuer, X509_CRL *crl_file)
     int is_revoked = -1;
     if (issuer)
     {
-        EVP_PKEY *ikey=X509_get_pubkey(issuer);
-        ASN1_INTEGER *serial = X509_get_serialNumber(x509);
+        EVP_PKEY *ikey=X509_get_pubkey(issuer); // must be freed
+        ASN1_INTEGER *serial = X509_get_serialNumber(x509); // must not be freed
  
         if (crl_file && ikey) {
             if(X509_CRL_verify(crl_file, ikey)) {
@@ -299,6 +299,8 @@ int crl_is_revoked_by(X509 *x509, X509 *issuer, X509_CRL *crl_file)
                 }
             }
         }
+        
+        if(ikey) EVP_PKEY_free(ikey);
     }
     return is_revoked;
 }
@@ -310,10 +312,17 @@ int crl_verify_trust(X509 *x509, X509* issuer, X509_CRL *crl_file, const std::st
     sk_X509_push(chain, issuer);
  
     X509_STORE *store=X509_STORE_new();
-    if (store==NULL) { INFS_("crl_verify_trust: X509_STORE_new failed"); return 0; }
+    if (store==NULL) { 
+        INFS_("crl_verify_trust: X509_STORE_new failed"); 
+        return 0; 
+    }
  
     X509_LOOKUP *lookup=X509_STORE_add_lookup(store,X509_LOOKUP_file());
-    if (lookup==NULL) { INFS_("crl_verify_trust: X509_STORE_add_lookup failed"); return 0; }
+    if (lookup==NULL) { 
+        INFS_("crl_verify_trust: X509_STORE_add_lookup failed"); 
+        X509_STORE_free(store);
+        return 0; 
+    }
  
     // FIXME
     //INF_("crl_verify_trust: Loading CA path %s",cacerts_pem_path.c_str());
@@ -321,21 +330,26 @@ int crl_verify_trust(X509 *x509, X509* issuer, X509_CRL *crl_file, const std::st
     //if (!q1) { INFS_("crl_verify_trust: X509_LOOKUP_load_file failed"); return 0; }
  
     X509_STORE_CTX *csc = X509_STORE_CTX_new();
-    X509_STORE_CTX_init(csc, store, x509, chain);
-    X509_STORE_CTX_set_purpose(csc, X509_PURPOSE_SSL_SERVER);
- 
-    X509_STORE_add_crl(store, crl_file);
-    X509_STORE_set_flags(store, X509_V_FLAG_CRL_CHECK);
- 
-    int verify_result=X509_verify_cert(csc);
-    if (verify_result!=1)
-        DIA_("crl_verify_trust: %s",X509_verify_cert_error_string(csc->error));
- 
+    
+    int verify_result = 0;
+    if(csc) {
+        X509_STORE_CTX_init(csc, store, x509, chain);
+        X509_STORE_CTX_set_purpose(csc, X509_PURPOSE_SSL_SERVER);
+    
+        X509_STORE_add_crl(store, crl_file);
+        X509_STORE_set_flags(store, X509_V_FLAG_CRL_CHECK);
+    
+        verify_result=X509_verify_cert(csc);
+        if (verify_result != 1) {
+            DIA_("crl_verify_trust: %s",X509_verify_cert_error_string(csc->error));
+        }
 
-    X509_STORE_CTX_cleanup(csc);
-    X509_STORE_CTX_free(csc);
-    X509_STORE_free(store);
-    sk_X509_free(chain);
+        X509_STORE_CTX_cleanup(csc);
+        X509_STORE_CTX_free(csc);
+    }
+    
+    if(store) X509_STORE_free(store);
+    if(chain) sk_X509_free(chain);
  
     return verify_result;
 }
@@ -370,6 +384,9 @@ std::vector<std::string> crl_urls(X509 *x509)
             }
         }
     }
+    
+    CRL_DIST_POINTS_free(dist_points);
+    
     return list;
 }
 
