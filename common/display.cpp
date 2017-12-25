@@ -63,6 +63,16 @@ std::string string_format(const std::string& fmt, ...) {
     return str;
 }
 
+std::string hex_print(unsigned char* data, unsigned int len) {
+    std::stringstream ss;
+    
+    for(int i=0; i < len; i++) {
+        ss << string_format("%02X", data[i]);
+    }
+    
+    return ss.str();
+}
+
 std::string hex_dump(buffer* b, unsigned int ltrim, unsigned char prefix) { return hex_dump((unsigned char*)b->data(),b->size(),ltrim,prefix); }
 std::string hex_dump(buffer& b, unsigned int ltrim, unsigned char prefix) { return hex_dump((unsigned char*)b.data(),b.size(),ltrim,prefix); }
 

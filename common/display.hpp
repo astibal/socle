@@ -30,6 +30,7 @@ std::string string_format(const std::string& fmt, ...);
 std::vector<std::string> 
             string_split(std::string str, char delimiter);
 std::string number_suffixed(unsigned long xn);
+std::string hex_print(unsigned char* data, unsigned int len);
 std::string hex_dump(unsigned char *data, int size, unsigned int=0,unsigned char=0);
 std::string hex_dump(buffer&, unsigned int=0,unsigned char=0);
 std::string hex_dump(buffer*, unsigned int=0,unsigned char=0);
