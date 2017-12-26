@@ -20,8 +20,17 @@
 
 #include <apphostcx.hpp>
 
-AppHostCX::AppHostCX(baseCom* c, const char* h, const char* p) :baseHostCX(c,h,p) {}
-AppHostCX::AppHostCX(baseCom* c, unsigned int s) :baseHostCX(c,s) {}
+AppHostCX::AppHostCX(baseCom* c, const char* h, const char* p) :baseHostCX(c,h,p) {
+    
+    if(c && c->l4_proto() != 0) {
+        flow().domain(c->l4_proto());
+    }
+}
+AppHostCX::AppHostCX(baseCom* c, unsigned int s) :baseHostCX(c,s) {
+    if(c&& c->l4_proto() != 0) {
+        flow().domain(c->l4_proto());
+    }
+}
 
 int AppHostCX::zip_signatures(sensorType& s, std::vector<duplexFlowMatch*>& v) {
     s.clear();

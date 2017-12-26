@@ -36,8 +36,13 @@ class Flow {
     std::vector<std::pair<SourceType,buffer*>> flow_; // store flow data ... ala follow tcp stream :) 
                                      // Flowdata::side_ doesn't have to be necesarilly L or R
     std::vector<int> update_counters_;
-                                     
+                     
+    int domain_ = SOCK_STREAM;  // if flow is not stream, data same-side chunks are stored separately
 public:
+
+    inline void domain(int domain) { domain_ = domain; };
+    inline int domain() const { return domain_ ; };
+    
     std::vector<std::pair<SourceType,buffer*>>& flow() { return flow_; }
     std::vector<std::pair<SourceType,buffer*>>& operator() () { return flow(); }
 
@@ -54,11 +59,23 @@ public:
             update_counters_.push_back(1);
         }
         else if (flow_.back().first == src) {
+            
             DIA_("Flow::append: to current side: %c: %d bytes",src, len);
             DUM_("Flow::append: to current side: %c: incoming  data:\n%s",src,hex_dump((unsigned char*)data,  len > 128 ? 128 : len ).c_str());
-            flow_.back().second->append(data,len);
-            int& counter_ref = update_counters_.back();
-            counter_ref++;
+            
+            if(domain() == SOCK_STREAM) {
+                flow_.back().second->append(data,len);
+                int& counter_ref = update_counters_.back();
+                counter_ref++;
+            }
+            else {
+                DIAS_("Flow::append: datagrams, so packetized (new buffer on same side)");
+                auto b = new buffer(data,len);
+                // src initialized by value, buffer is pointer
+                std::pair<SourceType,buffer*> t(src,b);
+                flow_.push_back(t);
+                update_counters_.push_back(1);
+            }
         }
         else if (flow_.back().first != src) {
             DIA_("Flow::append: to new side: %c: %d bytes",src,len);
