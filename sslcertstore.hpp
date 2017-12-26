@@ -69,6 +69,8 @@ struct session_holder {
     SSL_SESSION* ptr = nullptr;
     session_holder(SSL_SESSION* p): ptr(p) {};
     virtual ~session_holder() { if(ptr) SSL_SESSION_free(ptr); }
+    
+    uint32_t cnt_loaded = {0};
 };
 
 

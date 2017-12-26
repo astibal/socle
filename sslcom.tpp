@@ -1663,18 +1663,27 @@ bool baseSSLCom<L4Proto>::store_session_if_needed() {
     bool ret = false;
     
     if(!is_server() && certstore() && owner_cx() && !opt_right_no_tickets) {
-        std::string sni = "?";
+        std::string sni;
         
         if(sslcom_peer_hello_sni().length() > 0)
             sni = sslcom_peer_hello_sni();
         
-        std::string key = string_format("%s:%s+%s",owner_cx()->host().c_str(),owner_cx()->port().c_str(),sni.c_str());
+        std::string key;
+        if (sni.length() > 0) {
+            key = sni;
+        } else {
+            key = string_format("%s:%s",owner_cx()->host().c_str(),owner_cx()->port().c_str());
+        }
+        
         if(!SSL_session_reused(sslcom_ssl)) {
             DIA___("ticketing: key %s: full key exchange, connect attempt %d on socket %d",key.c_str(),prof_connect_cnt,owner_cx()->socket());
             
             if(verify_status == VERIFY_OK) {
+                
+                certstore()->session_cache.lock();
                 certstore()->session_cache.set(key,new session_holder(SSL_get1_session(sslcom_ssl)));
                 DIA___("ticketing: key %s: keying material stored, cache size = %d",key.c_str(),certstore()->session_cache.cache().size());
+                certstore()->session_cache.unlock();
                 ret = true;
             } else {
                 DIAS__("certificate verification failed, not storing in the cache.");
@@ -1697,22 +1706,32 @@ bool baseSSLCom<L4Proto>::load_session_if_needed() {
     bool ret = false;
     
     if(!is_server() && certstore() && owner_cx() && !opt_right_no_tickets) {
-        std::string sni = "?";
+        std::string sni;
+        
         if(sslcom_peer_hello_sni().length() > 0)
             sni = sslcom_peer_hello_sni();
         
-        std::string key = string_format("%s:%s+%s",owner_cx()->host().c_str(),owner_cx()->port().c_str(),sni.c_str());
+        std::string key;
+        if (sni.length() > 0) {
+            key = sni;
+        } else {
+            key = string_format("%s:%s",owner_cx()->host().c_str(),owner_cx()->port().c_str());
+        }
+        
+        certstore()->session_cache.lock();
         session_holder* h = certstore()->session_cache.get(key);
         
         if(h != nullptr) {
             DIA___("ticketing: key %s:target server TLS ticket found!",key.c_str());
             SSL_set_session(sslcom_ssl, h->ptr);
+            h->cnt_loaded++;
             
             ret = true;
         } else {
             DIA___("ticketing: key %s:target server TLS ticket not found",key.c_str());
             SSL_set_session(sslcom_ssl, NULL);
         }
+        certstore()->session_cache.unlock();
     }
     
     return ret;
