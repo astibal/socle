@@ -366,6 +366,7 @@ std::vector<std::string> SSLCertStore::get_sans(X509* x) {
                     ret.push_back(san);
                     
                     BIO_free(ext_bio);
+                    BUF_MEM_free(bptr);
                 }                
             }
         }
