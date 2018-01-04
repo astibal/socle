@@ -58,14 +58,14 @@ public:
    virtual bool check_cert(const char*);
    virtual bool spoof_cert(X509* cert_orig, SpoofOptions& spo);
    virtual baseCom* replicate() { return new baseSSLMitmCom(); };
-   virtual std::string& name() { if (this->opt_bypass) return this->sslmitmcom_name_; else return this->sslmitmcom_insp_name_; };
 
     virtual ~baseSSLMitmCom() {};
 
-public:
-    static int& log_level_ref() { return log_level; }
-private:
-    static int log_level;
+    DECLARE_C_NAME("baseSSLMitmCom")
+    DECLARE_DEF_TO_STRING
+    DECLARE_LOGGING(to_string)
+    
+    virtual const std::string shortname() const { return std::string("ssli"); }
 };
 
 #include <sslmitmcom.tpp>

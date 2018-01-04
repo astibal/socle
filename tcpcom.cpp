@@ -19,7 +19,7 @@
 #include <tcpcom.hpp>
 #include <internet.hpp>
 
-std::string TCPCom::tcpcom_name_ = "tcp";
+DEFINE_LOGGING(TCPCom)
 
 void TCPCom::init(baseHostCX* owner) { 
     

@@ -61,6 +61,7 @@ struct sobject_info {
     virtual ~sobject_info() {};
     
     DECLARE_C_NAME("sobject_info");
+    DECLARE_LOGGING(to_string);
 };
 
 struct meter;
@@ -75,14 +76,14 @@ public:
     virtual bool ask_destroy() = 0;
 
     // return string representation of the object on single line
-    virtual std::string to_string(int verbosity=INF) = 0;
+    virtual std::string to_string(int verbosity=INF) { return this->class_name(); };
 
     
     static meter mtr_created;
     static meter mtr_deleted;
     
 DECLARE_C_NAME("sobject");
-// DECLARE_LOGGING(name);
+DECLARE_LOGGING(to_string);
 };
 
 

@@ -221,9 +221,9 @@ std::string& baseHostCX::name(bool force) {
                 }
 
                 if(socket_in_name) {
-                    name__ = string_format("%d::%s_%s:%s",socket(), com()->name().c_str() , host().c_str(),port().c_str());
+                    name__ = string_format("%d::%s_%s:%s",socket(), com()->shortname().c_str() , host().c_str(),port().c_str());
                 } else {
-                    name__ = string_format("%s_%s:%s",com()->name().c_str() , host().c_str(),port().c_str());
+                    name__ = string_format("%s_%s:%s",com()->shortname().c_str() , host().c_str(),port().c_str());
                 }
 
                 //name__ = string_format("%d:<reduced>",socket());
@@ -235,9 +235,9 @@ std::string& baseHostCX::name(bool force) {
         } else {
 
             if(socket_in_name) {
-                name__ = string_format("%d::%s_%s:%s",socket(), com()->name().c_str() ,host().c_str(),port().c_str());
+                name__ = string_format("%d::%s_%s:%s",socket(), com()->shortname().c_str() ,host().c_str(),port().c_str());
             } else {
-                name__ = string_format("%s_%s:%s",com()->name().c_str() ,host().c_str(),port().c_str());
+                name__ = string_format("%s_%s:%s",com()->shortname().c_str() ,host().c_str(),port().c_str());
             }
         }
     }
@@ -599,7 +599,7 @@ std::string baseHostCX::full_name(unsigned char side) {
     std::string  t_ss;
     if(socket_in_name) t_ss  = string_format("::%d:",t_s);
     std::string t_c = "";
-    if (com() != nullptr)  t_c = com()->name();
+    if (com() != nullptr)  t_c = com()->shortname();
 
     const char* p = "?";
     const char*  p_p = "?";
@@ -615,7 +615,7 @@ std::string baseHostCX::full_name(unsigned char side) {
 
         if (peer()->com() != nullptr) {
             if(peer()->com() != nullptr) {
-                p_c = peer()->com()->name().c_str();
+                p_c = peer()->com()->shortname().c_str();
             }
         }
 //         p =  "peerip";

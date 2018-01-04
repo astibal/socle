@@ -20,6 +20,9 @@
 
 namespace socle {
 
+DEFINE_LOGGING(sobject)
+DEFINE_LOGGING(sobject_info)    
+    
 ptr_cache<sobject*,sobject_info> sobject_db("global object db",0,true);
 
 meter sobject::mtr_created;
@@ -224,9 +227,5 @@ long unsigned int meter::update(unsigned long val) {
     
     return prev_counter_;
 }
-
-
-
-//DEFINE_LOGGING(sobject);
 
 }

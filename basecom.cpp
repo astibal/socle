@@ -25,6 +25,8 @@ int baseCom::poll_msec = 10;
 int baseCom::rescan_poll_multiplier = 2;
 bool baseCom::debug_log_data_crc = false;
 
+DEFINE_LOGGING(baseCom)
+
 void baseCom::init(baseHostCX* owner) {
 
 	if(!__static_init) { 

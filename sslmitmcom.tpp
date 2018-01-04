@@ -23,7 +23,7 @@
 #include <sslmitmcom.hpp>
 #include <hostcx.hpp>
 
-template <class SSLProto> int baseSSLMitmCom<SSLProto>::log_level = NON;
+
 
 template <class SSLProto>
 bool baseSSLMitmCom<SSLProto>::check_cert(const char* peer_name) {

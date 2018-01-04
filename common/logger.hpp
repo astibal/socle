@@ -417,30 +417,38 @@ public:                                      \
     const char* hr() { hr_ = this->get_name_func(); return hr_.c_str(); }; \
     static unsigned int& log_level_ref() { return log_level; } \
     static unsigned int log_level;                             \
-    virtual unsigned int get_this_log_level() { return log_level; }     \
+    virtual unsigned int get_this_log_level() const { return this_log_level_ > log_level ? this_log_level_: log_level ; }     \
+    virtual void set_this_log_level(unsigned int nl) { this_log_level_ = nl; }  \
 private:                                                       \
-    std::string hr_;
+    std::string hr_;                                           \
+    unsigned int this_log_level_ = NON;
 
 // takes argument of class name. It defines static variables
 #define DEFINE_LOGGING(cls)   \
 unsigned int cls::log_level = NON; \
 
+#define DEFINE_TEMPLATE_LOGGING(cls)   \
+template<> unsigned int cls::log_level = NON; \
+
 
 #define DECLARE_C_NAME(string_name)     \
-protected:                                \
+private:                                \
     std::string name_ = string_name;   \
     std::string class_name_ = string_name;          \
 public:                                             \
-    virtual std::string& name()  { return name_; }          \
-    virtual const char* c_name() { return name_.c_str(); }; \
+    virtual std::string& name()  { return this->name_; }          \
+    virtual const char* c_name() { return this->name_.c_str(); }; \
     virtual void name(const char* n) { name_ = n; };        \
     virtual void name(std::string n) { name_ = n; };        \
     \
                     \
-    virtual std::string class_name() { return class_name_; } \
-    virtual const char* c_class_name() { return class_name_.c_str(); } \
+    virtual std::string class_name() { return this->class_name_; } \
+    virtual const char* c_class_name() { return this->class_name_.c_str(); } \
     virtual int size_of() { return sizeof (*this); }
 
+    
+#define DECLARE_DEF_TO_STRING \
+    virtual std::string to_string(int verbosity=INF) { return this->class_name(); };    
     
 #include <algorithm>
 

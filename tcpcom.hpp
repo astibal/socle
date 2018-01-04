@@ -39,11 +39,9 @@
 class TCPCom : public virtual baseCom {
 public:
     TCPCom(): baseCom() { l4_proto(SOCK_STREAM); };
-    static std::string tcpcom_name_;
     
     virtual void init(baseHostCX* owner);
     virtual baseCom* replicate() { return new TCPCom(); };
-    virtual std::string& name() { return tcpcom_name_; };
     
     virtual int connect(const char* host, const char* port, bool blocking = false);
     virtual int bind(unsigned short port);  
@@ -75,6 +73,12 @@ protected:
     unsigned int bind_sock_family = AF_INET6;
     unsigned int bind_sock_type = SOCK_STREAM;
     unsigned int bind_sock_protocol = IPPROTO_TCP;
+    
+    DECLARE_C_NAME("TCPCom")
+    DECLARE_DEF_TO_STRING
+    DECLARE_LOGGING(to_string)
+    
+    virtual const std::string shortname() const { return std::string("tcp"); }
 };
 
 #endif

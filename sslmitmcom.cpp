@@ -18,7 +18,6 @@
 
 #include <sslmitmcom.hpp>
 
-template<> std::string baseSSLMitmCom<baseSSLCom<UDPCom>>::sslmitmcom_name_ = "ssl";
-template<> std::string baseSSLMitmCom<baseSSLCom<UDPCom>>::sslmitmcom_insp_name_ = "ssl+insp";
-template<> std::string baseSSLMitmCom<baseSSLCom<TCPCom>>::sslmitmcom_name_ = "ssl";
-template<> std::string baseSSLMitmCom<baseSSLCom<TCPCom>>::sslmitmcom_insp_name_ = "ssl+insp";
+DEFINE_TEMPLATE_LOGGING(baseSSLMitmCom<baseSSLCom<UDPCom>>)
+DEFINE_TEMPLATE_LOGGING(baseSSLMitmCom<baseSSLCom<TCPCom>>)
+

@@ -99,7 +99,6 @@ public:
     
     virtual void init(baseHostCX* owner);
     virtual baseCom* replicate() { return new UDPCom(); };
-    virtual std::string& name() { return udpcom_name_; };
     
     virtual int connect(const char* host, const char* port, bool blocking = false);
     virtual int bind(unsigned short port);
@@ -153,9 +152,11 @@ public:
     // allow older kernels to use UDP -- we have to set bind_sock_family to IPv4 variant
     static unsigned int default_sock_family;
 
-// later    
-//     DECLARE_C_NAME("baseProxy");
-//     DECLARE_LOGGING(c_name);
+    DECLARE_C_NAME("UDPCom");
+    DECLARE_DEF_TO_STRING
+    DECLARE_LOGGING(to_string);
+    
+    virtual const std::string shortname() const { return std::string("udp"); }
 };
 
 #endif
