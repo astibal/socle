@@ -30,7 +30,7 @@
 
 namespace socle {
 
-std::string sobject_db_list(const char* class_criteria = nullptr,const char* delimiter = nullptr,int verbosity=INF,const char* content_criteria=nullptr);
+std::string sobject_db_list(const char* class_criteria = nullptr,const char* delimiter = nullptr,int verbosity=iINF,const char* content_criteria=nullptr);
 std::string sobject_db_stats_string(const char* criteria);
 
 unsigned long time_update_counter_sec(time_t* last_time, unsigned long* prev_counter, unsigned long* curr_counter, int seconds, int increment=1);
@@ -57,7 +57,7 @@ struct sobject_info {
     time_t created_ = 0;
     unsigned int age() { return time(nullptr) - created_; }
 
-    std::string to_string(int verbosity=INF);
+    std::string to_string(int verbosity=iINF);
     virtual ~sobject_info() {};
     
     DECLARE_C_NAME("sobject_info");
@@ -76,7 +76,7 @@ public:
     virtual bool ask_destroy() = 0;
 
     // return string representation of the object on single line
-    virtual std::string to_string(int verbosity=INF) { return this->class_name(); };
+    virtual std::string to_string(int verbosity=iINF) { return this->class_name(); };
 
     
     static meter mtr_created;

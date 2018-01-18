@@ -32,17 +32,98 @@
 #include <list>
 #include <map>
 
-#define NON 0
-#define FAT 1
-#define CRI 2
-#define ERR 3
-#define WAR 4
-#define NOT 5
-#define INF 6
-#define DIA 7
-#define DEB 8
-#define DUM 9
-#define EXT 10
+#include <display.hpp>
+// logging levels
+
+#define iNON 0
+#define iFAT 1
+#define iCRI 2
+#define iERR 3
+#define iWAR 4
+#define iNOT 5
+#define iINF 6
+#define iDIA 7
+#define iDEB 8
+#define iDUM 9
+#define iEXT 10
+
+struct logger_adv_info {
+  virtual std::string profile() = 0;
+};
+
+struct logger_level {
+    logger_level(unsigned int l, unsigned int t) : level_(l),topic_(t) {}
+    
+    inline unsigned int level() const { return level_; }
+    inline unsigned int topic() const { return topic_; }
+
+    void level(unsigned int l) { level_ = l; }
+    void topic(unsigned int t) { topic_ = t; }
+    
+    unsigned int level_ {iINF};
+    unsigned int topic_ {iNON};
+    logger_adv_info* adv_{nullptr};
+    
+    std::string to_string(int verbosity=iINF) { return string_format("level:%d topic:%d",level_,topic_); };
+};
+
+typedef struct logger_level loglevel;
+
+bool operator== (const loglevel& a, const loglevel& b);
+bool operator== (const loglevel& a, const unsigned int& b);
+bool operator== (const unsigned int& a, const loglevel& b);
+
+
+bool operator<= (const loglevel& a, const loglevel& b);
+bool operator<= (const loglevel& a, const unsigned int& b);
+bool operator<= (const unsigned int& a, const loglevel& b);
+
+
+bool operator>= (const loglevel& a, const loglevel& b);
+bool operator>= (const loglevel& a, const unsigned int& b);
+bool operator>= (const unsigned int& a, const loglevel& b);
+
+
+bool operator!= (const loglevel& a, const loglevel& b);
+bool operator!= (const loglevel& a, const unsigned int& b);
+bool operator!= (const unsigned int& a, const loglevel& b);
+
+
+bool operator> (const loglevel& a, const loglevel& b);
+bool operator> (const loglevel& a, const unsigned int& b);
+bool operator> (const unsigned int& a, const loglevel& b);
+
+
+bool operator< (const loglevel& a, const loglevel& b);
+bool operator< (const loglevel& a, const unsigned int& b);
+bool operator< (const unsigned int& a, const loglevel& b);
+
+loglevel operator-(const loglevel& a, const loglevel& b);
+loglevel operator-(const loglevel& a, const unsigned int& b);
+loglevel operator+(const loglevel& a, const unsigned int& b);
+
+
+
+extern loglevel NON;
+extern loglevel FAT;
+extern loglevel CRI; 
+extern loglevel ERR;
+extern loglevel WAR; 
+extern loglevel NOT; 
+extern loglevel INF; 
+extern loglevel DIA; 
+extern loglevel DEB; 
+extern loglevel DUM; 
+extern loglevel EXT; 
+
+
+// logging topics
+
+#define GEN 0
+#define CRT 0x1000  // certificate/PKI topic
+#define ATH 0x2000  // user validation (AAA)
+
+
 
 #define DEB_DO_(x) if(get_logger()->level() >= DEB) { (x); }
 #define LEV_(x) (get_logger()->level() >= (x) ? true : false ) 
@@ -415,20 +496,20 @@
 #define DECLARE_LOGGING(get_name_func)  \
 public:                                      \
     const char* hr() { hr_ = this->get_name_func(); return hr_.c_str(); }; \
-    static unsigned int& log_level_ref() { return log_level; } \
-    static unsigned int log_level;                             \
-    virtual unsigned int get_this_log_level() const { return this_log_level_ > log_level ? this_log_level_: log_level ; }     \
-    virtual void set_this_log_level(unsigned int nl) { this_log_level_ = nl; }  \
+    static loglevel& log_level_ref() { return log_level; } \
+    static loglevel log_level;                             \
+    virtual loglevel get_this_log_level() const { return this_log_level_ > log_level ? this_log_level_: log_level ; }     \
+    virtual void set_this_log_level(loglevel nl) { this_log_level_ = nl; }  \
 private:                                                       \
     std::string hr_;                                           \
-    unsigned int this_log_level_ = NON;
+    loglevel this_log_level_ = NON;
 
 // takes argument of class name. It defines static variables
 #define DEFINE_LOGGING(cls)   \
-unsigned int cls::log_level = NON; \
+loglevel cls::log_level = NON; \
 
 #define DEFINE_TEMPLATE_LOGGING(cls)   \
-template<> unsigned int cls::log_level = NON; \
+template<> loglevel cls::log_level = NON; \
 
 
 #define DECLARE_C_NAME(string_name)     \
@@ -448,7 +529,7 @@ public:                                             \
 
     
 #define DECLARE_DEF_TO_STRING \
-    virtual std::string to_string(int verbosity=INF) { return this->class_name(); };    
+    virtual std::string to_string(int verbosity=iINF) { return this->class_name(); };    
     
 #include <algorithm>
 
@@ -467,8 +548,9 @@ struct logger_profile_syslog {
     int facility = 23; // local7
     int severity = 6;  // information;
     
-    inline int prival() const { return facility * 8 + ( (severity > DEB) ? DEB : severity ); };
+    inline int prival() const { return facility * 8 + ( (severity > DEB) ? DEB.level_ : severity ); };
 };
+
 
 class logger_profile {
 
@@ -479,7 +561,7 @@ public:
     logger_profile_syslog syslog_settings;
     
     virtual ~logger_profile();    
-    unsigned int level_ = 6;
+    loglevel level_ = INF;
     unsigned int period_ = 5;
     time_t last_period = 0;
     bool last_period_status = false;
@@ -515,11 +597,11 @@ protected:
     std::map<uint64_t,std::string> target_names_;
     
 public:
-    logger() { level_=0; period_ =5; target_names_[0]="unknown";};
+    logger() { level_=NON; period_ =5; target_names_[0]="unknown";};
     virtual ~logger() {};
 
-    inline void level(unsigned int l) { level_ = l; };
-    inline unsigned int level(void) const { return level_; };
+    inline void level(loglevel l) { level_ = l; };
+    inline loglevel level(void) const { return level_; };
     
     inline void dup2_cout(bool b) { dup_to_cout_ = b; }
     inline bool dup2_cout() { return dup_to_cout_; }
@@ -538,15 +620,15 @@ public:
     std::list<int>& remote_targets() { return remote_targets_; }
     void remote_targets(std::string name, int s) { remote_targets_.push_back(s); target_names_[s] = name; }
 
-    int virtual write_log(unsigned int level, std::string& sss);
+    int virtual write_log(loglevel level, std::string& sss);
     
-    void log(unsigned int l, const std::string& fmt, ...);
-    void log_w_name(unsigned int l, const char* n, const std::string& fmt, ...);
-    void log_w_name(unsigned int l, std::string n, const std::string& fmt, ...);
+    void log(loglevel l, const std::string& fmt, ...);
+    void log_w_name(loglevel l, const char* n, const std::string& fmt, ...);
+    void log_w_name(loglevel l, std::string n, const std::string& fmt, ...);
     
-    void log2(unsigned int l, const char* f, int li, const std::string& fmt, ...);
-    void log2_w_name(unsigned int l, const char* f, int li, const char* n, const std::string& fmt, ...);
-    void log2_w_name(unsigned int l, const char* f, int li, std::string n, const std::string& fmt, ...);
+    void log2(loglevel l, const char* f, int li, const std::string& fmt, ...);
+    void log2_w_name(loglevel l, const char* f, int li, const char* n, const std::string& fmt, ...);
+    void log2_w_name(loglevel l, const char* f, int li, std::string n, const std::string& fmt, ...);
     
     std::map<uint64_t,logger_profile*>& target_profiles() { return target_profiles_; }
     std::map<uint64_t,std::string>& target_names() { return target_names_; }
@@ -574,7 +656,7 @@ public:
     // internal logging level prohibits processing of INF level, writer receives only NOT.
     // This methods interates through targets and sets logging level to highest level used by targets.
     // @return log level difference, therefore negative if we decreased logging level, zero if unchanged, positive if log level is raised.
-    int adjust_level();
+    loglevel adjust_level();
 };
 
 extern logger* lout_;

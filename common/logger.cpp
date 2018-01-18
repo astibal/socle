@@ -33,10 +33,57 @@
 #include <sys/time.h>
 #include <sys/socket.h>
 
+loglevel NON = loglevel(0,0);
+loglevel FAT = loglevel(1,0);
+loglevel CRI = loglevel(2,0); 
+loglevel ERR = loglevel(3,0);
+loglevel WAR = loglevel(4,0); 
+loglevel NOT = loglevel(5,0); 
+loglevel INF = loglevel(6,0); 
+loglevel DIA = loglevel(7,0); 
+loglevel DEB = loglevel(8,0); 
+loglevel DUM = loglevel(9,0); 
+loglevel EXT = loglevel(10,0); 
+
+
+
 logger* lout_ = nullptr;
 
 static  std::string level_table[] = {"None    ","Fatal   ","Critical","Error   ","Warning ","Notify  ","Informat","Diagnose","Debug   ","Dumpit  ","Extreme "};
 
+
+bool operator== (const loglevel& a, const loglevel& b) { return a.level_ == b.level_; }
+bool operator== (const loglevel& a, const unsigned int& b) { return a.level_ == b; }
+bool operator== (const unsigned int& a, const loglevel& b) { return a == b.level_; }
+
+
+bool operator<= (const loglevel& a, const loglevel& b) { return a.level_ <= b.level_; }
+bool operator<= (const loglevel& a, const unsigned int& b) { return a.level_ <= b; }
+bool operator<= (const unsigned int& a, const loglevel& b) { return a <= b.level_; }
+
+
+bool operator>= (const loglevel& a, const loglevel& b) { return a.level_ >= b.level_; }
+bool operator>= (const loglevel& a, const unsigned int& b) { return a.level_ >= b; }
+bool operator>= (const unsigned int& a, const loglevel& b) { return a >= b.level_; }
+
+
+bool operator!= (const loglevel& a, const loglevel& b) { return a.level_ != b.level_; }
+bool operator!= (const loglevel& a, const unsigned int& b) { return a.level_ != b; }
+bool operator!= (const unsigned int& a, const loglevel& b) { return a != b.level_; }
+
+
+bool operator> (const loglevel& a, const loglevel& b) { return a.level_ > b.level_; }
+bool operator> (const loglevel& a, const unsigned int& b) { return a.level_ > b; }
+bool operator> (const unsigned int& a, const loglevel& b) { return a > b.level_; }
+
+
+bool operator< (const loglevel& a, const loglevel& b) { return a.level_ < b.level_; }
+bool operator< (const loglevel& a, const unsigned int& b) { return a.level_ < b; }
+bool operator< (const unsigned int& a, const loglevel& b) { return a < b.level_; }
+
+loglevel operator-(const loglevel& a, const loglevel& b) { loglevel r = a; r.level(a.level() - b.level()); return r; }
+loglevel operator-(const loglevel& a, const unsigned int& b) { loglevel r = a; r.level(a.level() - b); return r; }
+loglevel operator+(const loglevel& a, const unsigned int& b) { loglevel r = a; r.level(a.level() + b); return r; }
 
 
 logger* get_logger() { 
@@ -98,7 +145,7 @@ bool logger::periodic_end() {
 }
 
 
-int logger::write_log(unsigned int level, std::string& sss) {
+int logger::write_log(loglevel level, std::string& sss) {
 
     bool really_dup = dup2_cout();
     
@@ -157,7 +204,7 @@ int logger::write_log(unsigned int level, std::string& sss) {
     return sss.size();
 }
 
-void logger::log(unsigned int l, const std::string& fmt, ...) {
+void logger::log(loglevel l, const std::string& fmt, ...) {
 
     std::lock_guard<std::recursive_mutex> lck(mtx_lout);
 
@@ -185,7 +232,7 @@ void logger::log(unsigned int l, const std::string& fmt, ...) {
     if (l > sizeof(level_table)-1) {
 		desc = string_format("%d",l);
 	} else {
-		desc = level_table[l];
+		desc = level_table[l.level()];
 	}    
     
     
@@ -198,7 +245,7 @@ void logger::log(unsigned int l, const std::string& fmt, ...) {
 
 
 
-void logger::log2(unsigned int l, const char* src, int line, const std::string& fmt, ...) {
+void logger::log2(loglevel l, const char* src, int line, const std::string& fmt, ...) {
   
     std::lock_guard<std::recursive_mutex> lck(mtx_lout);
   
@@ -212,7 +259,7 @@ void logger::log2(unsigned int l, const char* src, int line, const std::string& 
 }
 
 
-void logger::log_w_name(unsigned int l, std::string name, const std::string& fmt, ...) {
+void logger::log_w_name(loglevel l, std::string name, const std::string& fmt, ...) {
 
     std::lock_guard<std::recursive_mutex> lck(mtx_lout);
   
@@ -221,7 +268,7 @@ void logger::log_w_name(unsigned int l, std::string name, const std::string& fmt
     log_w_name(l, name.c_str(), str);
 }
 
-void logger::log_w_name(unsigned int l, const char* name, const std::string& fmt, ...) {
+void logger::log_w_name(loglevel l, const char* name, const std::string& fmt, ...) {
 
     std::lock_guard<std::recursive_mutex> lck(mtx_lout);
   
@@ -235,7 +282,7 @@ void logger::log_w_name(unsigned int l, const char* name, const std::string& fmt
     log(l,string_format("[%s]: ",n)+str);
 }
 
-void logger::log2_w_name(unsigned int l, const char* f, int li, std::string n, const std::string& fmt, ...) {
+void logger::log2_w_name(loglevel l, const char* f, int li, std::string n, const std::string& fmt, ...) {
   
     std::lock_guard<std::recursive_mutex> lck(mtx_lout);  
   
@@ -245,7 +292,7 @@ void logger::log2_w_name(unsigned int l, const char* f, int li, std::string n, c
 }
 
 
-void logger::log2_w_name(unsigned int l, const char* f, int li, const char* name, const std::string& fmt, ...) {
+void logger::log2_w_name(loglevel l, const char* f, int li, const char* name, const std::string& fmt, ...) {
   
     std::lock_guard<std::recursive_mutex> lck(mtx_lout);  
   
@@ -305,19 +352,19 @@ bool logger::click_timer ( std::string xname , int interval) {
 }
 
 
-int logger::adjust_level() {
+loglevel logger::adjust_level() {
 
-    int curr_level = level();
-    int max_common_level = 0;
+    loglevel curr_level = level();
+    loglevel max_common_level = NON;
     
     for(auto i = remote_targets().begin(); i != remote_targets().end(); ++i) {
-        int this_level = target_profiles()[(uint64_t)(*i)]->level_;
+        loglevel this_level = target_profiles()[(uint64_t)(*i)]->level_;
         if ( this_level > max_common_level) {
             max_common_level = this_level;
         }
     }
     for(auto i = targets().begin(); i != targets().end(); ++i) {
-        int this_level = target_profiles()[(uint64_t)(*i)]->level_;
+        loglevel this_level = target_profiles()[(uint64_t)(*i)]->level_;
         if ( this_level > max_common_level) {
             max_common_level = this_level;
         }

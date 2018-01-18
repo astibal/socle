@@ -60,7 +60,7 @@ struct epoll {
     
     virtual ~epoll() {}
     
-    static int log_level;
+    static loglevel log_level;
 };
 
 

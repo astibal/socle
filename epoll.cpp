@@ -1,7 +1,7 @@
 #include <epoll.hpp>
 #include <hostcx.hpp>
 
-int epoll::log_level = INF;
+loglevel epoll::log_level = INF;
 
 int epoll::init() {
     // size in epoll_create is ignored since 2.6.8, but has to be greater than 0

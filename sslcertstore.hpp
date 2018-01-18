@@ -145,9 +145,9 @@ public:
      virtual ~SSLCertStore();
 
 public:
-    static int& log_level_ref() { return log_level; }
+    static loglevel& log_level_ref() { return log_level; }
 private:
-    static int log_level;
+    static loglevel log_level;
 };
 
 #endif //__SSLCERTSTORE_HPP__

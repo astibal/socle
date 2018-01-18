@@ -167,7 +167,7 @@ public:
 	void left_write(std::string s) {  write('L',s); };
 	void right_write(std::string s) {  write('R',s); };
 	
-	void write(char side, std::string s) {
+	virtual void write(char side, std::string s) {
 		
 		timeval now;
 		gettimeofday(&now,NULL);

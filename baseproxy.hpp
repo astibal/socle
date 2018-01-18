@@ -229,7 +229,7 @@ protected:
     bool run_timer(baseHostCX*);
     void reset_timer();
 
-    virtual std::string to_string(int verbosity=INF);
+    virtual std::string to_string(int verbosity=iINF);
     
     // implement advanced logging
     DECLARE_C_NAME("baseProxy");

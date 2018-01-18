@@ -36,7 +36,7 @@ ptr_cache<std::string,expiring_ocsp_result> SSLCertStore::ocsp_result_cache("ocs
 ptr_cache<std::string,expiring_crl> SSLCertStore::crl_cache("crl cache",CERTSTORE_CACHE_SIZE,true);
 ptr_cache<std::string,session_holder> SSLCertStore::session_cache("ssl session cache",CERTSTORE_CACHE_SIZE,true);
 
-int SSLCertStore::log_level = NON;
+loglevel SSLCertStore::log_level = NON;
 
 unsigned long SSLCertStore::def_cl_options = SSL_OP_NO_SSLv3+SSL_OP_NO_SSLv2;
 unsigned long SSLCertStore::def_sr_options = SSL_OP_NO_SSLv3+SSL_OP_NO_SSLv2;

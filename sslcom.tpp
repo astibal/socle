@@ -56,7 +56,7 @@ template <class L4Proto> int baseSSLCom<L4Proto>::sslcom_ssl_extdata_index = -1;
 
 template <class L4Proto> int baseSSLCom<L4Proto>::counter_ssl_connect = 0;
 template <class L4Proto> int baseSSLCom<L4Proto>::counter_ssl_accept = 0;
-template <class L4Proto> unsigned int baseSSLCom<L4Proto>::log_level = NON;
+template <class L4Proto> loglevel baseSSLCom<L4Proto>::log_level = NON;
 template <class L4Proto> std::string baseSSLCom<L4Proto>::ci_def_filter = "HIGH RC4 !aNULL !eNULL !LOW !3DES !MD5 !EXP !DSS !PSK !SRP !kECDH !CAMELLIA !IDEA !SEED @STRENGTH";
 
 
@@ -190,8 +190,8 @@ void baseSSLCom<L4Proto>::log_profiling_stats(unsigned int lev) {
         name = n;
     }
     
-    LOGS__(lev, string_format("  [%s]: prof_accept_cnt %d, prof_connect_cnt %d, prof_peek_cnt %d, prof_read_cnt %d, prof_want_read_cnt %d, prof_want_write_cnt %d, prof_write_cnt %d",name, com->prof_accept_cnt   , com->prof_connect_cnt   , com->prof_peek_cnt   , com->prof_read_cnt   , com->prof_want_read_cnt   , com->prof_want_write_cnt   , com->prof_write_cnt));
-    LOGS__(lev, string_format("  [%s]: prof_accept_ok %d, prof_connect_ok %d",name, com->prof_accept_ok, com->prof_connect_ok));    
+    LOGS__(loglevel(lev,0), string_format("  [%s]: prof_accept_cnt %d, prof_connect_cnt %d, prof_peek_cnt %d, prof_read_cnt %d, prof_want_read_cnt %d, prof_want_write_cnt %d, prof_write_cnt %d",name, com->prof_accept_cnt   , com->prof_connect_cnt   , com->prof_peek_cnt   , com->prof_read_cnt   , com->prof_want_read_cnt   , com->prof_want_write_cnt   , com->prof_write_cnt));
+    LOGS__(loglevel(lev,0), string_format("  [%s]: prof_accept_ok %d, prof_connect_ok %d",name, com->prof_accept_ok, com->prof_connect_ok));    
 }
 
 template <class L4Proto>
@@ -269,7 +269,7 @@ void baseSSLCom<L4Proto>::ssl_msg_callback(int write_p, int version, int content
             
             if(code == 10) {
                 // unexpected message
-                com->log_profiling_stats(DEB);
+                com->log_profiling_stats(iDEB);
             }
             
             // if level is Fatal, log com error and close. 
@@ -522,7 +522,7 @@ long int baseSSLCom<L4Proto>::log_if_error(unsigned int level, const char* prefi
     long err2 = ERR_get_error();
     do {
         if(err2 != 0) {
-            LOGS___(level, string_format("%s: error code:%u:%s",prefix, err2,ERR_error_string(err2,nullptr)).c_str());
+            LOGS___(loglevel(level,0), string_format("%s: error code:%u:%s",prefix, err2,ERR_error_string(err2,nullptr)).c_str());
             err2 = ERR_get_error();
         }
     } while (err2 != 0);
@@ -537,7 +537,7 @@ long int baseSSLCom<L4Proto>::log_if_error2(unsigned int level, const char* pref
     long err2 = ERR_get_error();
     do {
         if(err2 != 0) {
-            LOGS__(level, string_format("%s: error code:%u:%s",prefix, err2,ERR_error_string(err2,nullptr)).c_str());
+            LOGS__(loglevel(level,0), string_format("%s: error code:%u:%s",prefix, err2,ERR_error_string(err2,nullptr)).c_str());
             err2 = ERR_get_error();
         }
     } while (err2 != 0);
@@ -1149,7 +1149,7 @@ void baseSSLCom<L4Proto>::init_client() {
     
     if(!sslcom_ssl) {
         ERRS___("Client: Error creating SSL context!");
-        log_if_error(ERR,"SSLCom::init_client");
+        log_if_error(iERR,"SSLCom::init_client");
     }
 
     
@@ -2659,7 +2659,7 @@ void baseSSLCom<L4Proto>::certstore_setup(void ) {
         int r = SSL_CTX_load_verify_locations(certstore()->def_cl_ctx,nullptr,certstore()->def_cl_capath.c_str());
         DIA__("SSLCom: loading default certification store: %s", r > 0 ? "ok" : "failed");
         if(r <= 0) {
-            log_if_error2(WAR,"SSLCom::certstore_setup");
+            log_if_error2(iWAR,"SSLCom::certstore_setup");
         }
     } else {
         WARS__("SSLCom: loading default certification store: path not set!");

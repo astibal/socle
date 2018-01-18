@@ -315,7 +315,7 @@ public:
     inline void l4_proto(int p) { l4_proto_ = p; }    
 
     DECLARE_C_NAME("baseCom");
-    virtual std::string to_string(int verbosity=INF) { return this->class_name(); };
+    virtual std::string to_string(int verbosity=iINF) { return this->class_name(); };
     DECLARE_LOGGING(to_string);
     
     virtual const std::string shortname() const { return std::string("com"); }
