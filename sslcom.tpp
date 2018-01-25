@@ -1417,11 +1417,28 @@ void baseSSLCom<L4Proto>::accept_socket ( int sockfd )  {
             flags_ |= HSK_REUSED;
         }
         
+        if(sslkeylog) {
+            dump_keys();
+            sslkeylog = false;
+        }
+        
     } else {
         DIA___("SSLCom::accept_socket[%d]: ret %d, need to call later.",sockfd,r);
     }
     prof_accept_cnt++;
 }
+
+template <class L4Proto>
+void baseSSLCom<L4Proto>::dump_keys() {
+    if(sslkeylog) {
+        std::string ret = string_format("CLIENT_RANDOM %s %s", 
+                      hex_print(sslcom_ssl->s3->client_random, SSL3_RANDOM_SIZE).c_str(),
+                      hex_print(sslcom_ssl->session->master_key, SSL3_MASTER_SECRET_SIZE).c_str()
+        );
+        LOGS_(loglevel(NOT,flag_add(iNOT,CRT|KEYS),&LOG_EXEXACT),ret.c_str());
+    }
+}
+
 
 template <class L4Proto>
 void baseSSLCom<L4Proto>::delay_socket(int sockfd) {
@@ -1654,6 +1671,11 @@ int baseSSLCom<L4Proto>::waiting() {
         store_session_if_needed();
     }
 
+    if(sslkeylog) {
+        dump_keys();
+        sslkeylog = false;
+    }    
+    
     return r;
 }
 
@@ -2481,6 +2503,11 @@ int baseSSLCom<L4Proto>::upgrade_client_socket(int sock) {
         forced_write(true);
 
         upgraded(true);
+        
+        if(sslkeylog) {
+            dump_keys();
+            sslkeylog = false;
+        }        
     }
 
 

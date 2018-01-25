@@ -45,6 +45,8 @@ loglevel DEB = loglevel(8,0);
 loglevel DUM = loglevel(9,0); 
 loglevel EXT = loglevel(10,0); 
 
+loglevelmore LOG_EXTOPIC = loglevelmore(true,false);
+loglevelmore LOG_EXEXACT = loglevelmore(true,true);
 
 
 logger* lout_ = nullptr;
@@ -145,6 +147,43 @@ bool logger::periodic_end() {
 }
 
 
+bool logger::should_log_topic(loglevel& writer, loglevel& msg) {
+
+    // writer loglevel
+    unsigned int t = writer.topic();
+    
+    // if msg has set topic, we need to check what to do
+    if(msg.topic() != 0) {
+        if(msg.more() != nullptr) {
+            if(msg.more()->exclusive_exact) {
+                if(t != msg.topic()) {
+                    return false;
+                }
+            }
+            
+            // Exclusive topic
+            if(msg.more()->exclusive_topic) {
+                if(t == iNON) return false;
+                
+                unsigned int l_area = 0xffff0000 | msg.topic();
+                unsigned int t_area = 0xffff0000 | t;
+                if(l_area != t_area) {
+                    return false;
+                }
+            }
+        }
+    } else {
+        // msg doesn't have any topic (== 0)
+        if(t > 0) {
+            
+            // we don't want to write generic messages into specialized writer
+            return false;
+        }
+    }
+    
+    return true;
+}
+
 int logger::write_log(loglevel level, std::string& sss) {
 
     bool really_dup = dup2_cout();
@@ -154,7 +193,9 @@ int logger::write_log(loglevel level, std::string& sss) {
             if(target_profiles()[(uint64_t)*i]->level_ < level && ! forced_) { continue; }
             if(target_profiles()[(uint64_t)*i]->level_ == NON)    { continue; }
         }
-            
+        
+        if (!should_log_topic(target_profiles()[(uint64_t)*i]->level_,level)) continue;
+        
         *(*i) << sss << std::endl;
         //if(target_profiles()[(uint64_t)*i]->dup_to_cout_) really_dup = true;
     }
@@ -165,6 +206,8 @@ int logger::write_log(loglevel level, std::string& sss) {
             if(target_profiles()[(uint64_t)*i]->level_ < level && ! forced_ ) { continue; }
             if(target_profiles()[(uint64_t)*i]->level_ == NON)     { continue; }
         }
+        
+        if (!should_log_topic(target_profiles()[(uint64_t)*i]->level_,level)) continue;
             
         std::stringstream  s;
 

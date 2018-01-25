@@ -48,21 +48,35 @@
 #define iEXT 10
 
 struct logger_adv_info {
-  virtual std::string profile() = 0;
+    logger_adv_info() {}
+    logger_adv_info(bool et, bool ee) : exclusive_topic(et), exclusive_exact(ee) {};
+    bool exclusive_topic = false;  // don't log to generic log on true
+    bool exclusive_exact = false;  // don't write to all topic logger, write to topic logger with the same code specified.
 };
+typedef logger_adv_info loglevelmore;
+
+extern loglevelmore LOG_EXTOPIC;
+extern loglevelmore LOG_EXEXACT;
+
 
 struct logger_level {
     logger_level(unsigned int l, unsigned int t) : level_(l),topic_(t) {}
+    logger_level(logger_level& l, unsigned int t) : level_(l.level_), topic_(t) {}
+    logger_level(unsigned int l, unsigned int t,loglevelmore* a) : level_(l),topic_(t), adv_(a) {}
+    logger_level(logger_level& l, unsigned int t, loglevelmore* a) : level_(l.level_), topic_(t), adv_(a) {}
+
     
     inline unsigned int level() const { return level_; }
     inline unsigned int topic() const { return topic_; }
+    const loglevelmore* more(void) const { return adv_; }
 
     void level(unsigned int l) { level_ = l; }
     void topic(unsigned int t) { topic_ = t; }
+    void more(loglevelmore* a) { adv_ = a; }
     
     unsigned int level_ {iINF};
     unsigned int topic_ {iNON};
-    logger_adv_info* adv_{nullptr};
+    loglevelmore* adv_{nullptr};
     
     std::string to_string(int verbosity=iINF) { return string_format("level:%d topic:%d",level_,topic_); };
 };
@@ -117,12 +131,14 @@ extern loglevel DUM;
 extern loglevel EXT; 
 
 
+
 // logging topics
 
-#define GEN 0
-#define CRT 0x1000  // certificate/PKI topic
-#define ATH 0x2000  // user validation (AAA)
+#define GEN  0x00000000
+#define CRT  0x00010000  // SSL/PKI topic
+#define ATH  0x00020000  // user validation (AAA)
 
+#define KEYS 0x00008000  // dump all secrets
 
 
 #define DEB_DO_(x) if(get_logger()->level() >= DEB) { (x); }
@@ -621,6 +637,8 @@ public:
     void remote_targets(std::string name, int s) { remote_targets_.push_back(s); target_names_[s] = name; }
 
     int virtual write_log(loglevel level, std::string& sss);
+    
+    bool should_log_topic(loglevel& writer, loglevel& msg);
     
     void log(loglevel l, const std::string& fmt, ...);
     void log_w_name(loglevel l, const char* n, const std::string& fmt, ...);

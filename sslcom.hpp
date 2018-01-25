@@ -255,6 +255,9 @@ public:
     
     virtual void init_server();
     int upgrade_server_socket(int s);
+    
+    bool sslkeylog = false;
+    void dump_keys();
 
     bool is_server() { return sslcom_server_; }
 protected:

@@ -50,10 +50,14 @@ std::string get_kernel_version();
 bool version_check(std::string real, std::string target);
 
 template <typename T> inline void flag_set(T* variable, T check) { *variable |= (T)check; }
-template <typename T> inline bool flag_check(T* variable, T check) { return (*variable & check); }
+template <typename T> inline T flag_set(const T variable, T check) { T r = variable; r |= (T)check; return r; }
+template <typename T> inline bool flag_check(const T* variable, T check) { return (*variable & check); }
+template <typename T> inline bool flag_check(const T variable, T check) { return (variable & check); }
 
-#define  int_check flag_check<int> 
-#define  int_set   flag_set<int> 
+
+#define  flag_add    flag_set<unsigned int> 
+#define  flag_test   flag_check<unsigned int> 
+ 
 
 std::string inet_family_str(int fa);
 int inet_ss_address_unpack(sockaddr_storage *ptr, std::string* = nullptr, unsigned short* port = nullptr);
