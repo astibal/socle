@@ -265,7 +265,6 @@ void logger::log(loglevel l, const std::string& fmt, ...) {
     char date[64];
 
 
-    int date_len = std::strftime(date,sizeof(date),"%y-%m-%d %H:%M:%S",tmp);
 
     std::string str;    
     PROCESS_VALIST(str,fmt);
@@ -280,9 +279,18 @@ void logger::log(loglevel l, const std::string& fmt, ...) {
     
     
     std::stringstream ss;
-    ss << std::string(date,date_len) << "." << string_format("%06d",tv.tv_usec) << " <" << std::hex << std::this_thread::get_id() << "> " << desc << " - " << str;
-    std::string sss = ss.str();
+    int date_len = std::strftime(date,sizeof(date),"%y-%m-%d %H:%M:%S",tmp);
     
+    if(flag_test(l.flags_,LOG_FLRAW)) {
+        ss << str;
+    }
+    else {
+        // default line format: date time.usec <threadid> loglevel - MSG
+        ss << std::string(date,date_len) << "." << string_format("%06d",tv.tv_usec) << " <" << std::hex << std::this_thread::get_id() << "> " << desc << " - " << str;
+    }
+
+
+    std::string sss = ss.str();
     write_log(l,sss);
 };
 

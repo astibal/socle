@@ -58,12 +58,16 @@ typedef logger_adv_info loglevelmore;
 extern loglevelmore LOG_EXTOPIC;
 extern loglevelmore LOG_EXEXACT;
 
+#define LOG_FLNONE 0x00000000
+#define LOG_FLRAW  0x00000001  // don't print out any dates, or additional data  on the line, just this message
 
 struct logger_level {
     logger_level(unsigned int l, unsigned int t) : level_(l),topic_(t) {}
     logger_level(logger_level& l, unsigned int t) : level_(l.level_), topic_(t) {}
+    logger_level(logger_level& l, unsigned int t, unsigned int f) : level_(l.level_), topic_(t), flags_(f) {}
     logger_level(unsigned int l, unsigned int t,loglevelmore* a) : level_(l),topic_(t), adv_(a) {}
     logger_level(logger_level& l, unsigned int t, loglevelmore* a) : level_(l.level_), topic_(t), adv_(a) {}
+    logger_level(logger_level& l, unsigned int t, loglevelmore* a, unsigned int f) : level_(l.level_), topic_(t), adv_(a), flags_(f) {}
 
     
     inline unsigned int level() const { return level_; }
@@ -77,6 +81,8 @@ struct logger_level {
     unsigned int level_ {iINF};
     unsigned int topic_ {iNON};
     loglevelmore* adv_{nullptr};
+    
+    unsigned int flags_{LOG_FLNONE};
     
     std::string to_string(int verbosity=iINF) { return string_format("level:%d topic:%d",level_,topic_); };
 };
@@ -162,7 +168,7 @@ extern loglevel EXT;
 
 #define LOG_(lev,x,...) \
     if(get_logger()->level() >= (lev)) { \
-        if( ( get_logger()->print_srcline() && get_logger()->level() > INF ) || get_logger()->print_srcline_always()) { \
+        if( ( ( get_logger()->print_srcline() && get_logger()->level() > INF ) || get_logger()->print_srcline_always() ) && !flag_test((lev).flags_,LOG_FLRAW)) { \
             get_logger()->log2(lev,_FILE_,__LINE__,(x),__VA_ARGS__); \
         } else { \
             get_logger()->log(lev,(x),__VA_ARGS__); \
@@ -171,7 +177,7 @@ extern loglevel EXT;
 
 #define LOGS_(lev,x) \
     if(get_logger()->level() >= (lev)) { \
-        if( ( get_logger()->print_srcline() && get_logger()->level() > INF ) || get_logger()->print_srcline_always()) { \
+        if( ( ( get_logger()->print_srcline() && get_logger()->level() > INF ) || get_logger()->print_srcline_always() ) && !flag_test((lev).flags_,LOG_FLRAW)) { \
             get_logger()->log2(lev,_FILE_,__LINE__,(x)); \
         } else { \
             get_logger()->log(lev,(x)); \
@@ -198,7 +204,7 @@ extern loglevel EXT;
 #define L_LOG_(lev,x,...) \
     if(log_level >= lev || get_logger()->level() >= lev) { \
         get_logger()->force(log_level >= lev); \
-        if( ( get_logger()->print_srcline() && get_logger()->level() > INF ) || ( get_logger()->print_srcline() && log_level > INF ) || get_logger()->print_srcline_always()) { \
+        if( ( ( get_logger()->print_srcline() && get_logger()->level() > INF ) || ( get_logger()->print_srcline() && log_level > INF ) || get_logger()->print_srcline_always() ) && !flag_test((lev).flags_,LOG_FLRAW)) { \
             get_logger()->log2(lev,_FILE_,__LINE__,(x),__VA_ARGS__); \
         } else { \
             get_logger()->log(lev,(x),__VA_ARGS__); \
@@ -208,7 +214,7 @@ extern loglevel EXT;
 #define L_LOGS_(lev,x) \
     if(log_level >= lev || get_logger()->level() >= lev) { \
         get_logger()->force(log_level >= lev); \
-        if( ( get_logger()->print_srcline() && get_logger()->level() > INF ) || ( get_logger()->print_srcline() && log_level > INF ) || get_logger()->print_srcline_always()) { \
+        if( ( ( get_logger()->print_srcline() && get_logger()->level() > INF ) || ( get_logger()->print_srcline() && log_level > INF ) || get_logger()->print_srcline_always() ) && !flag_test((lev).flags_,LOG_FLRAW)) { \
             get_logger()->log2(lev,_FILE_,__LINE__,(x)); \
         } else { \
             get_logger()->log(lev,(x)); \
@@ -242,7 +248,7 @@ extern loglevel EXT;
 #define LN_LOG_(lev,x,...) \
     if(this->get_this_log_level() >= lev || get_logger()->level() >= lev) { \
         get_logger()->force(log_level >= lev); \
-        if( ( get_logger()->print_srcline() && get_logger()->level() > INF ) || ( get_logger()->print_srcline() && log_level > INF ) || get_logger()->print_srcline_always()) { \
+        if( ( ( get_logger()->print_srcline() && get_logger()->level() > INF ) || ( get_logger()->print_srcline() && log_level > INF ) || get_logger()->print_srcline_always() ) && !flag_test((lev).flags_,LOG_FLRAW)) { \
             get_logger()->log2_w_name(lev,_FILE_,__LINE__,(hr()),(x),__VA_ARGS__); \
         } else { \
             get_logger()->log_w_name(lev,(hr()),(x),__VA_ARGS__); \
@@ -252,7 +258,7 @@ extern loglevel EXT;
 #define LN_LOGS_(lev,x) \
     if(this->get_this_log_level() >= lev || get_logger()->level() >= lev) { \
         get_logger()->force(log_level >= lev); \
-        if( ( get_logger()->print_srcline() && get_logger()->level() > INF ) || ( get_logger()->print_srcline() && log_level > INF ) || get_logger()->print_srcline_always()) { \
+        if( ( ( get_logger()->print_srcline() && get_logger()->level() > INF ) || ( get_logger()->print_srcline() && log_level > INF ) || get_logger()->print_srcline_always() ) && !flag_test((lev).flags_,LOG_FLRAW)) { \
             get_logger()->log2_w_name(lev,_FILE_,__LINE__,(hr()),(x)); \
         } else { \
             get_logger()->log_w_name(lev,(hr()),(x)); \
@@ -273,7 +279,7 @@ extern loglevel EXT;
 #define T_LN_LOGS_(name,interval,lev,x) \
     if(this->get_this_log_level() >= lev || get_logger()->level() >= lev) { \
         get_logger()->force(log_level >= lev); \
-        if( ( get_logger()->print_srcline() && get_logger()->level() > INF ) || ( get_logger()->print_srcline() && log_level > INF ) || get_logger()->print_srcline_always()) { \
+        if( ( get_logger()->print_srcline() && get_logger()->level() > INF ) || ( get_logger()->print_srcline() && log_level > INF ) || get_logger()->print_srcline_always())) { \
             if(get_logger()->click_timer(name,interval)) { \
                 LN_LOGS_(lev,x); \
             } \

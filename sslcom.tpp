@@ -1435,7 +1435,7 @@ void baseSSLCom<L4Proto>::dump_keys() {
                       hex_print(sslcom_ssl->s3->client_random, SSL3_RANDOM_SIZE).c_str(),
                       hex_print(sslcom_ssl->session->master_key, SSL3_MASTER_SECRET_SIZE).c_str()
         );
-        LOGS_(loglevel(NOT,flag_add(iNOT,CRT|KEYS),&LOG_EXEXACT),ret.c_str());
+        LOGS_(loglevel(NOT,flag_add(iNOT,CRT|KEYS),&LOG_EXEXACT,LOG_FLRAW),ret.c_str());
     }
 }
 
