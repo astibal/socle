@@ -28,6 +28,11 @@ ptr_cache<sobject*,sobject_info> sobject_db("global object db",0,true);
 meter sobject::mtr_created;
 meter sobject::mtr_deleted;
 
+#ifdef SOCLE_MEM_PROFILE
+bool sobject_info::enable_bt_ = true;
+#else
+bool sobject_info::enable_bt_ = false;
+#endif
 
 std::string sobject_info::to_string(int verbosity) { 
     std::string r;

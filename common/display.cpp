@@ -66,7 +66,7 @@ std::string string_format(const std::string& fmt, ...) {
 std::string hex_print(unsigned char* data, unsigned int len) {
     std::stringstream ss;
     
-    for(int i=0; i < len; i++) {
+    for(unsigned int i=0; i < len; i++) {
         ss << string_format("%02X", data[i]);
     }
     

@@ -42,23 +42,24 @@ int sobject_db_ask_destroy(void* ptr);
  * Accouting info for all sobjects.
 */
 struct sobject_info {
-#ifdef SOCLE_MEM_PROFILE
-    sobject_info() { bt_ = bt(); init(); }
-    std::string bt_;
+    static bool enable_bt_;
+    std::string* bt_ = nullptr;
     
-    std::string extra_string() { return string_format("creation point:\n%s",bt_.c_str()); }
-#else
+    std::string extra_string() { if (bt_) { return string_format("creation point:\n%s",bt_->c_str()); } else { return ""; } }
     sobject_info() { init(); }
-    std::string extra_string() { return ""; }
-#endif
 
-    void init() { created_ = time(nullptr); }
+    void init() { 
+        created_ = time(nullptr); 
+        if(enable_bt_) {
+            bt_ = new std::string(bt());
+        }
+    }
 
     time_t created_ = 0;
     unsigned int age() { return time(nullptr) - created_; }
 
     std::string to_string(int verbosity=iINF);
-    virtual ~sobject_info() {};
+    virtual ~sobject_info() { if(bt_) delete bt_; };
     
     DECLARE_C_NAME("sobject_info");
     DECLARE_LOGGING(to_string);

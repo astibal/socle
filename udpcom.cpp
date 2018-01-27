@@ -617,6 +617,10 @@ int UDPCom::write_to_pool(int __fd, const void* __buf, size_t __n, int __flags) 
                 ret_bind = ::bind (d, (struct sockaddr*)&(ss_d), sizeof (struct sockaddr_storage));
                 int ret_conn = ::connect(d, (struct sockaddr*)&(ss_s), sizeof (struct sockaddr_storage));
                 
+                if(ret_conn != 0) {
+                    ERR_("UDPCom::write_to_pool[%d]: socket: %d: connect error: %s",__fd,d,string_error().c_str());
+                }
+                
                 l = ::sendmsg(d,&m,0);
             }
             
