@@ -116,6 +116,8 @@ public:
      FQDN_CACHE fqdn_cache_;
      FQDN_CACHE& fqdn_cache() { return fqdn_cache_; };
      
+     static int ssl_ocsp_status_ttl;
+     static int ssl_crl_status_ttl;
      static ptr_cache<std::string,expiring_ocsp_result> ocsp_result_cache;
      static ptr_cache<std::string,expiring_crl> crl_cache;
      static ptr_cache<std::string,session_holder> session_cache;

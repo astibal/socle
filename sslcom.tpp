@@ -657,7 +657,7 @@ int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
             // if result is fresh, store it
             certstore()->ocsp_result_cache.lock();
             // set cache for 3 minutes
-            certstore()->ocsp_result_cache.set(cn,new expiring_ocsp_result(is_revoked,180));
+            certstore()->ocsp_result_cache.set(cn,new expiring_ocsp_result(is_revoked,certstore()->ssl_ocsp_status_ttl));
             certstore()->ocsp_result_cache.unlock();            
         }
         
@@ -712,7 +712,7 @@ int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
                         certstore()->crl_cache.lock(); // WARNING: lock back again -- we risk here that someone else already downloaded it
                         if(crl != nullptr) {
                             DIA__("Caching CRL 0x%x", crl);
-                            certstore()->crl_cache.set(crl_url.c_str(),new expiring_crl(new crl_holder(crl),1800)); // but because we are locked, we are happy to overwrite it!
+                            certstore()->crl_cache.set(crl_url.c_str(),new expiring_crl(new crl_holder(crl),certstore()->ssl_crl_status_ttl)); // but because we are locked, we are happy to overwrite it!
                         }
                     } else {
                         WAR__("downloding CRL from %s failed.",crl_printable.c_str());

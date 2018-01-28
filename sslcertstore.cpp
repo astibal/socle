@@ -32,6 +32,8 @@ std::string SSLCertStore::def_cl_capath;
 
 #define CERTSTORE_CACHE_SIZE 500
 
+int SSLCertStore::ssl_crl_status_ttl  = 86400;
+int SSLCertStore::ssl_ocsp_status_ttl = 1800;
 ptr_cache<std::string,expiring_ocsp_result> SSLCertStore::ocsp_result_cache("ocsp response cache",CERTSTORE_CACHE_SIZE,true);
 ptr_cache<std::string,expiring_crl> SSLCertStore::crl_cache("crl cache",CERTSTORE_CACHE_SIZE,true);
 ptr_cache<std::string,session_holder> SSLCertStore::session_cache("ssl session cache",CERTSTORE_CACHE_SIZE,true);
