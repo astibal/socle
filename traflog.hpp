@@ -27,11 +27,14 @@
 #include <fstream>
 #include <iostream>
 
+#include <sobject.hpp>
 
-class trafLog {
+namespace socle {
+
+class trafLog : public sobject {
 
 public:
-	trafLog(baseProxy *p,const char* d_dir, const char* f_prefix, const char* f_suffix) :
+	trafLog(baseProxy *p,const char* d_dir, const char* f_prefix, const char* f_suffix) : sobject(),
     proxy_(p),
 	opened_(false),
 	status_(true),
@@ -54,6 +57,12 @@ public:
     }
 
     std::string filename;
+
+    virtual bool ask_destroy() { 
+        delete this;
+       
+        return true;
+    };
     
 private:
 	baseProxy *proxy_;
@@ -231,6 +240,16 @@ public:
             }
         }   
 	}
+	
+	
+    virtual std::string to_string(int verbosity = iINF) {
+        return string_format("Traflog: file=%s opened=%d ofstream=0x%x",filename.c_str(),opened(),writer_);
+    }
+	
+    DECLARE_C_NAME("trafLog");
+    DECLARE_LOGGING(to_string);	
 };
+
+}
 
 #endif
