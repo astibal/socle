@@ -41,6 +41,8 @@ public:
 	writer_(NULL),
 	writer_key_l_("???:???"),
 	writer_key_r_("???:???") {
+        create_writer_key();
+        proxy_ = nullptr;
 	}
 	
 	virtual ~trafLog() {
@@ -50,7 +52,9 @@ public:
             delete writer_;
         }
     }
-  
+
+    std::string filename;
+    
 private:
 	baseProxy *proxy_;
 	bool opened_;
@@ -67,6 +71,11 @@ private:
 	
 	
 	std::string create_writer_key(char side) {
+        
+        if(proxy_ == nullptr) {
+            return "";
+        }
+        
         std::string lh;
         if(proxy_->ls().size()) lh = proxy_->ls().at(0)->host();
         else if(proxy_->lda().size()) lh = proxy_->lda().at(0)->host();
@@ -112,38 +121,61 @@ private:
 			}
 		}
 	}
+	
+	void create_writer_key() {
+        writer_key_l_ = create_writer_key('L');
+        writer_key_r_ = create_writer_key('R');
+        
+        if(writer_key_l_.size() == 0 || writer_key_r_.size() == 0) {
+            return;
+        }
+        
+        mkdir(data_dir.c_str(),700);
+            
+        std::string hostdir = data_dir+"/"+host_l_+"/";
+        mkdir(hostdir.c_str(),0770);
+
+        time_t now = time(0);
+        struct tm loc;
+        localtime_r(&now,&loc);
+        std::string datedir = string_format("%d-%02d-%02d/",loc.tm_year+1900,loc.tm_mon+1,loc.tm_mday);
+        mkdir((hostdir+datedir).c_str(),700);
+        
+        std::string file_datepart = string_format("%02d-%02d-%02d_",loc.tm_hour,loc.tm_min,loc.tm_sec);
+        
+        
+        filename = hostdir + datedir + file_prefix + file_datepart + writer_key_l_ + "." + file_suffix;
+    }
 
    
 	bool create_writer() {
 		
-		writer_key_l_ = create_writer_key('L');
-		writer_key_r_ = create_writer_key('R');
-		
-		mkdir(data_dir.c_str(),700);
-			
-		std::string hostdir = data_dir+"/"+host_l_+"/";
-		mkdir(hostdir.c_str(),0770);
-
-		time_t now = time(0);
-		struct tm loc;
-		localtime_r(&now,&loc);
-		std::string datedir = string_format("%d-%02d-%02d/",loc.tm_year+1900,loc.tm_mon+1,loc.tm_mday);
-		mkdir((hostdir+datedir).c_str(),700);
-		
-		std::string file_datepart = string_format("%02d-%02d-%02d_",loc.tm_hour,loc.tm_min,loc.tm_sec);
-		
-		writer_ = new std::ofstream(hostdir + datedir + file_prefix + file_datepart + writer_key_l_ + "." + file_suffix);
+        if(filename.size() == 0) {
+            return false;
+        }
+        
+		writer_ = new std::ofstream(filename, std::ofstream::out | std::ofstream::app);
 		if(writer_->is_open()) {
 			opened_ = true;
 			return true;
 		}
 		
-		opened_ = false;
-		delete writer_;
-        writer_ = nullptr;
+        close_writer();
 		return false;
 	}
-	
+
+	void close_writer() {
+        opened_ = false;
+        
+        if(writer_) {
+            if(writer_->is_open()) {
+                writer_->close();
+            }
+            
+            delete writer_;
+            writer_ = nullptr;        
+        }
+    }
 
 public:
 	inline bool opened() { return opened_; }
