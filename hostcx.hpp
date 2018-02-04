@@ -64,9 +64,21 @@ public:
 	std::string& host() { return host_; }
 	//! returns port part of the structure
 	std::string& port() { return port_; }
+	
+	const std::string& chost() const { return host_; }
+	const std::string& cport() const { return port_; }
+	
 };
 
-
+namespace std
+{
+    template <>
+    struct hash<Host>
+    {
+        size_t operator()(const Host& h) const;
+    };
+}
+bool operator==(const Host& h, const Host& hh);
 
 
 //! Host context class

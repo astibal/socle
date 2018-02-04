@@ -24,6 +24,26 @@
 bool baseHostCX::socket_in_name = false;
 bool baseHostCX::online_name = false;
 
+
+namespace std
+{
+    size_t hash<Host>::operator()(const Host& h) const
+        {
+            const std::string hs = h.chost();
+            const std::string hp = h.cport();
+            // Compute individual hash values for two data members and combine them using XOR and bit shifting
+            return ((hash<string>()(hs) ^ (hash<string>()(hp) << 1)) >> 1);
+        }
+}
+
+bool operator==(const Host& h, const Host& hh) {
+    std::string s = h.chost() + ":" + h.cport();
+    std::string ss = hh.chost() + ":" + hh.cport();
+    
+    return s == ss;
+}
+
+
 baseHostCX::baseHostCX(baseCom* c, const char* h, const char* p): Host(h, p) {
 
     permanent_ = false;
