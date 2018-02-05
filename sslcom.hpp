@@ -408,7 +408,9 @@ public:
                     INVALID=0x4, 
                     SELF_SIGNED_CHAIN=0x8, 
                                 REVOKED=0x10, 
-                                CLIENT_CERT_RQ=0x20 } verify_status_t;
+                                CLIENT_CERT_RQ=0x20,
+                                HOSTNAME_FAILED=0x40
+                                                        } verify_status_t;
                                 
     int verify_status = VERIFY_OK;
     inline void verify_set(int s) { verify_status |= (verify_status_t)s; }

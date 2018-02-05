@@ -56,6 +56,83 @@ bool baseSSLMitmCom<SSLProto>::check_cert(const char* peer_name) {
                     spo.sans.push_back(string_format("IP:%s",this->owner_cx()->host().c_str()));
                 }
             }
+        } else {
+            
+            // If certificate is formally valid, see if it also matches SNI. This is extra check,
+            // to avoid SNI evasions.
+            
+            std::vector<std::string> hostnames = SSLCertStore::get_sans(cert);
+            hostnames.push_back("DNS:"+SSLCertStore::print_cn(cert));
+            
+            bool validated = false;
+            std::string validated_san;
+            
+            for(std::string& candidate: hostnames) {
+                DIA___("Target server SAN/CN line: %s",candidate.c_str());
+                
+                std::vector<std::string> can_dns = string_split(candidate,',');
+                for(std::string can_dns_item: can_dns) {
+                    std::string item = string_trim(can_dns_item);
+                    DIA___("           SAN/CN entry: '%s'",item.c_str());   
+                    
+                    if(this->sslcom_peer_hello_sni().size() > 0) {
+                        if(item.size() > 4 && item.find("DNS:") == 0) {
+                            item = item.substr(4);
+                            
+                            // wildcard
+                            if(item.find("*.") == 0) {
+                                std::string sni_wild;
+                                
+                                std::size_t firstdot = this->sslcom_peer_hello_sni().find(".");
+                                if( firstdot != std::string::npos) {
+                                    sni_wild = "*" + this->sslcom_peer_hello_sni().substr(firstdot);
+                                }
+                                
+                                if(sni_wild == item) {
+                                    DIA___("Matched sni wildcard: '%s' to cert san/cn wildcard: '%s'",sni_wild.c_str(),item.c_str());
+                                    validated = true;
+                                    validated_san = "DNS:" + item;
+                                    break;
+                                }
+                            } 
+                            // FQDN 
+                            else {
+                                if(this->sslcom_peer_hello_sni() == item) {
+                                    DIA___("Matched sni: '%s' to cert san/cn: '%s'",this->sslcom_peer_hello_sni().c_str(),item.c_str());
+                                    validated = true;
+                                    validated_san = "DNS:" + item;
+                                    break;
+                                }
+                            }
+                        }
+                    } else {
+                        if(item.size() > 3 && item.find("IP:") == 0) {
+                            item = item.substr(3);
+                            
+                            if(this->owner_cx() && (this->owner_cx()->host() == item)) {
+                                DIA___("Comapring IP: '%s' to cert san/cn: '%s'",this->owner_cx()->host().c_str(),item.c_str());
+                                validated = true;
+                                validated_san = "IP:" + item;
+                                break;
+                            }
+                        }
+                    }
+                }
+                
+                
+                if(validated){
+                    break;
+                }
+            }
+            
+            if(validated) {
+                LOG___(loglevel(iDIA,0),"SSL hostname check succeeded on %s",validated_san.c_str());
+            }
+            else {
+                LOG___(loglevel(iWAR,0),"SSL hostname check failed (sni %s).",this->sslcom_peer_hello_sni().c_str());
+                this->verify_set(this->HOSTNAME_FAILED);
+            }
+
         }
         
         

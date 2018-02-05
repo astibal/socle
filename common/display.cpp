@@ -484,3 +484,31 @@ int safe_val(std::string s, int default_val) {
     return ret;
 }
 
+std::string string_trim(const std::string& orig) {
+    std::string ret;
+    bool start = true;
+    int spaces = 0;
+    
+    for(unsigned char c: orig) {
+        bool space = isspace(c);
+        
+        if(space) {
+            spaces++;
+        } else {
+            spaces=0;
+        }
+        
+        if(space and start) {
+            continue;
+        } else {
+            start = false;
+            ret += c;
+        }
+    }
+    
+    if(spaces > 0) {
+        return ret.substr(0,-spaces);
+    }
+    
+    return ret;
+}
