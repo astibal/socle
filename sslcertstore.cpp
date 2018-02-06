@@ -361,7 +361,7 @@ std::vector<std::string> SSLCertStore::get_sans(X509* x) {
                     }
                     BUF_MEM *bptr;
                     BIO_get_mem_ptr(ext_bio, &bptr);
-                    BIO_set_close(ext_bio, BIO_NOCLOSE);
+                    int sc = BIO_set_close(ext_bio, BIO_NOCLOSE);
                     
                     
                     std::string san(bptr->data,bptr->length);
@@ -434,6 +434,23 @@ X509_PAIR* SSLCertStore::spoof(X509* cert_orig, bool self_sign, std::vector<std:
     STACK_OF(X509_EXTENSION) *exts = cert_orig->cert_info->extensions;
     int num_of_exts;
 
+    
+    // prepare additional SANs
+    std::string san_add;
+    if(additional_sans != nullptr) {
+        std::vector<std::string>& as = *additional_sans;
+        if(as.size() > 0) {
+            for(unsigned int i = 0 ; i < as.size(); ++i ) {
+                san_add += as.at(i);
+                if(i < as.size() - 1) {
+                    san_add += ",";
+                }
+            }
+            DIA__("SSLCertStore::spoof[%x]: additional sans = '%s'",this,san_add.c_str());
+        }
+    }    
+    
+    bool san_added = false;
     if (exts) {   
         STACK_OF(X509_EXTENSION) *s = sk_X509_EXTENSION_new_null();
         num_of_exts = sk_X509_EXTENSION_num(exts);    
@@ -454,30 +471,51 @@ X509_PAIR* SSLCertStore::spoof(X509* cert_orig, bool self_sign, std::vector<std:
                 if(nid == NID_subject_alt_name) {
                     DEB__("SSLCertStore::spoof[%x]: adding subjAltName to extensions",this);
                     X509_EXTENSION* n_ex = X509_EXTENSION_dup(ex);
-                    sk_X509_EXTENSION_push(s,n_ex);
+                    
+                    // get original SAN
+                    BIO *ext_bio = BIO_new(BIO_s_mem());
+                    if (!X509V3_EXT_print(ext_bio, ex, 0, 0)) {
+                        M_ASN1_OCTET_STRING_print(ext_bio, ex->value);
+                    }
+                    BUF_MEM *bptr;
+                    BIO_get_mem_ptr(ext_bio, &bptr);
+                    int sc = BIO_set_close(ext_bio, BIO_NOCLOSE);
+                    
+                    
+                    std::string san(bptr->data,bptr->length);
+                    
+                    BIO_free(ext_bio);
+                    BUF_MEM_free(bptr);
+                    
+                    // we have SAN now in san string
+
+                    if(san_add.size()) {
+                        san += "," + san_add;
+                    }
+            
+                    int a_r = add_ext(s,NID_subject_alt_name, (char*) san.c_str());
+                    DUM__("SSLCertStore::spoof[%x]: add_ext returned %d",this,a_r);
+
+                    san_added = true;
+                    
+//                    sk_X509_EXTENSION_push(s,n_ex);
 //                     X509_EXTENSION_free(n_ex);  //leak hunt
+                    
                 }                
             }
             
-            if(additional_sans != nullptr) {
-                std::string san_string;
-                std::vector<std::string>& as = *additional_sans;
-                if(as.size() > 0) {
-                    for(unsigned int i = 0 ; i < as.size(); ++i ) {
-                        san_string += as.at(i);
-                        if(i < as.size() - 1) {
-                            san_string += ",";
-                        }
-                    }
-                    
-                    add_ext(s,NID_subject_alt_name, (char*) san_string.c_str());
-                    DIA__("SSLCertStore::spoof[%x]: additional sans = '%s'",this,san_string.c_str());
-                }
-            }
+
+        }
+        
+        if(!san_added) {
+            
+            int a_r = add_ext(s,NID_subject_alt_name, (char*) san_add.c_str());
+            DUM__("SSLCertStore::spoof[%x]: add_ext returned %d",this,a_r);
+                        
         }
         
         int r = X509_REQ_add_extensions(copy,s);
-        DEB__("SSLCertStore::spoof[%x]: X509_REQ_add_extensions returned %d",this,r);
+        DUM__("SSLCertStore::spoof[%x]: X509_REQ_add_extensions returned %d",this,r);
         
         sk_X509_EXTENSION_pop_free(s,X509_EXTENSION_free);
     }   
@@ -798,7 +836,7 @@ std::string SSLCertStore::print_cert(X509* x) {
 
             BUF_MEM *bptr;
             BIO_get_mem_ptr(ext_bio, &bptr);
-            BIO_set_close(ext_bio, BIO_CLOSE);
+            int sc = BIO_set_close(ext_bio, BIO_CLOSE);
         
 #pragma GCC diagnostic pop
             

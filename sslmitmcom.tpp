@@ -131,6 +131,25 @@ bool baseSSLMitmCom<SSLProto>::check_cert(const char* peer_name) {
             else {
                 LOG___(loglevel(iWAR,0),"SSL hostname check failed (sni %s).",this->sslcom_peer_hello_sni().c_str());
                 this->verify_set(this->HOSTNAME_FAILED);
+
+                if(!this->opt_failed_certcheck_replacement) {
+                    spo.self_signed = true;
+                } else {
+                    // if neither DNS nor IP could be added, fallback to self-signed cert
+                    spo.self_signed = true;
+                    
+                    if(this->sslcom_peer_hello_sni().size()) {
+                        spo.sans.push_back(string_format("DNS:%s",this->sslcom_peer_hello_sni().c_str()));
+                        spo.self_signed = false;
+                    }
+                    else
+                    if(this->owner_cx()) {
+                        // we WILL pretend target certificate is OK 
+                        spo.sans.push_back(string_format("IP:%s",this->owner_cx()->host().c_str()));
+                        spo.self_signed = false;
+                    }                    
+                }
+                
             }
 
         }
