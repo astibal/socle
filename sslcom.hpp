@@ -101,6 +101,7 @@ public:
     baseSSLCom();
     
     virtual std::string& to_string();
+    std::string get_peer_sni() { return sslcom_peer_hello_sni().c_str(); } //return copy of SNI
     
 protected:
 	SSL_CTX* sslcom_ctx = NULL;
