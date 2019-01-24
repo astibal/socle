@@ -293,37 +293,61 @@ std::string escape(std::string orig, bool to_print) {
             {
                 
             // escape in all cases
-            case '\a':  ret += "\\a"; break;
-            case '\b':  ret += "\\b"; break;
-            case '\f':  ret += "\\f"; break;
-            case '\v':  ret += "\\v"; break;
-            case '\\':  ret += "\\\\"; break;
+            case '\a':  
+                ret += "\\a"; 
+                break;
+            case '\b':  
+                ret += "\\b"; 
+                break;
+            case '\f':  
+                ret += "\\f"; 
+                break;
+            case '\v':  
+                ret += "\\v"; 
+                break;
+            case '\\':  
+                ret += "\\\\"; 
+                break;
 
             
             // escape only when we want to print string out
             case '%':
-                if(to_print) ret += "%%"; break;
+                if(to_print) 
+                    ret += "%%"; 
+                break;
                 
             
             // escape if full escape requested
             case '\n':  
-                if(! to_print) ret += "\\n"; break;
+                if(! to_print) 
+                    ret += "\\n"; 
+                break;
                 
             case '\t':  
-                if(! to_print) ret += "\\t"; break;
+                if(! to_print) 
+                    ret += "\\t"; 
+                break;
                 
             case '\r':  
-                if(! to_print) ret += "\\r"; break;
+                if(! to_print) 
+                    ret += "\\r"; 
+                break;
             
 
             case '\'':  
-                if(! to_print) ret += "\\'"; break;
+                if(! to_print) 
+                    ret += "\\'"; 
+                break;
 
             case '\"':  
-                if(! to_print) ret += "\\\""; break;
+                if(! to_print) 
+                    ret += "\\\""; 
+                break;
 
             case '\?':  
-                if(! to_print) ret += "\\\?"; break;
+                if(! to_print) 
+                    ret += "\\\?"; 
+                break;
             
             
             default:
