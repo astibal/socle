@@ -242,27 +242,19 @@ public:
     
     inline void set_hint_monitor(int s) {
         DIA_("basecom::set_hint_monitor: called: %d",s);
-        if (s > 0 ) { 
-            master()->poller.hint_socket(s); 
-        } 
+        master()->poller.hint_socket(s); 
     }
 
     inline void set_poll_handler(int s, epoll_handler* h) {
         DIA_("basecom::set_poll_handler: called to add %d monitored by %x",s,h);
-        if (s > 0 ) { 
-            master()->poller.set_handler(s,h);
-        } 
+        master()->poller.set_handler(s,h);
     };
 
     inline epoll_handler* get_poll_handler(int s) {
         DEB_("basecom::set_poll_handler: called to get handler of %d",s);
-        if (s > 0 ) { 
-            epoll_handler* h =  master()->poller.get_handler(s);
-            DIA_("basecom::set_poll_handler: handler of %d is 0x%x",s,h);
-            return h;
-        } 
-        DIA_("basecom::set_poll_handler: handler of %d is 0x%x",s,nullptr);
-        return nullptr;
+        epoll_handler* h =  master()->poller.get_handler(s);
+        DIA_("basecom::set_poll_handler: handler of %d is 0x%x",s,h);
+        return h;
     };
     
     inline void rescan_read(int s) {

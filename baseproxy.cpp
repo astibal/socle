@@ -37,6 +37,7 @@
 
 #include <display.hpp>
 #include <logger.hpp>
+#include "udpcom.hpp"
 
 #define BUFSIZE 9216
 
@@ -74,7 +75,8 @@ baseProxy::~baseProxy() {
 void baseProxy::ladd(baseHostCX* cs) {
     cs->unblock();
     
-    int s = cs->com()->translate_socket(cs->socket());
+    //int s = cs->com()->translate_socket(cs->socket());
+    int s = cs->socket();
     com()->set_monitor(s);
     com()->set_poll_handler(s,this);
     left_sockets.push_back(cs);
@@ -85,7 +87,8 @@ void baseProxy::ladd(baseHostCX* cs) {
 void baseProxy::radd(baseHostCX* cs) {
     cs->unblock();
     
-    int s = cs->com()->translate_socket(cs->socket());
+    //int s = cs->com()->translate_socket(cs->socket());
+    int s = cs->socket();
     com()->set_monitor(s);
     com()->set_poll_handler(s,this);
     right_sockets.push_back(cs);
@@ -241,7 +244,7 @@ void baseProxy::set_clock() {
 
 bool baseProxy::run_timer(baseHostCX* cx) {
 	
-	if( clock_ - last_tick_ > 1) {
+	if( clock_ - last_tick_ > timer_interval) {
 		cx->on_timer();
 		return true;
 	}
@@ -252,7 +255,7 @@ bool baseProxy::run_timer(baseHostCX* cx) {
 
 void baseProxy::reset_timer() {
 
-	if( clock_ - last_tick_ > 1) {	
+	if( clock_ - last_tick_ > timer_interval) {	
 		time(&last_tick_);
 	}
 }
@@ -942,16 +945,34 @@ int baseProxy::run(void) {
             std::vector<int> back_in_set;
             
             // std::set<int>& sets[] = { com()->poller.poller->in_set, com()->poller.poller->out_set };
-            std::vector<std::set<int>> sets;
-            sets.push_back(com()->poller.poller->in_set);
-            sets.push_back(com()->poller.poller->out_set);
+            std::vector<std::set<int>*> sets;
+            sets.push_back(&com()->poller.poller->in_set);
+            sets.push_back(&com()->poller.poller->out_set);
             
-            const char *setname[] = { "inset","outset" };
+            std::vector<std::string> setname = { "inset","outset" };
             int name_iter = 0;
+
+            bool virt_global_hack = false;
+            std::set<int> udp_in_set;
             
-            for (auto current_set: sets) {
-                for (auto s: current_set) {
-                    DIA___("baseProxy::run: %s socket %d ",setname[name_iter],s);
+            UDPCom* uc = dynamic_cast<UDPCom*>(com()->master());
+            if(uc) {
+                
+                //INFS___("adding virtual sockets");
+                {
+                std::lock_guard<std::recursive_mutex>(uc->lock);
+                udp_in_set = uc->in_virt_set;
+                }
+                
+                sets.push_back(&udp_in_set);
+                setname.push_back("inset_virt");
+            }
+            
+            for (std::set<int>* current_set: sets) {
+                 
+                for (auto s: *current_set) {
+                    //FIXME
+                    /*if(s>0) */DIA___("baseProxy::run: %s socket %d ",setname.at(name_iter).c_str(),s);
                     epoll_handler* ptr = com()->poller.get_handler(s);
                     
                     if(ptr != nullptr) {
@@ -967,25 +988,45 @@ int baseProxy::run(void) {
                                 
                                 // call poller-carried proxy handler!
                                 proxy->handle_sockets_once(com());
+                                if(proxy->dead()) {
+                                    proxy->shutdown();
+                                }
+                                
                                 counter_proxy_handler++;
                                 
                             } else {
                                 DIA___("baseProxy::run: socket %d has NOT baseProxy handler!!",s);
-                                back_in_set.push_back(s);
+                                
+                                if(s > 0) {
+                                    back_in_set.push_back(s);
+                                }
                             }
                         }
                         
                     } else {
-                        DEB___("baseProxy::run: socket %d NO handler!!",s);
                         
-                        // all sockets without ANY handler should be re-inserted
-                        back_in_set.push_back(s);
+                        //FIXME: report virtual sockets too, in the future
+                        
+                        DEB___("baseProxy::run: socket %d has NO handler!!",s);
+                        
+                        // all real sockets without ANY handler should be re-inserted
+                        if(s > 0) {
+                            back_in_set.push_back(s);
+                        }
                         
                         if (com()->poller.poller != nullptr) {
                             if(s != com()->poller.poller->hint_socket()) {
+                                if(s < 0) {
+                                    EXT___("FIXME: calling global handle_sockets_once due to virtual socket %d",s);
+                                    virt_global_hack = true;
+                                }else {
+                                    ERR___("baseProxy::run: socket %d has registered NULL handler, removing",s);
+                                    com()->poller.poller->del(s);
+                                }
+                            } else {
                                 // hint filedescriptor don't have handler
-                                ERR___("baseProxy::run: socket %d has registered NULL handler, removing",s);
-                                com()->poller.poller->del(s);
+                                DEB___("baseProxy::run: socket %d is hint socket, running proxy socket handler",s);
+                                handle_sockets_once(com());
                             }
                         } else {
                             ERRS___("com()->poller.poller is null!");                        
@@ -1006,28 +1047,28 @@ int baseProxy::run(void) {
                 com()->poller.poller->in_set.insert(a);
             }
             
-            // add back sockets to rescan
-            if(com()->poller.poller->should_rescan_now()) {
-                for(int a: com()->poller.poller->rescan_set_in) {
-                    counter_back_handler++;
-                    
-                    DIA___("baseProxy::run: adding back to poller to rescan IN socket %d",a);
-                    com()->poller.poller->in_set.insert(a);
-                    com()->poller.poller->add(a);
-                }
-                com()->poller.poller->rescan_set_in.clear();
-                
-                
-                for(int a: com()->poller.poller->rescan_set_out) {
-                    counter_back_handler++;
-                    
-                    DIA___("baseProxy::run: adding back to poller to rescan OUT socket %d",a);
-                    com()->poller.poller->out_set.insert(a);
-                    com()->poller.poller->add(a);
-                }
-                com()->poller.poller->rescan_set_out.clear();
-                
-            }
+//             // add back sockets to rescan
+//             if(com()->poller.poller->should_rescan_now()) {
+//                 for(int a: com()->poller.poller->rescan_set_in) {
+//                     counter_back_handler++;
+//                     
+//                     DIA___("baseProxy::run: adding back to poller to rescan IN socket %d",a);
+//                     com()->poller.poller->in_set.insert(a);
+//                     com()->poller.poller->add(a);
+//                 }
+//                 com()->poller.poller->rescan_set_in.clear();
+//                 
+//                 
+//                 for(int a: com()->poller.poller->rescan_set_out) {
+//                     counter_back_handler++;
+//                     
+//                     DIA___("baseProxy::run: adding back to poller to rescan OUT socket %d",a);
+//                     com()->poller.poller->out_set.insert(a);
+//                     com()->poller.poller->add(a);
+//                 }
+//                 com()->poller.poller->rescan_set_out.clear();
+//                 
+//             }
             
             // run REST of all sockets. in_read_set and out_read_set is called, so if it's cleared handled (and not re-inserted back)
             // proxies will not be processed, unless they are forced.
@@ -1037,7 +1078,16 @@ int baseProxy::run(void) {
             // Reason: we want to have a code prepared for fully handler-based approach,
             // which means traversing all proxies will not be needed, and only proxies which asked beforehand 
             // will be handled if they won't receive any data.
-            handle_sockets_once(com());
+            
+            // FIXME: this should be removed
+            // handle_sockets_once(com());
+            
+            //instead of wholesale proxying, run timers
+            run_timers();
+            
+            if(virt_global_hack) {
+                handle_sockets_once(com());
+            }
             
             if(counter_proxy_handler > 0) {
                 EXT___("baseProxy::run: proxy handlers: %d, back-inserted: %d",counter_proxy_handler,counter_back_handler);

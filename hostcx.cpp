@@ -509,8 +509,8 @@ int baseHostCX::write() {
             DIA_("HostCX::write[%s]: %d bytes written out of %d -> setting socket write monitor",c_name(),l,writebuf_.size());
             // we need to check once more when socket is fully writable
             
-            //com()->set_write_monitor(socket());
-            com()->rescan_write(socket());
+            com()->set_write_monitor(socket());
+            //com()->rescan_write(socket());
             rescan_out_flag_ = true;
             
         } else {
@@ -534,8 +534,9 @@ int baseHostCX::write() {
     else if(l == 0 && writebuf()->size() > 0) {
         // write unsuccessful, we have to try immediatelly socket is writable!
         DIA_("HostCX::write[%s]: %d bytes written out of %d -> setting socket write monitor",c_name(),l,writebuf_.size());
-        // com()->set_write_monitor(socket());
+        //com()->set_write_monitor(socket());
 
+        // write was not successfull, wait a while
         com()->rescan_write(socket());
         rescan_out_flag_ = true;
     }
@@ -584,12 +585,14 @@ buffer baseHostCX::to_read() {
 void baseHostCX::to_write(buffer b) {
     DEB_("HostCX::to_write[%s]: appending to write %d bytes, from buffer struct",c_name(),b.size());
     writebuf_.append(b);
+    com()->set_write_monitor(socket());
     DEB_("HostCX::to_write[%s]: write buffer size %d bytes",c_name(),writebuf_.size());
 }
 
 void baseHostCX::to_write(unsigned char* c, unsigned int l) {
     DEB_("HostCX::to_write[%s]: appending to write %d bytes from pointer",c_name(),l);
     writebuf_.append(c,l);
+    com()->set_write_monitor(socket());
     DEB_("HostCX::to_write[%s]: write buffer size %d bytes",c_name(),writebuf_.size());
 }
 

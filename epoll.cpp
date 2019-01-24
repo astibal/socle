@@ -73,7 +73,7 @@ int epoll::wait(int timeout) {
             in_set.insert(events[i].data.fd);
         }
         else if(events[i].events & EPOLLOUT) {
-            DIA_("epoll::wait: socket %d writable",events[i].data.fd);
+            DIA_("epoll::wait: socket %d writable (auto_epollout_remove=%d)",events[i].data.fd,auto_epollout_remove);
             
             out_set.insert(events[i].data.fd);
             
@@ -118,7 +118,7 @@ bool epoll::modify(int socket, int mask) {
     ev.events = mask;
     ev.data.fd = socket;
     
-    DEB_("epoll:modify:%x: epoll_ctl(%d): called to modify socket %d ",this, fd, socket);
+    DEB_("epoll:modify:%x: epoll_ctl(%d): called to modify socket %d, epollin=%d,epollout=%d ",this, fd, socket,flag_check<int>(mask,EPOLLIN),flag_check<int>(mask,EPOLLOUT));
     
     if (::epoll_ctl(fd, EPOLL_CTL_MOD, socket, &ev) == -1) {
         if(errno == ENOENT) {

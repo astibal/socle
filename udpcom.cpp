@@ -33,6 +33,8 @@ std::recursive_mutex DatagramCom::lock;
 std::map<std::string,std::pair<int,int>> UDPCom::connect_fd_cache;
 std::recursive_mutex UDPCom::connect_fd_cache_lock;
 
+std::set<int> DatagramCom::in_virt_set;
+
 int UDPCom::translate_socket(int vsock) {
     
     if(vsock >= 0) { 
@@ -40,6 +42,9 @@ int UDPCom::translate_socket(int vsock) {
         return vsock; 
         
     } else {
+        
+        
+        std::lock_guard<std::recursive_mutex> l(DatagramCom::lock);
         
         auto it_dgram = datagrams_received.find((unsigned int)vsock);
         if(it_dgram != datagrams_received.end())  {
@@ -225,6 +230,9 @@ int UDPCom::connect(const char* host, const char* port, bool blocking) {
         //DEB_("connect[%d]: rp contains: %s/%s:%d", sfd, inet_family_str(fa).c_str(),rps.c_str(),port );
         
         ::connect(sfd,(sockaddr*)&udpcom_addr,sizeof(sockaddr));
+        if(!blocking) {
+            unblock(sfd);
+        }
         
 //         sockaddr_storage sa;
 //         inet::to_sockaddr_in6(&sa)->sin6_port = htons(std::atoi(port));
@@ -325,6 +333,8 @@ bool UDPCom::in_readset(int s) {
             return baseCom::in_readset(record.socket);
         }
         
+        buffer_guard bg(record.rx);
+        
         if(record.rx.size() > 0) {
             DEB_("UDPCom::in_readset[%d]: record found, data size %dB",s,record.rx.size());
         }
@@ -402,10 +412,13 @@ int UDPCom::read_from_pool(int __fd, void* __buf, size_t __n, int __flags) {
             return recv(record.socket,__buf,__n,__flags);
         }
         
+        buffer_guard bg(record.rx);
+        
         if(record.rx.size() == 0) {
 //            return ::recv(record.socket,__buf,__n,__flags);
         } else {
         
+            
             int to_copy = __n;
             if(record.rx.size() <= __n) {
                 to_copy = record.rx.size();
@@ -415,7 +428,25 @@ int UDPCom::read_from_pool(int __fd, void* __buf, size_t __n, int __flags) {
 
             if(! (__flags & MSG_PEEK)) {
                 record.rx.flush(to_copy);
-                DIA_("UDPCom::read_from_pool[%x]: retrieved %d bytes from receive pool, in buffer left %d bytes",__fd,to_copy,record.rx.size());
+                DIA_("UDPCom::read_from_pool[%d]: retrieved %d bytes from receive pool, in buffer left %d bytes",__fd,to_copy,record.rx.size());
+                
+                if(record.rx.size() == 0) {
+                    if( record.cx && record.cx->com()) {
+                        DatagramCom* m = dynamic_cast<DatagramCom*>(record.cx->com()->master());
+                        if(m) {
+                            std::lock_guard<std::recursive_mutex>(m->lock);
+                            int rem_count = m->in_virt_set.erase(__fd);
+                            if(rem_count > 0) {
+                                INF___("buffer read to zero, erased %d entries in in_virt_set",rem_count);
+                            }
+                        } else {
+                            INF___("cannot erase %d  from in_virt_set: 's com master is not DataGramCom",__fd);
+                        }
+                    } else {
+                        INF___("cannot erase %d  from in_virt_set: cx=0x%x cx->com=0x%x",__fd,record.cx, record.cx ? record.cx->com() : 0);
+                    }
+                } 
+                
             } else {
                 DIA_("UDPCom::read_from_pool[%x]: peek %d bytes from receive pool, in buffer is %d bytes",__fd,to_copy,record.rx.size());
             }
@@ -780,6 +811,13 @@ void UDPCom::shutdown(int __fd) {
                 if(! it.reuse) {
                     if(it.real_socket && it.socket > 0) {
                         ::close(it.socket);
+                    }
+                    
+                    DatagramCom* m = dynamic_cast<DatagramCom*>(master());
+                    if(m) {
+                        std::lock_guard<std::recursive_mutex>(m->lock);
+                        int remc = m->in_virt_set.erase(__fd);
+                        DIA___("removing %d from in_virt_set on shutdown (%d entries)",__fd,remc);
                     }
                     
                 } else {

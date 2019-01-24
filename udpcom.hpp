@@ -89,6 +89,9 @@ class DatagramCom {
 public:
     static std::recursive_mutex lock;
     static std::map<uint64_t,Datagram> datagrams_received;
+  
+    // set with all virtal sockets which have data to read
+    static std::set<int> in_virt_set;    
 };
 
 class UDPCom : public virtual baseCom, public DatagramCom {
@@ -149,6 +152,7 @@ protected:
     static std::recursive_mutex connect_fd_cache_lock;
     
 public:
+    
     // allow older kernels to use UDP -- we have to set bind_sock_family to IPv4 variant
     static unsigned int default_sock_family;
 

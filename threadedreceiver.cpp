@@ -69,6 +69,60 @@ ThreadedReceiver<Worker,SubWorker>::~ThreadedReceiver() {
     ::close(sq__hint[1]);    
 };
 
+template<class Worker, class SubWorker>
+bool ThreadedReceiver<Worker,SubWorker>::is_quick_port(int sock, short unsigned int dport) {
+    
+    bool use_virtual_socket = false;
+    
+    //  if list is set, use it, otherwise use virtual sockets for everything than udp/443 (DTLS)
+    if(get_quick_list() != nullptr) {
+        DUM_("ThreadedReceiver::is_quick_port[%d]: reading quick list",sock);
+        std::vector<int>& ref = *get_quick_list();
+        for(int x: ref) {
+            if(dport == x || 0 == x) {
+                DUM_("ThreadedReceiver::is_quick_port[%d]: port %d is quick",sock, dport);
+                use_virtual_socket = true;
+            } else {
+                DUM_("ThreadedReceiver::is_quick_port[%d]: port %d is cooked",sock, dport);
+            }
+        }
+    }
+    else {
+        const int ex_port = 443;
+        if(dport != ex_port) {
+            DUM_("ThreadedReceiver::is_quick_port[%d]: port %d is quick (default)",sock, dport);
+            use_virtual_socket = true;
+        } else {
+            DUM_("ThreadedReceiver::is_quick_port[%d]: port %d is cooked (default)",sock, dport);
+        }
+    }
+    
+    return use_virtual_socket;
+}
+
+template<class Worker, class SubWorker>
+uint32_t ThreadedReceiver<Worker,SubWorker>::create_session_key4(sockaddr_storage* from, sockaddr_storage* orig) {
+    
+    uint32_t s = inet::to_sockaddr_in(from)->sin_addr.s_addr | inet::to_sockaddr_in(orig)->sin_addr.s_addr;
+    uint16_t sp = ntohs(inet::to_sockaddr_in(from)->sin_port) | ntohs(inet::to_sockaddr_in(orig)->sin_port);
+    s += sp;
+
+    s |= (1 << 31); //this will produce negative number, which should determine  if it's normal socket or not    
+
+    return s; // however we return it as the key, therefore cast to unsigned int
+}
+
+template<class Worker, class SubWorker>
+uint32_t ThreadedReceiver<Worker,SubWorker>::create_session_key6(sockaddr_storage* from, sockaddr_storage* orig) {
+
+    uint32_t s = ((uint32_t*)&inet::to_sockaddr_in6(from)->sin6_addr)[4] | ((uint32_t*)&inet::to_sockaddr_in6(orig)->sin6_addr)[4];
+    uint16_t sp = ntohs(inet::to_sockaddr_in6(from)->sin6_port) | ntohs(inet::to_sockaddr_in6(orig)->sin6_port);
+    s += sp;
+    
+    s |= (1 << 31); //this will produce negative number, which should determine  if it's normal socket or not    
+
+    return s; // however we return it as the key, therefore cast to unsigned int
+}
 
 template<class Worker, class SubWorker>
 void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
@@ -132,56 +186,24 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
                 std::string str_dst_host; unsigned short dport;
                 int dst_family = inet_ss_address_unpack(&orig,&str_dst_host,&dport);
                 
-                DIA_("ThreadedReceiver::on_left_new_raw[%d]: datagram from: %s/%s:%u to %s/%s:%u", 
+                use_virtual_socket = is_quick_port(sock, dport);
+                
+                DIA_("ThreadedReceiver::on_left_new_raw[%d]: datagram from: %s/%s:%u to %s/%s:%u (%s)", 
                             sock, 
                             inet_family_str(src_family).c_str(),str_src_host.c_str(), sport,
-                            inet_family_str(dst_family).c_str(),str_dst_host.c_str(), dport
+                            inet_family_str(dst_family).c_str(),str_dst_host.c_str(), dport,
+                            use_virtual_socket ? "quick" : "cooked"
                             );
-
-                
-                //  if list is set, use it, otherwise use virtual sockets for everything than udp/443 (DTLS)
-                if(get_quick_list() != nullptr) {
-                    DEB_("ThreadedReceiver::on_left_new_raw[%d]: reading quick list",sock);
-                    std::vector<int>& ref = *get_quick_list();
-                    for(int x: ref) {
-                        if(dport == x || 0 == x) {
-                            DIA_("ThreadedReceiver::on_left_new_raw[%d]: using quick mode for port %d",sock, dport);
-                            use_virtual_socket = true;
-                        } else {
-                            DIA_("ThreadedReceiver::on_left_new_raw[%d]: using standard mode for port %d",sock, dport);
-                        }
-                    }
-                }
-                else {
-                    const int ex_port = 443;
-                    if(dport != ex_port) {
-                        DIA_("ThreadedReceiver::on_left_new_raw[%d]: default quick mode for port %d",sock, dport);
-                        use_virtual_socket = true;
-                    } else {
-                        DIA_("ThreadedReceiver::on_left_new_raw[%d]: default standard mode for port %d",sock, dport);
-                    }
-                }
                 
                 if(src_family == AF_INET) {
                     DEBS_("session key: source socket is IPv4");
-                    uint32_t s = inet::to_sockaddr_in(&from)->sin_addr.s_addr | inet::to_sockaddr_in(&orig)->sin_addr.s_addr;
-                    uint16_t sp = ntohs(inet::to_sockaddr_in(&from)->sin_port) | ntohs(inet::to_sockaddr_in(&orig)->sin_port);
-                    //s = s << 16;
-                    s += sp;
-                    
-                    s |= (1 << 31); //this will produce negative number, which should determine  if it's normal socket or not
-                    session_key = s;
+
+                    session_key = create_session_key4(&from,&orig);
                 }
                 else if(src_family == AF_INET6) {
                     DEBS_("session key: source socket is IPv6");
-                    uint32_t s = ((uint32_t*)&inet::to_sockaddr_in6(&from)->sin6_addr)[4] | ((uint32_t*)&inet::to_sockaddr_in6(&orig)->sin6_addr)[4];
-                    uint16_t sp = sport | dport;
 
-                    //s = s << 16;
-                    s += sp;
-                    
-                    s |= (1 << 31); //this will produce negative number, which should determine  if it's normal socket or not
-                    session_key = s;                
+                    session_key = create_session_key6(&from,&orig);
                 }
 
                 DEB_("ThreadedReceiver::on_left_new_raw[%d]: session key %d", sock, session_key );
@@ -341,6 +363,8 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
                     
                     // append data only if socket is virtual
                     len = recv(sock, recv_buf_,len,0);
+                    
+                    buffer_guard bg(d.rx);
                     d.rx.append(recv_buf_,len);
                 }
                 
@@ -396,21 +420,49 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
                     goto clash;
                 }
                 
-                if(o_it.rx.size() != 0) {
-                        DIA_("ThreadedReceiver::on_left_new_raw[%d]: key %d: dropped %dB of non-proxied data",sock, session_key,o_it.rx.size());
-                        
-                        // remove from socket too to prevent endless loop reading peek data and appending them to very same data in rx 
-                        unsigned char* drop_buffer[2048];
-                        ::recv(sock, drop_buffer, len < 2048 ? len : 2048, O_NONBLOCK);
-                }
-
-                //o_it.rx.size(0);
                 
                 buffer_guard bg(o_it.rx);
                 
+                if(o_it.rx.size() != 0) {
+                    // If there are data, we apparently can't catch up with the speed.
+                    // replace current data. Application is not interested in old UDP datagrams.
+                    DIA___("ThreadedReceiver::on_left_new_raw[%d]: key %d: dropped %dB of non-proxied data",sock, session_key,o_it.rx.size());
+                    DEB___("                              data for key %d\n%s",session_key,hex_dump(o_it.rx,4).c_str());
+                }
+                    
+                
+                
+                len = recv(sock, recv_buf_,len,0);
+                
+                
+                
+                o_it.rx.size(0);
                 o_it.rx.append(recv_buf_,len);
+                
+                if(o_it.cx) {
+                    baseCom* com = o_it.cx->com();
+                    DatagramCom* um = dynamic_cast<DatagramCom*>(com->master());
+                    if(um) {
+                        std::lock_guard<std::recursive_mutex>(um->lock);
+                        um->in_virt_set.insert(session_key);
+                    }
+                    
+                    // mark target cx's socket as write-monitor, triggering proxy session.
+                    if(o_it.cx->peercom()) {
+                        int ps = o_it.cx->peer()->socket();
+                        DEB___("write socket hint to peer's socket: %d",ps);
+                        o_it.cx->peercom()->set_write_monitor(ps); 
+                    } else {
+                        ERRS___("write socket hint to peer's socket can't be set, peer or peercom doesn't exist!");
+                    } 
+                }
+/*                
+                UDPCom* uc = dynamic_cast<UDPCom*>(com()->master());
+                uc->in_virt_set.insert(session_key);*/
+                    
+                DEB___("                          NEW data for key %d\n%s",session_key,hex_dump(o_it.rx,4).c_str());
+                
                 DIA_("ThreadedReceiver::on_left_new_raw[%d]: existing key %d: %dB data buffered",sock, session_key,o_it.rx.size());
-
             }
         }
     } while(::recv(sock, dummy_buffer,32,O_NONBLOCK|MSG_PEEK) > 0);

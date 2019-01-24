@@ -217,9 +217,9 @@ public:
     virtual void on_left_new_raw(int sock) {};
     virtual void on_right_new_raw(int sock) {};
         
+    virtual void run_timers(void);
 protected:
     // internal functions which should not be used directly
-    void run_timers(void);
     int read_socket(int,char);
         
     time_t last_tick_;
@@ -234,6 +234,9 @@ protected:
     // implement advanced logging
     DECLARE_C_NAME("baseProxy");
     DECLARE_LOGGING(c_name);
+    
+private:
+    unsigned int timer_interval = 1;
 };
 
 typedef std::vector<baseHostCX*>::iterator cx_iterator;

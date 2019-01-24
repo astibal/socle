@@ -38,6 +38,10 @@ public:
     ThreadedReceiver(baseCom* c);
     virtual ~ThreadedReceiver(); 
     
+    bool     is_quick_port(int sock, short unsigned int dport);
+    uint32_t create_session_key4(sockaddr_storage *from, sockaddr_storage* orig);
+    uint32_t create_session_key6(sockaddr_storage *from, sockaddr_storage* orig);
+    
     virtual void on_left_new_raw(int);
     virtual void on_right_new_raw(int);
     
