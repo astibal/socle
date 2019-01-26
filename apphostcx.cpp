@@ -214,7 +214,7 @@ void AppHostCX::pre_read() {
                 
             }
 
-            buffer b(1500);
+            buffer b(5000);
             b.size(0);
             int l = this->peek(b);
             
