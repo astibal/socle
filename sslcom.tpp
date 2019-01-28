@@ -60,10 +60,16 @@ template <class L4Proto> loglevel baseSSLCom<L4Proto>::log_level = NON;
 template <class L4Proto> std::string baseSSLCom<L4Proto>::ci_def_filter = "HIGH RC4 !aNULL !eNULL !LOW !3DES !MD5 !EXP !DSS !PSK !SRP !kECDH !CAMELLIA !IDEA !SEED @STRENGTH";
 
 
+inline void set_timer_now(struct timeval* t) {
+    gettimeofday(t,nullptr);
+}
+
 template <class L4Proto>
 baseSSLCom<L4Proto>::baseSSLCom(): L4Proto() {
     sslcom_peer_hello_buffer.capacity(1500);
-    gettimeofday(&timer_start,nullptr);
+    set_timer_now(&timer_start);
+    set_timer_now(&timer_read_timeout);
+    set_timer_now(&timer_write_timeout);
 }
 
 template <class L4Proto>
@@ -2151,6 +2157,12 @@ int baseSSLCom<L4Proto>::read ( int __fd, void* __buf, size_t __n, int __flags )
                 }
                 
                 sslcom_read_blocked=0;
+                
+                // reset IO timeouts
+                set_timer_now(&timer_read_timeout);
+                set_timer_now(&timer_write_timeout);
+                
+                
                 break;
 
             case SSL_ERROR_ZERO_RETURN:
@@ -2169,10 +2181,14 @@ int baseSSLCom<L4Proto>::read ( int __fd, void* __buf, size_t __n, int __flags )
                 
                 // defer read operation
                 rescan_read(sslcom_fd);
-                
-                // this is nonsense - it means that we should wait socket has data. So don't set force_read.
-                //forced_read(true);
 
+                // check timers and bail on timeout
+                if(timeval_msdelta_now(&timer_read_timeout) > SSLCOM_READ_TIMEOUT) {
+                    ERR___("SSLCom::read[%d]: read timeout, closing.",__fd);
+                    error(ERROR_READ);
+                    return 0;
+                }
+                
                 if(total_r > 0) return total_r;
                 return r;
 
@@ -2204,6 +2220,14 @@ int baseSSLCom<L4Proto>::read ( int __fd, void* __buf, size_t __n, int __flags )
                 sslcom_read_blocked_on_write=1;
                 master()->poller.modify(__fd,EPOLLIN|EPOLLOUT);
 
+                // check timers and bail on timeout
+                if(timeval_msdelta_now(&timer_read_timeout) > SSLCOM_READ_TIMEOUT) {
+                    ERR___("SSLCom::read[%d]: read timeout, closing.",__fd);
+                    error(ERROR_READ);
+                    return 0;
+                }
+                                
+                
                 if(total_r > 0) return total_r;
                 return r;
 
@@ -2309,6 +2333,7 @@ int baseSSLCom<L4Proto>::write ( int __fd, const void* __buf, size_t __n, int __
 
     int err = SSL_get_error ( sslcom_ssl,r );
     bool is_problem = true;
+    bool apply_error_timer = false;
 
     switch ( err ) {
 
@@ -2330,7 +2355,9 @@ int baseSSLCom<L4Proto>::write ( int __fd, const void* __buf, size_t __n, int __
                 DIA___("SSLCom::write[%d]: want write: cleared",__fd);
             }
             
-            
+            // reset IO timeouts
+            set_timer_now(&timer_read_timeout);
+            set_timer_now(&timer_write_timeout);
 
             break;
 
@@ -2349,6 +2376,7 @@ int baseSSLCom<L4Proto>::write ( int __fd, const void* __buf, size_t __n, int __
                 DUM___("SSLCom::write[%d]: want write: repeating last operation",__fd);
             }
 
+            apply_error_timer = true;
             break;
 
             /* We get a WANT_READ if we're
@@ -2363,14 +2391,23 @@ int baseSSLCom<L4Proto>::write ( int __fd, const void* __buf, size_t __n, int __
 
             forced_write_on_read(true);
             master()->poller.modify(__fd,EPOLLIN);
+
+            apply_error_timer = true;
             break;
 
             /* Some other error */
         default:
             DEB___("SSLCom::write[%d]: problem: %d",__fd,err);
+            apply_error_timer = true;
 
 
     }
+    
+    if(apply_error_timer && timeval_msdelta_now(&timer_write_timeout) > SSLCOM_WRITE_TIMEOUT) {
+        ERR___("SSLCom::write[%d]: write timeout, closing.",__fd);
+        error(ERROR_WRITE);
+        is_problem = true;
+    }    
 
     if (is_problem) {
         return 0;

@@ -93,6 +93,8 @@ struct CRYPTO_dynlock_value
 
 
 extern int SSLCOM_CLIENTHELLO_TIMEOUT;
+extern int SSLCOM_READ_TIMEOUT;
+extern int SSLCOM_WRITE_TIMEOUT;
 
 template <class L4Proto>
 class baseSSLCom : public L4Proto, public virtual baseCom {
@@ -141,7 +143,13 @@ protected:
     
     //handhake handler called from read/write - you will not want to use it directly
 	int waiting();
+        
+    // SNI
     struct timeval timer_start;
+    
+    //SSL_write or SSL_read checked timer. Successful read will reset also write timer and vice versa.
+    struct timeval timer_write_timeout;
+    struct timeval timer_read_timeout;
         
     //if we are actively waiting for something, it doesn't make sense to process peer events (which creates unnecessary load)
     inline bool unmonitor_peer() { 

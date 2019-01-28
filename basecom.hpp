@@ -78,7 +78,7 @@ public:
     struct epoller poller;
 
     // mark connection as invalid, owning cx is responsible to react on it
-    typedef enum { ERROR_NONE=0, ERROR_UNSPEC=1 } err_flags;
+    typedef enum { ERROR_NONE=0, ERROR_UNSPEC=1, ERROR_READ, ERROR_WRITE } err_flags;
     int  error_flag_ = ERROR_NONE;
 
     bool error() { return error_flag_ != ERROR_NONE; }
