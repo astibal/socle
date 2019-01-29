@@ -78,6 +78,8 @@ bool baseSSLMitmCom<SSLProto>::check_cert(const char* peer_name) {
                     if(this->sslcom_peer_hello_sni().size() > 0) {
                         if(item.size() > 4 && item.find("DNS:") == 0) {
                             item = item.substr(4);
+                            std::transform(item.begin(), item.end(), item.begin(), ::tolower);
+                            
                             
                             // wildcard
                             if(item.find("*.") == 0) {
@@ -86,6 +88,7 @@ bool baseSSLMitmCom<SSLProto>::check_cert(const char* peer_name) {
                                 std::size_t firstdot = this->sslcom_peer_hello_sni().find(".");
                                 if( firstdot != std::string::npos) {
                                     sni_wild = "*" + this->sslcom_peer_hello_sni().substr(firstdot);
+                                    std::transform(sni_wild.begin(), sni_wild.end(), sni_wild.begin(), ::tolower);
                                 }
                                 
                                 if(sni_wild == item) {
@@ -97,6 +100,10 @@ bool baseSSLMitmCom<SSLProto>::check_cert(const char* peer_name) {
                             } 
                             // FQDN 
                             else {
+                                
+                                std::string sni = this->sslcom_peer_hello_sni();
+                                std::transform(sni.begin(), sni.end(), sni.begin(), ::tolower);
+                                
                                 if(this->sslcom_peer_hello_sni() == item) {
                                     DIA___("Matched sni: '%s' to cert san/cn: '%s'",this->sslcom_peer_hello_sni().c_str(),item.c_str());
                                     validated = true;
@@ -105,18 +112,18 @@ bool baseSSLMitmCom<SSLProto>::check_cert(const char* peer_name) {
                                 }
                             }
                         }
-                    } else {
-                        if(item.size() > 3 && item.find("IP:") == 0) {
-                            item = item.substr(3);
-                            
-                            if(this->owner_cx() && (this->owner_cx()->host() == item)) {
-                                DIA___("Comapring IP: '%s' to cert san/cn: '%s'",this->owner_cx()->host().c_str(),item.c_str());
-                                validated = true;
-                                validated_san = "IP:" + item;
-                                break;
-                            }
+                    } else if(item.size() > 3 && item.find("IP:") == 0) {
+                        item = item.substr(3);
+                        
+                        if(this->owner_cx() && (this->owner_cx()->host() == item)) {
+                            DIA___("Comapring IP: '%s' to cert san/cn: '%s'",this->owner_cx()->host().c_str(),item.c_str());
+                            validated = true;
+                            validated_san = "IP:" + item;
+                            break;
                         }
-                    }
+                    } else {
+                        DIA___("   ignoring item: %s", item.c_str());
+                    } 
                 }
                 
                 
