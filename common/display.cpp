@@ -173,6 +173,8 @@ std::string string_error() {
 
 
 std::string bt() {
+
+#ifndef LIBC_MUSL
     // there could be more precious implemenatation of this in the future
     std::lock_guard<std::recursive_mutex> l(formatter_lock);    
     
@@ -180,27 +182,31 @@ std::string bt() {
     s += "\n Backtrace:";
 
     void *trace[64];
-    size_t size, i;
+    size_t size;
+    size_t i;
     char **strings;
 
     size    = backtrace( trace, 64 );
     strings = backtrace_symbols( trace, size );
 
-    if (strings == NULL) {
+    if (strings == nullptr) {
         s += "\n failure: backtrace_symbols";
         exit(EXIT_FAILURE);
     }
-    
-    
+
+
     for( i = 0; i < size; i++ ) {
         s += "\n";
         s += strings[i];
     }
     delete[] strings;
-    
+
     s += "--";
-    
+
     return s;
+#else
+    return "<musl libc>"
+#endif
 }
 
 #define POW_1   1024.0
