@@ -4,6 +4,11 @@ add_library(socle_common_lib timeops.hpp timeops.cpp logger.hpp logger.cpp displ
 
 if(UNIX)
 	SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -std=c++11")
+
+	# detect Alpine - and disable backtrace_* function use
+	if(EXISTS "/etc/alpine-release")
+		SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DLIBC_MUSL")
+	endif()
 endif()
 
 
