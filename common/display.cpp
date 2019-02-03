@@ -205,7 +205,7 @@ std::string bt() {
 
     return s;
 #else
-    return "<musl libc>"
+    return "<musl libc>";
 #endif
 }
 
