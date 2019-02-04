@@ -211,7 +211,7 @@ bool SSLCertStore::add(std::string& subject,EVP_PKEY* cert_privkey, X509* cert, 
     X509_PAIR* parek = new X509_PAIR(cert_privkey,cert);
     
     if (cert_privkey == NULL || cert == NULL || parek == NULL) {
-        DIA__("SSLCertStore::add[%x]: one of about to be stored componet is NULL",this);
+        DIA__("SSLCertStore::add[%x]: one of about to be stored components is NULL",this);
         return false;
     }
     

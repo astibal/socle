@@ -721,7 +721,7 @@ int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
                             certstore()->crl_cache.set(crl_url.c_str(),new expiring_crl(new crl_holder(crl),certstore()->ssl_crl_status_ttl)); // but because we are locked, we are happy to overwrite it!
                         }
                     } else {
-                        WAR__("downloding CRL from %s failed.",crl_printable.c_str());
+                        WAR__("downloading CRL from %s failed.",crl_printable.c_str());
                     }
 
                 }
@@ -868,13 +868,6 @@ int baseSSLCom<L4Proto>::ocsp_resp_callback(SSL *s, void *arg) {
         return baseSSLCom::ocsp_resp_callback_explicit(com,opt_ocsp_strict ? 0 : 1);
     }
 
-//     if (!peer_cert || !issuer_cert) {
-//         ERR__("[%s] peer certificate or issue certificate not available for OCSP status check",name);
-//         OCSP_BASICRESP_free(basic);
-//         OCSP_RESPONSE_free(rsp);
-//         return (opt_ocsp_require ? 0 : 1);;
-//     }
-
     status = OCSP_response_status(rsp);
     if (status != OCSP_RESPONSE_STATUS_SUCCESSFUL) {
         ERR__("[%s] OCSP responder error %d (%s)", name, status, OCSP_response_status_str(status));
@@ -938,8 +931,8 @@ int baseSSLCom<L4Proto>::ocsp_resp_callback(SSL *s, void *arg) {
 
 
     if (!OCSP_resp_find_status(basic, id, &status, &reason, &produced_at, &this_update, &next_update)) {
-        ERR__("[%s] could not find current server certificate from OCSP response%s", name ,(opt_ocsp_require) ? "" :
-              " (OCSP not required)");
+        ERR__("[%s] could not find current server certificate from OCSP response %s", name,
+                                                       (opt_ocsp_require) ? "" : " (OCSP not required)");
         OCSP_BASICRESP_free(basic);
         OCSP_RESPONSE_free(rsp);
 
@@ -1804,7 +1797,7 @@ bool baseSSLCom<L4Proto>::waiting_peer_hello() {
                             }
                         }
                         
-                        error_flag_ = ERROR_UNSPEC; // peer nullprt or its com() is not SSLCom
+                        error_flag_ = ERROR_UNSPEC; // peer nullptr or its com() is not SSLCom
                         return false;
                         
                     } else 
@@ -1986,14 +1979,14 @@ int baseSSLCom<L4Proto>::parse_peer_hello() {
             } 
             else if(message_type == 22 && handshake_type != 1) {
                 ERR___("SSLCom::parse_peer_hello: handshake message, but not ClientHello; message_type %d, handshake_type %d", message_type, handshake_type);
-                ret = 1; // we need to assume we are late, so let continue wihout SNI. 
+                ret = 1; // we need to assume we are late, so let continue without SNI.
             }
             else if(message_type > 22) {
                 ERR___("SSLCom::parse_peer_hello: post-handshake message; message_type %d, handshake_type %d", message_type, handshake_type);
-                ret = 1; // we need to assume we are late, so let continue wihout SNI. 
+                ret = 1; // we need to assume we are late, so let continue without SNI.
             } else {
                 ERR___("SSLCom::parse_peer_hello: unknown message; message_type %d, handshake_type %d", message_type, handshake_type);
-                ret = 1; // we need to assume we are late, so let continue wihout SNI. 
+                ret = 1; // we need to assume we are late, so let continue without SNI.
             }
             
                 
@@ -2004,7 +1997,7 @@ int baseSSLCom<L4Proto>::parse_peer_hello() {
             
             DIA___("SSLCom::parse_peer_hello: only %d bytes in peek:\n%s",b.size(),hex_dump(b.data(),b.size()).c_str());
             if(timeval_msdelta_now(&timer_start) > SSLCOM_CLIENTHELLO_TIMEOUT) {
-                ERRS___("handhake timeout: waiting for ClientHello");
+                ERRS___("handshake timeout: waiting for ClientHello");
                 error(ERROR_UNSPEC);
             }
         }
@@ -2117,7 +2110,7 @@ int baseSSLCom<L4Proto>::read ( int __fd, void* __buf, size_t __n, int __flags )
             // We have to break here, since write buffer is full
             // BUT
             // openssl already has it internally
-            // => select won't return this socket as in read_set == no reads anymore !!!
+            // => select|poll won't return this socket as in read_set == no reads anymore !!!
             // => we have to have mechanism which will enforce read in the next round
             forced_read(true);
             break;
@@ -2214,7 +2207,7 @@ int baseSSLCom<L4Proto>::read ( int __fd, void* __buf, size_t __n, int __flags )
 
 
             case SSL_ERROR_WANT_WRITE:
-                DEB___("SSLCom::read[%d]: want write, last read retured %d, total read %4d",__fd,r,total_r);
+                DEB___("SSLCom::read[%d]: want write, last read returned %d, total read %4d",__fd,r,total_r);
 
                 forced_read_on_write(true);
                 sslcom_read_blocked_on_write=1;
@@ -2237,7 +2230,7 @@ int baseSSLCom<L4Proto>::read ( int __fd, void* __buf, size_t __n, int __flags )
                 return r;
 
             case SSL_ERROR_SYSCALL:
-                DIA___("SSLCom::read[%d]: syscall errorq",__fd);
+                DIA___("SSLCom::read[%d]: syscall error",__fd);
                 if(total_r > 0) return total_r;
                 return r;
 
