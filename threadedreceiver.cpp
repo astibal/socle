@@ -635,7 +635,7 @@ int ThreadedReceiverProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
                         auto cx = this->new_cx(socket);
                         record.cx = cx;
                         
-                        if(!cx->paused_read()) {
+                        if(!cx->read_waiting_for_peercom()) {
                             cx->on_accept_socket(socket);
                         }
                         cx->idle_delay(120);

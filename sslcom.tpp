@@ -1865,8 +1865,8 @@ bool baseSSLCom<L4Proto>::enforce_peer_cert_from_cache(std::string & subj) {
                     if(p->sslcom_waiting) {
                         p->sslcom_pref_cert = parek->second;
                         p->sslcom_pref_key = parek->first;
-                        //p->init_server(); this will be done automatically, peer was paused
-                        p->owner_cx()->paused(false);
+                        //p->init_server(); this will be done automatically, peer was waiting_for_peercom
+                        p->owner_cx()->waiting_for_peercom(false);
                         DIAS___("SSLCom::enforce_peer_cert_from_cache: peer certs replaced by SNI lookup, peer was unpaused.");
                         sslcom_peer_sni_shortcut = true;
 
@@ -2129,15 +2129,10 @@ int baseSSLCom<L4Proto>::read ( int __fd, void* __buf, size_t __n, int __flags )
         int err = SSL_get_error ( sslcom_ssl,r);
         switch ( err ) {
             case SSL_ERROR_NONE:
-                /* Note: this call could block, which blocks the
-                entire application. It's arguable this is the
-                right behavior since this is essentially a terminal
-                client. However, in some other applications you
-                would have to prevent this condition */
-                // fwrite ( s2c,1,r,stdout );
 
-                DEB___("SSLCom::read [%d]: %4d bytes read:%d from ssl socket %s, %X",__fd,r,rounds,(r == (signed int)__n) ? "(max)" : "",
-                    debug_log_data_crc ? socle_crc32(0,__buf,r) : 0
+                DEB___("SSLCom::read [%d]: %4d bytes read:(round %d) %s, %X",__fd,r,rounds,
+                                                                    (r == (signed int)__n) ? "(max)" : "(no-max)",
+                                                                         debug_log_data_crc ? socle_crc32(0,__buf,r) : 0
                     );
 
                 if(r > 0)

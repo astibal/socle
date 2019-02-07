@@ -60,8 +60,8 @@ baseHostCX::baseHostCX(baseCom* c, const char* h, const char* p): Host(h, p) {
     processed_bytes_ = 0;
     next_read_limit_ = 0;
     auto_finish_ = true;
-    paused_read_ = false;
-    paused_write_ = false;
+    read_waiting_for_peercom_ = false;
+    write_waiting_for_peercom_ = false;
 
     meter_read_count = 0;
     meter_write_count = 0;
@@ -88,8 +88,8 @@ baseHostCX::baseHostCX(baseCom* c, unsigned int s) {
     processed_bytes_ = 0;
     next_read_limit_ = 0;
     auto_finish_ = true;
-    paused_read_ = false;
-    paused_write_ = false;
+    read_waiting_for_peercom_ = false;
+    write_waiting_for_peercom_ = false;
 
     meter_read_count = 0;
     meter_write_count = 0;
@@ -168,36 +168,36 @@ bool baseHostCX::idle_timeout() {
 }
 
 
-bool baseHostCX::paused_read() {
+bool baseHostCX::read_waiting_for_peercom () {
 
-    if(paused_read_ && peercom()) {
+    if(read_waiting_for_peercom_ && peercom()) {
         if(peercom()->com_status()) {
             DIAS_("Peer's Com status is OK, unpausing");
-            paused_read(false);
+            read_waiting_for_peercom(false);
         }
     }
-    else if(paused_read_) {
+    else if(read_waiting_for_peercom_) {
         // peer() == NULL !
-        DUMS_("baseHostCX::paused: paused, but no peer set => no peer to wait for => manual mode");
+        DUMS_("baseHostCX::paused: waiting_for_peercom, but no peer set => no peer to wait for => manual mode");
     }
 
-    return paused_read_;
+    return read_waiting_for_peercom_;
 }
 
-bool baseHostCX::paused_write() {
+bool baseHostCX::write_waiting_for_peercom () {
 
-    if(paused_write_ && peercom()) {
+    if(write_waiting_for_peercom_ && peercom()) {
         if(peercom()->com_status()) {
-            DIA_("baseHostCX::paused_write[%s]: peer's com status ok, unpausing write",c_name());
-            paused_write(false);
+            DIA_("baseHostCX::write_waiting_for_peercom[%s]: peer's com status ok, unpausing write",c_name());
+            write_waiting_for_peercom(false);
         }
     }
-    else if(paused_write_) {
+    else if(write_waiting_for_peercom_) {
         // peer() == NULL !
-        DUMS_("baseHostCX::paused: paused, but no peer set => no peer to wait for => manual mode");
+        DUMS_("baseHostCX::paused: waiting_for_peercom, but no peer set => no peer to wait for => manual mode");
     }
 
-    return paused_write_;
+    return write_waiting_for_peercom_;
 }
 
 
@@ -298,8 +298,8 @@ bool baseHostCX::reconnect(int delay) {
 
 int baseHostCX::read() {
 
-    if(paused_read()) {
-        DUM_("HostCX::read[%s]: read operation is paused, returning -1",c_name());
+    if(read_waiting_for_peercom()) {
+        DUM_("HostCX::read[%s]: read operation is waiting_for_peercom, returning -1",c_name());
         return -1;
     }
     
@@ -326,20 +326,21 @@ int baseHostCX::read() {
     while(1) {
 
         // append-like behavior: append to the end of the buffer, don't exceed max. capacity!
-        void *ptr = &(readbuf_.data()[readbuf_.size()]);
+        void *cur_read_ptr = &(readbuf_.data()[readbuf_.size()]);
 
-        ssize_t max_len = readbuf_.capacity()-readbuf_.size();
+        // read only amount of bytes fitting the buffer capacity
+        ssize_t cur_read_max = readbuf_.capacity()-readbuf_.size();
 
-        if (max_len + l > next_read_limit_ && next_read_limit_ > 0) {
-            DUM_("HostCX::read[%s]: read buffer limiter: %d",c_name(), next_read_limit_ - l);
-            max_len = next_read_limit_ - l;
+        if (cur_read_max + l > next_read_limit() && next_read_limit() > 0) {
+            DUM_("HostCX::read[%s]: read buffer limiter: %d",c_name(), next_read_limit() - l);
+            cur_read_max = next_read_limit() - l;
         }
 
-        DUM_("HostCX::read[%s]: readbuf_ base=%x, wr at=%x, maximum to write=%d",c_name(),readbuf_.data(),ptr,max_len);
+        DUM_("HostCX::read[%s]: readbuf_ base=%x, wr at=%x, maximum to write=%d",c_name(),readbuf_.data(),cur_read_ptr,cur_read_max);
 
 
         //read on last position in buffer
-        int cur_l = com()->read(socket(), ptr, max_len, 0);
+        int cur_l = com()->read(socket(), cur_read_ptr, cur_read_max, 0);
 
         // no data to read!
         if(cur_l < 0) {
@@ -457,8 +458,8 @@ void baseHostCX::post_read() {
 
 int baseHostCX::write() {
 
-    if(paused_write()) {
-        DEB_("HostCX::write[%s]: write operation is paused, returning 0",c_name());
+    if(write_waiting_for_peercom()) {
+        DEB_("HostCX::write[%s]: write operation is waiting_for_peercom, returning 0",c_name());
         return 0;
     }
     

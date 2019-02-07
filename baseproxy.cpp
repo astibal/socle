@@ -344,7 +344,7 @@ bool baseProxy::handle_cx_events(unsigned char side, baseHostCX* cx) {
             return false;
         }
         
-        //process new messages before paused check
+        //process new messages before waiting_for_peercom check
         if( cx->new_message() ) {
             DIA___("baseProxy::handle_cx_events[%d]: new message!",cx->socket());
                  if(side == 'l') {  on_left_message(cx); }
@@ -442,6 +442,7 @@ bool baseProxy::handle_cx_write(unsigned char side, baseHostCX* cx) {
 bool baseProxy::handle_cx_read_once(unsigned char side, baseCom* xcom, baseHostCX* cx) {
 
     bool ret = true;
+    bool dont_read = false;
 
     EXT___("%c: %d",side, cx->socket());
     if(cx->socket() == 0) {
@@ -450,9 +451,19 @@ bool baseProxy::handle_cx_read_once(unsigned char side, baseCom* xcom, baseHostC
         ret = false;
         goto failure;
     }
-    
-    // paused cx is subject to timeout only, no r/w is done on it ( it would return -1/0 anyway, so spare some cycles)
-    if(! cx->paused_read()) {
+
+
+    if ((side == 'l' || side == 'x') && write_right_bottleneck()) dont_read = true;
+    else
+    if ((side == 'r' || side == 'y') && write_left_bottleneck()) dont_read = true;
+
+    if(dont_read){
+        DIA___("baseProxy::handle_cx_read_once[%c]: bottleneck, not reading",side);
+    }
+
+
+    // waiting_for_peercom cx is subject to timeout only, no r/w is done on it ( it would return -1/0 anyway, so spare some cycles)
+    if( (!cx->read_waiting_for_peercom()) && (!dont_read) ) {
         bool forced_read = cx->com()->forced_read_reset();
         bool in_read_set = xcom->in_readset(cx->socket());
 
@@ -479,6 +490,9 @@ bool baseProxy::handle_cx_read_once(unsigned char side, baseCom* xcom, baseHostC
                 }
             }
         }
+    } else {
+        DIA___("baseProxy::handle_cx_read_once[%c]: waiting_for_peercom read in cx with socket %d, in read_set: %s",side, cx->socket(),
+                                                                 xcom->in_readset(cx->socket()) ? "yes" : "no");
     }
 
     // on failure, skip all operations and go here
@@ -491,6 +505,83 @@ bool baseProxy::handle_cx_read_once(unsigned char side, baseCom* xcom, baseHostC
     return ret;
 };
 
+
+// Iterate vector and set monitoring for each cx->socket() according to ifread (read monitor), and ifwrite (write monitor).
+// Tricky one:
+// paused_* arguments: 0 - don't change anything pausing
+//                     greater than 0 - pause read or write
+//                     lesser than 0 - unpause read or write
+
+unsigned int baseProxy::change_monitor_for_cx_vec(std::vector<baseHostCX*>* cx_vec, bool ifread, bool ifwrite, int pause_read, int pause_write) {
+
+    unsigned int sockets_changed = 0;
+
+    // do reference
+    if(cx_vec) {
+        std::vector<baseHostCX *>& nnn = *cx_vec;
+        for(auto cx: nnn) {
+            if(ifread && ifwrite) {
+                cx->com()->change_monitor(cx->socket(),EPOLLIN|EPOLLOUT);
+            } else
+            if(ifread) {
+                cx->com()->change_monitor(cx->socket(),EPOLLIN);
+            } else
+            if(ifwrite){
+                cx->com()->change_monitor(cx->socket(),EPOLLOUT);
+            } else {
+                cx->com()->unset_monitor(cx->socket());
+            }
+
+            if(pause_read != 0) {
+                cx->read_waiting_for_peercom(pause_read > 0);
+            }
+            if(pause_write != 0) {
+                cx->write_waiting_for_peercom(pause_write > 0);
+            }
+
+            sockets_changed++;
+        }
+    }
+
+    return sockets_changed;
+}
+
+unsigned int baseProxy::change_side_monitoring(char side, bool ifread, bool ifwrite, int pause_read, int pause_write) {
+
+    std::string str_side = "unknown";
+    std::vector<baseHostCX*>* normal = nullptr;
+    std::vector<baseHostCX*>* bound  = nullptr;
+
+
+    if (side == 'l' || side == 'x') {
+        str_side = "left";
+        normal = &ls();
+        bound = &lbs();
+    }
+    if (side == 'r' || side == 'y') {
+        str_side = "right";
+        normal = &rs();
+        bound = &rbs();
+    }
+
+
+    unsigned int sockets_changed = 0;
+
+    if(normal) {
+        sockets_changed += change_monitor_for_cx_vec(normal,ifread,ifwrite, pause_read, pause_write);
+    }
+    if(bound) {
+        sockets_changed += change_monitor_for_cx_vec(bound,ifread,ifwrite, pause_read, pause_write);
+    }
+    INF___("side-wide monitor change for side %c|%s [r %d:w %d - pr %d: pw %d]: %d sockets changed.",
+                                              side,str_side.c_str(),
+                                                 ifread, ifwrite,
+                                                                 pause_read, pause_write, sockets_changed);
+
+    return sockets_changed;
+}
+
+
 bool baseProxy::handle_cx_write_once(unsigned char side, baseCom* xcom, baseHostCX* cx) {
 
     bool ret = true;
@@ -502,12 +593,18 @@ bool baseProxy::handle_cx_write_once(unsigned char side, baseCom* xcom, baseHost
         goto failure;
     }    
 
-    if(! cx->paused_write()) {
+    if(!cx->write_waiting_for_peercom()) {
         if(xcom->in_writeset(cx->socket()) || cx->com()->forced_write_reset() || cx->writebuf()->size() > 0) {
+
+            ssize_t  orig_writebuf_size = cx->writebuf()->size();
+            ssize_t  cur_writebuf_size = orig_writebuf_size;
+
             if(! handle_cx_write(side,cx)) {
                 ret = false;
                 goto failure;
             }
+            cur_writebuf_size = cx->writebuf()->size();
+
 
             if(cx->com()->forced_read_on_write()) {
                 DIA___("baseProxy::handle_cx_write_once[%c]: read on write enforced on socket %d",side,cx->socket());
@@ -516,7 +613,45 @@ bool baseProxy::handle_cx_write_once(unsigned char side, baseCom* xcom, baseHost
                     goto failure;
                 }
             }
-            
+
+            // if we wanted to write something, but after write we have some left-overs
+            if (orig_writebuf_size > 0 && cur_writebuf_size > 0) {
+
+                // on bottleneck, we monitor write on this socket to flush buffered data
+                cx->com()->set_write_monitor(cx->socket());
+
+                if (side == 'l' || side == 'L' || side == 'x' || side == 'X') {
+                    INF___("left write bottleneck %s!", write_left_bottleneck() ? "continuing" : "start");
+                    write_left_bottleneck(true);
+                    change_side_monitoring('r', false, false, 1, 0);
+
+                }
+                else
+                if(side == 'r' || side == 'R' || side == 'y' || side == 'Y') {
+                    INF___("right write bottleneck %s!", write_right_bottleneck() ? "continuing" : "start");
+                    write_right_bottleneck(true);
+                    change_side_monitoring('l', false, false, 1, 0);
+                }
+            } else
+            if(orig_writebuf_size > 0 && cur_writebuf_size <= 0){
+
+                // we emptied write buffer!
+
+                if(write_left_bottleneck() && (side == 'l' || side == 'L' || side == 'x' || side == 'X')) {
+                    INFS___("left write bottleneck stop!");
+                    write_left_bottleneck(false);
+                    change_side_monitoring('r',true,false, -1, 0); //FIXME: write monitor enable?
+                } else
+                if(write_right_bottleneck() && (side == 'r' || side == 'R' || side == 'y' || side == 'Y')) {
+                    INFS___("right write bottleneck stop!");
+                    write_right_bottleneck(false);
+                    change_side_monitoring('l',true,false, -1, 0); //FIXME: write monitor enable?
+
+                }
+            } else {
+                // orig_writebuf_size == 0
+                // not interesting - nothing to write
+            }
         }
     }
     
@@ -555,7 +690,7 @@ bool baseProxy::handle_cx_new(unsigned char side, baseCom* xcom, baseHostCX* cx)
         // FIXME: this call is a bit strange, is it?
         // cx->com()->nonlocal_dst(cx->com()->nonlocal_dst());
         
-        if(!cx->paused_read()) {
+        if(!cx->read_waiting_for_peercom()) {
             DIA___("baseProxy::handle_cx_new[%c]: new unpaused socket %d -> accepting",side,client);
             
             cx->on_accept_socket(client);
@@ -564,7 +699,7 @@ bool baseProxy::handle_cx_new(unsigned char side, baseCom* xcom, baseHostCX* cx)
             //   else if(side == 'r') { radd(cx); }
             
         } else {
-            DIA___("baseProxy::handle_cx_new[%c]: new paused socket %d -> delaying",side,client);
+            DIA___("baseProxy::handle_cx_new[%c]: new waiting_for_peercom socket %d -> delaying",side,client);
             
             cx->on_delay_socket(client);
             //  DON'T: you don't know if this proxy does have child proxy, or wants to handle situation different way.
@@ -752,7 +887,7 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
                 for(typename std::vector<baseHostCX*>::iterator k = left_delayed_accepts.begin(); k != left_delayed_accepts.end(); ++k) {
                     
                     baseHostCX *p = *k;
-                    if(!(*k)->paused_read()) {
+                    if(!(*k)->read_waiting_for_peercom()) {
                         p->on_accept_socket(p->socket());
                         ladd(p);
                         left_delayed_accepts.erase(k);
@@ -785,7 +920,7 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
                         // propagate nonlocal setting
                         cx->com()->nonlocal_dst((*jj)->com()->nonlocal_dst());
 
-                        if(!cx->paused_read()) {
+                        if(!cx->read_waiting_for_peercom()) {
                             cx->on_accept_socket(client);
                         } else {
                             cx->on_delay_socket(client);
@@ -810,7 +945,7 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
                 for(typename std::vector<baseHostCX*>::iterator k = right_delayed_accepts.begin(); k != right_delayed_accepts.end(); ++k) {
                     
                     baseHostCX *p = *k;
-                    if(!(*k)->paused_read()) {
+                    if(!(*k)->read_waiting_for_peercom()) {
                         p->on_accept_socket(p->socket());
                         radd(p);
                         right_delayed_accepts.erase(k);

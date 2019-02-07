@@ -232,10 +232,14 @@ void AppHostCX::pre_read() {
                 
                 updated = true;
 		
-		if(com()->l4_proto() == SOCK_DGRAM) {
-		  // don't limit reads, packets are dropped in case of tension, so flow could be incorrect a bit (it will be fixed on read).
-		  this->next_read_limit(0);
-		}
+                if(com()->l4_proto() == SOCK_DGRAM) {
+                  // don't limit reads, packets are dropped in case of tension, so flow could be incorrect a bit (it will be fixed on read).
+                  this->next_read_limit(0);
+                }
+                // TCP
+                else if(l >= b.capacity()) {
+                    DIA_("AppHostCX::pre_read[%s]: pre_read at max. buffer capacity %d",c_name(),b.capacity());
+                }
             }
         }
         

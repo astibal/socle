@@ -187,7 +187,7 @@ public:
         }
     };
 
-    // call to init socket about to be accepted in the future but paused for now
+    // call to init socket about to be accepted in the future but waiting_for_peercom for now
     virtual void delay_socket(int sockfd) {
         /* do nothing */
     }

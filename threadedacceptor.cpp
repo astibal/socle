@@ -183,7 +183,7 @@ int ThreadedAcceptorProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
 		DIA_("ThreadedAcceptorProxy::run: removed from queue: 0x%016llx (socket %d)",s,s);
 
 		auto cx = this->new_cx(s);
-		if(!cx->paused_read()) {
+		if(!cx->read_waiting_for_peercom()) {
             cx->on_accept_socket(s);
         } else {
             cx->on_delay_socket(s);

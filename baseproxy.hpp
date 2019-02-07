@@ -72,7 +72,7 @@ protected:
 
     // NEW feature: don't accept those sockets fully, just on "carrier" level to avoid e.g. SSL handshake prior target SSL socket 
     // is really opened and SSL is fully established
-    //     >>> enabled when HostCX is *paused* in the time being accepted <<<
+    //     >>> enabled when HostCX is *waiting_for_peercom* in the time being accepted <<<
     //  -- this is important for some features like SSL MiTM, and it also preserves resources 
     //        => it's useful for session *original* direction side (usually and by convention it's the left side)
     std::vector<baseHostCX*> left_delayed_accepts;
@@ -159,7 +159,7 @@ public:
     int bind(unsigned short, unsigned char);
     int bind(const char*, unsigned char); // support for AF_UNIX and similar
         
-    // permantenty (re)connected sockets
+    // permanently (re)connected sockets
     int left_connect(const char*, const char*,bool=false);
     int right_connect(const char*, const char*,bool=false);
     int connect(const char*, const char*,char,bool=false);
@@ -218,6 +218,16 @@ public:
     virtual void on_right_new_raw(int sock) {};
         
     virtual void run_timers(void);
+
+
+    inline bool write_left_bottleneck() const { return  write_left_neck_; }
+    void write_left_bottleneck(bool n) { write_left_neck_ = n; }
+    inline bool write_right_bottleneck() const { return  write_right_neck_; }
+    void write_right_bottleneck(bool n) { write_right_neck_ = n; }
+
+    unsigned int change_monitor_for_cx_vec(std::vector<baseHostCX*>* cx_vec, bool ifread, bool ifwrite,int pause_read, int pause_write);
+    unsigned int change_side_monitoring(char side, bool ifread, bool ifwrite, int pause_read, int pause_write);
+
 protected:
     // internal functions which should not be used directly
     int read_socket(int,char);
@@ -237,6 +247,10 @@ protected:
     
 private:
     unsigned int timer_interval = 1;
+
+    // when writing didn't write all data in writebuf
+    bool write_left_neck_ = false;
+    bool write_right_neck_ = false;
 };
 
 typedef std::vector<baseHostCX*>::iterator cx_iterator;

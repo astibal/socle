@@ -163,12 +163,12 @@ class baseHostCX : public Host
 	/* Custom state facility */
 	
 	
-	// paused hostcx won't be read/written until unpaused.
-	bool paused_read_ = false;
-    bool paused_write_ = false;
+	// waiting_for_peercom hostcx won't be read/written until unpaused.
+	bool read_waiting_for_peercom_ = false;
+    bool write_waiting_for_peercom_ = false;
 //     bool delayed_accept_ = false;
     
-    // Com class can optionally unpause socket, using paused flag as signalling between Com and CX interfaces.
+    // Com class can optionally unpause socket, using waiting_for_peercom flag as signalling between Com and CX interfaces.
     // You want to keep it true
     bool allow_com_unpause_ = true;
 
@@ -224,11 +224,12 @@ public:
 	bool opening_timeout();
     bool idle_timeout();
 
-	bool paused_read();
-    bool paused_write();
-	inline void paused_read(bool p) { paused_read_ = p; }
-	inline void paused_write(bool p) { paused_write_ = p; }
-	inline void paused(bool p) { paused_read(p); paused_write(p); }
+	bool read_waiting_for_peercom ();
+    bool write_waiting_for_peercom ();
+	inline void read_waiting_for_peercom (bool p) { read_waiting_for_peercom_ = p; }
+	inline void write_waiting_for_peercom (bool p) { write_waiting_for_peercom_ = p; }
+	inline void waiting_for_peercom (bool p) { read_waiting_for_peercom(p);
+        write_waiting_for_peercom(p); }
 	
 	// add the facility to indicate to owning object there something he should pay attention
 	// this us dummy implementation returning false
@@ -313,7 +314,7 @@ public:
 	// call com()->on_accept_socket(int fd) on bind->accepted socket and initialize upper level Com
 	void on_accept_socket(int fd);
     // call com()->on_delay_socket(int fd) on bind->accepted socket to init upper level Com. This is analogy to accept_socket,
-    // but is called on socket which is not accepted yet (CX is paused and if baseProxy is used, put in delay list).
+    // but is called on socket which is not accepted yet (CX is waiting_for_peercom and if baseProxy is used, put in delay list).
     void on_delay_socket(int fd);
 	
     // return human readable details of this object
