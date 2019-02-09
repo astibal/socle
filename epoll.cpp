@@ -386,12 +386,13 @@ epoll_handler* epoller::get_handler(int check) {
     return nullptr;
 }
 void epoller::clear_handler(int check) {
+    DEB_("epoller::clear_handler %d -> 0x%x -> nullptr",check,get_handler(check));
     handler_hints[check] = nullptr;
 }
 
 void epoller::set_handler(int check, epoll_handler* h) {
     handler_hints[check] = h;
-    
+    DEB_("epoller::set_handler %d -> 0x%x",check,h);
     
     if(h != nullptr) {
         if(h->registrant && h->registrant != this) {

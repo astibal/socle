@@ -98,10 +98,19 @@ class epoll_handler {
 public:
     int fence__ = HANDLER_FENCE;
     virtual void handle_event(baseCom*) = 0;
-    virtual ~epoll_handler() { 
-        if(registrant != nullptr) { 
-            for(auto s: registered_sockets) { 
-                registrant->clear_handler(s); 
+    virtual ~epoll_handler() {
+        std::recursive_mutex m;
+        std::lock_guard<std::recursive_mutex> guard(m);
+
+        if(registrant != nullptr) {
+            for(auto s: registered_sockets) {
+
+                epoll_handler* owner = registrant->get_handler(s);
+
+                // don't remove foreign handlers!
+                if(this == owner) {
+                    registrant->clear_handler(s);
+                }
             }
         }
     }
