@@ -1076,6 +1076,7 @@ int baseProxy::run(void) {
             }
             
             int counter_proxy_handler = 0;
+            int counter_generic_handler = 0;
             int counter_back_handler = 0;
             std::vector<int> back_in_set;
             
@@ -1130,6 +1131,10 @@ int baseProxy::run(void) {
                                 counter_proxy_handler++;
                                 
                             } else {
+
+                                ptr->handle_event(com());
+                                counter_generic_handler++;
+
                                 DIA___("baseProxy::run: socket %d has NOT baseProxy handler!!",s);
                                 
                                 if(s > 0) {

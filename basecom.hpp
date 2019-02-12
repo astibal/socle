@@ -192,8 +192,8 @@ public:
         /* do nothing */
     }
 
-    int unblock(int s);   
-    inline int is_blocking(int s) { return !(::fcntl(s, F_GETFL, 0) & O_NONBLOCK);  }
+    static int unblock(int s);
+    static inline int is_blocking(int s) { return !(::fcntl(s, F_GETFL, 0) & O_NONBLOCK);  }
     
     virtual void cleanup() = 0;
 
