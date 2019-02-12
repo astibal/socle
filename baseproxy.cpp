@@ -1132,11 +1132,11 @@ int baseProxy::run(void) {
                                 
                             } else {
 
+                                DIA___("baseProxy::run: socket %d has generic handler",s);
                                 ptr->handle_event(com());
                                 counter_generic_handler++;
 
-                                DIA___("baseProxy::run: socket %d has NOT baseProxy handler!!",s);
-                                
+
                                 if(s > 0) {
                                     back_in_set.push_back(s);
                                 }
