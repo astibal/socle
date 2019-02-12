@@ -30,7 +30,7 @@ int epoll::wait(int timeout) {
         rescan_set_in.clear();
         
         for (auto osock: rescan_set_out) {
-            DEB_("epoll::wait rescanning EPOLLOUT socket %d",osock);
+            DEB_("epoll::wait rescanning EPOLLIN|OUT socket %d",osock);
             add(osock, EPOLLIN|EPOLLOUT);
         }
         rescan_set_out.clear();
