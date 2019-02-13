@@ -374,20 +374,22 @@ int epoller::wait(int timeout) {
 }
 
 epoll_handler* epoller::get_handler(int check) {
-    auto it = handler_hints.find(check);
+    auto it = handler_db.find(check);
     
-    if(it == handler_hints.end()) {
+    if(it == handler_db.end()) {
         return nullptr;
     } else {
-        epoll_handler* ret = it->second;
-        return ret;
+        handler_info_t& ret = it->second;
+        return ret.handler;
     }
 
     return nullptr;
 }
 void epoller::clear_handler(int check) {
     DEB_("epoller::clear_handler %d -> 0x%x -> nullptr",check,get_handler(check));
-    handler_hints[check] = nullptr;
+    handler_info_t& href = handler_db[check];
+    href.clear();
+;
 
     if(poller) {
         unsigned long r = poller->rescan_set_in.erase(check);
@@ -397,7 +399,9 @@ void epoller::clear_handler(int check) {
 }
 
 void epoller::set_handler(int check, epoll_handler* h) {
-    handler_hints[check] = h;
+
+    handler_info_t& href = handler_db[check];
+    href.handler = h;
     DEB_("epoller::set_handler %d -> 0x%x",check,h);
     
     if(h != nullptr) {
@@ -407,7 +411,11 @@ void epoller::set_handler(int check, epoll_handler* h) {
             
             for(auto cur_socket: h->registered_sockets) {
                 ERR_("epoller::set_handler:  moving old socket %d handler to new one", cur_socket);
-                handler_hints[cur_socket] = h;
+
+                // new is created if it doesn't exist yet
+                handler_info_t& curhref  = handler_db[cur_socket];
+                curhref.handler = h;
+                curhref.stats.clear();
             }
         }
         h->registrant = this;

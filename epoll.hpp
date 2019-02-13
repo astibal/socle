@@ -41,7 +41,7 @@ struct epoll {
     std::set<int> rescan_set_in;
     std::set<int> rescan_set_out;
     struct timeb rescan_timer;
-    
+
     bool in_read_set(int check);
     bool in_write_set(int check);
 
@@ -53,18 +53,39 @@ struct epoll {
     virtual bool rescan_in(int socket);
     virtual bool rescan_out(int socket);
     virtual bool click_timer_now (); // return true if we should add them back to in_set (scan their readability again). If yes, reset timer.
-    
+
     inline void clear() { memset(events,0,EPOLLER_MAX_EVENTS*sizeof(epoll_event)); in_set.clear(); out_set.clear(); }
     bool hint_socket(int socket); // this is the socket which will be additinally monitored for EPOLLIN; each time it's readable, single byte is read from it.
     inline int hint_socket(void) const { return hint_fd; }
-    
+
     virtual ~epoll() {}
-    
+
     static loglevel log_level;
 };
 
 
+// There is epoll_handler class somewhere around. Promises.
 class epoll_handler;
+
+// handler statistics/troubleshooting struct
+typedef struct {
+    unsigned long call_count;
+
+    void clear() {
+        call_count=0L;
+    }
+} handler_stats_t;
+
+// handler + its stats holder
+typedef struct {
+    handler_stats_t stats;
+    epoll_handler* handler;
+
+    void clear() {
+        handler = nullptr;
+        stats.clear();
+    }
+} handler_info_t;
 /*
  * Class poller is HOLDER of epoll pointer. Reason for this is to have single point of self-initializing 
  * code. It's kind of wrapper, which doesn't init anything until there is an attempt to ADD something into it.
@@ -86,7 +107,7 @@ struct epoller {
     virtual bool hint_socket(int socket); // this is the socket which will be additinally monitored for EPOLLIN; each time it's readable, single byte is read from it.
 
     // handler hints is a map of socket->handler. We will allow to grow it as needed. No purges. 
-    std::unordered_map<int,epoll_handler*> handler_hints;    
+    std::unordered_map<int,handler_info_t> handler_db;
     epoll_handler* get_handler(int check);
     void clear_handler(int check);
     void set_handler(int check, epoll_handler*);
