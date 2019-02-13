@@ -22,7 +22,7 @@ int epoll::wait(int timeout) {
     
     // Prepopulate epoll from rescan lists 
     
-    if(should_rescan_now()) {
+    if(click_timer_now()) {
         for (auto isock: rescan_set_in) {
             DEB_("epoll::wait rescanning EPOLLIN socket %d",isock);
             add(isock,EPOLLIN);
@@ -239,7 +239,7 @@ bool epoll::rescan_out(int socket) {
 
 
 
-bool epoll::should_rescan_now() {
+bool epoll::click_timer_now () {
 
     timeb now;
     ftime(&now);
@@ -247,7 +247,7 @@ bool epoll::should_rescan_now() {
     int ms_diff = (int) (1000.0 * (now.time - rescan_timer.time) + (now.millitm - rescan_timer.millitm));
     if(ms_diff > baseCom::rescan_poll_multiplier*baseCom::poll_msec) {
         ftime(&rescan_timer);
-        EXT_("epoll::should_rescan_now: rescanning, diff = %d",ms_diff);
+        EXT_("epoll::click_timer_now: rescanning, diff = %d",ms_diff);
         return true;
     }
     
@@ -326,12 +326,12 @@ bool epoller::rescan_out(int socket)
 };
 
 
-bool epoller::should_rescan_now()
+bool epoller::click_timer_now ()
 {
     init_if_null();
     
     if(poller != nullptr) {
-        return poller->should_rescan_now();
+        return poller->click_timer_now();
     }
     
     return false;

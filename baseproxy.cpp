@@ -1188,7 +1188,7 @@ int baseProxy::run(void) {
             }
             
 //             // add back sockets to rescan
-//             if(com()->poller.poller->should_rescan_now()) {
+//             if(com()->poller.poller->click_timer_now()) {
 //                 for(int a: com()->poller.poller->rescan_set_in) {
 //                     counter_back_handler++;
 //                     

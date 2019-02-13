@@ -52,7 +52,7 @@ struct epoll {
     virtual bool del(int socket);
     virtual bool rescan_in(int socket);
     virtual bool rescan_out(int socket);
-    virtual bool should_rescan_now(); // return true if we should add them back to in_set (scan their readability again). If yes, reset timer.
+    virtual bool click_timer_now (); // return true if we should add them back to in_set (scan their readability again). If yes, reset timer.
     
     inline void clear() { memset(events,0,EPOLLER_MAX_EVENTS*sizeof(epoll_event)); in_set.clear(); out_set.clear(); }
     bool hint_socket(int socket); // this is the socket which will be additinally monitored for EPOLLIN; each time it's readable, single byte is read from it.
@@ -80,7 +80,7 @@ struct epoller {
     virtual bool del(int socket);
     virtual bool rescan_in(int socket);
     virtual bool rescan_out(int socket);
-    virtual bool should_rescan_now(); // return true if we should add them back to in_set (scan their readability again). If yes, reset timer.
+    virtual bool click_timer_now (); // return true if we should add them back to in_set (scan their readability again). If yes, reset timer.
     
     virtual int wait(int timeout = -1);
     virtual bool hint_socket(int socket); // this is the socket which will be additinally monitored for EPOLLIN; each time it's readable, single byte is read from it.
