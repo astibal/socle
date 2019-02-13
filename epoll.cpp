@@ -388,6 +388,12 @@ epoll_handler* epoller::get_handler(int check) {
 void epoller::clear_handler(int check) {
     DEB_("epoller::clear_handler %d -> 0x%x -> nullptr",check,get_handler(check));
     handler_hints[check] = nullptr;
+
+    if(poller) {
+        unsigned long r = poller->rescan_set_in.erase(check);
+        unsigned long w = poller->rescan_set_out.erase(check);
+        DEB_("epoller::clear_handler %d -> clearing rescans [r: %ld w: %ld]",check, r, w);
+    }
 }
 
 void epoller::set_handler(int check, epoll_handler* h) {
