@@ -23,6 +23,9 @@ int epoll::wait(int timeout) {
     // Prepopulate epoll from rescan lists 
     
     if(click_timer_now()) {
+
+        // Setting up rescans!
+
         for (auto isock: rescan_set_in) {
             DEB_("epoll::wait rescanning EPOLLIN socket %d",isock);
             add(isock,EPOLLIN);
@@ -34,6 +37,35 @@ int epoll::wait(int timeout) {
             add(osock, EPOLLIN|EPOLLOUT);
         }
         rescan_set_out.clear();
+
+        // idle timer?
+        if(idle_counter > idle_timeout_ms) {
+            idle_counter = 0;
+
+            // toggle idle round
+            idle_round > 0  ? idle_round = 0 : idle_round = 1;
+
+            if(idle_round == 0) {
+                // moving _pre to idle_watched
+                DEB_("epoll::wait: idle round %d, moving %d sockets to idle watch", idle_round, idle_watched_pre.size());
+
+                for (auto s: idle_watched_pre) {
+                    idle_watched.insert(s);
+                }
+                idle_watched_pre.clear();
+
+            } else {
+                // finally idle sockets
+                DIA_("epoll::wait: idle round %d, %d sockets marked idle", idle_round, idle_watched.size());
+
+                for (auto s: idle_watched) {
+                    DEB_("epoll::wait: idle socket %d", s);
+
+                    idle_set.insert(s);
+                }
+                idle_watched.clear();
+            }
+        }
     }
     
     // wait for epoll
@@ -59,29 +91,35 @@ int epoll::wait(int timeout) {
     }
     
     for(int i = 0; i < nfds; ++i) {
-        if(events[i].events & EPOLLIN) {
-            if(events[i].data.fd == hint_socket()) {
-                DIA_("epoll::wait: hint triggered %d",events[i].data.fd);
+        int socket = events[i].data.fd;
+        uint32_t eventset = events[i].events;
+
+        if(eventset & EPOLLIN) {
+            if (socket == hint_socket()) {
+                DIA_("epoll::wait: hint triggered %d",socket );
             }
             
-            DIA_("epoll::wait: data received into socket %d",events[i].data.fd);
-            if(events[i].data.fd == 1) {
-                // WORKAROUND: fd == 1 is always readable. 
-                // DIA_("epoll::wait: %s",bt().c_str());
-                char t[1]; ::read(events[i].data.fd,t,1);
+            DIA_("epoll::wait: data received into socket %d",socket );
+            if(socket  == 1) {
+                char t[1]; ::read(socket, t, 1);
             }
-            in_set.insert(events[i].data.fd);
+
+            // add socket to in_set
+            in_set.insert(socket);
+            clear_idle_watch(socket);
         }
-        else if(events[i].events & EPOLLOUT) {
-            DIA_("epoll::wait: socket %d writable (auto_epollout_remove=%d)",events[i].data.fd,auto_epollout_remove);
+        else if(eventset & EPOLLOUT) {
+            DIA_("epoll::wait: socket %d writable (auto_epollout_remove=%d)",socket,auto_epollout_remove);
             
-            out_set.insert(events[i].data.fd);
+            out_set.insert(socket);
+            clear_idle_watch(socket);
             
             if(auto_epollout_remove) {
-                modify(events[i].data.fd,EPOLLIN);
+                modify(socket,EPOLLIN);
             }
+
         } else {
-            DIA_("epoll::wait: uncaught event value %d",events[i].events);
+            DIA_("epoll::wait: uncaught event value %d",eventset);
         }
     }
    
@@ -172,6 +210,16 @@ bool epoll::in_write_set(int check) {
     return true;
 }
 
+bool epoll::in_idle_set(int check) {
+    auto f = idle_set.find(check);
+    return (f != idle_set.end());
+}
+
+bool epoll::in_idle_watched_set(int check) {
+    auto f = idle_watched.find(check);
+    return (f != idle_watched.end());
+}
+
 
 bool epoll::hint_socket(int socket) {
     
@@ -247,13 +295,38 @@ bool epoll::click_timer_now () {
     int ms_diff = (int) (1000.0 * (now.time - rescan_timer.time) + (now.millitm - rescan_timer.millitm));
     if(ms_diff > baseCom::rescan_poll_multiplier*baseCom::poll_msec) {
         ftime(&rescan_timer);
-        EXT_("epoll::click_timer_now: rescanning, diff = %d",ms_diff);
+        EXT_("epoll::click_timer_now: diff = %d",ms_diff);
+
+        idle_counter += ms_diff;
+        if(idle_counter > idle_timeout_ms) {
+            DEB_("epoll::click_timer_now: idle counter = %d",idle_counter);
+        }
         return true;
     }
-    
     return false;
 }
 
+void epoll::set_idle_watch(int check){
+    idle_watched_pre.insert(check);
+}
+
+unsigned long epoll::clear_idle_watch(int check) {
+
+    unsigned long ret = 0L;
+
+    unsigned long ip = idle_watched_pre.erase(check);
+    unsigned long iw = 0;
+    if (ip <= 0) {
+        iw = idle_watched.erase(check);
+    }
+    if (iw > 0 || ip > 0) {
+        DEB_("epoll::clear_handler %d -> clearing idle watchlist [pre: %ld list: %ld]", check, ip, iw);
+    }
+
+    ret = iw + ip;
+
+    return ret;
+}
 
 
 
@@ -365,12 +438,35 @@ bool epoller::in_write_set(int check)
     
     return false;
 }
+bool epoller::in_idle_set(int check)
+{
+    init_if_null();
+    if(poller) return poller->in_idle_set(check);
+
+    return false;
+}
+
 
 int epoller::wait(int timeout) {
     init_if_null();
     if(poller) return poller->wait(timeout);
     
     return 0;
+}
+
+void epoller::set_idle_watch(int check){
+    init_if_null();
+
+    if(poller) {
+        poller->set_idle_watch(check);
+    }
+}
+void epoller::clear_idle_watch(int check){
+    init_if_null();
+
+    if(poller) {
+        poller->clear_idle_watch(check);
+    }
 }
 
 epoll_handler* epoller::get_handler(int check) {
@@ -395,8 +491,11 @@ void epoller::clear_handler(int check) {
         unsigned long r = poller->rescan_set_in.erase(check);
         unsigned long w = poller->rescan_set_out.erase(check);
         DEB_("epoller::clear_handler %d -> clearing rescans [r: %ld w: %ld]",check, r, w);
+
+        poller->clear_idle_watch(check);
     }
 }
+
 
 void epoller::set_handler(int check, epoll_handler* h) {
 

@@ -45,6 +45,32 @@ struct epoll {
     bool in_read_set(int check);
     bool in_write_set(int check);
 
+
+    // idle timeout
+    int idle_timeout_ms = 1000;
+
+    // incremented each click and reset on trigger (if greater than idle_timeout_ms)
+    int idle_counter = 0;
+    // if round is 0, we are waiting. If 1 - we will trigger on watched sockets
+    // make it 1, so on start it will flip to 0
+    bool idle_round = 1;
+
+    //sockets to be added to idle_watched (to ensure defined idle timeout (and possibly slightly more)
+    std::set<int> idle_watched_pre;
+    //idle socket timer - sockets in this list will be added to idle_set.
+    // However, if we receive *any* socket activity (depends on monitoring), socket is
+    std::set<int> idle_watched;
+
+    // set with sockets in idle state. Idle list is erased on each poll.
+    std::set<int> idle_set;
+    bool in_idle_set(int check);
+    bool in_idle_watched_set(int check);
+
+    // remove socket from the idle detection machinery.
+    unsigned long clear_idle_watch(int check);
+    void set_idle_watch(int check);
+
+
     int init();
     virtual int wait(int timeout = -1);
     virtual bool add(int socket, int mask=EPOLLIN);
@@ -54,8 +80,8 @@ struct epoll {
     virtual bool rescan_out(int socket);
     virtual bool click_timer_now (); // return true if we should add them back to in_set (scan their readability again). If yes, reset timer.
 
-    inline void clear() { memset(events,0,EPOLLER_MAX_EVENTS*sizeof(epoll_event)); in_set.clear(); out_set.clear(); }
-    bool hint_socket(int socket); // this is the socket which will be additinally monitored for EPOLLIN; each time it's readable, single byte is read from it.
+    inline void clear() { memset(events,0,EPOLLER_MAX_EVENTS*sizeof(epoll_event)); in_set.clear(); out_set.clear(); idle_set.clear(); }
+    bool hint_socket(int socket); // this is the socket which will be additionally monitored for EPOLLIN; each time it's readable, single byte is read from it.
     inline int hint_socket(void) const { return hint_fd; }
 
     virtual ~epoll() {}
@@ -96,6 +122,7 @@ struct epoller {
     
     bool in_read_set(int check);
     bool in_write_set(int check);
+    bool in_idle_set(int check);
     virtual bool add(int socket, int mask=(EPOLLIN));
     virtual bool modify(int socket, int mask);
     virtual bool del(int socket);
@@ -111,7 +138,10 @@ struct epoller {
     epoll_handler* get_handler(int check);
     void clear_handler(int check);
     void set_handler(int check, epoll_handler*);
-    
+
+    void set_idle_watch(int check);
+    void clear_idle_watch(int check);
+
     virtual ~epoller() { if(poller) delete poller; }
 };
 

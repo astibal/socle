@@ -1084,8 +1084,9 @@ int baseProxy::run(void) {
             std::vector<std::set<int>*> sets;
             sets.push_back(&com()->poller.poller->in_set);
             sets.push_back(&com()->poller.poller->out_set);
+            sets.push_back(&com()->poller.poller->idle_set);
             
-            std::vector<std::string> setname = { "inset","outset" };
+            std::vector<std::string> setname = { "inset","outset", "idleset" };
             int name_iter = 0;
 
             bool virt_global_hack = false;

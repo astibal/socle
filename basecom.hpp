@@ -207,6 +207,7 @@ public:
     // operate on FD_SETs
     virtual bool in_readset(int s) { return master()->poller.in_read_set(s); };
     virtual bool in_writeset(int s) { return master()->poller.in_write_set(s); };
+    virtual bool in_idleset(int s) { return master()->poller.in_idle_set(s); };
 
     inline void set_monitor(int s) { 
         DIA_("basecom::set_monitor: called to add %d",s);
@@ -256,7 +257,19 @@ public:
         DIA_("basecom::set_poll_handler: handler of %d is 0x%x",s,h);
         return h;
     };
-    
+
+    inline void set_idle_watch(int s) {
+        if(s > 0) {
+            master()->poller.set_idle_watch(s);
+        }
+    }
+    inline void clear_idle_watch(int s) {
+        if(s > 0) {
+            master()->poller.clear_idle_watch(s);
+        }
+    }
+
+
     inline void rescan_read(int s) {
         DIA_("basecom::rescan_read: called to rescan EPOLLIN %d",s);
         if (s > 0 ) { 
