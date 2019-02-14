@@ -535,7 +535,7 @@ X509_PAIR* SSLCertStore::spoof(X509* cert_orig, bool self_sign, std::vector<std:
         digest = EVP_sha256();
     }
     else if (EVP_PKEY_type(pkey->type) == EVP_PKEY_EC) {
-        digest = EVP_ecdsa();
+        digest = EVP_sha256();
     }
     else {
         ERR__("SSLCertStore::spoof[%x]: error checking public key for a valid digest",this);
@@ -672,7 +672,7 @@ X509_PAIR* SSLCertStore::spoof(X509* cert_orig, bool self_sign, std::vector<std:
         digest = EVP_sha256();
     }
     else if (EVP_PKEY_type(sign_key->type) == EVP_PKEY_EC) {
-        digest = EVP_ecdsa();
+        digest = EVP_sha256();
     }
     else {
         ERR__("SSLCertStore::spoof[%x]: error checking CA private key for a valid digest",this);
