@@ -47,7 +47,8 @@ int epoll::wait(int timeout) {
 
             if(idle_round == 0) {
                 // moving _pre to idle_watched
-                DEB_("epoll::wait: idle round %d, moving %d sockets to idle watch", idle_round, idle_watched_pre.size());
+                if(idle_watched_pre.size())
+                    DEB_("epoll::wait: idle round %d, moving %d sockets to idle watch", idle_round, idle_watched_pre.size());
 
                 for (auto s: idle_watched_pre) {
                     idle_watched.insert(s);
@@ -56,7 +57,8 @@ int epoll::wait(int timeout) {
 
             } else {
                 // finally idle sockets
-                DIA_("epoll::wait: idle round %d, %d sockets marked idle", idle_round, idle_watched.size());
+                if(idle_watched.size())
+                    DIA_("epoll::wait: idle round %d, %d sockets marked idle", idle_round, idle_watched.size());
 
                 for (auto s: idle_watched) {
                     DEB_("epoll::wait: idle socket %d", s);
@@ -299,7 +301,7 @@ bool epoll::click_timer_now () {
 
         idle_counter += ms_diff;
         if(idle_counter > idle_timeout_ms) {
-            DEB_("epoll::click_timer_now: idle counter = %d",idle_counter);
+            EXT_("epoll::click_timer_now: idle counter = %d",idle_counter);
         }
         return true;
     }
