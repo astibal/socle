@@ -101,7 +101,14 @@ bool SSLCertStore::load_ca_cert() {
         return false;
     }
     
-    
+
+    if(ca_cert) {
+        X509_free(ca_cert);
+    }
+    if(ca_key) {
+        EVP_PKEY_free(ca_key);
+    }
+
     ca_cert = PEM_read_X509(fp_crt, NULL, NULL, NULL);  
     ca_key = PEM_read_PrivateKey(fp_key,NULL, NULL, (void*)password.c_str());
     
