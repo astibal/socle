@@ -1078,6 +1078,10 @@ int baseProxy::run(void) {
             int counter_proxy_handler = 0;
             int counter_generic_handler = 0;
             int counter_back_handler = 0;
+            int counter_hint_handler = 0;
+
+            int counter_fence_fail = 0;
+
             std::vector<int> back_in_set;
             
             // std::set<int>& sets[] = { com()->poller.poller->in_set, com()->poller.poller->out_set };
@@ -1119,6 +1123,8 @@ int baseProxy::run(void) {
                         
                         if(seg != HANDLER_FENCE) {
                             ERR___("baseProxy::run: socket %d magic fence doesn't match!!",s);
+                            counter_fence_fail++;
+
                         } else {
                             baseProxy* proxy = dynamic_cast<baseProxy*>(p_handler);
                             if(proxy != nullptr) {
@@ -1128,6 +1134,7 @@ int baseProxy::run(void) {
                                 proxy->handle_sockets_once(com());
                                 if(proxy->dead()) {
                                     proxy->shutdown();
+                                    DIA___("Proxy 0x%x has been shutdown.", proxy);
                                 }
                                 
                                 counter_proxy_handler++;
@@ -1137,11 +1144,6 @@ int baseProxy::run(void) {
                                 EXT___("baseProxy::run: socket %d has generic handler",s);
                                 p_handler->handle_event(com());
                                 counter_generic_handler++;
-
-
-                                if(s > 0) {
-                                    back_in_set.push_back(s);
-                                }
                             }
                         }
                         
@@ -1150,16 +1152,16 @@ int baseProxy::run(void) {
                         //FIXME: report virtual sockets too, in the future
                         
                         DEB___("baseProxy::run: socket %d has NO handler!!",s);
-                        
+
                         // all real sockets without ANY handler should be re-inserted
                         if(s > 0) {
                             back_in_set.push_back(s);
                         }
                         
-                        if (com()->poller.poller != nullptr) {
+                        if (com()->poller.poller) {
                             if(s != com()->poller.poller->hint_socket()) {
                                 if(s < 0) {
-                                    EXT___("FIXME: calling global handle_sockets_once due to virtual socket %d",s);
+                                    EXT___("virtual socket %d has null handler",s);
                                     virt_global_hack = true;
                                 }else {
                                     ERR___("baseProxy::run: socket %d has registered NULL handler, removing",s);
@@ -1169,6 +1171,7 @@ int baseProxy::run(void) {
                                 // hint file descriptor don't have handler
                                 DEB___("baseProxy::run: socket %d is hint socket, running proxy socket handler",s);
                                 handle_sockets_once(com());
+                                counter_hint_handler++;
                             }
                         } else {
                             ERRS___("com()->poller.poller is null!");                        
@@ -1179,7 +1182,7 @@ int baseProxy::run(void) {
                 name_iter++;
             }
             
-            // clear in_set, so alrady handled sockets are excluded 
+            // clear in_set, so already handled sockets are excluded
             com()->poller.poller->in_set.clear();
             
             // add back sockets which don't have handler - generally it should be just few sockets!
@@ -1198,9 +1201,12 @@ int baseProxy::run(void) {
                 handle_sockets_once(com());
             }
             
-            if(counter_proxy_handler > 0) {
-                EXT___("baseProxy::run: proxy handlers: %d, back-inserted: %d",counter_proxy_handler,counter_back_handler);
+            if(counter_proxy_handler || counter_generic_handler || counter_back_handler) {
+                DIA___("baseProxy::run: called handlers - proxy: %d, gen: %d, back-ins: %d, hint: %d",counter_proxy_handler,
+                        counter_generic_handler, counter_back_handler, counter_hint_handler);
             }
+            if (virt_global_hack && !udp_in_set.empty())  DEB___("baseProxy::run: virtual hack, virtuals: %d", udp_in_set.size());
+            if (counter_fence_fail) ERR___("baseProxy::run: fence failures: %d", counter_fence_fail);
         }
     }
 
