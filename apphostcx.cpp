@@ -88,11 +88,12 @@ bool AppHostCX::detect(sensorType& cur_sensor,char side) {
                 on_detect(sig_sig,sig_res,ret);
                 
                 matched = true;
-                DIA_("AppHostCX::detect[%s]: Signature matched: %s",c_name(), vrangetos(ret).c_str());
+                // log only in debug - it's up to library user to log it his way
+                DEB_("AppHostCX::detect[%s]: Signature matched: %s",c_name(), vrangetos(ret).c_str());
                 continue;
                 
             } else {
-                DEB_("AppHostCX::detect[%s]: Signature didn't match: %s",c_name(), vrangetos(ret).c_str());
+                EXT_("AppHostCX::detect[%s]: Signature didn't match: %s",c_name(), vrangetos(ret).c_str());
             } 
         } else {
             DEB_("AppHostCX::detect[%s]: Signature %s already matched",c_name(), sig_sig->name().c_str());
