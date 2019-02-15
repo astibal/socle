@@ -237,65 +237,69 @@ int baseProxy::rsize() {
 }
 
 
-void baseProxy::set_clock() {
-	time(&clock_);
-}
+bool baseProxy::on_cx_timer(baseHostCX* cx) {
 
-
-bool baseProxy::run_timer(baseHostCX* cx) {
-	
-	if( clock_ - last_tick_ > timer_interval) {
 		cx->on_timer();
 		return true;
-	}
-	
+
 	return false;
 }
 
 
-void baseProxy::reset_timer() {
+// return true if clicked, false otherwise.
+
+bool baseProxy::reset_timer() {
+
+    time(&clock_);
 
 	if( clock_ - last_tick_ > timer_interval) {	
 		time(&last_tick_);
+
+		return true;
 	}
+
+	return false;
 }
 
 
 // (re)set socket set and calculate max socket no
 
-void baseProxy::run_timers(void) {
+bool baseProxy::run_timers (void) {
 
-	set_clock();
+    if(reset_timer()) {
 
-	for(typename std::vector<baseHostCX*>::iterator i = left_sockets.begin(); i != left_sockets.end(); ++i) {
-		run_timer(*i);
-    }
-	for(typename std::vector<baseHostCX*>::iterator ii = left_bind_sockets.begin(); ii != left_bind_sockets.end(); ++ii) {
-		run_timer(*ii);
+        for (auto i: left_sockets) {
+            on_cx_timer(i);
+        }
+        for (auto ii: left_bind_sockets) {
+            on_cx_timer(ii);
+        }
+
+        for (auto j: right_sockets) {
+            on_cx_timer(j);
+        }
+        for (auto jj: right_bind_sockets) {
+            on_cx_timer(jj);
+        }
+
+        for (auto k: left_pc_cx) {
+            on_cx_timer(k);
+        }
+        for (auto l: right_pc_cx) {
+            on_cx_timer(l);
+        }
+
+        for (auto k: left_delayed_accepts) {
+            on_cx_timer(k);
+        }
+        for (auto l: right_delayed_accepts) {
+            on_cx_timer(l);
+        }
+
+        return true;
     }
 
-    for(typename std::vector<baseHostCX*>::iterator j = right_sockets.begin(); j != right_sockets.end(); ++j) {
-		run_timer(*j);
-    }
-	for(typename std::vector<baseHostCX*>::iterator jj = right_bind_sockets.begin(); jj != right_bind_sockets.end(); ++jj) {
-		run_timer(*jj);
-    }    
-    
-	for(typename std::vector<baseHostCX*>::iterator k = left_pc_cx.begin(); k != left_pc_cx.end(); ++k) {
-		run_timer(*k);
-	}
-	for(typename std::vector<baseHostCX*>::iterator l = right_pc_cx.begin(); l != right_pc_cx.end(); ++l) {    
-		run_timer(*l);		
-	}
-
-    for(typename std::vector<baseHostCX*>::iterator k = left_delayed_accepts.begin(); k != left_delayed_accepts.end(); ++k) {
-        run_timer(*k);
-    }
-    for(typename std::vector<baseHostCX*>::iterator l = right_delayed_accepts.begin(); l != right_delayed_accepts.end(); ++l) {    
-        run_timer(*l);      
-    }	
-	
-	reset_timer();
+    return false;
 };
 
 // (re)set socket set and calculate max socket no

@@ -21,7 +21,7 @@
 #include <internet.hpp>
 #include <linux/in6.h>
 
-int baseCom::poll_msec = 10;
+int baseCom::poll_msec = 50;
 int baseCom::rescan_poll_multiplier = 2;
 bool baseCom::debug_log_data_crc = false;
 

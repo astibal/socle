@@ -37,7 +37,7 @@ public:
 	virtual int handle_sockets_once(baseCom*);	
 	virtual void shutdown();
     
-    virtual void run_timers(void);
+    virtual bool run_timers (void);
 
 	std::string hr();
 };

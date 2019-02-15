@@ -217,7 +217,7 @@ public:
     virtual void on_left_new_raw(int sock) {};
     virtual void on_right_new_raw(int sock) {};
         
-    virtual void run_timers(void);
+    virtual bool run_timers (void);
 
 
     inline bool write_left_bottleneck() const { return  write_left_neck_; }
@@ -234,10 +234,9 @@ protected:
         
     time_t last_tick_;
     time_t clock_;
-    
-    void set_clock();
-    bool run_timer(baseHostCX*);
-    void reset_timer();
+
+    bool on_cx_timer(baseHostCX*);
+    bool reset_timer();
 
     virtual std::string to_string(int verbosity=iINF);
     

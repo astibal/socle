@@ -38,23 +38,29 @@ int MasterProxy::prepare_sockets(baseCom* xcom)
     return r;
 }
 
-void MasterProxy::run_timers(void)
+bool MasterProxy::run_timers (void)
 {
-    baseProxy::run_timers();
-    for(baseProxy* p: proxies()) {
-       
-        if(!p) {
-            INFS___("null sub-proxy!!");
-            continue;
+    if(baseProxy::run_timers()) {
+
+        for(baseProxy* p: proxies()) {
+
+            if(!p) {
+                INFS___("null sub-proxy!!");
+                continue;
+            }
+
+            if(p->dead()) {
+                delete p;
+                proxies().erase(p);
+            } else {
+                p->run_timers();
+            }
         }
-        
-        if(p->dead()) {
-            delete p;
-            proxies().erase(p);
-        } else {
-            p->run_timers();
-        }
+
+        return true;
     }
+
+    return false;
 }
 
 
