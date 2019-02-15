@@ -266,6 +266,16 @@ bool epoll::rescan_in(int socket) {
     return false;
 }
 
+unsigned long epoll::cancel_rescan_in(int socket) {
+    if(socket > 0) {
+        return rescan_set_in.erase(socket);
+    }
+
+    return 0L;
+}
+
+
+
 bool epoll::rescan_out(int socket) {
     if(socket > 0) {
 
@@ -287,6 +297,13 @@ bool epoll::rescan_out(int socket) {
     return false;
 }
 
+unsigned long epoll::cancel_rescan_out(int socket) {
+    if(socket > 0) {
+        return rescan_set_out.erase(socket);
+    }
+
+    return 0L;
+}
 
 
 bool epoll::click_timer_now () {
@@ -389,6 +406,17 @@ bool epoller::rescan_in(int socket)
     return false;
 };
 
+unsigned long epoller::cancel_rescan_in(int socket)
+{
+    init_if_null();
+
+    if(poller != nullptr) {
+        return poller->cancel_rescan_in(socket);
+    }
+
+    return 0;
+};
+
 bool epoller::rescan_out(int socket)
 {
     init_if_null();
@@ -399,6 +427,18 @@ bool epoller::rescan_out(int socket)
     
     return false;
 };
+unsigned long epoller::cancel_rescan_out(int socket)
+{
+    init_if_null();
+
+    if(poller != nullptr) {
+        return poller->cancel_rescan_out(socket);
+    }
+
+    return 0;
+};
+
+
 
 
 bool epoller::click_timer_now ()

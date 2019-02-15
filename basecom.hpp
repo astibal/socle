@@ -219,6 +219,8 @@ public:
         DIA_("basecom::unset_monitor: called to remove %d",s);
         if (s > 0 ) { 
             master()->poller.del(s);
+            master()->poller.cancel_rescan_in(s);
+            master()->poller.cancel_rescan_out(s);
         } 
     };    
     inline void set_write_monitor(int s) {
