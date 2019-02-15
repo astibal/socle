@@ -1109,17 +1109,18 @@ int baseProxy::run(void) {
                  
                 for (auto s: *current_set) {
                     //FIXME
-                    /*if(s>0) */DIA___("baseProxy::run: %s socket %d ",setname.at(name_iter).c_str(),s);
-                    epoll_handler* ptr = com()->poller.get_handler(s);
+                    DEB___("baseProxy::run: %s socket %d ",setname.at(name_iter).c_str(),s);
+                    epoll_handler* p_handler = com()->poller.get_handler(s);
                     
-                    if(ptr != nullptr) {
-                        auto seg = ptr->fence__;
-                        EXT___("baseProxy::run: socket %d has registered handler 0x%x (fence %x)",s,ptr,seg);
+                    if(p_handler != nullptr) {
+
+                        auto seg = p_handler->fence__;
+                        EXT___("baseProxy::run: socket %d has registered handler 0x%x (fence %x)",s,p_handler,seg);
                         
                         if(seg != HANDLER_FENCE) {
                             ERR___("baseProxy::run: socket %d magic fence doesn't match!!",s);
                         } else {
-                            baseProxy* proxy = dynamic_cast<baseProxy*>(ptr);
+                            baseProxy* proxy = dynamic_cast<baseProxy*>(p_handler);
                             if(proxy != nullptr) {
                                 EXT___("baseProxy::run: socket %d has baseProxy handler!!",s);
                                 
@@ -1133,8 +1134,8 @@ int baseProxy::run(void) {
                                 
                             } else {
 
-                                DIA___("baseProxy::run: socket %d has generic handler",s);
-                                ptr->handle_event(com());
+                                EXT___("baseProxy::run: socket %d has generic handler",s);
+                                p_handler->handle_event(com());
                                 counter_generic_handler++;
 
 
@@ -1165,7 +1166,7 @@ int baseProxy::run(void) {
                                     com()->poller.poller->del(s);
                                 }
                             } else {
-                                // hint filedescriptor don't have handler
+                                // hint file descriptor don't have handler
                                 DEB___("baseProxy::run: socket %d is hint socket, running proxy socket handler",s);
                                 handle_sockets_once(com());
                             }
@@ -1182,48 +1183,15 @@ int baseProxy::run(void) {
             com()->poller.poller->in_set.clear();
             
             // add back sockets which don't have handler - generally it should be just few sockets!
+
+            if(!back_in_set.empty())  DEB___("%d sockets in back_in_set re-added to in_set", back_in_set.size());
+
             for(int a: back_in_set) {
                 counter_back_handler++;
                 
                 com()->poller.poller->in_set.insert(a);
             }
             
-//             // add back sockets to rescan
-//             if(com()->poller.poller->click_timer_now()) {
-//                 for(int a: com()->poller.poller->rescan_set_in) {
-//                     counter_back_handler++;
-//                     
-//                     DIA___("baseProxy::run: adding back to poller to rescan IN socket %d",a);
-//                     com()->poller.poller->in_set.insert(a);
-//                     com()->poller.poller->add(a);
-//                 }
-//                 com()->poller.poller->rescan_set_in.clear();
-//                 
-//                 
-//                 for(int a: com()->poller.poller->rescan_set_out) {
-//                     counter_back_handler++;
-//                     
-//                     DIA___("baseProxy::run: adding back to poller to rescan OUT socket %d",a);
-//                     com()->poller.poller->out_set.insert(a);
-//                     com()->poller.poller->add(a);
-//                 }
-//                 com()->poller.poller->rescan_set_out.clear();
-//                 
-//             }
-            
-            // run REST of all sockets. in_read_set and out_read_set is called, so if it's cleared handled (and not re-inserted back)
-            // proxies will not be processed, unless they are forced.
-            // 
-            // now you say why we can't call this at the beginning and avoid all that smart stuff
-            // above. 
-            // Reason: we want to have a code prepared for fully handler-based approach,
-            // which means traversing all proxies will not be needed, and only proxies which asked beforehand 
-            // will be handled if they won't receive any data.
-            
-            // FIXME: this should be removed
-            // handle_sockets_once(com());
-            
-            //instead of wholesale proxying, run timers
             run_timers();
             
             if(virt_global_hack) {
