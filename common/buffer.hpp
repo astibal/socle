@@ -17,6 +17,8 @@
 #include <cstring>   // std::memcpy, std::memcmp, std::memset, std::memchr
 #include <stdexcept> // std::out_of_range, std::invalid_argument
 #include <string>
+#include <vector>
+#include <mutex>
 
 #include <socle_common.hpp>
 #include <display.hpp>
@@ -27,6 +29,128 @@
 #endif
 
 
+class buffer;
+
+typedef struct mem_chunk
+{
+    mem_chunk(unsigned char* p, std::size_t c): ptr(p), capacity(c) {};
+
+    unsigned char* ptr;
+    std::size_t  capacity;
+} mem_chunk_t;
+
+
+class memPool {
+
+public:
+    std::size_t sz256;
+    std::size_t sz1k;
+    std::size_t sz5k;
+    std::size_t sz10k;
+    std::size_t sz20k;
+
+    memPool(std::size_t sz256, std::size_t sz1k, std::size_t sz5k, std::size_t sz10k, std::size_t sz20k):
+        sz256(sz256), sz1k(sz1k), sz5k(sz5k), sz10k(sz10k), sz20k(sz20k) {
+
+        for(unsigned int i = 0; i < sz256 ; i++) {
+            available_256.push_back( { new unsigned char [256], 256 } );
+        }
+        for(unsigned int i = 0; i < sz1k ; i++) {
+            available_1k.push_back( { new unsigned char [1 * 1024], 1 * 1024 } );
+        }
+        for(unsigned int i = 0; i < sz5k ; i++) {
+            available_5k.push_back( { new unsigned char [5 * 1024], 5 * 1024 } );
+        }
+        for(unsigned int i = 0; i < sz10k ; i++) {
+            available_10k.push_back( { new unsigned char [10 * 1024], 10 * 1024 } );
+        }
+        for(unsigned int i = 0; i < sz20k ; i++) {
+            available_20k.push_back( { new unsigned char [20 * 1024], 20 * 1024 } );
+        }
+    }
+
+    mem_chunk_t acquire(std::size_t sz) {
+        std::vector<mem_chunk_t>* mem_pool = pick_acq_set(sz);
+
+        std::lock_guard<std::mutex> g(lock);
+        stat_acq++;
+        stat_acq_size += sz;
+
+        if (mem_pool->empty()) {
+            mem_chunk_t new_entry = { new unsigned char [sz], sz };
+            stat_alloc++;
+            stat_alloc_size += sz;
+
+            return new_entry;
+        } else {
+            mem_chunk_t free_entry = mem_pool->back();
+            mem_pool->pop_back();
+
+            return free_entry;
+        }
+    }
+
+    void release(mem_chunk_t to_ret) {
+        std::vector<mem_chunk_t>* mem_pool = pick_ret_set(to_ret.capacity);
+
+        if(!mem_pool) {
+            stat_free++;
+            stat_free_size += to_ret.capacity;
+
+            delete[] to_ret.ptr;
+        } else {
+
+            std::lock_guard<std::mutex> g(lock);
+            mem_pool->push_back(to_ret);
+
+            stat_ret++;
+            stat_ret_size += to_ret.capacity;
+        }
+
+    }
+
+
+
+    std::vector<mem_chunk_t>* pick_acq_set(ssize_t s) {
+        if      (s > 20 * 1024) return &available_big;
+        else if (s > 10 * 1024) return &available_20k;
+        else if (s >  5 * 1024) return &available_10k;
+        else if (s >  1 * 1024) return &available_5k;
+        else if (s >       256) return &available_1k;
+        else return &available_256;
+    }
+
+    std::vector<mem_chunk_t>* pick_ret_set(ssize_t s) {
+        if      (s >= 20 * 1024) return &available_20k;
+        else if (s >= 10 * 1024) return &available_10k;
+        else if (s >=  5 * 1024) return &available_5k;
+        else if (s >=  1 * 1024) return &available_1k;
+        else if (s >=       256) return &available_256;
+        else return nullptr;
+    }
+
+    std::vector<mem_chunk_t> available_256;
+    std::vector<mem_chunk_t> available_1k;
+    std::vector<mem_chunk_t> available_5k;
+    std::vector<mem_chunk_t> available_10k;
+    std::vector<mem_chunk_t> available_20k;
+    std::vector<mem_chunk_t> available_big; // will be empty initially
+
+    static unsigned long long stat_acq;
+    static unsigned long long stat_acq_size;
+
+    static unsigned long long stat_ret;
+    static unsigned long long stat_ret_size;
+
+    static unsigned long long stat_alloc;
+    static unsigned long long stat_alloc_size;
+
+    static unsigned long long stat_free;
+    static unsigned long long stat_free_size;
+
+
+    std::mutex lock;
+};
 
 
 
@@ -37,10 +161,15 @@ public:
 
   static const size_type npos = static_cast<size_type> (-1);
 
-  static long long alloc_bytes;
-  static long long alloc_count;
-  static long long free_bytes;
-  static long long free_count;
+  static unsigned long long alloc_bytes;
+  static unsigned long long alloc_count;
+  static unsigned long long free_bytes;
+  static unsigned long long free_count;
+
+  static bool use_pool;
+
+
+  static memPool pool;
 #ifdef SOCLE_MEM_PROFILE  
   static std::unordered_map<std::string,int> alloc_map;
   static std::mutex alloc_map_lock_;
@@ -51,8 +180,8 @@ public:
   static inline void alloc_map_lock() { alloc_map_lock_.lock(); };
   static inline void alloc_map_unlock() { alloc_map_lock_.unlock(); };
 #endif
-  void counter_alloc(int s);
-  void counter_free(int s);
+  void counter_alloc(size_type s);
+  void counter_free(size_type s);
 
   virtual ~buffer ();
 
@@ -106,7 +235,7 @@ public:
   buffer view();
   
 protected:
-  unsigned char* data_ = nullptr;;
+  unsigned char* data_ = nullptr;
   size_type size_ = 0;
   size_type capacity_ = 0;
   bool free_ = true;
@@ -120,7 +249,7 @@ bool operator!= (const buffer&, const buffer&);
 // Implementation.
 //
 
-inline void buffer::counter_alloc(int s) {
+inline void buffer::counter_alloc(size_type s) {
     if(s > 0) {
         alloc_bytes += s;
         alloc_count++;
@@ -130,7 +259,7 @@ inline void buffer::counter_alloc(int s) {
     }    
 }
 
-inline void buffer::counter_free(int s) {
+inline void buffer::counter_free(size_type s) {
     if(s > 0) {
         free_bytes += s;
         free_count++;
@@ -174,61 +303,98 @@ inline void buffer::counter_clear_bt() {
 
 inline buffer::~buffer () {
     if (free_ && capacity_ > 0) {
-        delete[] data_;
-        counter_free(capacity_);
+
+        if(use_pool) {
+            pool.release( {data_, capacity_ } );
+        }
+        else {
+            delete[] data_;
+            counter_free(capacity_);
+        }
     }
 }
 
 inline buffer::buffer (size_type s)
-    : free_ (true)
-{
-  data_ = (s != 0 ? new unsigned char[s] : 0);
-  counter_alloc(s);
+    : free_ (true) {
 
-  size_ = capacity_ = s;
+    if (use_pool) {
+        mem_chunk_t mch = pool.acquire(s);
+        data_ = mch.ptr;
+        capacity_ = mch.capacity;
+    } else {
+        data_ = (s != 0 ? new unsigned char[s] : nullptr);
+        capacity_ = s;
+
+        counter_alloc(s);
+    }
+
+  size_ = s;
 }
 
 inline buffer::buffer (size_type s, size_type c)
     : free_ (true)
 {
-  if (s > c)
-    throw std::invalid_argument ("size greater than capacity");
+    if (s > c)
+        throw std::invalid_argument ("size greater than capacity");
 
-  data_ = (c != 0 ? new unsigned char[c] : 0);
-  counter_alloc(c);
-
-  size_ = s;
-  capacity_ = c;
+    if (use_pool) {
+        mem_chunk_t mch = pool.acquire(c);
+        data_ = mch.ptr;
+        capacity_ = mch.capacity;
+    }
+    else {
+        data_ = (c != 0 ? new unsigned char[c] : 0);
+        capacity_ = c;
+        counter_alloc(c);
+    }
+    size_ = s;
 }
 
 inline buffer::buffer (const void* d, size_type s)
     : free_ (true)
 {
-  if (s != 0)
-  {
-    data_ = new unsigned char[s];
-    counter_alloc(s);
+    if (s != 0) {
 
-    std::memcpy (data_, d, s);
-  }
-  else {
-    data_ = 0;
-  }
-  
-  size_ = capacity_ = s;
+        if(use_pool) {
+            mem_chunk_t mch = pool.acquire(s);
+            data_ = mch.ptr;
+            capacity_ = mch.capacity;
+        }
+        else {
+            data_ = new unsigned char[s];
+            capacity_ = s;
+            counter_alloc(s);
+        }
+
+        // copy only originally requested amount of bytes
+        std::memcpy (data_, d, s);
+    }
+    else {
+        data_ = 0;
+    }
+
+    size_ = s;
 }
 
-inline buffer::buffer (const void* d, size_type s, size_type c)
+inline buffer::buffer (const void* d, size_type s, size_type xc)
     : free_ (true)
 {
+    size_type c = xc;
+
   if (s > c)
     throw std::invalid_argument ("size greater than capacity");
 
   if (c != 0)
   {
-    data_ = new unsigned char[c];
-    counter_alloc(c);
-
+      if(use_pool) {
+          mem_chunk_t mch = pool.acquire(c);
+          data_ = mch.ptr;
+          c = mch.capacity;
+      }
+      else {
+          data_ = new unsigned char[c];
+          counter_alloc(c);
+      }
     if (s != 0)
       std::memcpy (data_, d, s);
   }
@@ -245,7 +411,7 @@ inline buffer::buffer (void* d, size_type s, size_type c, bool own)
   if (s > c)
     throw std::invalid_argument ("size greater than capacity");
   
-  if(own)
+  if(own && !use_pool)
       counter_alloc(c);
 }
 
@@ -255,8 +421,16 @@ inline buffer::buffer (const buffer& x)
   if (x.capacity_ != 0)
   {
     if(x.free_) {
-        data_ = new unsigned char[x.capacity_];
-        counter_alloc(x.capacity_);
+
+        if(use_pool) {
+            mem_chunk_t mch = pool.acquire(x.capacity_);
+            data_ = mch.ptr;
+            capacity_ = mch.capacity;
+        }
+        else {
+            data_ = new unsigned char[x.capacity_];
+            counter_alloc(x.capacity_);
+        }
 
         if (x.size_ != 0)
         std::memcpy (data_, x.data_, x.size_);
@@ -270,7 +444,10 @@ inline buffer::buffer (const buffer& x)
 
   free_ = x.free_;
   size_ = x.size_;
-  capacity_ = x.capacity_;
+
+  // pool can allocate (and set) bigger capacity than requested
+  if(!use_pool)
+    capacity_ = x.capacity_;
 }
 
 
@@ -281,16 +458,29 @@ inline buffer& buffer::operator= (const buffer& x)
     if (x.size_ > capacity_)
     {
       if (free_ and data_ != nullptr ) {
-        delete[] data_;  // we HAD ownership
-        counter_free(capacity_);
+          if(use_pool) {
+
+              pool.release( { data_, capacity_} );
+          }
+          else {
+              delete[] data_;  // we HAD ownership
+              counter_free(capacity_);
+          }
       }
   
       capacity_ = x.capacity_;
       
       if(x.free_) {
-        data_ = new unsigned char[x.capacity_];
-        counter_alloc(x.capacity_);
-        
+
+          if(use_pool) {
+              mem_chunk_t mch = pool.acquire(x.capacity_);
+              data_ = mch.ptr;
+              capacity_  = mch.capacity;
+          }
+          else {
+              data_ = new unsigned char[x.capacity_];
+              counter_alloc(x.capacity_);
+          }
         free_ = true; 
       } else {
         data_ = x.data_;
@@ -341,12 +531,24 @@ inline void buffer::assign (const void* d, size_type s)
   if (s > capacity_)
   {
     if (free_ && data_ != nullptr) {
-      delete[] data_;
-      counter_free(capacity_);
+        if(use_pool) {
+            pool.release( { data_, capacity_ } );
+        } else {
+            delete[] data_;
+            counter_free(capacity_);
+        }
     }
 
-    data_ = new unsigned char[s];
-    counter_alloc(s);
+    if(use_pool) {
+        mem_chunk_t mch = pool.acquire(s);
+
+        data_ = mch.ptr;
+        capacity_ = mch.capacity;
+    }
+    else {
+        data_ = new unsigned char[s];
+        counter_alloc(s);
+    }
 
     capacity_ = s;
     free_ = true;
@@ -361,8 +563,14 @@ inline void buffer::assign (const void* d, size_type s)
 inline void buffer::assign (void* d, size_type s, size_type c, bool own)
 {
   if (free_ && data_ != nullptr) {
-    delete[] data_;
-    counter_free(capacity_);
+
+      if(use_pool) {
+          pool.release( { data_, capacity_ } );
+      }
+      else {
+          delete[] data_;
+          counter_free(capacity_);
+      }
   }
 
   data_ = static_cast<unsigned char*> (d);
@@ -370,7 +578,7 @@ inline void buffer::assign (void* d, size_type s, size_type c, bool own)
   capacity_ = c;
   free_ = own;
   
-  if(own)
+  if(own && !use_pool)
       counter_alloc(c);
 }
 
@@ -408,15 +616,17 @@ inline buffer::size_type buffer::size () const
   return size_;
 }
 
-inline bool buffer::size (size_type s)
+inline bool buffer::size(size_type s)
 {
-  bool r (false);
+    bool r = false;
 
-  if (capacity_ < s)
-    r = capacity (s);
+    if (capacity_ < s) {
+        // resize buffer
+        r = capacity (s);
+    }
 
-  size_ = s;
-  return r;
+    size_ = s;
+    return r;
 }
 
 inline buffer::size_type buffer::capacity () const
@@ -431,24 +641,47 @@ inline bool buffer::capacity (size_type c)
   if (capacity_ >= c)
     return false;
 
-  unsigned char* d (new unsigned char[c]);
+  unsigned char* d = nullptr;
+  size_type cd = 0;
 
-  if(d == nullptr) {
-      return false;
+  if(use_pool) {
+
+      mem_chunk_t mch = pool.acquire(c);
+      d = mch.ptr;
+      cd = mch.capacity;
   }
-  counter_alloc(c);
+  else {
+      d = (new unsigned char[c]);
+
+      if (d == nullptr) {
+          return false;
+      } else {
+          counter_alloc(c);
+      }
+  }
 
   if (size_ != 0)
     std::memcpy (d, data_, size_);
 
   if (free_ && data_ != nullptr)  {
-    delete[] data_;
-    counter_free(capacity_);
+      if(use_pool) {
+          pool.release( { data_, capacity_ } );
+      }
+      else {
+          delete[] data_;
+          counter_free(capacity_);
+      }
   }
 
   data_ = d;
-  capacity_ = c;
-  free_ = true;
+
+    // pool can allocate and set more bytes than requested
+    if(!use_pool) {
+        capacity_ = c;
+    }else {
+        capacity_ = cd;
+    }
+    free_ = true;
 
   return true;
 }

@@ -1,9 +1,24 @@
 #include <buffer.hpp>
 
-long long buffer::alloc_bytes = 0;
-long long buffer::alloc_count = 0;
-long long buffer::free_bytes = 0;
-long long buffer::free_count = 0;
+unsigned long long buffer::alloc_bytes = 0;
+unsigned long long buffer::alloc_count = 0;
+unsigned long long buffer::free_bytes = 0;
+unsigned long long buffer::free_count = 0;
+
+memPool buffer::pool(5000,1000,10000,1000,800);
+bool    buffer::use_pool = false;
+
+unsigned long long memPool::stat_acq = 0;
+unsigned long long memPool::stat_acq_size = 0;
+
+unsigned long long memPool::stat_ret = 0;
+unsigned long long memPool::stat_ret_size = 0;
+
+unsigned long long memPool::stat_alloc = 0;
+unsigned long long memPool::stat_alloc_size = 0;
+
+unsigned long long memPool::stat_free = 0;
+unsigned long long memPool::stat_free_size = 0;
 
 #ifdef SOCLE_MEM_PROFILE  
 std::unordered_map<std::string,int> buffer::alloc_map;
@@ -22,8 +37,8 @@ std::mutex buffer::alloc_map_lock_;
 
 // in proxying scenarios, unless you buffer whole message, you can't know this value, and if you do, you can't 
 // change it, based on replace result.
-// For this purpose this function exists. It replaces all occurences using std::regex_replace. But if the result is shorter,
-// yet another attempt is performed, one by one ocurrence replacement. 
+// For this purpose this function exists. It replaces all occurrences using std::regex_replace. But if the result is shorter,
+// yet another attempt is performed, one by one occurrence replacement.
 // If the last replacement is performed (and content is shorter), last replacement string is suffixed with str_fill_pattern to match original 
 // size.
 // If pattern contains more than one character, resulting buffer could be larger. 
