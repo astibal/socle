@@ -6,19 +6,8 @@ unsigned long long buffer::free_bytes = 0;
 unsigned long long buffer::free_count = 0;
 
 memPool buffer::pool(5000,1000,10000,1000,800);
-bool    buffer::use_pool = false;
+bool    buffer::use_pool = true;
 
-unsigned long long memPool::stat_acq = 0;
-unsigned long long memPool::stat_acq_size = 0;
-
-unsigned long long memPool::stat_ret = 0;
-unsigned long long memPool::stat_ret_size = 0;
-
-unsigned long long memPool::stat_alloc = 0;
-unsigned long long memPool::stat_alloc_size = 0;
-
-unsigned long long memPool::stat_free = 0;
-unsigned long long memPool::stat_free_size = 0;
 
 #ifdef SOCLE_MEM_PROFILE  
 std::unordered_map<std::string,int> buffer::alloc_map;
