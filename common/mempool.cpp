@@ -18,6 +18,9 @@
 
 #include <mempool.hpp>
 
+#include <unordered_map>
+#include "buffer.hpp"
+
 unsigned long long memPool::stat_acq = 0;
 unsigned long long memPool::stat_acq_size = 0;
 
@@ -30,11 +33,17 @@ unsigned long long memPool::stat_alloc_size = 0;
 unsigned long long memPool::stat_free = 0;
 unsigned long long memPool::stat_free_size = 0;
 
+std::unordered_map<void*, size_t> ptr_map;
+std::mutex ptr_map_lock;
+
 
 memPool::memPool(std::size_t sz256, std::size_t sz1k, std::size_t sz5k, std::size_t sz10k, std::size_t sz20k):
 sz256(sz256), sz1k(sz1k), sz5k(sz5k), sz10k(sz10k), sz20k(sz20k) {
 
     for(unsigned int i = 0; i < sz256 ; i++) {
+        for (int j = 0; j < 10 ; j++) available_32.push_back( { new unsigned char [32], 32 } );
+        available_64.push_back( { new unsigned char [64], 64 } );
+        available_128.push_back( { new unsigned char [128], 128 } );
         available_256.push_back( { new unsigned char [256], 256 } );
     }
     for(unsigned int i = 0; i < sz1k ; i++) {
@@ -113,7 +122,10 @@ std::vector<mem_chunk_t>* memPool::pick_acq_set(ssize_t s) {
     else if (s >  5 * 1024) return &available_10k;
     else if (s >  1 * 1024) return &available_5k;
     else if (s >       256) return &available_1k;
-    else return &available_256;
+    else if (s >       128) return &available_256;
+    else if (s >       64) return &available_128;
+    else if (s >       32) return &available_64;
+    else return &available_32;
 }
 
 std::vector<mem_chunk_t>* memPool::pick_ret_set(ssize_t s) {
@@ -121,6 +133,88 @@ std::vector<mem_chunk_t>* memPool::pick_ret_set(ssize_t s) {
     else if (s == 10 * 1024) return  available_10k.size() < sz10k ? &available_10k : nullptr;
     else if (s ==  5 * 1024) return  available_5k.size() < sz5k ? &available_5k : nullptr;
     else if (s ==  1 * 1024) return  available_1k.size() < sz1k ? &available_1k : nullptr;
-    else if (s ==       256) return  available_256.size() < sz256? &available_256 : nullptr;
+    else if (s ==       256) return  available_256.size() < sz256 ? &available_256 : nullptr;
+    else if (s ==       128) return  available_128.size() < sz256 ? &available_128 : nullptr;
+    else if (s ==        64) return  available_64.size() < sz256 ? &available_64 : nullptr;
+    else if (s ==        32) return  available_32.size() < 10 * sz256 ? &available_32 : nullptr;
     else return nullptr;
+}
+
+
+void* mempool_alloc(size_t s) {
+
+    if(!buffer::use_pool)
+        return malloc(s);
+
+    mem_chunk_t mch = buffer::pool.acquire(s);
+    std::lock_guard<std::mutex> l(ptr_map_lock);
+
+    ptr_map[mch.ptr] = mch.capacity;
+
+    return mch.ptr;
+}
+
+void* mempool_realloc(void* optr, size_t nsz) {
+
+    if(!buffer::use_pool)
+        return realloc(optr,nsz);
+
+    size_t ptr_size = 0;
+    if(optr) {
+
+        std::lock_guard<std::mutex> l(ptr_map_lock);
+
+        auto i = ptr_map.find(optr);
+        if (i != ptr_map.end()) {
+            ptr_size = (*i).second;
+        }
+
+    }
+    mem_chunk_t old_m = { static_cast<unsigned char*>(optr), ptr_size };
+
+    mem_chunk_t new_m = buffer::pool.acquire(nsz);
+
+    if(!new_m.ptr) {
+
+        buffer::pool.release(old_m);
+        return nullptr;
+    } else {
+
+        if(ptr_size)
+            memcpy(new_m.ptr,optr, nsz <= ptr_size ? nsz : ptr_size);
+
+        buffer::pool.release(old_m);
+
+        std::lock_guard<std::mutex> l(ptr_map_lock);
+        ptr_map[new_m.ptr] = new_m.capacity;
+
+        return static_cast<void*>(new_m.ptr);
+    }
+}
+
+
+void mempool_free(void* optr) {
+
+    std::lock_guard<std::mutex> l(ptr_map_lock);
+
+    size_t ptr_size = 0;
+    auto i = ptr_map.find(optr);
+    if (i != ptr_map.end()) {
+
+        ptr_size = (*i).second;
+        ptr_map.erase(i);
+    }
+
+    buffer::pool.release( {static_cast<unsigned char*>(optr), ptr_size } );
+}
+
+
+void* mempool_alloc(size_t s, const char* src, int line) {
+    return mempool_alloc(s);
+}
+void* mempool_realloc(void* optr, size_t s, const char* src, int line) {
+    return mempool_realloc(optr, s);
+}
+void mempool_free(void* optr, const char* src, int line) {
+    mempool_free(optr);
 }

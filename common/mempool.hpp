@@ -22,11 +22,12 @@
 #include <cstddef>
 #include <vector>
 #include <mutex>
+#include <unordered_map>
 
 #include <display.hpp>
 #include <logger.hpp>
 
-#define MEMPOOL_DEBUG 1
+#define MEMPOOL_DEBUG 0
 
 class buffer;
 
@@ -42,6 +43,9 @@ typedef struct mem_chunk
 class memPool {
 
 public:
+    std::size_t sz32;
+    std::size_t sz64;
+    std::size_t sz128;
     std::size_t sz256;
     std::size_t sz1k;
     std::size_t sz5k;
@@ -56,6 +60,9 @@ public:
     std::vector<mem_chunk_t>* pick_acq_set(ssize_t s);
     std::vector<mem_chunk_t>* pick_ret_set(ssize_t s);
 
+    std::vector<mem_chunk_t> available_32;
+    std::vector<mem_chunk_t> available_64;
+    std::vector<mem_chunk_t> available_128;
     std::vector<mem_chunk_t> available_256;
     std::vector<mem_chunk_t> available_1k;
     std::vector<mem_chunk_t> available_5k;
@@ -78,6 +85,22 @@ public:
 
     std::mutex lock;
 };
+
+
+// hashmap of pointer sizes (for mempool_* functions)
+//
+extern std::unordered_map<void*, size_t> ptr_map;
+extern std::mutex ptr_map_lock;
+
+void* mempool_alloc(size_t);
+void* mempool_realloc(void*, size_t);
+void  mempool_free(void*);
+
+
+// wrapper functions for compatibility with openssl malloc hooks (see CRYPTO_set_mem_functions)
+void* mempool_alloc(size_t, const char*, int);
+void* mempool_realloc(void*, size_t, const char*, int);
+void mempool_free(void*, const char*, int);
 
 
 #endif //__MEMPOOL_HPP__
