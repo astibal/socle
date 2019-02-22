@@ -82,6 +82,8 @@ public:
     static unsigned long long stat_free;
     static unsigned long long stat_free_size;
 
+    static unsigned long long stat_out_free;
+    static unsigned long long stat_out_free_size;
 
     std::mutex lock;
 };
@@ -89,8 +91,8 @@ public:
 
 // hashmap of pointer sizes (for mempool_* functions)
 //
-extern std::unordered_map<void*, size_t> ptr_map;
-extern std::mutex ptr_map_lock;
+extern std::unordered_map<void*, size_t> mempool_ptr_map;
+extern std::mutex mempool_ptr_map_lock;
 
 void* mempool_alloc(size_t);
 void* mempool_realloc(void*, size_t);
@@ -102,5 +104,17 @@ void* mempool_alloc(size_t, const char*, int);
 void* mempool_realloc(void*, size_t, const char*, int);
 void mempool_free(void*, const char*, int);
 
+extern unsigned long long stat_mempool_alloc;
+
+extern unsigned long long stat_mempool_realloc;
+extern unsigned long long stat_mempool_realloc_miss;
+extern unsigned long long stat_mempool_realloc_fitting;
+
+extern unsigned long long stat_mempool_free;
+extern unsigned long long stat_mempool_free_miss;
+
+extern unsigned long long stat_mempool_alloc_size;
+extern unsigned long long stat_mempool_realloc_size;
+extern unsigned long long stat_mempool_free_size;
 
 #endif //__MEMPOOL_HPP__

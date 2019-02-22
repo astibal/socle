@@ -33,8 +33,22 @@ unsigned long long memPool::stat_alloc_size = 0;
 unsigned long long memPool::stat_free = 0;
 unsigned long long memPool::stat_free_size = 0;
 
-std::unordered_map<void*, size_t> ptr_map;
-std::mutex ptr_map_lock;
+unsigned long long memPool::stat_out_free = 0;
+unsigned long long memPool::stat_out_free_size = 0;
+
+unsigned long long stat_mempool_alloc = 0;
+unsigned long long stat_mempool_realloc = 0;
+unsigned long long stat_mempool_realloc_miss = 0;
+unsigned long long stat_mempool_realloc_fitting = 0;
+unsigned long long stat_mempool_free = 0;
+unsigned long long stat_mempool_free_miss = 0;
+
+unsigned long long stat_mempool_alloc_size = 0;
+unsigned long long stat_mempool_realloc_size = 0;
+unsigned long long stat_mempool_free_size = 0;
+
+std::unordered_map<void*, size_t> mempool_ptr_map;
+std::mutex mempool_ptr_map_lock;
 
 
 memPool::memPool(std::size_t sz256, std::size_t sz1k, std::size_t sz5k, std::size_t sz10k, std::size_t sz20k):
@@ -101,18 +115,18 @@ void memPool::release(mem_chunk_t to_ret){
 
     std::vector<mem_chunk_t>* mem_pool = pick_ret_set(to_ret.capacity);
 
+
     if(!mem_pool) {
-        stat_free++;
-        stat_free_size += to_ret.capacity;
+        stat_out_free++;
+        stat_out_free_size += to_ret.capacity;
 
         delete[] to_ret.ptr;
     } else {
+        stat_ret++;
+        stat_ret_size += to_ret.capacity;
 
         std::lock_guard<std::mutex> g(lock);
         mem_pool->push_back(to_ret);
-
-        stat_ret++;
-        stat_ret_size += to_ret.capacity;
     }
 }
 
@@ -147,9 +161,12 @@ void* mempool_alloc(size_t s) {
         return malloc(s);
 
     mem_chunk_t mch = buffer::pool.acquire(s);
-    std::lock_guard<std::mutex> l(ptr_map_lock);
+    std::lock_guard<std::mutex> l(mempool_ptr_map_lock);
 
-    ptr_map[mch.ptr] = mch.capacity;
+    mempool_ptr_map[mch.ptr] = mch.capacity;
+
+    stat_mempool_alloc++;
+    stat_mempool_alloc_size += s;
 
     return mch.ptr;
 }
@@ -162,21 +179,38 @@ void* mempool_realloc(void* optr, size_t nsz) {
     size_t ptr_size = 0;
     if(optr) {
 
-        std::lock_guard<std::mutex> l(ptr_map_lock);
+        std::lock_guard<std::mutex> l(mempool_ptr_map_lock);
 
-        auto i = ptr_map.find(optr);
-        if (i != ptr_map.end()) {
+        auto i = mempool_ptr_map.find(optr);
+        if (i != mempool_ptr_map.end()) {
             ptr_size = (*i).second;
+        } else {
+            stat_mempool_realloc_miss++;
         }
 
     }
     mem_chunk_t old_m = { static_cast<unsigned char*>(optr), ptr_size };
+
+    // if realloc asks for actually already fitting size, return old one
+    if(ptr_size >= nsz) {
+        stat_mempool_realloc_fitting++;
+        return optr;
+    }
 
     mem_chunk_t new_m = buffer::pool.acquire(nsz);
 
     if(!new_m.ptr) {
 
         buffer::pool.release(old_m);
+        std::lock_guard<std::mutex> l(mempool_ptr_map_lock);
+
+        auto i = mempool_ptr_map.find(optr);
+        if (i != mempool_ptr_map.end()) {
+            mempool_ptr_map.erase(i);
+        } else {
+            stat_mempool_realloc_miss++;
+        }
+
         return nullptr;
     } else {
 
@@ -185,8 +219,13 @@ void* mempool_realloc(void* optr, size_t nsz) {
 
         buffer::pool.release(old_m);
 
-        std::lock_guard<std::mutex> l(ptr_map_lock);
-        ptr_map[new_m.ptr] = new_m.capacity;
+        {
+            std::lock_guard<std::mutex> l(mempool_ptr_map_lock);
+            mempool_ptr_map[new_m.ptr] = new_m.capacity;
+        }
+
+        stat_mempool_realloc++;
+        stat_mempool_realloc += (new_m.capacity - old_m.capacity);
 
         return static_cast<void*>(new_m.ptr);
     }
@@ -195,15 +234,20 @@ void* mempool_realloc(void* optr, size_t nsz) {
 
 void mempool_free(void* optr) {
 
-    std::lock_guard<std::mutex> l(ptr_map_lock);
+    std::lock_guard<std::mutex> l(mempool_ptr_map_lock);
 
     size_t ptr_size = 0;
-    auto i = ptr_map.find(optr);
-    if (i != ptr_map.end()) {
+    auto i = mempool_ptr_map.find(optr);
+    if (i != mempool_ptr_map.end()) {
 
         ptr_size = (*i).second;
-        ptr_map.erase(i);
+        mempool_ptr_map.erase(i);
+    } else {
+        stat_mempool_free_miss++;
     }
+
+    stat_mempool_free++;
+    stat_mempool_free_size += ptr_size;
 
     buffer::pool.release( {static_cast<unsigned char*>(optr), ptr_size } );
 }
