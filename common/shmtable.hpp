@@ -55,12 +55,12 @@ public:
       
       return bh->version;
   }
-  int header_version() { return cur_data_header.version; }
-  int header_entries() { return cur_data_header.entries; }
-  int header_rowsize() { return cur_data_header.row_size; }
+  unsigned int header_version() { return cur_data_header.version; }
+  unsigned int header_entries() { return cur_data_header.entries; }
+  unsigned int header_rowsize() { return cur_data_header.row_size; }
   void reset_seen_version() { seen_version_ = 0; }
-  int seen_version()   { return seen_version_; } 
-  void seen_version(int i)   { seen_version_ = i; } 
+  unsigned int seen_version()   { return seen_version_; }
+  void seen_version(unsigned int i)   { seen_version_ = i; }
   
   std::vector<RowType>& entries() { return entries_; }
 
@@ -82,7 +82,7 @@ public:
 //             printf("version %d: entries %d row_size: %d\n",header_version(), header_entries(),header_rowsize());
 
             unsigned char* records = &data()[sizeof(struct shared_table_header)];
-            for (int n = 0 ; n < header_entries() ; n++) {
+            for (unsigned int n = 0 ; n < header_entries() ; n++) {
                 RowType rec;
                 int sz = rec.load(records);
                 //printf("%s: %16s \t groups: %s\n",inet_ntoa(*(in_addr*)rec->ip),rec->username,rec->groups);
@@ -108,12 +108,13 @@ public:
       if(increase_version) {
           seen_version(seen_version()+1);
           cur_data_header.version++;
-          cur_data_header.entries = entries().size();
-          
-          if(n_entries >= 0) {
-              cur_data_header.entries = n_entries;
-          }
       }
+      cur_data_header.entries = entries().size();
+
+      if(n_entries >= 0) {
+          cur_data_header.entries = n_entries;
+      }
+      cur_data_header.row_size = RowType::record_size();
       memcpy(data(),&cur_data_header,sizeof(struct shared_table_header));
      
       return sizeof(shared_table_header);
@@ -151,12 +152,12 @@ public:
   
   
 protected:
-    int version = 0;
-    int header_size = 0;
-    int row_size = 0;
+    unsigned int version = 0;
+    unsigned int header_size = 0;
+    unsigned int row_size = 0;
 
     std::vector<RowType> entries_;
-    int seen_version_ = 0;
+    unsigned int seen_version_ = 0;
     
 private:
     shared_table_header cur_data_header;
