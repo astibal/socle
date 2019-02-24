@@ -29,6 +29,12 @@
 #include <arpa/inet.h>
 #include <unistd.h>
 
+
+// logger.hpp -- this file defines WAR_ and other logging macros.
+// if you want to use this file alone, just replace WAR_ (and possibly others) with printf-like function
+// of your choice.
+#include <logger.hpp>
+
 #include <string>
 
 class shared_buffer {
@@ -69,11 +75,11 @@ public:
         
         semaphore = sem_open(semaphore_name.c_str(),O_RDWR,0600);
         if(semaphore == nullptr) {
-            printf("Getting a handle to the semaphore failed; errno is %d\n", errno);
+            WAR_("Getting a handle to the semaphore failed; errno is %d\n", errno);
             if(create_on_error) {
                 semaphore = sem_open(semaphore_name.c_str(),O_CREAT | O_RDWR,0600);
                 if(semaphore == nullptr) {
-                    printf("Failed to create semaphore as a fallback; errno is %d\n", errno);
+                    WAR_("Failed to create semaphore as a fallback; errno is %d\n", errno);
                     goto fail;
                 }
             } else {
@@ -83,11 +89,11 @@ public:
         
         memory_fd = shm_open(memory_name.c_str(), O_RDWR, 0600);
         if(memory_fd  == -1) {
-            printf("Couldn't get a handle to the shared memory; errno is %d\n", errno);
+            WAR_("Couldn't get a handle to the shared memory; errno is %d\n", errno);
             if(create_on_error) {
                 memory_fd = shm_open(memory_name.c_str(), O_CREAT | O_RDWR, 0600);
                 if(memory_fd == -1) {
-                    printf("Failed to create new memory object; errno is %d\n", errno);
+                    WAR_("Failed to create new memory object; errno is %d\n", errno);
                     goto fail;
                 }
             } else {
@@ -97,7 +103,7 @@ public:
         
         shared_memory = (unsigned char*)mmap((void *)0, memory_size, PROT_READ | PROT_WRITE, MAP_SHARED, memory_fd, 0);
         if (shared_memory == MAP_FAILED) {
-            printf("MMapping the shared memory failed; errno is %d\n", errno);
+            WAR_("MMapping the shared memory failed; errno is %d\n", errno);
             goto fail;
         }
         
@@ -119,20 +125,20 @@ public:
         
         int rc = munmap(data_, (size_t)capacity_);
         if (rc) {
-            printf("Unmapping the memory failed; errno is %d\n", errno);
+            WAR_("Unmapping the memory failed; errno is %d\n", errno);
             ret = false;
         }        
         
         if(memory_fd > 0) {
             if (close(memory_fd) == -1) {
-                printf("Closing memory's file descriptor failed; errno is %d\n", errno);
+                WAR_("Closing memory's file descriptor failed; errno is %d\n", errno);
                 ret = false;
             }
         }
         
         rc = sem_close(semaphore);
         if (rc) {
-            printf("Closing the semaphore failed; errno is %d\n", errno);
+            WAR_("Closing the semaphore failed; errno is %d\n", errno);
             ret = false;
         }            
         
@@ -144,7 +150,7 @@ public:
     int release() {
         int rc = sem_post(semaphore);
         if(rc) {
-            printf("Releasing the semaphore failed; errno is %d\n", errno);
+            WAR_("Releasing the semaphore failed; errno is %d\n", errno);
         }
         
         return rc;
@@ -154,7 +160,7 @@ public:
         int rc = sem_wait(semaphore);
 
         if(rc) {
-            printf("Acquiring the semaphore failed; errno is %d\n", errno);
+            WAR_("Acquiring the semaphore failed; errno is %d\n", errno);
         }
         
         return rc;
