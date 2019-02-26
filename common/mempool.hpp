@@ -24,19 +24,76 @@
 #include <mutex>
 #include <unordered_map>
 
+#include <execinfo.h>
+
 #include <display.hpp>
 #include <logger.hpp>
 
-#define MEMPOOL_DEBUG 0
+#define MEMPOOL_DEBUG
 
 class buffer;
 
 typedef struct mem_chunk
 {
+    mem_chunk(): ptr(nullptr), capacity(0) {};
+    mem_chunk(std::size_t s): capacity(s) { ptr = new unsigned char[s]; };
     mem_chunk(unsigned char* p, std::size_t c): ptr(p), capacity(c) {};
 
     unsigned char* ptr;
     std::size_t  capacity;
+    bool in_pool = false; // set this flag to indicate if the allocation is in pool => allocated, but not used.
+
+    static const bool trace_enabled;
+#ifdef MEMPOOL_DEBUG
+
+    #define MEM_CHUNK_TRACE_SZ 64
+
+    void* trace[MEM_CHUNK_TRACE_SZ];
+    int trace_size = 0;                 // number of elements (void* pointers) in the trace list
+    uint32_t mark = 0;                  // useful for filtering purposes.
+
+    inline void clear_trace() { memset(trace, 0 , MEM_CHUNK_TRACE_SZ*sizeof(void*)); trace_size = 0; mark = 0; }
+    inline void set_trace() { clear_trace(); trace_size = backtrace(trace, MEM_CHUNK_TRACE_SZ); };
+    #ifndef LIBC_MUSL
+    std::string str_trace() {
+
+        std::string ret;
+        char **strings;
+
+        strings = backtrace_symbols( trace, trace_size );
+
+        if (strings == nullptr) {
+            ret += "failure: backtrace_symbols";
+            return  ret;
+        }
+
+
+        for( int i = 0; i < trace_size; i++ ) {
+            ret += "\n";
+            ret += strings[i];
+        }
+        delete[] strings;
+
+        return ret;
+    };
+    std::string simple_trace() {
+        std::string ret;
+        for( int i = 0; i < trace_size; i++ ) {
+            ret += string_format("0x%x ", trace[i]);
+        }
+        return ret;
+    };
+
+    #else //LIBC_MUSL
+    std:string str_trace() {
+        return simple_trace();
+    };
+    #endif
+#else
+    inline void clear_trace() {};
+    inline void set_trace() {};
+#endif
+
 } mem_chunk_t;
 
 
@@ -91,7 +148,7 @@ public:
 
 // hashmap of pointer sizes (for mempool_* functions)
 //
-extern std::unordered_map<void*, size_t> mempool_ptr_map;
+extern std::unordered_map<void*, mem_chunk> mempool_ptr_map;
 extern std::mutex mempool_ptr_map_lock;
 
 void* mempool_alloc(size_t);
