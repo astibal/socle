@@ -243,6 +243,7 @@ int ocsp_check_cert(X509 *x509, X509 *issuer, int req_timeout)
             OPENSSL_free(path);
             OPENSSL_free(port);
         }
+        sk_OCSP_CERTID_free(ids);
         X509_email_free(ocsp_list);
         OCSP_REQUEST_free(req);
     }
