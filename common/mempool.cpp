@@ -30,9 +30,6 @@ unsigned long long memPool::stat_ret_size = 0;
 unsigned long long memPool::stat_alloc = 0;
 unsigned long long memPool::stat_alloc_size = 0;
 
-unsigned long long memPool::stat_free = 0;
-unsigned long long memPool::stat_free_size = 0;
-
 unsigned long long memPool::stat_out_free = 0;
 unsigned long long memPool::stat_out_free_size = 0;
 
