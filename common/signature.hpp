@@ -227,7 +227,8 @@ class flowMatch {
     
 public:
     std::string& name() { return name_; }
-   
+
+    const std::vector<std::pair<SourceType,baseMatch*>>& sig_chain() const { return signature_; }
 protected:    
     std::string name_;                                                         
     std::vector<std::pair<SourceType,baseMatch*>>  signature_;                // series of L/R/X matches to be satisfied
