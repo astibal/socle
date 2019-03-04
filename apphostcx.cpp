@@ -238,7 +238,7 @@ void AppHostCX::pre_read() {
                   this->next_read_limit(0);
                 }
                 // TCP
-                else if(l >= b.capacity()) {
+                else if(l >= (int)b.capacity()) {
                     DIA_("AppHostCX::pre_read[%s]: pre_read at max. buffer capacity %d",c_name(),b.capacity());
                 }
             }
