@@ -542,3 +542,13 @@ std::string string_trim(const std::string& orig) {
     
     return ret;
 }
+
+std::string&& string_tolower(const std::string& orig) {
+    std::string r;
+
+    for(char c: orig) {
+        r += tolower((int)c);
+    }
+
+    return std::move(r);
+}
