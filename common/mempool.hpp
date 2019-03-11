@@ -29,7 +29,7 @@
 #include <display.hpp>
 #include <logger.hpp>
 
-#define MEMPOOL_DEBUG
+//#define MEMPOOL_DEBUG
 
 class buffer;
 
