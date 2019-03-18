@@ -252,6 +252,8 @@ public:
     inline void remove_socket() { fds_ = 0; closing_fds_ = 0; };
     
 	int socket() const { return fds_; };
+	int real_socket() const { if(com_) { return com_->translate_socket(fds_); } return socket(); }
+
     bool is_connected();
     int closed_socket() const { return closing_fds_; };
 	
