@@ -183,20 +183,20 @@ protected:
     
 public:
     
-    baseCom* com() { return com_; }
+    baseCom* com() const { return com_; }
     inline void com(baseCom* c) { com_ = c; if(c != nullptr) {  com_->init(this); } else { DIAS_("baseHostCX:com: setting com_ to nullptr"); } };
 
     
-    bool readable() { return com()->readable(socket());};
-    bool writable() { return com()->writable(socket());};
+    bool readable() const { return com()->readable(socket()); };
+    bool writable() const { return com()->writable(socket()); };
     
     baseHostCX* peer_ = nullptr;
-    baseHostCX* peer() { return peer_; } 
+    baseHostCX* peer() const { return peer_; }
     // set both levels of peering: cx and com
     void peer(baseHostCX* p) { peer_ = p; com()->peer_ = peer()->com(); }
-    baseCom* peercom() { if(peer()) { return peer()->com(); } return nullptr; }
+    baseCom* peercom() const { if(peer()) { return peer()->com(); } return nullptr; }
     
-    inline std::string& log() { return com()->log_buffer_; };    
+    inline std::string& log() { return com()->log_buffer_; };
 public:
 	/* meters */
 	unsigned int meter_read_count;
