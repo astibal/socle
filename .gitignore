@@ -1,0 +1,7 @@
+.kdev4/*
+build/**
+.idea/**
+.vscode/**
+socle.kdev4
+**/*.pyc
+**/*.deb
