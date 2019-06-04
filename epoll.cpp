@@ -567,3 +567,52 @@ void epoller::set_handler(int check, epoll_handler* h) {
     }
     
 }
+
+void socket_state::update(int s) {
+
+    if( com_ && socket_ != 0 && state_ > SS_NONE ) {
+        switch(s) {
+            case socket_state::SS_CLOSING:
+                // close, unhandle
+                state_ = SS_NONE;
+                // at any rate, we got all we need. Unmonitor, unhandle and close socket
+                com_->unset_monitor(socket_);
+                com_->set_poll_handler(socket_ ,nullptr);
+
+                if(owner_) {
+                    ::close(socket_);
+                    socket_ = 0;
+                }
+                break;
+
+            case socket_state::SS_OPENING:
+                // set handler
+
+                com_->set_monitor(socket_);
+                com_->set_poll_handler(socket_, handler_);
+
+                com_->set_idle_watch(socket_);
+                break;
+
+            default:
+                // socket properties ok, but state is unknown => change the value at least
+                state_ = s;
+        }
+    } else {
+        // if there is no specific state handler switch, change at least
+
+        state_ = s;
+    }
+
+};
+
+
+socket_state::~socket_state() {
+
+    // try to behave and at least close file descriptor.
+    // we don't want to run closing() within destructor, too unsafe.
+
+    if(owner_ && socket_ > 0) {
+        ::close(socket_);
+    }
+}

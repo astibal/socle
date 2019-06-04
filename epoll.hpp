@@ -180,4 +180,23 @@ protected:
     
 };
 
+struct socket_state {
+
+    int socket_;
+    epoll_handler *handler_;
+    baseCom *com_;
+    int state_;
+    enum { SS_NONE = -1, SS_CLOSING = 0, SS_OPENING = 1 };
+    bool owner_ = true;
+
+    explicit socket_state(int s, epoll_handler *h, baseCom *com, bool owner) :
+        socket_(s), handler_(h), com_(com), state_(socket_state::SS_NONE), owner_(owner) {};
+    virtual ~socket_state();
+
+    virtual void update (int s);
+    inline void opening() { update(socket_state::SS_OPENING); };
+    inline void closing() { update(socket_state::SS_CLOSING); }
+    inline const int state() const { return state_; };
+};
+
 #endif //EPOLL_HPP
