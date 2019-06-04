@@ -1105,8 +1105,8 @@ int baseProxy::run(void) {
                 
                 //INFS___("adding virtual sockets");
                 {
-                std::lock_guard<std::recursive_mutex>(uc->lock);
-                udp_in_set = uc->in_virt_set;
+                    std::lock_guard<std::recursive_mutex> m(uc->lock);
+                    udp_in_set = uc->in_virt_set;
                 }
                 
                 sets.push_back(&udp_in_set);
