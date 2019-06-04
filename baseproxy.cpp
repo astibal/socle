@@ -1130,6 +1130,12 @@ int baseProxy::run(void) {
                             counter_fence_fail++;
 
                         } else {
+
+                            // Try if handler is a proxy object. If so, call different method.
+                            // This design is intentional, to separate meaning of "handling socket"
+                            // by proxy (which might be killed and terminated)
+                            // and generic "event handler".
+
                             baseProxy* proxy = dynamic_cast<baseProxy*>(p_handler);
                             if(proxy != nullptr) {
                                 EXT___("baseProxy::run: socket %d has baseProxy handler!!",s);
