@@ -189,9 +189,17 @@ struct socket_state {
     enum { SS_NONE = -1, SS_CLOSING = 0, SS_OPENING = 1 };
     bool owner_ = true;
 
-    explicit socket_state(int s, epoll_handler *h, baseCom *com, bool owner) :
+    socket_state() : socket_(0), handler_(nullptr), com_(nullptr), state_(socket_state::SS_NONE), owner_(true) {};
+    socket_state(int s, epoll_handler *h, baseCom *com, bool owner) :
         socket_(s), handler_(h), com_(com), state_(socket_state::SS_NONE), owner_(owner) {};
     virtual ~socket_state();
+
+    void set(int s, epoll_handler *h, baseCom *com, bool owner=true) {
+        socket_ = s;
+        handler_ = h;
+        com_ = com;
+        owner_ = owner;
+    }
 
     virtual void update (int s);
     inline void opening() { update(socket_state::SS_OPENING); };

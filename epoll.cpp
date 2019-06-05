@@ -570,11 +570,10 @@ void epoller::set_handler(int check, epoll_handler* h) {
 
 void socket_state::update(int s) {
 
-    if( com_ && socket_ != 0 && state_ > SS_NONE ) {
+    if( com_ && socket_ != 0) {
         switch(s) {
             case socket_state::SS_CLOSING:
                 // close, unhandle
-                state_ = SS_NONE;
                 // at any rate, we got all we need. Unmonitor, unhandle and close socket
                 com_->unset_monitor(socket_);
                 com_->set_poll_handler(socket_ ,nullptr);
@@ -583,6 +582,8 @@ void socket_state::update(int s) {
                     ::close(socket_);
                     socket_ = 0;
                 }
+
+                state_ = SS_NONE;
                 break;
 
             case socket_state::SS_OPENING:
