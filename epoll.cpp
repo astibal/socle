@@ -608,6 +608,25 @@ void socket_state::update(int s) {
 };
 
 
+void socket_state::mon_read() {
+    if(com_ && socket_ != 0) {
+        com_->master()->change_monitor(socket_, EPOLLIN);
+    }
+
+}
+void socket_state::mon_write() {
+    if(com_ && socket_ != 0) {
+        com_->master()->change_monitor(socket_, EPOLLOUT);
+    }
+}
+
+void socket_state::mon_none() {
+    if(com_ && socket_ != 0) {
+        com_->master()->unset_monitor(socket_);
+    }
+}
+
+
 socket_state::~socket_state() {
 
     // try to behave and at least close file descriptor.

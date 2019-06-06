@@ -32,6 +32,7 @@
 #include <string>
 #include <vector>
 #include <buffer.hpp>
+#include <epoll.hpp>
 
 
 std::string fingerprint(X509* cert);
@@ -50,5 +51,85 @@ X509_CRL *new_CRL(const char* cert_bytes);
 X509_CRL *new_CRL(buffer& b);
 int crl_verify_trust(X509 *x509, X509* issuer, X509_CRL *crl_file, const std::string& cacerts_pem_path);
 int crl_is_revoked_by(X509 *x509, X509 *issuer, X509_CRL *crl_file);
+
+/*
+ * Non-blocking, stateful OCSP responder
+ *
+ * */
+class OcspQuery {
+
+    // socket state structure used together with event_handlers
+    socket_state socket;
+
+    // OCSP connection BIO
+    BIO* conn_bio = nullptr;
+
+    // certificate and issuer to check
+    X509* cert_check = nullptr;
+    X509* cert_issuer = nullptr;
+
+
+    // OCSP request structures
+    OCSP_REQUEST *ocsp_req = nullptr;
+    STACK_OF(OCSP_CERTID) *ocsp_req_ids = nullptr;
+
+    // OCSP response structures
+    OCSP_REQ_CTX *ocsp_req_ctx = nullptr;
+    OCSP_RESPONSE *ocsp_resp = nullptr;
+
+
+    // list of OCSP servers destilled from certificate - tuples<host, port, path, ssl>
+    std::vector<std::tuple<std::string, std::string, std::string, bool>> ocsp_targets;
+
+    // currently used ocsp_target index
+    int ocsp_target_index = -1;
+
+    // if retry flag is set, already created connection bio will be used to establish connection
+    bool ocsp_target_retry = false;
+
+    // currently used OCSP server (full list in tuple vector 'ocsp_targes').
+    std::string ocsp_host;
+    std::string ocsp_port;
+    std::string ocsp_path;
+    bool         ocsp_ssl;
+
+public:
+
+    // state machine ... states
+    enum { ST_INIT=1000, ST_CONNECTING, ST_CONNECTED, ST_REQ_INPROGRESS, ST_RESP_RECEIVED, ST_FINISHED, ST_CLOSED };
+    int state_ = OcspQuery::ST_INIT;
+
+    //
+    enum { RET_CONNFAIL=-127, RET_UNKNOWN=-1, RET_REVOKED=0,  RET_VALID=1, RET_UNKNOWNSTATUS=2, RET_NOOCSP_TARGETS };
+    int yield_ = RET_UNKNOWN;
+
+    inline const socket_state& io() const { return socket; }
+    OcspQuery(X509* cert, X509* issuer): cert_check(cert), cert_issuer(issuer) {};
+
+    // parse cert and find useful fields -> copy to internal structures
+    void parse_cert();
+
+    // non-blocking run, until returns false
+    bool run();
+
+    virtual ~OcspQuery();
+
+
+    // functions called in run() state machine
+    // return status if successful. False means usually you should check yield_ and state_ and re-run if needed.
+
+    // initialize
+    bool do_init();
+
+
+    // connect to responder -- Might be called multiple times if needed or if the operation would block.
+    bool do_connect();
+
+    // send request -- Might be called multiple times if needed or if the operation would block.
+    bool do_send_request();
+
+    // proces received response
+    bool do_process_response();
+};
 
 #endif

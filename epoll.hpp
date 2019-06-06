@@ -203,7 +203,12 @@ struct socket_state {
 
     virtual void update (int s);
     inline void opening() { update(socket_state::SS_OPENING); };
-    inline void closing() { update(socket_state::SS_CLOSING); }
+    inline void closing() { update(socket_state::SS_CLOSING); };
+
+    void mon_write();
+    void mon_read();
+    void mon_none();
+
     inline const int state() const { return state_; };
 };
 

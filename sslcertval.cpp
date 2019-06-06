@@ -22,6 +22,7 @@
 #include <sslcertstore.hpp>
 #include <logger.hpp>
 #include <buffer.hpp>
+#include <socle.hpp>
 
 std::vector<std::string> ocsp_urls(X509 *x509)
 {
@@ -219,8 +220,8 @@ int ocsp_check_cert(X509 *x509, X509 *issuer, int req_timeout)
         {
             char *host = NULL, *port = NULL, *path = NULL; 
             int use_ssl;
-            std::string ocsp_url0 = std::string( sk_OPENSSL_STRING_value(ocsp_list, j) );
- 
+            //std::string ocsp_url0 = std::string( sk_OPENSSL_STRING_value(ocsp_list, j) );
+
             char *ocsp_url = sk_OPENSSL_STRING_value(ocsp_list, j);
             if (OCSP_parse_url(ocsp_url, &host, &port, &path, &use_ssl) && !use_ssl)
             {
@@ -454,3 +455,240 @@ X509_CRL *new_CRL_from_file(const char* crl_filename)
 }
 
 
+OcspQuery::~OcspQuery() {
+    if(conn_bio)
+        BIO_free_all(conn_bio);
+
+    if(ocsp_req)
+        OCSP_REQUEST_free(ocsp_req);
+
+    if(ocsp_req_ids)
+        sk_OCSP_CERTID_free(ocsp_req_ids);
+
+    if (ocsp_req_ctx)
+        OCSP_REQ_CTX_free(ocsp_req_ctx);
+
+}
+
+void OcspQuery::parse_cert() {
+
+    STACK_OF(OPENSSL_STRING) *ocsp_list = X509_get1_ocsp(cert_check);
+    for (int j = 0; j < sk_OPENSSL_STRING_num(ocsp_list); j++) {
+
+        char *host = nullptr;
+        char *port = nullptr;
+        char *path = nullptr;
+        int use_ssl;
+
+        char *ocsp_url = sk_OPENSSL_STRING_value(ocsp_list, j);
+        if (OCSP_parse_url(ocsp_url, &host, &port, &path, &use_ssl)) {
+            ocsp_targets.push_back( { std::string(host), std::string(port), std::string(path), (use_ssl > 0) } );
+        }
+    }
+
+    X509_email_free(ocsp_list);
+}
+
+
+bool OcspQuery::do_init() {
+    parse_cert();
+
+
+
+    if(ocsp_targets.empty()) {
+        state_ = OcspQuery::ST_FINISHED;
+        yield_ = OcspQuery::RET_NOOCSP_TARGETS;
+        return false;
+    }
+
+    //build ocsp request
+    ocsp_req_ids = sk_OCSP_CERTID_new_null();
+    const EVP_MD *cert_id_md = EVP_sha1();
+    ocsp_prepare_request(&ocsp_req, cert_check, cert_id_md, cert_issuer, ocsp_req_ids);
+
+    return true;
+}
+
+bool OcspQuery::do_connect() {
+
+    bool to_continue = false;
+    int skip = 0;
+
+    // prepare skipping
+    if(ocsp_target_index >= 0) {
+        skip = ocsp_target_index;
+    }
+    //reset index (so it starts at 0 once incremented)
+    ocsp_target_index = -1;
+
+    for(const auto& tup: ocsp_targets) {
+        // count again the index
+        ocsp_target_index++;
+
+        // skip to previous position
+        if(skip > 0) {
+            skip--;
+            continue;
+        }
+
+        // run this only if we are not retrying (initiate conn_bio)
+        if(!ocsp_target_retry) {
+            ocsp_host = std::get<0>(tup);
+            ocsp_port = std::get<1>(tup);
+            ocsp_path = std::get<2>(tup);
+            ocsp_ssl = std::get<3>(tup);
+
+            // free old structure
+            if(conn_bio) { BIO_free_all(conn_bio); }
+
+            conn_bio = BIO_new_connect(ocsp_host.c_str());
+
+            if (conn_bio && !ocsp_ssl) {
+                state_ = OcspQuery::ST_CONNECTING;
+                BIO_set_nbio(conn_bio, 1);
+
+                socket.socket_ = BIO_get_fd(conn_bio, nullptr);
+
+                if (!ocsp_port.empty()) {
+                    BIO_set_conn_port(conn_bio, ocsp_port.c_str());
+                }
+            }
+        }
+        if(conn_bio) {
+            // attempt to connect to this OCSP service
+            if(BIO_do_connect(conn_bio) <= 0) {
+                if(BIO_should_retry(conn_bio)) {
+
+                    ocsp_target_retry = true;
+                    return false;
+
+                } else {
+                    to_continue = true;
+                }
+            } else {
+                // reset retry
+                ocsp_target_retry = false;
+                state_ = OcspQuery::ST_CONNECTED;
+            }
+
+
+        } else {
+           to_continue = true;
+        }
+
+
+        if(!to_continue) {
+            break;
+        }
+    }
+
+    return (state_ == OcspQuery::ST_CONNECTED);
+}
+
+
+bool OcspQuery::do_send_request() {
+    int rv;
+
+    switch(state_) {
+
+        case OcspQuery::ST_CONNECTED:
+
+
+                ocsp_req_ctx = OCSP_sendreq_new(conn_bio, ocsp_path.c_str(), nullptr, -1);
+            if (!ocsp_req_ctx) {
+                goto err;
+            }
+
+            if (!OCSP_REQ_CTX_add1_header(ocsp_req_ctx, "Host", ocsp_host.c_str())) {
+                goto err;
+            }
+
+            if (!OCSP_REQ_CTX_add1_header(ocsp_req_ctx, "User-Agent", string_format("socle/%s", SOCLE_VERSION).c_str())){
+                goto err;
+            }
+
+            if (!OCSP_REQ_CTX_set1_req(ocsp_req_ctx, ocsp_req)){
+                goto err;
+            }
+            // transit to next state
+            state_ = OcspQuery::ST_REQ_INPROGRESS;
+
+        case OcspQuery::ST_REQ_INPROGRESS:
+
+            rv = OCSP_sendreq_nbio(&ocsp_resp, ocsp_req_ctx);
+
+            // operation should be retried
+            if (rv == -1) {
+                if (BIO_should_read(conn_bio))
+                    socket.mon_read();
+                else if (BIO_should_write(conn_bio))
+                    socket.mon_write();
+
+                else {
+                    DIAS_("queryResponder: Unexpected retry condition");
+                    goto err;
+                }
+
+            // operation successful
+            } else if (rv == 1) {
+                state_ = OcspQuery::ST_RESP_RECEIVED; // waiting for response now
+                return true;
+            }
+            // rv == 0, or undefined returned value
+            else {
+                DIAS_("queryResponder: Timeout or error while sending request");
+            }
+    }
+
+    return false;
+
+    err:
+
+    // set state to connecting - try other ocsp host if available.
+    // connect to next ocsp host
+    state_ = OcspQuery::ST_CONNECTING;
+    ocsp_target_index++;
+
+    return false;
+}
+
+bool OcspQuery::do_process_response() {
+
+    if(ocsp_resp) {
+        yield_ = ocsp_parse_response(ocsp_resp);
+        state_ = OcspQuery::ST_FINISHED;
+        return true;
+    }
+
+    return false;
+}
+
+bool OcspQuery::run() {
+    switch(state_) {
+        case OcspQuery::ST_INIT:
+
+            do_init();
+
+        case OcspQuery::ST_CONNECTING:
+
+            // return only on IO blocking (can connect immediately)
+            if (! do_connect()) break;
+
+
+        case OcspQuery::ST_CONNECTED:
+        case OcspQuery::ST_REQ_INPROGRESS:
+
+            // break on IO retry
+            if (!do_send_request())
+                break;
+
+        case OcspQuery::ST_RESP_RECEIVED:
+            do_process_response();
+            // processing response is not blocking operation - transit to next
+
+        case OcspQuery::ST_FINISHED:
+            return false;
+    }
+
+    return true;
+}
