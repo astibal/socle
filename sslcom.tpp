@@ -207,6 +207,9 @@ void baseSSLCom<L4Proto>::ssl_msg_callback(int write_p, int version, int content
     const char *msg_direction;
     const char *msg_content_type;
 
+    std::string u_version;
+    std::string u_content;
+
     const char *name = "unknown_cx";
 
     baseSSLCom* com = static_cast<baseSSLCom*>(arg);
@@ -235,7 +238,8 @@ void baseSSLCom<L4Proto>::ssl_msg_callback(int write_p, int version, int content
             break;
 
         default:
-            msg_version = "unknown";
+            u_version = string_format("version(%d)",version);
+            msg_version = u_version.c_str();
     }
 
     switch(content_type) {
@@ -253,7 +257,8 @@ void baseSSLCom<L4Proto>::ssl_msg_callback(int write_p, int version, int content
             break;
 
         default:
-            msg_content_type = "Unknown";
+            u_content = string_format("msg_id(%d)",content_type);
+            msg_content_type = u_content.c_str();
     }
 
     if(write_p == 0) {
