@@ -81,14 +81,14 @@ int TCPCom::connect(const char* host, const char* port, bool blocking) {
 
             if (::connect(sfd, rp->ai_addr, rp->ai_addrlen) < 0) {
                 if ( errno == EINPROGRESS ) {
-                    DEB_("TCPCom::connect[%s:%s]: socket[%d]: connnect errno: EINPROGRESS",host,port,sfd);
+                    DEB_("TCPCom::connect[%s:%s]: socket[%d]: connect errno: EINPROGRESS",host,port,sfd);
                     break;
                     
                     
                 } else {
                     close(sfd);
                     sfd = 0;
-                    NOT_("TCPCom::connect[%s:%s]: socket[%d]: connnect errno: %s",host,port,sfd,strerror(errno));
+                    NOT_("TCPCom::connect[%s:%s]: socket[%d]: connect errno: %s",host,port,sfd,strerror(errno));
                 }
 
                 DUMS_("new attempt, socket reset");
