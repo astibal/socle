@@ -21,3 +21,5 @@
 // Warning: it's resource intesive.
 
 //#define SOCLE_MEM_PROFILE
+
+#define USE_OPENSSL11
