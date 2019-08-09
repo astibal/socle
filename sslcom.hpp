@@ -317,8 +317,13 @@ public:
     virtual void shutdown(int __fd);    
     virtual ~baseSSLCom() {
         if(sslcom_refcount_incremented__) {
+#ifdef USE_OPENSSL11
+            EVP_PKEY_free(sslcom_pref_key);
+            X509_free(sslcom_pref_cert);
+#else
             CRYPTO_add(&sslcom_pref_key->references,-1,CRYPTO_LOCK_EVP_PKEY);
             CRYPTO_add(&sslcom_pref_cert->references,-1,CRYPTO_LOCK_X509);
+#endif
         }        
         
         if(sslcom_ssl != nullptr) {
@@ -435,6 +440,11 @@ public:
 typedef baseSSLCom<TCPCom> SSLCom;
 typedef baseSSLCom<UDPCom> DTLSCom;
 
+
+
+#ifdef USE_OPENSSL11
+#else
+
 /* 
  * this has been stolen from sources, since there is no ssl_locl.h header around! 
  * in case of issues, set SSL_LOCL_REDEF to 0
@@ -514,7 +524,9 @@ typedef struct sess_cert_st
 
   
 #endif 
-  
+
+
+#endif //USE_OPENSSL11
 
 #include <sslcom.tpp>
 #endif

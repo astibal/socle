@@ -140,8 +140,15 @@ std::string& baseSSLCom<L4Proto>::to_string()  {
 template <class L4Proto>
 void baseSSLCom<L4Proto>::ssl_info_callback(const SSL* s, int where, int ret) {
 
-    const char *name = "unknown_cx";
 
+
+#ifdef USE_OPENSSL11
+    // dropping support for this here, new API masks out msg_callback_arg
+    // actually we don't need com object, and sufficient debug level
+    // messages are printed out in msg callback.
+    std::string name = string_format("ssl-0x%x", s);
+#else
+    std::string name = "unknown_cx";
     baseSSLCom* com = static_cast<baseSSLCom*>(s->msg_callback_arg);
     if(com != nullptr) {
         const char* n = com->hr();
@@ -149,7 +156,7 @@ void baseSSLCom<L4Proto>::ssl_info_callback(const SSL* s, int where, int ret) {
             name = n;
         }
     }
-
+#endif
     const char *str;
 
     int w = where& ~SSL_ST_MASK;
@@ -160,27 +167,29 @@ void baseSSLCom<L4Proto>::ssl_info_callback(const SSL* s, int where, int ret) {
 
     if (where & SSL_CB_LOOP)
     {
-        DEB__("[%s]: SSLCom::ssl_info_callback: %s:%s",name,str,SSL_state_string_long(s));
+        DEB__("[%s]: SSLCom::ssl_info_callback: %s:%s",name.c_str(),str,SSL_state_string_long(s));
     }
     else if (where & SSL_CB_ALERT)
     {
         str=(where & SSL_CB_READ)?"read":"write";
-        DIA__("[%s]: SSLCom::ssl_info_callback: SSL3 alert %s:%s:%s", name, str, SSL_alert_type_string_long(ret), SSL_alert_desc_string_long(ret));
+        DIA__("[%s]: SSLCom::ssl_info_callback: SSL3 alert %s:%s:%s", name.c_str(), str, SSL_alert_type_string_long(ret), SSL_alert_desc_string_long(ret));
     }
     else if (where & SSL_CB_EXIT)
     {
         if (ret == 0) {
-            DEB__("[%s]: SSLCom::ssl_info_callback: %s:failed in %s", name, str,SSL_state_string_long(s));
-            
+            DEB__("[%s]: SSLCom::ssl_info_callback: %s:failed in %s", name.c_str(), str,SSL_state_string_long(s));
+
+#ifndef USE_OPENSSL11
             // close the session
             if(com != nullptr)
                 if(com->owner_cx() != nullptr) {
                     com->owner_cx()->error(true);
-                    DIA__("[%s]: failure callback, owning CX error flag set", name);
-                }            
+                    DIA__("[%s]: failure callback, owning CX error flag set", name.c_str());
+                }
+#endif
         }
         else if (ret < 0)  {
-            DEB__("[%s]: SSLCom::ssl_info_callback %s:error in %s", name, str,SSL_state_string_long(s));
+            DEB__("[%s]: SSLCom::ssl_info_callback %s:error in %s", name.c_str(), str,SSL_state_string_long(s));
         }
     }
 
@@ -1073,7 +1082,14 @@ void baseSSLCom<L4Proto>::init_ssl_callbacks() {
 
     if((is_server() && opt_left_kex_dh) || (!is_server() && opt_right_kex_dh)) {
         SSL_set_tmp_dh_callback(sslcom_ssl,ssl_dh_callback);
+
+#ifndef USE_OPENSSL11
+        // OpenSSL 1.1 API doesn't seem to contain ECDH callback.
+        // considering ECDH callback only prints out bit size, we can disable it
+        // makking it:
+        // FIXME - is ECDH callback needed with openssl 1.1.x
         SSL_set_tmp_ecdh_callback(sslcom_ssl,ssl_ecdh_callback);
+#endif
     }
 
     // add this pointer to ssl external data
