@@ -298,6 +298,8 @@ void baseSSLCom<L4Proto>::ssl_msg_callback(int write_p, int version, int content
     else if(content_type ==20) {
         if(write_p == 0) {
             if(!com->is_server()) {
+
+#ifndef USE_OPENSSL11
                 int bits = check_server_dh_size(ssl);
                 if(bits < 768) {
                     if(bits > 0) {
@@ -312,6 +314,7 @@ void baseSSLCom<L4Proto>::ssl_msg_callback(int write_p, int version, int content
                 } else {
                     DIA__("  [%s]: server dh key bits equivalent: %d",name,bits);
                 }
+#endif
             }
         }
     }
@@ -320,6 +323,16 @@ void baseSSLCom<L4Proto>::ssl_msg_callback(int write_p, int version, int content
 
 template <class L4Proto>
 int baseSSLCom<L4Proto>::check_server_dh_size(SSL* ssl) {
+#ifdef USE_OPENSSL11
+    // FIXME: adapt 1.0.2 API code to 1.1.x.
+    // Currently it doesn't seem to be possible to get DH parameters for current SSL_SESSION
+
+    // Workaround: return acceptable strength. Ugly.
+
+    // see DH_check() for more DH tests!
+
+    return 1024;
+#else
     DEBS_("Checking peer DH parameters:");
     if(ssl != nullptr) {
         if (ssl->session != nullptr) {
@@ -356,6 +369,7 @@ int baseSSLCom<L4Proto>::check_server_dh_size(SSL* ssl) {
     }
     DEBS_("done.");
     return 0;
+#endif
 }
 
 template <class L4Proto>
