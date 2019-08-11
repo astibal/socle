@@ -173,6 +173,39 @@ OCSP_RESPONSE * ocsp_send_request(BIO *err, OCSP_REQUEST *req,
 int ocsp_parse_response(OCSP_RESPONSE *resp)
 {
     int is_revoked = -1;
+
+#ifdef USE_OPENSSL11
+
+    OCSP_BASICRESP *br = OCSP_response_get1_basic(resp);
+
+    X509_STORE* st = X509_STORE_new();
+    X509_STORE_set_default_paths(st);
+
+    int ocsp_verify_result = OCSP_basic_verify(br, nullptr, st, 0);
+
+    if(ocsp_verify_result <= 0) {
+        is_revoked = -1;
+    } else {
+        for (int i = 0; i < OCSP_resp_count(br); i++) {
+            OCSP_SINGLERESP *single = OCSP_resp_get0(br, i);
+            int reason;
+            ASN1_GENERALIZEDTIME* revtime;
+            ASN1_GENERALIZEDTIME* thisupd;
+            ASN1_GENERALIZEDTIME* nextupd;
+
+            int status = OCSP_single_get0_status(single, &reason, &revtime, &thisupd, &nextupd);
+            if (status == V_OCSP_CERTSTATUS_REVOKED) {
+                is_revoked = 1;
+            } else if (status == V_OCSP_CERTSTATUS_GOOD) {
+                is_revoked = 0;
+            }
+        }
+    }
+
+    OCSP_BASICRESP_free(br);
+    X509_STORE_free(st);
+
+#else
     OCSP_RESPBYTES *rb = resp->responseBytes;
     if (rb && OBJ_obj2nid(rb->responseType) == NID_id_pkix_OCSP_basic)
     {
@@ -195,6 +228,7 @@ int ocsp_parse_response(OCSP_RESPONSE *resp)
         }
         OCSP_BASICRESP_free(br);
     }
+#endif // USE_OPENSSL11
     return is_revoked;
 }
 
