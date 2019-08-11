@@ -341,7 +341,12 @@ std::vector<std::string> SSLCertStore::get_sans(X509* x) {
     std::vector<std::string> ret;
     
     // Copy extensions
+#ifdef USE_OPENSSL11
+    const STACK_OF(X509_EXTENSION) *exts = X509_get0_extensions(x);
+#else
     STACK_OF(X509_EXTENSION) *exts = x->cert_info->extensions;
+#endif
+
     int num_of_exts;
 
     if (exts) {   
@@ -362,6 +367,11 @@ std::vector<std::string> SSLCertStore::get_sans(X509* x) {
                 unsigned nid = OBJ_obj2nid(obj); 
                 if(nid == NID_subject_alt_name) {
                     DEBS__("SSLCertStore::get_sans: adding subjAltName to extensions");
+#ifdef USE_OPENSSL11
+                    ASN1_OCTET_STRING *data = X509_EXTENSION_get_data(ex);
+                    std::string san((const char*)ASN1_STRING_get0_data(data), (unsigned long) ASN1_STRING_length(data));
+
+#else
                     BIO *ext_bio = BIO_new(BIO_s_mem());
                     if (!X509V3_EXT_print(ext_bio, ex, 0, 0)) {
                         M_ASN1_OCTET_STRING_print(ext_bio, ex->value);
@@ -372,11 +382,11 @@ std::vector<std::string> SSLCertStore::get_sans(X509* x) {
                     
                     
                     std::string san(bptr->data,bptr->length);
-                    ret.push_back(san);
-                    
                     BIO_free(ext_bio);
                     BUF_MEM_free(bptr);
-                }                
+#endif
+                    ret.push_back(san);
+                }
             }
         }
     }   

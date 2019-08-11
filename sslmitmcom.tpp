@@ -249,8 +249,12 @@ bool baseSSLMitmCom<SSLProto>::spoof_cert(X509* cert_orig, SpoofOptions& spo) {
             this->sslcom_pref_cert = parek->second;
             this->sslcom_pref_key  = parek->first;
 
+#ifdef USE_OPENSSL11
+            EVP_PKEY_up_ref(this->sslcom_pref_key);
+#else
             // just increment key refcount, cert is new (made from key), thus refcount is already 1
             CRYPTO_add(&this->sslcom_pref_key->references,+1,CRYPTO_LOCK_EVP_PKEY);
+#endif //USE_OPENSSL11
         }
         
         if (! this->certstore()->add(store_key,parek)) {

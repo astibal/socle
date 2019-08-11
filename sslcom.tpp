@@ -1260,8 +1260,13 @@ void baseSSLCom<L4Proto>::init_server() {
         SSL_use_certificate(sslcom_ssl,sslcom_pref_cert);
         
         if(!sslcom_refcount_incremented__) {
+#ifdef USE_OPENSSL11
+            EVP_PKEY_up_ref(sslcom_pref_key);
+            X509_up_ref(sslcom_pref_cert);
+#else
             CRYPTO_add(&sslcom_pref_key->references,+1,CRYPTO_LOCK_EVP_PKEY);
             CRYPTO_add(&sslcom_pref_cert->references,+1,CRYPTO_LOCK_X509);
+#endif
             sslcom_refcount_incremented__ = true;
         }
     }
@@ -1424,12 +1429,21 @@ void baseSSLCom<L4Proto>::accept_socket ( int sockfd )  {
 
     
     if(l4_proto() == SOCK_DGRAM) {
+
+#ifdef USE_OPENSSL11
+        BIO_ADDR* bia = BIO_ADDR_new();
+        if (!DTLSv1_listen(sslcom_ssl, bia)) {
+            BIO_ADDR_free(bia);
+            return;
+        }
+        BIO_ADDR_free(bia);
+#else
         sockaddr_storage ss;
         if (!DTLSv1_listen(sslcom_ssl,(sockaddr_in6*)&ss)) {
             return;
         }
+#endif
     }
-    
 
     ERR_clear_error();
     int r = SSL_accept (sslcom_ssl);
@@ -1460,10 +1474,30 @@ void baseSSLCom<L4Proto>::accept_socket ( int sockfd )  {
 template <class L4Proto>
 void baseSSLCom<L4Proto>::dump_keys() {
     if(sslkeylog) {
-        std::string ret = string_format("CLIENT_RANDOM %s %s", 
+
+#ifdef USE_OPENSSL11
+        unsigned char client_random[SSL3_RANDOM_SIZE];
+        memset(client_random, 0, SSL3_RANDOM_SIZE);
+
+        unsigned char master_key[SSL3_MASTER_SECRET_SIZE];
+        memset(master_key, 0, SSL3_MASTER_SECRET_SIZE);
+
+        SSL_get_client_random(sslcom_ssl, client_random, SSL3_RANDOM_SIZE);
+        SSL_SESSION_get_master_key(SSL_get_session(sslcom_ssl), master_key, SSL3_MASTER_SECRET_SIZE);
+
+        std::string ret = string_format("CLIENT_RANDOM %s %s",
+                hex_print(client_random, SSL3_RANDOM_SIZE).c_str(),
+                hex_print(master_key, SSL3_MASTER_SECRET_SIZE).c_str()
+        );
+#else
+        std::string ret = string_format("CLIENT_RANDOM %s %s",
                       hex_print(sslcom_ssl->s3->client_random, SSL3_RANDOM_SIZE).c_str(),
                       hex_print(sslcom_ssl->session->master_key, SSL3_MASTER_SECRET_SIZE).c_str()
         );
+
+#endif // USE_OPENSSL11
+
+
         LOGS_(loglevel(NOT,flag_add(iNOT,CRT|KEYS),&LOG_EXEXACT,LOG_FLRAW),ret.c_str());
     }
 }
