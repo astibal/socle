@@ -368,8 +368,42 @@ std::vector<std::string> SSLCertStore::get_sans(X509* x) {
                 if(nid == NID_subject_alt_name) {
                     DEBS__("SSLCertStore::get_sans: adding subjAltName to extensions");
 #ifdef USE_OPENSSL11
-                    ASN1_OCTET_STRING *data = X509_EXTENSION_get_data(ex);
-                    std::string san((const char*)ASN1_STRING_get0_data(data), (unsigned long) ASN1_STRING_length(data));
+                    //ASN1_OCTET_STRING *data = X509_EXTENSION_get_data(ex);
+                    //std::string san((const char*)ASN1_STRING_get0_data(data), (unsigned long) ASN1_STRING_length(data));
+
+                    //DEB__("SSLCertStore::get_sans: %s", hex_dump((unsigned char*)ASN1_STRING_get0_data(data),
+                    //                                            (unsigned long) ASN1_STRING_length(data)).c_str());
+
+
+                    STACK_OF(GENERAL_NAME) *alt = (STACK_OF(GENERAL_NAME)*)X509V3_EXT_d2i(ex);
+                    if(alt) {
+
+                        int alt_len = sk_GENERAL_NAME_num(alt);
+                        for (i = 0; i < alt_len; i++) {
+                            GENERAL_NAME *gn = sk_GENERAL_NAME_value(alt, i);
+
+                            int name_type = 0;
+
+                            // GENERAL_NAME_get0_value returns mostly ASN1STRING, with exceptions
+                            // of othername and maybe others ...
+                            // arg1 is original GENERAL_NAME, arg2 where to write type of returned name
+                            // learned from: https://github.com/openssl/openssl/issues/8973
+
+                            void* name_ptr = GENERAL_NAME_get0_value(gn, &name_type);
+                            if(name_type == GEN_DNS) {
+                                ASN1_STRING *dns_name = (ASN1_STRING *) name_ptr; //in ASN1 we trust
+
+                                std::string san((const char *) ASN1_STRING_get0_data(dns_name),
+                                                (unsigned long) ASN1_STRING_length(dns_name));
+                                ret.emplace_back(san);
+                                break;
+                            } else {
+                              // pass ... # ehm
+                            }
+
+                        }
+                    }
+                    GENERAL_NAMES_free(alt);
 
 #else
                     BIO *ext_bio = BIO_new(BIO_s_mem());
@@ -384,8 +418,9 @@ std::vector<std::string> SSLCertStore::get_sans(X509* x) {
                     std::string san(bptr->data,bptr->length);
                     BIO_free(ext_bio);
                     BUF_MEM_free(bptr);
-#endif
+
                     ret.push_back(san);
+#endif
                 }
             }
         }
