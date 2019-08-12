@@ -395,8 +395,9 @@ std::vector<std::string> SSLCertStore::get_sans(X509* x) {
 
                                 std::string san((const char *) ASN1_STRING_get0_data(dns_name),
                                                 (unsigned long) ASN1_STRING_length(dns_name));
-                                ret.emplace_back(san);
-                                break;
+                                ret.push_back(san);
+
+                                DEB__("SSLCertStore::get_sans: adding GEN_DNS: %s", san.c_str());
                             } else {
                               // pass ... # ehm
                             }
