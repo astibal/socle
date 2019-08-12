@@ -448,7 +448,12 @@ X509_PAIR* SSLCertStore::spoof(X509* cert_orig, bool self_sign, std::vector<std:
     }
     
     // Copy extensions
+#ifdef USE_OPENSSL11
+    const STACK_OF(X509_EXTENSION) *exts = X509_get0_extensions(cert_orig);
+#else
     STACK_OF(X509_EXTENSION) *exts = cert_orig->cert_info->extensions;
+#endif // USE_OPENSSL11
+
     int num_of_exts;
 
     
@@ -487,8 +492,12 @@ X509_PAIR* SSLCertStore::spoof(X509* cert_orig, bool self_sign, std::vector<std:
                 unsigned nid = OBJ_obj2nid(obj); 
                 if(nid == NID_subject_alt_name) {
                     DEB__("SSLCertStore::spoof[%x]: adding subjAltName to extensions",this);
-                    X509_EXTENSION* n_ex = X509_EXTENSION_dup(ex);
-                    
+
+#ifdef USE_OPENSSL11
+                    ASN1_OCTET_STRING* asn_string = X509_EXTENSION_get_data(ex);
+                    std::string san((const char*) asn_string->data, asn_string->length);
+#else
+
                     // get original SAN
                     BIO *ext_bio = BIO_new(BIO_s_mem());
                     if (!X509V3_EXT_print(ext_bio, ex, 0, 0)) {
@@ -503,10 +512,11 @@ X509_PAIR* SSLCertStore::spoof(X509* cert_orig, bool self_sign, std::vector<std:
                     
                     BIO_free(ext_bio);
                     BUF_MEM_free(bptr);
+#endif
                     
                     // we have SAN now in san string
 
-                    if(san_add.size()) {
+                    if(! san_add.empty()) {
                         san += "," + san_add;
                     }
             
@@ -514,11 +524,7 @@ X509_PAIR* SSLCertStore::spoof(X509* cert_orig, bool self_sign, std::vector<std:
                     DUM__("SSLCertStore::spoof[%x]: add_ext returned %d",this,a_r);
 
                     san_added = true;
-                    
-//                    sk_X509_EXTENSION_push(s,n_ex);
-//                     X509_EXTENSION_free(n_ex);  //leak hunt
-                    
-                }                
+                }
             }
             
 
@@ -535,8 +541,14 @@ X509_PAIR* SSLCertStore::spoof(X509* cert_orig, bool self_sign, std::vector<std:
         DUM__("SSLCertStore::spoof[%x]: X509_REQ_add_extensions returned %d",this,r);
         
         sk_X509_EXTENSION_pop_free(s,X509_EXTENSION_free);
-    }   
-    
+    }
+
+#ifdef USE_OPENSSL11
+    // don't bother selecting digest alg, sha2-256 is well settled.
+    // Selection can be further improved by checking signature mechanism in the real certificate,
+    // but it's hardly worth it.
+    digest = EVP_sha256();
+#else
     // pick the correct digest and sign the request 
     if (EVP_PKEY_type(pkey->type) == EVP_PKEY_DSA) {
         digest = EVP_dss1();
@@ -551,6 +563,7 @@ X509_PAIR* SSLCertStore::spoof(X509* cert_orig, bool self_sign, std::vector<std:
         ERR__("SSLCertStore::spoof[%x]: error checking public key for a valid digest",this);
         return NULL;
     }
+#endif //USE_OPENSSL11
     
     if (!(X509_REQ_sign( copy, pkey, digest))) {
         ERR__("SSLCertStore::spoof[%x]: error signing request",this);
@@ -673,7 +686,12 @@ X509_PAIR* SSLCertStore::spoof(X509* cert_orig, bool self_sign, std::vector<std:
       X509_set_issuer_name(cert, X509_get_subject_name(cert));
       sign_key = def_sr_key;
     }
-    
+
+
+#ifdef USE_OPENSSL11
+    // same as few lines above. Don't really bother, and select sha2-256.
+    digest = EVP_sha256();
+#else
     // sign the certific ate with the CA private key 
     if (EVP_PKEY_type(sign_key->type) == EVP_PKEY_DSA) {
         digest = EVP_dss1();
@@ -688,6 +706,7 @@ X509_PAIR* SSLCertStore::spoof(X509* cert_orig, bool self_sign, std::vector<std:
         ERR__("SSLCertStore::spoof[%x]: error checking CA private key for a valid digest",this);
         return NULL;
     }
+#endif
 
     if (!(X509_sign(cert, sign_key, digest))) {
         ERR__("SSLCertStore::spoof[%x]: error signing certificate",this);
@@ -796,8 +815,12 @@ std::string SSLCertStore::print_cert(X509* x) {
         s.append("\n ");
         
     }
-    
+
+#ifdef USE_OPENSSL11
+    int pkey_nid = X509_get_signature_type(x);
+#else
     int pkey_nid = OBJ_obj2nid(x->cert_info->key->algor->algorithm);
+#endif
     const char* sslbuf = OBJ_nid2ln(pkey_nid);
     s.append("Signature type: ");
     s.append(sslbuf);
@@ -816,20 +839,41 @@ std::string SSLCertStore::print_cert(X509* x) {
     s.append("\n ");
 
 
+#ifdef USE_OPENSSL11
+    const STACK_OF(X509_EXTENSION) *exts = X509_get0_extensions(x);
+
+    BIO *ext_bio = BIO_new(BIO_s_mem());
+    if (!ext_bio) {
+        s.append(" ... unable to allocate BIO");
+        return s;
+    }
+
+    X509V3_extensions_print(ext_bio, nullptr, exts, 0, 0);
+
+    BUF_MEM *bptr = nullptr;
+    BIO_get_mem_ptr(ext_bio, &bptr);
+    int sc = BIO_set_close(ext_bio, BIO_CLOSE);
+
+    s.append((const char*) bptr->data, bptr->length);
+
+    BIO_free(ext_bio);
+
+#else
     STACK_OF(X509_EXTENSION) *exts = x->cert_info->extensions;
 
-    int num_of_exts;
-    if (exts) {       
+    int num_of_exts = 0;
+    if (exts) {
         num_of_exts = sk_X509_EXTENSION_num(exts);
         s.append("Extensions: ");
         s.append("\n ");
-        
+
     } else {
         num_of_exts = 0;
         s.append(" Extensions: <no extenstions in the certificate> ");
         s.append("\n ");
-        
-    }            
+
+    }
+
     for (int i=0; i < num_of_exts; i++) {
     
         X509_EXTENSION *ex = sk_X509_EXTENSION_value(exts, i);
@@ -898,7 +942,10 @@ std::string SSLCertStore::print_cert(X509* x) {
             
             BIO_free(ext_bio);
         }
-    }            
+    }
+
+#endif
+
     return s;
             
 }

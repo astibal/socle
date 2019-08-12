@@ -2663,7 +2663,11 @@ SSL_CTX* baseSSLCom<L4Proto>::client_dtls_ctx_setup(EVP_PKEY* priv, X509* cert, 
 //SSL_CTX* SSLCom::client_ctx_setup() {
 
     // SSLv3 -> latest TLS
+#ifdef USE_OPENSSL11
+    const SSL_METHOD *method = DTLS_client_method();
+#else
     const SSL_METHOD *method = DTLSv1_client_method();
+#endif
 
     SSL_CTX* ctx = SSL_CTX_new (method);
 
@@ -2729,7 +2733,11 @@ template <class L4Proto>
 SSL_CTX* baseSSLCom<L4Proto>::server_dtls_ctx_setup(EVP_PKEY* priv, X509* cert, const char* ciphers) {
     
     // DTLS method
+#ifdef USE_OPENSSL11
+    const SSL_METHOD *method = DTLS_server_method();
+#else
     const SSL_METHOD *method = DTLSv1_server_method();
+#endif
     SSL_CTX* ctx = SSL_CTX_new (method);
 
     if (!ctx) {

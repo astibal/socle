@@ -22,6 +22,7 @@
 #include <sslcertstore.hpp>
 #include <logger.hpp>
 #include <buffer.hpp>
+#include <biostring.hpp>
 #include <socle.hpp>
 
 std::vector<std::string> ocsp_urls(X509 *x509)
@@ -321,7 +322,31 @@ int crl_is_revoked_by(X509 *x509, X509 *issuer, X509_CRL *crl_file)
 
                 DEBS_("X509_CRL_verify ok");
                 is_revoked = 0;
+
+#ifdef USE_OPENSSL11
+                //const STACK_OF(X509_REVOKED) *revoked_list = X509_CRL_get_REVOKED(crl_file);
+
+                const ASN1_INTEGER* mycertser = X509_get0_serialNumber(x509);
+                X509_REVOKED* myentry =  nullptr;
+
+                //retype mycertser to non-const (not modified by function call - based on API doc promise ... :/ )
+
+                if ( X509_CRL_get0_by_serial(crl_file, &myentry, (ASN1_INTEGER*) mycertser) > 0 && myentry) {
+                    const ASN1_TIME* tm = X509_REVOKED_get0_revocationDate(myentry);
+
+                    std::string revocation_date;
+                    BIO* myb = BIO_new_string(&revocation_date);
+
+                    DIA_("certificate revoked: %s",  revocation_date.c_str());
+
+                    ASN1_TIME_print(myb, tm);
+                    BIO_free(myb);
+                }
+
+
+#else
                 STACK_OF(X509_REVOKED) *revoked_list = crl_file->crl->revoked;
+
                 for (int j = 0; j < sk_X509_REVOKED_num(revoked_list) && !is_revoked; j++)
                 {
                     X509_REVOKED *entry = sk_X509_REVOKED_value(revoked_list, j);
@@ -333,9 +358,10 @@ int crl_is_revoked_by(X509 *x509, X509 *issuer, X509_CRL *crl_file)
                         }
                     }
                 }
+#endif
             }
         }
-        
+
         if(ikey) EVP_PKEY_free(ikey);
     }
     return is_revoked;
@@ -377,7 +403,7 @@ int crl_verify_trust(X509 *x509, X509* issuer, X509_CRL *crl_file, const std::st
     
         verify_result=X509_verify_cert(csc);
         if (verify_result != 1) {
-            DIA_("crl_verify_trust: %s",X509_verify_cert_error_string(csc->error));
+            DIA_("crl_verify_trust: %s",X509_verify_cert_error_string(X509_STORE_CTX_get_error(csc)));
         }
 
         X509_STORE_CTX_cleanup(csc);
@@ -406,7 +432,11 @@ std::vector<std::string> crl_urls(X509 *x509)
             {
                 GENERAL_NAME *gen = sk_GENERAL_NAME_value(distpoint->name.fullname, k);
                 ASN1_IA5STRING *asn1_str = gen->d.uniformResourceIdentifier;
+#ifdef USE_OPENSSL11
+                list.push_back( std::string( (char*)ASN1_STRING_get0_data(asn1_str), ASN1_STRING_length(asn1_str) ) );
+#else
                 list.push_back( std::string( (char*)ASN1_STRING_data(asn1_str), ASN1_STRING_length(asn1_str) ) );
+#endif
             }
         }
         else if (distpoint->type==1)//relativename X509NAME
@@ -416,7 +446,11 @@ std::vector<std::string> crl_urls(X509 *x509)
             {
                 X509_NAME_ENTRY *e = sk_X509_NAME_ENTRY_value(sk_relname, k);
                 ASN1_STRING *d = X509_NAME_ENTRY_get_data(e);
+#ifdef USE_OPENSSL11
+                list.push_back( std::string( (char*)ASN1_STRING_get0_data(d), ASN1_STRING_length(d) ) );
+#else
                 list.push_back( std::string( (char*)ASN1_STRING_data(d), ASN1_STRING_length(d) ) );
+#endif
             }
         }
     }
