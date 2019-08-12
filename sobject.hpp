@@ -93,8 +93,8 @@ template <class T> class sref;
 template <class T>
 class spointer {
     public:
-        spointer() : pointer_(nullptr) {};        
-        spointer(T* ptr): pointer_(ptr) {};
+        explicit spointer() : pointer_(nullptr) {};
+        explicit spointer(T* ptr): pointer_(ptr) {};
         virtual ~spointer() { delete pointer_; }
 
         unsigned int usage() { return count_; }
@@ -122,9 +122,9 @@ class spointer {
 template <class T>
 class sref {
     public:
-        sref() : reference_(nullptr) {};
-        sref(spointer<T>* r) : reference_(r) { r->use(); };
-        sref(spointer<T>& r) : reference_(&r) { r.use(); };
+        explicit sref() : reference_(nullptr) {};
+        explicit sref(spointer<T>* r) : reference_(r) { r->use(); };
+        explicit sref(spointer<T>& r) : reference_(&r) { r.use(); };
 
         sref<T>& operator=(const sref& other) {
             if(this != &other) {
@@ -176,7 +176,7 @@ class sref {
 
 struct meter {
     
-    meter(int interval=1): interval_(interval) { last_update = time(nullptr); };
+    explicit meter(int interval=1): interval_(interval) { last_update = time(nullptr); };
     
     unsigned long prev_counter_{};
     unsigned long curr_counter_{};
