@@ -552,3 +552,15 @@ std::string&& string_tolower(const std::string& orig) {
 
     return std::move(r);
 }
+
+std::string string_csv(const std::vector<std::string>& str_list_ref, const char delim) {
+    std::stringstream build;
+    for(unsigned int ii = 0 ; ii < str_list_ref.size() ; ii++ ) {
+        build << str_list_ref[ii];
+        if( ii < str_list_ref.size() - 1) {
+            build << delim;
+        }
+    }
+
+    return std::move(build.str());
+}

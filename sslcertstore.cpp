@@ -368,18 +368,12 @@ std::vector<std::string> SSLCertStore::get_sans(X509* x) {
                 if(nid == NID_subject_alt_name) {
                     DEBS__("SSLCertStore::get_sans: adding subjAltName to extensions");
 #ifdef USE_OPENSSL11
-                    //ASN1_OCTET_STRING *data = X509_EXTENSION_get_data(ex);
-                    //std::string san((const char*)ASN1_STRING_get0_data(data), (unsigned long) ASN1_STRING_length(data));
-
-                    //DEB__("SSLCertStore::get_sans: %s", hex_dump((unsigned char*)ASN1_STRING_get0_data(data),
-                    //                                            (unsigned long) ASN1_STRING_length(data)).c_str());
-
 
                     STACK_OF(GENERAL_NAME) *alt = (STACK_OF(GENERAL_NAME)*)X509V3_EXT_d2i(ex);
                     if(alt) {
 
                         int alt_len = sk_GENERAL_NAME_num(alt);
-                        for (i = 0; i < alt_len; i++) {
+                        for (int i = 0; i < alt_len; i++) {
                             GENERAL_NAME *gn = sk_GENERAL_NAME_value(alt, i);
 
                             int name_type = 0;
@@ -430,7 +424,11 @@ std::vector<std::string> SSLCertStore::get_sans(X509* x) {
     return ret;
 }
 
+std::string SSLCertStore::get_sans_csv(X509 *x) {
 
+    std::vector<std::string> sans_vec = SSLCertStore::get_sans(x);
+    return string_csv(sans_vec);
+}
 
 X509_PAIR* SSLCertStore::spoof(X509* cert_orig, bool self_sign, std::vector<std::string>* additional_sans) {
     char tmp[2048];
@@ -498,12 +496,7 @@ X509_PAIR* SSLCertStore::spoof(X509* cert_orig, bool self_sign, std::vector<std:
     if(additional_sans != nullptr) {
         std::vector<std::string>& as = *additional_sans;
         if(as.size() > 0) {
-            for(unsigned int i = 0 ; i < as.size(); ++i ) {
-                san_add += as.at(i);
-                if(i < as.size() - 1) {
-                    san_add += ",";
-                }
-            }
+            san_add = string_csv(as);
             DIA__("SSLCertStore::spoof[%x]: additional sans = '%s'",this,san_add.c_str());
         }
     }    
@@ -530,8 +523,10 @@ X509_PAIR* SSLCertStore::spoof(X509* cert_orig, bool self_sign, std::vector<std:
                     DEB__("SSLCertStore::spoof[%x]: adding subjAltName to extensions",this);
 
 #ifdef USE_OPENSSL11
-                    ASN1_OCTET_STRING* asn_string = X509_EXTENSION_get_data(ex);
-                    std::string san((const char*) asn_string->data, asn_string->length);
+                    // it's easier to get san list with different call, instead of diging it out from here.
+                    std::string san = get_sans_csv(cert_orig);
+                    DEB__("SSLCertStore::spoof[%x]: original cert sans to be added: %s",this, san.c_str());
+
 #else
 
                     // get original SAN
@@ -557,7 +552,7 @@ X509_PAIR* SSLCertStore::spoof(X509* cert_orig, bool self_sign, std::vector<std:
                     }
             
                     int a_r = add_ext(s,NID_subject_alt_name, (char*) san.c_str());
-                    DUM__("SSLCertStore::spoof[%x]: add_ext returned %d",this,a_r);
+                    DEB__("SSLCertStore::spoof[%x]: add_ext returned %d",this,a_r);
 
                     san_added = true;
                 }
