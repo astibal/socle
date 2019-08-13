@@ -550,7 +550,11 @@ void OcspQuery::parse_cert() {
 
         char *ocsp_url = sk_OPENSSL_STRING_value(ocsp_list, j);
         if (OCSP_parse_url(ocsp_url, &host, &port, &path, &use_ssl)) {
-            ocsp_targets.push_back( { std::string(host), std::string(port), std::string(path), (use_ssl > 0) } );
+            ocsp_targets.push_back(
+                    std::tuple<std::string, std::string, std::string, bool>(std::string(host),
+                                                                            std::string(port),
+                                                                            std::string(path),
+                                                                            (use_ssl > 0)) );
         }
     }
 
