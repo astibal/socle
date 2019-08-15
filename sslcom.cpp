@@ -25,6 +25,8 @@ unsigned long id_function ( void ) {
     return id;
 }
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-function"
 
 static struct CRYPTO_dynlock_value * dyn_create_function(const char *file, int line) {
 
@@ -51,6 +53,7 @@ static void dyn_destroy_function(struct CRYPTO_dynlock_value *l,
     free(l);
 }
 
+#pragma GCC diagnostic pop
 
 int THREAD_setup ( void ) {
     int i;
