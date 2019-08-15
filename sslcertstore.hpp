@@ -112,7 +112,8 @@ public:
     
      X509_CACHE cache_;
      X509_CACHE& cache() { return cache_; };
-     
+
+
      FQDN_CACHE fqdn_cache_;
      FQDN_CACHE& fqdn_cache() { return fqdn_cache_; };
      

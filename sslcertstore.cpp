@@ -233,12 +233,21 @@ bool SSLCertStore::add(std::string& subject,X509_PAIR* parek, X509_REQ* req) {
     try {
         // lock, don't mess with cache_, I will write into it now
         mutex_cache_write_.lock();
-        cache_[subject] = parek;
+
+        // free underlying keypair
+        if(cache().find(subject) != cache().end()) {
+            DIA__("SSLCertStore::add[%x] keypair associated with subject '%s' already exists (freeing)",this,subject.c_str());
+            auto keypair = cache()[subject];
+
+
+            // if this is last usage of keypair components, we want to free them
+            EVP_PKEY_free(keypair->first);
+            X509_free(keypair->second);
+        }
+
+        cache()[subject] = parek;
         DIA__("SSLCertStore::add[%x] cert %s",this,subject.c_str());
-        
-        std::string cn = subject;
-        fqdn_cache_[cn] = subject;
-        DIA__("SSLCertStore::add[%x] fqdn %s -> %s",this,cn.c_str(), subject.c_str());
+
     }
     catch (std::exception& e) {
         op_status = false;
@@ -259,8 +268,8 @@ bool SSLCertStore::add(std::string& subject,X509_PAIR* parek, X509_REQ* req) {
 X509_PAIR* SSLCertStore::find(std::string& subject) {
 
     // cache lookup
-    X509_CACHE::iterator entry = cache_.find(subject);
-    if (entry == cache_.end()) {
+    auto entry = cache().find(subject);
+    if (entry == cache().end()) {
         DEB__("SSLCertStore::find[%x]: NOT cached '%s'",this,subject.c_str());
     } else {
         DEB__("SSLCertStore::find[%x]: found cached '%s'",this,subject.c_str());
@@ -272,23 +281,23 @@ X509_PAIR* SSLCertStore::find(std::string& subject) {
 }
 
 std::string SSLCertStore::find_subject_by_fqdn(std::string& fqdn) {
-     FQDN_CACHE::iterator entry = fqdn_cache_.find(fqdn);
-     if (entry == fqdn_cache_.end()) {
+     auto entry = cache().find(fqdn);
+     if (entry == cache().end()) {
         DEB__("SSLCertStore::find_subject_by_fqdn[%x]: NOT cached '%s'",this, fqdn.c_str());
      } else {
-        DEB__("SSLCertStore::find_subject_by_fqdn[%x]: found cached '%s'->'%s'",this,fqdn.c_str(),(*entry).second.c_str());
-        return (*entry).second;
+        DEB__("SSLCertStore::find_subject_by_fqdn[%x]: found cached '%s'",this,fqdn.c_str());
+        return (*entry).first;
      }
 
      std::regex hostname_re("^[a-zA-Z0-9-]+\\.");
      std::string wildcard_fqdn = std::regex_replace(fqdn,hostname_re,"*.");
      
-     entry = fqdn_cache_.find(wildcard_fqdn);
-     if (entry == fqdn_cache_.end()) {
+     entry = cache_.find(wildcard_fqdn);
+     if (entry == cache_.end()) {
         DEB__("SSLCertStore::find_subject_by_fqdn[%x]: wildcard NOT cached '%s'",this, wildcard_fqdn.c_str());
      } else {
-        DEB__("SSLCertStore::find_subject_by_fqdn[%x]: found cached wildcard '%s'->'%s'",this,fqdn.c_str(),(*entry).second.c_str());
-        return (*entry).second;
+        DEB__("SSLCertStore::find_subject_by_fqdn[%x]: found cached wildcard '%s'",this,fqdn.c_str());
+        return (*entry).first;
      }     
      
      
