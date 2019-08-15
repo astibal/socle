@@ -1864,14 +1864,16 @@ bool baseSSLCom<L4Proto>::waiting_peer_hello() {
                         error_flag_ = ERROR_UNSPEC; // peer nullptr or its com() is not SSLCom
                         return false;
                         
-                    } else 
-                    if(parse_hello_result < 0) {
-                        
-                        // not enough of data
-                        return false;
-                    } 
-                    else /* > 0*/ {
-                        // we are okay
+                    } else {
+                        if(parse_hello_result < 0) {
+
+                            // not enough of data
+                            return false;
+                        }
+                        else /* > 0*/ {
+                            // we are okay
+                            ;
+                        }
                     }
                     
                     sslcom_peer_hello_received_ = true;
