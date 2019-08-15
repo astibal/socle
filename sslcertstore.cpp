@@ -27,7 +27,7 @@
 #include <openssl/ssl.h>
 
 std::string SSLCertStore::certs_path = "./certs/";
-std::string SSLCertStore::password = "password";
+std::string SSLCertStore::certs_password = "password";
 std::string SSLCertStore::def_cl_capath;
 
 #define CERTSTORE_CACHE_SIZE 500
@@ -64,7 +64,16 @@ bool SSLCertStore::load() {
         destroy();
         return false;
     }
-    
+
+    // initialize trust store
+    if(trust_store_) {
+        X509_STORE_free(trust_store_);
+    }
+    trust_store_ = X509_STORE_new();
+    if(X509_STORE_load_locations(trust_store_, nullptr, def_cl_capath.c_str()) == 0)  {
+        ERRS__("cannot load trusted store.");
+    }
+
     ocsp_result_cache.clear();
     ocsp_result_cache.expiration_check(expiring_ocsp_result::is_expired);
     
@@ -110,7 +119,7 @@ bool SSLCertStore::load_ca_cert() {
     }
 
     ca_cert = PEM_read_X509(fp_crt, NULL, NULL, NULL);  
-    ca_key = PEM_read_PrivateKey(fp_key,NULL, NULL, (void*)password.c_str());
+    ca_key = PEM_read_PrivateKey(fp_key,NULL, NULL, (void*)certs_password.c_str());
     
     fclose(fp_crt);
     fclose(fp_key);
@@ -181,6 +190,177 @@ bool SSLCertStore::load_def_sr_cert() {
 }
 
 
+SSL_CTX* SSLCertStore::client_ctx_setup(EVP_PKEY* priv, X509* cert, const char* ciphers) {
+//SSL_CTX* SSLCom::client_ctx_setup() {
+
+    // SSLv3 -> latest TLS
+    const SSL_METHOD *method = SSLv23_client_method();
+
+    SSL_CTX* ctx = SSL_CTX_new (method);
+
+    if (!ctx) {
+        ERRS__("SSLCom::client_ctx_setup: Error creating SSL context!");
+        //log_if_error(ERR,"SSLCom::init_client");
+        exit(2);
+    }
+
+    ciphers == nullptr ? SSL_CTX_set_cipher_list(ctx,"ALL:!ADH:!LOW:!aNULL:!EXP:!MD5:@STRENGTH") : SSL_CTX_set_cipher_list(ctx,ciphers);
+
+    // testing for LogJam:
+    // SSL_CTX_set_cipher_list(ctx,"kEECDH kEECDH kEDH HIGH !kRSA !RC4 !aNULL !eNULL !LOW !3DES !MD5 !EXP !DSS !PSK !SRP !kECDH !CAMELLIA !IDEA !SEED");
+    SSL_CTX_set_options(ctx, def_cl_options); //used to be also SSL_OP_NO_TICKET+
+    SSL_CTX_set_session_cache_mode(ctx,SSL_SESS_CACHE_CLIENT);
+
+
+
+//     DIAS__("SSLCom::client_ctx_setup: loading default key/cert");
+//     priv == nullptr ? SSL_CTX_use_PrivateKey(ctx,certstore()->def_cl_key) : SSL_CTX_use_PrivateKey(ctx,priv);
+//     cert == nullptr ? SSL_CTX_use_certificate(ctx,certstore()->def_cl_cert) : SSL_CTX_use_certificate(ctx,cert);
+//
+//     if (!SSL_CTX_check_private_key(ctx)) {
+//         ERRS__("SSLCom::client_ctx_setup: Private key does not match the certificate public key\n");
+//         exit(5);
+//     }
+
+    return ctx;
+}
+
+SSL_CTX* SSLCertStore::client_dtls_ctx_setup(EVP_PKEY* priv, X509* cert, const char* ciphers) {
+//SSL_CTX* SSLCom::client_ctx_setup() {
+
+    // SSLv3 -> latest TLS
+#ifdef USE_OPENSSL11
+    const SSL_METHOD *method = DTLS_client_method();
+#else
+    const SSL_METHOD *method = DTLSv1_client_method();
+#endif
+
+    SSL_CTX* ctx = SSL_CTX_new (method);
+
+    if (!ctx) {
+        ERRS__("SSLCom::client_ctx_setup: Error creating SSL context!");
+        //log_if_error(ERR,"SSLCom::init_client");
+        exit(2);
+    }
+
+    ciphers == nullptr ? SSL_CTX_set_cipher_list(ctx,"ALL:!ADH:!LOW:!aNULL:!EXP:!MD5:@STRENGTH") : SSL_CTX_set_cipher_list(ctx,ciphers);
+
+    // testing for LogJam:
+    // SSL_CTX_set_cipher_list(ctx,"kEECDH kEECDH kEDH HIGH !kRSA !RC4 !aNULL !eNULL !LOW !3DES !MD5 !EXP !DSS !PSK !SRP !kECDH !CAMELLIA !IDEA !SEED");
+    // SSL_CTX_set_options(ctx,certstore()->def_cl_options); //used to be also SSL_OP_NO_TICKET+
+    SSL_CTX_set_session_cache_mode(ctx,SSL_SESS_CACHE_CLIENT);
+
+
+
+//     DIAS__("SSLCom::client_ctx_setup: loading default key/cert");
+//     priv == nullptr ? SSL_CTX_use_PrivateKey(ctx,certstore()->def_cl_key) : SSL_CTX_use_PrivateKey(ctx,priv);
+//     cert == nullptr ? SSL_CTX_use_certificate(ctx,certstore()->def_cl_cert) : SSL_CTX_use_certificate(ctx,cert);
+//
+//     if (!SSL_CTX_check_private_key(ctx)) {
+//         ERRS__("SSLCom::client_ctx_setup: Private key does not match the certificate public key\n");
+//         exit(5);
+//     }
+
+    return ctx;
+}
+
+SSL_CTX* SSLCertStore::server_ctx_setup(EVP_PKEY* priv, X509* cert, const char* ciphers) {
+
+    // SSLv3 -> latest TLS
+    const SSL_METHOD *method = SSLv23_server_method();
+    SSL_CTX* ctx = SSL_CTX_new (method);
+
+    if (!ctx) {
+        ERRS__("SSLCom::server_ctx_setup: Error creating SSL context!");
+        exit(2);
+    }
+
+    ciphers == nullptr ? SSL_CTX_set_cipher_list(ctx,"ALL:!ADH:!LOW:!EXP:!MD5:@STRENGTH") : SSL_CTX_set_cipher_list(ctx,ciphers);
+    SSL_CTX_set_options(ctx, def_sr_options);
+
+    DEBS__("SSLCom::server_ctx_setup: loading default key/cert");
+    priv == nullptr ? SSL_CTX_use_PrivateKey(ctx, def_sr_key) : SSL_CTX_use_PrivateKey(ctx,priv);
+    cert == nullptr ? SSL_CTX_use_certificate(ctx, def_sr_cert) : SSL_CTX_use_certificate(ctx,cert);
+
+
+    if (!SSL_CTX_check_private_key(ctx)) {
+        ERRS__("SSLCom::server_ctx_setup: private key does not match the certificate public key\n");
+        exit(5);
+    }
+
+    return ctx;
+}
+
+
+SSL_CTX* SSLCertStore::server_dtls_ctx_setup(EVP_PKEY* priv, X509* cert, const char* ciphers) {
+
+    // DTLS method
+#ifdef USE_OPENSSL11
+    const SSL_METHOD *method = DTLS_server_method();
+#else
+    const SSL_METHOD *method = DTLSv1_server_method();
+#endif
+    SSL_CTX* ctx = SSL_CTX_new (method);
+
+    if (!ctx) {
+        ERRS__("SSLCom::server_dtls_ctx_setup: Error creating SSL context!");
+        exit(2);
+    }
+
+    ciphers == nullptr ? SSL_CTX_set_cipher_list(ctx,"ALL:!ADH:!LOW:!EXP:!MD5:@STRENGTH") : SSL_CTX_set_cipher_list(ctx,ciphers);
+    //SSL_CTX_set_options(ctx,certstore()->def_sr_options);
+
+    DEBS__("SSLCom::server_dtls_ctx_setup: loading default key/cert");
+    priv == nullptr ? SSL_CTX_use_PrivateKey(ctx, def_sr_key) : SSL_CTX_use_PrivateKey(ctx,priv);
+    cert == nullptr ? SSL_CTX_use_certificate(ctx, def_sr_cert) : SSL_CTX_use_certificate(ctx,cert);
+
+
+    if (!SSL_CTX_check_private_key(ctx)) {
+        ERRS__("SSLCom::server_dtls_ctx_setup: private key does not match the certificate public key\n");
+        exit(5);
+    }
+
+    return ctx;
+}
+
+
+SSLCertStore* SSLCertStore::create() {
+
+    DIAS__("SSLCertStore::create: loading central certification store: start");
+
+    SSLCertStore* fac = new SSLCertStore();
+    bool ret = fac->load();
+
+    if(! ret) {
+        FATS__("SSLCertStore::create: failure loading certificates, bailing out.");
+        exit(2);
+    }
+
+    fac->def_cl_ctx = fac->client_ctx_setup();
+    fac->def_dtls_cl_ctx = fac->client_dtls_ctx_setup();
+
+    DIAS__("SSLCertStore::create: default ssl client context: ok");
+
+    if(fac->def_cl_capath.size() > 0) {
+        int r = SSL_CTX_load_verify_locations(fac->def_cl_ctx, nullptr, def_cl_capath.c_str());
+        DEB__("SSLCertStore::create: loading default certification store: %s", r > 0 ? "ok" : "failed");
+
+        if(r <= 0) {
+            ERR__("SSLCertStore::create: failed to load verify location: %d", r);
+        }
+    } else {
+        WARS__("SSLCertStore::create: loading default certification store: path not set!");
+    }
+
+
+    fac->def_sr_ctx = fac->server_ctx_setup();
+    fac->def_dtls_sr_ctx = fac->server_dtls_ctx_setup();
+
+    DIAS__("SSLCertStore::create: default ssl server context: ok");
+
+    return fac;
+}
+
 
 void SSLCertStore::destroy() {
     if(ca_cert != NULL) X509_free(ca_cert);
@@ -211,6 +391,11 @@ void SSLCertStore::destroy() {
     }
     
     cache_.clear();
+
+    if(trust_store_) {
+        X509_STORE_free(trust_store_);
+        trust_store_ = nullptr;
+    }
 }
 
 bool SSLCertStore::add(std::string& subject,EVP_PKEY* cert_privkey, X509* cert, X509_REQ* req) {

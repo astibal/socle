@@ -231,15 +231,9 @@ public:
     // certificate store common across all SSCom instances
     static SSLCertStore* sslcom_certstore_;
     // init certstore and default CTX
-    static void certstore_setup(void);
+    static void certstore_setup();
     static std::once_flag certstore_setup_done;    
-    //static SSL_CTX* client_ctx_setup();
-    static SSL_CTX* client_ctx_setup(EVP_PKEY* priv = nullptr, X509* cert = nullptr, const char* ciphers = nullptr);
-    static SSL_CTX* server_ctx_setup(EVP_PKEY* priv = nullptr, X509* cert = nullptr, const char* ciphers = nullptr);
-    static SSL_CTX* client_dtls_ctx_setup(EVP_PKEY* priv = nullptr, X509* cert = nullptr, const char* ciphers = nullptr);
-    static SSL_CTX* server_dtls_ctx_setup(EVP_PKEY* priv = nullptr, X509* cert = nullptr, const char* ciphers = nullptr);
 
-    
     static SSLCertStore* certstore() { return sslcom_certstore_; };
     static void certstore(SSLCertStore* c) { if (sslcom_certstore_ != NULL) { delete sslcom_certstore_; }  sslcom_certstore_ = c; };
 	
@@ -332,15 +326,10 @@ public:
         }
         
         if(sslcom_ecdh != nullptr) {
-            EC_KEY_free(sslcom_ecdh);;
+            EC_KEY_free(sslcom_ecdh);
             sslcom_ecdh = nullptr;
         }
-        
-        if(ocsp_trust_store) {
-            X509_STORE_free(ocsp_trust_store);
-            ocsp_trust_store = nullptr;
-        }
-        
+
         if(sslcom_target_cert != nullptr) X509_free(sslcom_target_cert);
         if(sslcom_target_issuer != nullptr) X509_free(sslcom_target_issuer);
         if(sslcom_target_issuer_issuer != nullptr) X509_free(sslcom_target_issuer_issuer);
@@ -390,7 +379,7 @@ public:
     #define SOCLE_OCSP_STAP_MODE_LOOSE   0
     #define SOCLE_OCSP_STAP_MODE_STRICT  1
     #define SOCLE_OCSP_STAP_MODE_REQUIRE 2 
-    X509_STORE* ocsp_trust_store = nullptr;
+
     int ocsp_cert_is_revoked = -1;
     
     int opt_ocsp_mode = 0;

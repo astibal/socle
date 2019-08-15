@@ -61,13 +61,13 @@ typedef ptr_cache<std::string,session_holder> ssl_session_cache;
 
 struct crl_holder {
     X509_CRL* ptr = nullptr;
-    crl_holder(X509_CRL* c): ptr(c) {};
+    explicit crl_holder(X509_CRL* c): ptr(c) {};
     virtual ~crl_holder() { if(ptr) X509_CRL_free(ptr); }
 };
 
 struct session_holder {
     SSL_SESSION* ptr = nullptr;
-    session_holder(SSL_SESSION* p): ptr(p) {};
+    explicit session_holder(SSL_SESSION* p): ptr(p) {};
     virtual ~session_holder() { if(ptr) SSL_SESSION_free(ptr); }
     
     uint32_t cnt_loaded = {0};
@@ -75,8 +75,8 @@ struct session_holder {
 
 
 class SSLCertStore {
-   
-public:
+
+private:
     
     int       serial=0xCABA1A;
     
@@ -93,60 +93,92 @@ public:
     SSL_CTX*  def_cl_ctx = nullptr;   // default client ctx
     SSL_CTX*  def_dtls_cl_ctx = nullptr;   // default client ctx for DTLS
 
+//public:
+
+    // default path for CA trust-store. It's marked as CL, since CL side will use it (sx -> real server)
     static std::string def_cl_capath;
-    
+
+    // path for smithproxy own PKI authority and certificates
     static std::string certs_path;
-    static std::string password;
-    
-    static int password_callback(char* buf, int size, int rwflag, void*u);
-    
+    static std::string certs_password;
+
     static unsigned long def_cl_options;
     static unsigned long def_sr_options;
-    
-    bool load();
-        bool load_ca_cert();
-        bool load_def_cl_cert();
-        bool load_def_sr_cert();
-    
-    void destroy();
-    
-     X509_CACHE cache_;
-     X509_CACHE& cache() { return cache_; };
 
+    static int password_callback(char* buf, int size, int rwflag, void*u);
+private:
 
-     static int ssl_ocsp_status_ttl;
-     static int ssl_crl_status_ttl;
-     static ptr_cache<std::string,expiring_ocsp_result> ocsp_result_cache;
-     static ptr_cache<std::string,expiring_crl> crl_cache;
-     static ptr_cache<std::string,session_holder> session_cache;
-     
-     std::mutex mutex_cache_write_;
-     void lock() { mutex_cache_write_.lock(); };
-     void unlock() { mutex_cache_write_.unlock(); }
+    bool load_ca_cert();
+    bool load_def_cl_cert();
+    bool load_def_sr_cert();
+    
+    X509_CACHE cache_;
+    X509_STORE* trust_store_ = nullptr;
 
-     // our killer feature here 
-     X509_PAIR* spoof(X509* cert_orig, bool self_sign=false, std::vector<std::string>* additional_sans=nullptr);
-     
-     static int convert_ASN1TIME(ASN1_TIME*, char*, size_t);
-     static std::string print_cert(X509*);
-     static std::string print_cn(X509*);
-     static std::string print_issuer(X509* x);
-     static std::string print_not_after(X509* x);
-     static std::string print_not_before(X509* x);
-     static std::vector<std::string> get_sans(X509* x);
-     static std::string get_sans_csv(X509* x);
-     
-     bool add(std::string& subject, EVP_PKEY* cert_privkey,X509* cert,X509_REQ* req=NULL);
-     bool add(std::string& subject, X509_PAIR* p,X509_REQ* req=NULL);
-     
-     X509_PAIR*  find(std::string& subject);
-     std::string find_subject_by_fqdn(std::string& fqdn);
-     void erase(std::string& subject);
-     
-     virtual ~SSLCertStore();
+    std::mutex mutex_cache_write_;
 
 public:
+
+    // creates static instance and calls load() and creates default values
+    static SSLCertStore* create();
+
+    SSL_CTX* client_ctx_setup(EVP_PKEY* priv = nullptr, X509* cert = nullptr, const char* ciphers = nullptr);
+    SSL_CTX* server_ctx_setup(EVP_PKEY* priv = nullptr, X509* cert = nullptr, const char* ciphers = nullptr);
+    SSL_CTX* client_dtls_ctx_setup(EVP_PKEY* priv = nullptr, X509* cert = nullptr, const char* ciphers = nullptr);
+    SSL_CTX* server_dtls_ctx_setup(EVP_PKEY* priv = nullptr, X509* cert = nullptr, const char* ciphers = nullptr);
+
+    // load certs, initialize stores and cache structures (all you need to use this Factory)
+    bool load();
+
+    //always use locking when using this class!
+    void lock() { mutex_cache_write_.lock(); };
+    void unlock() { mutex_cache_write_.unlock(); }
+
+    // get spoofed certificate cache, based on cert's subject
+    X509_CACHE& cache() { return cache_; };
+    // trusted CA store
+    X509_STORE* trust_store() { return trust_store_; };
+
+    inline SSL_CTX* default_tls_server_cx() const  { return def_sr_ctx; }
+    inline SSL_CTX* default_tls_client_cx() const  { return def_cl_ctx; }
+    inline SSL_CTX* default_dtls_server_cx() const  { return def_dtls_sr_ctx; }
+    inline SSL_CTX* default_dtls_client_cx() const  { return def_dtls_cl_ctx; }
+
+    static std::string& default_client_ca_path() { return def_cl_capath; }
+    static std::string& default_cert_path() { return certs_path; }
+    static std::string& default_cert_password() { return certs_password; }
+
+    // our killer feature here
+    X509_PAIR* spoof(X509* cert_orig, bool self_sign=false, std::vector<std::string>* additional_sans=nullptr);
+     
+    static int convert_ASN1TIME(ASN1_TIME*, char*, size_t);
+    static std::string print_cert(X509*);
+    static std::string print_cn(X509*);
+    static std::string print_issuer(X509* x);
+    static std::string print_not_after(X509* x);
+    static std::string print_not_before(X509* x);
+    static std::vector<std::string> get_sans(X509* x);
+    static std::string get_sans_csv(X509* x);
+     
+    bool add(std::string& subject, EVP_PKEY* cert_privkey,X509* cert,X509_REQ* req=NULL);
+    bool add(std::string& subject, X509_PAIR* p,X509_REQ* req=NULL);
+     
+    X509_PAIR*  find(std::string& subject);
+    std::string find_subject_by_fqdn(std::string& fqdn);
+    void erase(std::string& subject);
+     
+
+    // static members must be public
+    static int ssl_ocsp_status_ttl;
+    static int ssl_crl_status_ttl;
+    static ptr_cache<std::string,expiring_ocsp_result> ocsp_result_cache;
+    static ptr_cache<std::string,expiring_crl> crl_cache;
+    static ptr_cache<std::string,session_holder> session_cache;
+
+    void destroy();
+    virtual ~SSLCertStore();
     static loglevel& log_level_ref() { return log_level; }
+
 private:
     static loglevel log_level;
 };

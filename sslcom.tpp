@@ -88,6 +88,11 @@ std::string baseSSLCom<L4Proto>::flags_str()
 
 
 template <class L4Proto>
+void baseSSLCom<L4Proto>::certstore_setup() {
+    baseSSLCom::certstore(SSLCertStore::create());
+}
+
+template <class L4Proto>
 void baseSSLCom<L4Proto>::static_init() {
 
     baseCom::static_init();
@@ -753,7 +758,10 @@ int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
                 int is_revoked_by_crl = -1;
                 
                 if(crl != nullptr && com->sslcom_target_cert != nullptr && com->sslcom_target_issuer != nullptr) {
-                    int crl_trust = crl_verify_trust(com->sslcom_target_cert,com->sslcom_target_issuer,crl,com->certstore()->def_cl_capath.c_str());
+                    int crl_trust = crl_verify_trust(com->sslcom_target_cert,
+                                                     com->sslcom_target_issuer,
+                                                     crl,
+                                                     com->certstore()->default_client_ca_path().c_str());
                     DIA__("CRL 0x%x trusted = %d",crl, crl_trust);
                     
                     bool trust_blindly_downloaded_CRL = true;
@@ -905,7 +913,7 @@ int baseSSLCom<L4Proto>::ocsp_resp_callback(SSL *s, void *arg) {
         return baseSSLCom::ocsp_resp_callback_explicit(com,opt_ocsp_strict ? 0 : 1);
     }
 
-    status = OCSP_basic_verify(basic, NULL, com->ocsp_trust_store ,0);
+    status = OCSP_basic_verify(basic, NULL, com->certstore()->trust_store() ,0);
 
 
     if (status <= 0) {
@@ -1118,20 +1126,15 @@ void baseSSLCom<L4Proto>::init_ssl_callbacks() {
 
         if(opt_ocsp_stapling_enabled || opt_ocsp_mode > 0) {
 
-            if(ocsp_trust_store == nullptr) {
-                ocsp_trust_store = X509_STORE_new();
-                if(X509_STORE_load_locations(ocsp_trust_store,nullptr,SSLCertStore::def_cl_capath.c_str()) == 0)  {
-                    ERRS___("cannot load OCSP trusted store. Fail-open.");
-                    opt_ocsp_stapling_mode = 0;
-                } else {
-                    DIA__("[%s]: OCSP stapling enabled, mode %d",hr(),opt_ocsp_stapling_mode);
-                    SSL_set_tlsext_status_type(sslcom_ssl, TLSEXT_STATUSTYPE_ocsp);
-                    SSL_CTX_set_tlsext_status_cb(sslcom_ctx,ocsp_resp_callback);
-                    SSL_CTX_set_tlsext_status_arg(sslcom_ctx, this);
-                }
+            if(certstore()->trust_store() != nullptr) {
+                DIA__("[%s]: OCSP stapling enabled, mode %d",hr(),opt_ocsp_stapling_mode);
+                SSL_set_tlsext_status_type(sslcom_ssl, TLSEXT_STATUSTYPE_ocsp);
+                SSL_CTX_set_tlsext_status_cb(sslcom_ctx,ocsp_resp_callback);
+                SSL_CTX_set_tlsext_status_arg(sslcom_ctx, this);
             }
             else {
-                ERRS__("OCSP truststore already set!");
+                ERRS___("cannot load trusted store for OCSP. Fail-open.");
+                opt_ocsp_stapling_mode = 0;
             }
         }
     } 
@@ -1147,11 +1150,11 @@ void baseSSLCom<L4Proto>::init_client() {
 
 
     if(l4_proto() == SOCK_STREAM) {
-        sslcom_ctx = certstore()->def_cl_ctx;
+        sslcom_ctx = certstore()->default_tls_client_cx();
         sslcom_ssl = SSL_new(sslcom_ctx);
     } else 
     if(l4_proto() == SOCK_DGRAM) {
-        sslcom_ctx = certstore()->def_dtls_cl_ctx;
+        sslcom_ctx = certstore()->default_dtls_client_cx();
         sslcom_ssl = SSL_new(sslcom_ctx);
     }
     
@@ -1213,11 +1216,11 @@ void baseSSLCom<L4Proto>::init_server() {
     DEB___("baseSSLCom<L4Proto>::init_server: l4 proto = %d", l4_proto());
     
     if(l4_proto() == SOCK_STREAM) {
-        sslcom_ctx = certstore()->def_sr_ctx;
+        sslcom_ctx = certstore()->default_tls_server_cx();
         sslcom_ssl = SSL_new(sslcom_ctx);
     } else
     if(l4_proto() == SOCK_DGRAM) {
-        sslcom_ctx = certstore()->def_dtls_sr_ctx;
+        sslcom_ctx = certstore()->default_dtls_server_cx();
         sslcom_ssl = SSL_new(sslcom_ctx);
         SSL_set_options(sslcom_ssl, SSL_OP_COOKIE_EXCHANGE);
     }
@@ -2502,15 +2505,6 @@ void baseSSLCom<L4Proto>::cleanup()  {
         sslcom_ssl = nullptr;
     }
 
-    if(ocsp_trust_store) {
-        X509_STORE_free(ocsp_trust_store);
-        ocsp_trust_store = nullptr;
-    }
-
-// 	if (sslcom_ctx) {
-//         SSL_CTX_free(sslcom_ctx);
-//         sslcom_ctx = nullptr;
-//     }
 
     L4Proto::cleanup();
 }
@@ -2629,180 +2623,6 @@ int baseSSLCom<L4Proto>::connect ( const char* host, const char* port, bool bloc
     }
 
     return sock;
-}
-
-template <class L4Proto>
-SSL_CTX* baseSSLCom<L4Proto>::client_ctx_setup(EVP_PKEY* priv, X509* cert, const char* ciphers) {
-//SSL_CTX* SSLCom::client_ctx_setup() {
-
-    // SSLv3 -> latest TLS
-    const SSL_METHOD *method = SSLv23_client_method();
-
-    SSL_CTX* ctx = SSL_CTX_new (method);
-
-    if (!ctx) {
-        ERRS__("SSLCom::client_ctx_setup: Error creating SSL context!");
-        //log_if_error(ERR,"SSLCom::init_client");
-        exit(2);
-    }
-
-    ciphers == nullptr ? SSL_CTX_set_cipher_list(ctx,"ALL:!ADH:!LOW:!aNULL:!EXP:!MD5:@STRENGTH") : SSL_CTX_set_cipher_list(ctx,ciphers);
-
-    // testing for LogJam:
-    // SSL_CTX_set_cipher_list(ctx,"kEECDH kEECDH kEDH HIGH !kRSA !RC4 !aNULL !eNULL !LOW !3DES !MD5 !EXP !DSS !PSK !SRP !kECDH !CAMELLIA !IDEA !SEED");
-    SSL_CTX_set_options(ctx,certstore()->def_cl_options); //used to be also SSL_OP_NO_TICKET+
-    SSL_CTX_set_session_cache_mode(ctx,SSL_SESS_CACHE_CLIENT);
-    
-
-
-//     DIAS__("SSLCom::client_ctx_setup: loading default key/cert");
-//     priv == nullptr ? SSL_CTX_use_PrivateKey(ctx,certstore()->def_cl_key) : SSL_CTX_use_PrivateKey(ctx,priv);
-//     cert == nullptr ? SSL_CTX_use_certificate(ctx,certstore()->def_cl_cert) : SSL_CTX_use_certificate(ctx,cert);
-// 
-//     if (!SSL_CTX_check_private_key(ctx)) {
-//         ERRS__("SSLCom::client_ctx_setup: Private key does not match the certificate public key\n");
-//         exit(5);
-//     }
-
-    return ctx;
-}
-
-template <class L4Proto>
-SSL_CTX* baseSSLCom<L4Proto>::client_dtls_ctx_setup(EVP_PKEY* priv, X509* cert, const char* ciphers) {
-//SSL_CTX* SSLCom::client_ctx_setup() {
-
-    // SSLv3 -> latest TLS
-#ifdef USE_OPENSSL11
-    const SSL_METHOD *method = DTLS_client_method();
-#else
-    const SSL_METHOD *method = DTLSv1_client_method();
-#endif
-
-    SSL_CTX* ctx = SSL_CTX_new (method);
-
-    if (!ctx) {
-        ERRS__("SSLCom::client_ctx_setup: Error creating SSL context!");
-        //log_if_error(ERR,"SSLCom::init_client");
-        exit(2);
-    }
-
-    ciphers == nullptr ? SSL_CTX_set_cipher_list(ctx,"ALL:!ADH:!LOW:!aNULL:!EXP:!MD5:@STRENGTH") : SSL_CTX_set_cipher_list(ctx,ciphers);
-
-    // testing for LogJam:
-    // SSL_CTX_set_cipher_list(ctx,"kEECDH kEECDH kEDH HIGH !kRSA !RC4 !aNULL !eNULL !LOW !3DES !MD5 !EXP !DSS !PSK !SRP !kECDH !CAMELLIA !IDEA !SEED");
-    // SSL_CTX_set_options(ctx,certstore()->def_cl_options); //used to be also SSL_OP_NO_TICKET+
-    SSL_CTX_set_session_cache_mode(ctx,SSL_SESS_CACHE_CLIENT);
-    
-
-
-//     DIAS__("SSLCom::client_ctx_setup: loading default key/cert");
-//     priv == nullptr ? SSL_CTX_use_PrivateKey(ctx,certstore()->def_cl_key) : SSL_CTX_use_PrivateKey(ctx,priv);
-//     cert == nullptr ? SSL_CTX_use_certificate(ctx,certstore()->def_cl_cert) : SSL_CTX_use_certificate(ctx,cert);
-// 
-//     if (!SSL_CTX_check_private_key(ctx)) {
-//         ERRS__("SSLCom::client_ctx_setup: Private key does not match the certificate public key\n");
-//         exit(5);
-//     }
-
-    return ctx;
-}
-
-
-
-template <class L4Proto>
-SSL_CTX* baseSSLCom<L4Proto>::server_ctx_setup(EVP_PKEY* priv, X509* cert, const char* ciphers) {
-    
-    // SSLv3 -> latest TLS
-    const SSL_METHOD *method = SSLv23_server_method();
-    SSL_CTX* ctx = SSL_CTX_new (method);
-
-    if (!ctx) {
-        ERRS__("SSLCom::server_ctx_setup: Error creating SSL context!");
-        exit(2);
-    }
-
-    ciphers == nullptr ? SSL_CTX_set_cipher_list(ctx,"ALL:!ADH:!LOW:!EXP:!MD5:@STRENGTH") : SSL_CTX_set_cipher_list(ctx,ciphers);
-    SSL_CTX_set_options(ctx,certstore()->def_sr_options);
-
-    DEBS__("SSLCom::server_ctx_setup: loading default key/cert");
-    priv == nullptr ? SSL_CTX_use_PrivateKey(ctx,certstore()->def_sr_key) : SSL_CTX_use_PrivateKey(ctx,priv);
-    cert == nullptr ? SSL_CTX_use_certificate(ctx,certstore()->def_sr_cert) : SSL_CTX_use_certificate(ctx,cert);
-
-
-    if (!SSL_CTX_check_private_key(ctx)) {
-        ERRS__("SSLCom::server_ctx_setup: private key does not match the certificate public key\n");
-        exit(5);
-    }
-
-    return ctx;
-}
-
-
-template <class L4Proto>
-SSL_CTX* baseSSLCom<L4Proto>::server_dtls_ctx_setup(EVP_PKEY* priv, X509* cert, const char* ciphers) {
-    
-    // DTLS method
-#ifdef USE_OPENSSL11
-    const SSL_METHOD *method = DTLS_server_method();
-#else
-    const SSL_METHOD *method = DTLSv1_server_method();
-#endif
-    SSL_CTX* ctx = SSL_CTX_new (method);
-
-    if (!ctx) {
-        ERRS__("SSLCom::server_dtls_ctx_setup: Error creating SSL context!");
-        exit(2);
-    }
-
-    ciphers == nullptr ? SSL_CTX_set_cipher_list(ctx,"ALL:!ADH:!LOW:!EXP:!MD5:@STRENGTH") : SSL_CTX_set_cipher_list(ctx,ciphers);
-    //SSL_CTX_set_options(ctx,certstore()->def_sr_options);
-
-    DEBS__("SSLCom::server_dtls_ctx_setup: loading default key/cert");
-    priv == nullptr ? SSL_CTX_use_PrivateKey(ctx,certstore()->def_sr_key) : SSL_CTX_use_PrivateKey(ctx,priv);
-    cert == nullptr ? SSL_CTX_use_certificate(ctx,certstore()->def_sr_cert) : SSL_CTX_use_certificate(ctx,cert);
-
-
-    if (!SSL_CTX_check_private_key(ctx)) {
-        ERRS__("SSLCom::server_dtls_ctx_setup: private key does not match the certificate public key\n");
-        exit(5);
-    }
-
-    return ctx;
-}
-
-template <class L4Proto>
-void baseSSLCom<L4Proto>::certstore_setup(void ) {
-
-    DIAS__("SSLCom: loading central certification store: start");
-
-    baseSSLCom::sslcom_certstore_ = new SSLCertStore();
-    bool ret = baseSSLCom::certstore()->load();
-
-    if(! ret) {
-        FATS__("Failure loading certificates, bailing out.");
-        exit(2);
-    }
-
-    certstore()->def_cl_ctx = client_ctx_setup();
-    certstore()->def_dtls_cl_ctx = client_dtls_ctx_setup();
-    
-    DIAS__("SSLCom: default ssl client context: ok");
-
-    if(certstore()->def_cl_capath.size() > 0) {
-        int r = SSL_CTX_load_verify_locations(certstore()->def_cl_ctx,nullptr,certstore()->def_cl_capath.c_str());
-        DIA__("SSLCom: loading default certification store: %s", r > 0 ? "ok" : "failed");
-        if(r <= 0) {
-            log_if_error2(iWAR,"SSLCom::certstore_setup");
-        }
-    } else {
-        WARS__("SSLCom: loading default certification store: path not set!");
-    }
-
-
-    certstore()->def_sr_ctx = server_ctx_setup();
-    certstore()->def_dtls_sr_ctx = server_dtls_ctx_setup();
-    DIAS__("SSLCom: default ssl server context: ok");
-
 }
 
 
