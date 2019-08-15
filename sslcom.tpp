@@ -2487,7 +2487,14 @@ void baseSSLCom<L4Proto>::cleanup()  {
 
     if (!sslcom_waiting) {
         int shit = SSL_shutdown(sslcom_ssl);  //_sh_utdown _it_
-        if (shit == 0) SSL_shutdown(sslcom_ssl);
+        if (shit == 0) {
+                DEBS__("  shutdown success");
+            }
+        else {
+            if(shit < 0) {
+                DEB__("  shutdown failed: %d", SSL_get_error(sslcom_ssl, shit));
+            }
+        }
     }
 
     if(sslcom_ssl) 	{
