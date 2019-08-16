@@ -74,7 +74,7 @@ struct session_holder {
 };
 
 
-class SSLCertStore {
+class SSLFactory {
 
 private:
     
@@ -120,7 +120,7 @@ private:
 public:
 
     // creates static instance and calls load() and creates default values
-    static SSLCertStore* create();
+    static SSLFactory* create();
 
     SSL_CTX* client_ctx_setup(EVP_PKEY* priv = nullptr, X509* cert = nullptr, const char* ciphers = nullptr);
     SSL_CTX* server_ctx_setup(EVP_PKEY* priv = nullptr, X509* cert = nullptr, const char* ciphers = nullptr);
@@ -176,7 +176,7 @@ public:
     static ptr_cache<std::string,session_holder> session_cache;
 
     void destroy();
-    virtual ~SSLCertStore();
+    virtual ~SSLFactory();
     static loglevel& log_level_ref() { return log_level; }
 
 private:
