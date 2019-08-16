@@ -229,13 +229,13 @@ public:
     static std::once_flag openssl_thread_setup_done;
     
     // certificate store common across all SSCom instances
-    static SSLCertStore* sslcom_certstore_;
+    static SSLFactory* sslcom_certstore_;
     // init certstore and default CTX
     static void certstore_setup();
     static std::once_flag certstore_setup_done;    
 
-    static SSLCertStore* certstore() { return sslcom_certstore_; };
-    static void certstore(SSLCertStore* c) { if (sslcom_certstore_ != NULL) { delete sslcom_certstore_; }  sslcom_certstore_ = c; };
+    static SSLFactory* certstore() { return sslcom_certstore_; };
+    static void certstore(SSLFactory* c) { if (sslcom_certstore_ != NULL) { delete sslcom_certstore_; }  sslcom_certstore_ = c; };
 	
     //called just once
 	virtual void static_init();

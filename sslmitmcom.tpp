@@ -61,8 +61,8 @@ bool baseSSLMitmCom<SSLProto>::check_cert(const char* peer_name) {
             // If certificate is formally valid, see if it also matches SNI. This is extra check,
             // to avoid SNI evasions.
             
-            std::vector<std::string> hostnames = SSLCertStore::get_sans(cert);
-            hostnames.push_back("DNS:"+SSLCertStore::print_cn(cert));
+            std::vector<std::string> hostnames = SSLFactory::get_sans(cert);
+            hostnames.push_back("DNS:"+SSLFactory::print_cn(cert));
             
             bool validated = false;
             std::string validated_san;

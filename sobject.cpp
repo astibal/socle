@@ -83,18 +83,16 @@ unsigned long time_get_counter_sec(time_t* last_time, unsigned long* counter, in
 }
 
 sobject::sobject() {
-    sobject_db.lock();
+    std::lock_guard<std::recursive_mutex> l_(sobject_db.getlock());
     sobject_db.set(this,new sobject_info());
     mtr_created.update(1);
-    sobject_db.unlock();
 }
 
 
 sobject::~sobject() {
-    sobject_db.lock();
+    std::lock_guard<std::recursive_mutex> l_(sobject_db.getlock());
     sobject_db.erase(this);
     mtr_deleted.update(1);
-    sobject_db.unlock();
 }
 
 
@@ -102,7 +100,7 @@ std::string sobject_db_list(const char* class_criteria,const char* delimiter,int
     
     std::string ret;
     std::string criteria = "";
-    sobject_db.lock();
+    std::lock_guard<std::recursive_mutex> l_(sobject_db.getlock());
     
     if(class_criteria)
         criteria = class_criteria;
@@ -151,7 +149,6 @@ std::string sobject_db_list(const char* class_criteria,const char* delimiter,int
         }
     }
     
-    sobject_db.unlock();
     return ret;
 }
 
@@ -159,8 +156,8 @@ std::string sobject_db_list(const char* class_criteria,const char* delimiter,int
 std::string sobject_db_stats_string(const char* criteria) {
     
     std::string ret;
-    sobject_db.lock();
-    
+    std::lock_guard<std::recursive_mutex> l_(sobject_db.getlock());
+
     unsigned long object_counter = 0;
     
     int youngest_age = -1;
@@ -184,7 +181,7 @@ std::string sobject_db_stats_string(const char* criteria) {
             
         }
     }
-    sobject_db.unlock();
+
     float avg_age = 0;
     if (object_counter > 0) 
         avg_age = sum_age/object_counter;
@@ -200,8 +197,8 @@ std::string sobject_db_stats_string(const char* criteria) {
 int sobject_db_ask_destroy(void* ptr) {
     
     int ret = -1;
-    
-    sobject_db.lock();
+
+    std::lock_guard<std::recursive_mutex> l_(sobject_db.getlock());
     
     auto it = sobject_db.cache().find((sobject*)ptr);
     if(it != sobject_db.cache().end()) {
@@ -210,8 +207,7 @@ int sobject_db_ask_destroy(void* ptr) {
             ret = 1;
         }
     }
-    sobject_db.unlock();
-    
+
     return ret;
 }
 

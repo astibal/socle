@@ -50,7 +50,7 @@
 
 template <class L4Proto> std::once_flag baseSSLCom<L4Proto>::openssl_thread_setup_done;
 template <class L4Proto> std::once_flag baseSSLCom<L4Proto>::certstore_setup_done;
-template <class L4Proto> SSLCertStore*  baseSSLCom<L4Proto>::sslcom_certstore_;
+template <class L4Proto> SSLFactory*  baseSSLCom<L4Proto>::sslcom_certstore_;
 
 template <class L4Proto> int baseSSLCom<L4Proto>::sslcom_ssl_extdata_index = -1;
 
@@ -89,7 +89,7 @@ std::string baseSSLCom<L4Proto>::flags_str()
 
 template <class L4Proto>
 void baseSSLCom<L4Proto>::certstore_setup() {
-    baseSSLCom::certstore(SSLCertStore::create());
+    baseSSLCom::certstore(SSLFactory::create());
 }
 
 template <class L4Proto>
@@ -429,8 +429,8 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx) {
 
     if (!ok) {
         if (err_cert) {
-            DIA__("[%s]: SSLCom::ssl_client_vrfy_callback: '%s' issued by '%s'",name,SSLCertStore::print_cn(err_cert).c_str(),
-                  SSLCertStore::print_issuer(err_cert).c_str());
+            DIA__("[%s]: SSLCom::ssl_client_vrfy_callback: '%s' issued by '%s'",name,SSLFactory::print_cn(err_cert).c_str(),
+                  SSLFactory::print_issuer(err_cert).c_str());
         }
         else {
             DIA__("[%s]: SSLCom::ssl_client_vrfy_callback: no server certificate",name);
@@ -479,7 +479,7 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx) {
 
         case X509_V_ERR_CERT_NOT_YET_VALID:
         case X509_V_ERR_ERROR_IN_CERT_NOT_BEFORE_FIELD:
-            DIA__("[%s]: SSLCom::ssl_client_vrfy_callback: not before: %s",name, SSLCertStore::print_not_before(err_cert).c_str());
+            DIA__("[%s]: SSLCom::ssl_client_vrfy_callback: not before: %s",name, SSLFactory::print_not_before(err_cert).c_str());
             if(com != nullptr) {
                 com->verify_set(INVALID);
                 if(com->opt_allow_not_valid_cert) {
@@ -493,7 +493,7 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx) {
             break;
         case X509_V_ERR_CERT_HAS_EXPIRED:
         case X509_V_ERR_ERROR_IN_CERT_NOT_AFTER_FIELD:
-            DIA__("[%s]: SSLCom::ssl_client_vrfy_callback: not after: %s",name, SSLCertStore::print_not_after(err_cert).c_str());
+            DIA__("[%s]: SSLCom::ssl_client_vrfy_callback: not after: %s",name, SSLFactory::print_not_after(err_cert).c_str());
             if(com != nullptr) {
                 com->verify_set(INVALID);
                 if(com->opt_allow_not_valid_cert) {
@@ -518,7 +518,7 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx) {
 
     std::string cn = "unknown";
     if(xcert != nullptr) {   
-        cn = SSLCertStore::print_cn(xcert) + ";"+ fingerprint(xcert);
+        cn = SSLFactory::print_cn(xcert) + ";"+ fingerprint(xcert);
     }
     DIA__("[%s]: SSLCom::ssl_client_vrfy_callback[%d:%s]: returning %s (pre-verify %d)",name,depth,cn.c_str(),(ret > 0 ? "ok" : "failed" ),ok);
     if(ret <= 0) {
@@ -652,26 +652,31 @@ int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
 
         std::string cn = "unknown";
         if(com->sslcom_target_cert != nullptr) {   
-            cn = SSLCertStore::print_cn(com->sslcom_target_cert) + ";" + fingerprint(com->sslcom_target_cert);
+            cn = SSLFactory::print_cn(com->sslcom_target_cert) + ";" + fingerprint(com->sslcom_target_cert);
         }
 
         const char* str_cached = "cached";
         const char* str_fresh = "fresh";
         const char* str_status = "unknown";
-        
-        com->certstore()->ocsp_result_cache.lock();
-        expiring_ocsp_result* cached_result = com->certstore()->ocsp_result_cache.get(cn);
-        
-        if(cached_result != nullptr) {
-            is_revoked = cached_result->value;
-            certstore()->ocsp_result_cache.unlock();  //WARNING
-            str_status = str_cached;                  //   |
-        } else {                                      //   |
-            certstore()->ocsp_result_cache.unlock();  //WARNING
-            is_revoked = ocsp_check_cert(com->sslcom_target_cert,com->sslcom_target_issuer);
-            str_status = str_fresh;
+
+
+        expiring_ocsp_result *cached_result = nullptr;
+
+        // ocsp_result_cache - locked
+        {
+            std::lock_guard<std::recursive_mutex> l_(com->certstore()->ocsp_result_cache.getlock());
+
+            cached_result = com->certstore()->ocsp_result_cache.get(cn);
+
+            if (cached_result != nullptr) {
+                is_revoked = cached_result->value;
+                str_status = str_cached;
+            } else {
+                is_revoked = ocsp_check_cert(com->sslcom_target_cert, com->sslcom_target_issuer);
+                str_status = str_fresh;
+            }
         }
-        
+
         DIA__("[%s]: SSLCom::ocsp_explicit_check[%s]: ocsp is_revoked = %d)",name,cn.c_str(),is_revoked);        
         
         com->ocsp_cert_is_revoked = is_revoked;
@@ -688,11 +693,10 @@ int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
 
         
         if(cached_result == nullptr) {
-            // if result is fresh, store it
-            certstore()->ocsp_result_cache.lock();
+
+            std::lock_guard<std::recursive_mutex> l_(com->certstore()->ocsp_result_cache.getlock());
             // set cache for 3 minutes
             certstore()->ocsp_result_cache.set(cn,new expiring_ocsp_result(is_revoked,certstore()->ssl_ocsp_status_ttl));
-            certstore()->ocsp_result_cache.unlock();            
         }
         
         
@@ -705,11 +709,12 @@ int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
             
             expiring_crl* crl_h = nullptr;
             X509_CRL* crl = nullptr;
-            
+
+
+            std::lock_guard<std::recursive_mutex> l_(com->certstore()->crl_cache.getlock());
             for(auto crl_url: crls) {
                 
                 std::string crl_printable = printable(crl_url);
-                certstore()->crl_cache.lock();
                 crl_h = certstore()->crl_cache.get(crl_url);
                 
                 if(crl_h != nullptr) {
@@ -718,7 +723,6 @@ int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
                     str_status = str_cached;
                 }
                 else {
-                    certstore()->crl_cache.unlock(); // WARNING: unlock for the download
                     DIA__("crl not cached: %s",crl_printable.c_str());
                     
                     const int tolerated_dnld_time = 3;
@@ -743,7 +747,7 @@ int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
                         crl = new_CRL(b);
                         str_status = str_fresh;
                         
-                        certstore()->crl_cache.lock(); // WARNING: lock back again -- we risk here that someone else already downloaded it
+
                         if(crl != nullptr) {
                             DIA__("Caching CRL 0x%x", crl);
                             certstore()->crl_cache.set(crl_url.c_str(),new expiring_crl(new crl_holder(crl),certstore()->ssl_crl_status_ttl)); // but because we are locked, we are happy to overwrite it!
@@ -778,7 +782,6 @@ int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
                     }
                 }
                 
-                certstore()->crl_cache.unlock(); // unlocking, we don't need lock anymore
                 DIA__("CRL says this certificate is revoked = %d",is_revoked_by_crl);
 
                 if(is_revoked_by_crl > 0) {
@@ -1000,7 +1003,7 @@ int baseSSLCom<L4Proto>::ocsp_resp_callback(SSL *s, void *arg) {
 
     DIA__("[%s] OCSP status for server certificate: %s", name, OCSP_cert_status_str(status));
 
-    std::string cn = SSLCertStore::print_cn(com->sslcom_target_cert) + ";" + fingerprint(com->sslcom_target_cert);
+    std::string cn = SSLFactory::print_cn(com->sslcom_target_cert) + ";" + fingerprint(com->sslcom_target_cert);
     
     if (status == V_OCSP_CERTSTATUS_GOOD) {
         DIA__("[%s] OCSP status is good",name);
@@ -1767,11 +1770,12 @@ bool baseSSLCom<L4Proto>::store_session_if_needed() {
             DIA___("ticketing: key %s: full key exchange, connect attempt %d on socket %d",key.c_str(),prof_connect_cnt,owner_cx()->socket());
             
             if(verify_status == VERIFY_OK) {
-                
-                certstore()->session_cache.lock();
+
+                std::lock_guard<std::recursive_mutex> l_( certstore()->session_cache.getlock() );
+
                 certstore()->session_cache.set(key,new session_holder(SSL_get1_session(sslcom_ssl)));
                 DIA___("ticketing: key %s: keying material stored, cache size = %d",key.c_str(),certstore()->session_cache.cache().size());
-                certstore()->session_cache.unlock();
+
                 ret = true;
             } else {
                 DIAS__("certificate verification failed, not storing in the cache.");
@@ -1805,8 +1809,9 @@ bool baseSSLCom<L4Proto>::load_session_if_needed() {
         } else {
             key = string_format("%s:%s",owner_cx()->host().c_str(),owner_cx()->port().c_str());
         }
-        
-        certstore()->session_cache.lock();
+
+        std::lock_guard<std::recursive_mutex> l_(certstore()->session_cache.getlock());
+
         session_holder* h = certstore()->session_cache.get(key);
         
         if(h != nullptr) {
@@ -1819,7 +1824,6 @@ bool baseSSLCom<L4Proto>::load_session_if_needed() {
             DIA___("ticketing: key %s:target server TLS ticket not found",key.c_str());
             SSL_set_session(sslcom_ssl, NULL);
         }
-        certstore()->session_cache.unlock();
     }
     
     return ret;
