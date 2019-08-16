@@ -100,9 +100,6 @@ public:
 
     std::unordered_map<K,T*>& cache() { return cache_; }
 
-    void lock() { lock_.lock(); };
-    void unlock() { lock_.unlock(); };
-
     bool auto_delete() const { return auto_delete_; }
     void auto_delete(bool b) { auto_delete_ = b; }
 
@@ -196,7 +193,8 @@ public:
     }
     
     void expiration_check(bool (*fn_expired_check_ptr)(T*)) { fn_expired_check = fn_expired_check_ptr; };
-    
+    std::recursive_mutex& getlock() { return lock_; }
+
 private:
     bool auto_delete_ = true;
 
