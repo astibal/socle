@@ -39,7 +39,7 @@ unsigned long time_get_counter_sec(time_t* last_time, unsigned long* counter, in
 int sobject_db_ask_destroy(void* ptr);
 
 /*
- * Accouting info for all sobjects.
+ * Accounting info for all sobjects.
 */
 struct sobject_info {
     static bool enable_bt_;
