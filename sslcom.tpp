@@ -75,15 +75,18 @@ baseSSLCom<L4Proto>::baseSSLCom(): L4Proto() {
 template <class L4Proto>
 std::string baseSSLCom<L4Proto>::flags_str()
 {
-    std::string msg = baseCom::flags_str();
-    msg += ":";
-    
-    bool is = false;
-    if(flags_ & HSK_REUSED ) { msg+="A"; is = true; }
-    
-    if(!is) { msg+="0"; }
-    
-    return msg;
+    std::stringstream msg(baseCom::flags_str());
+    msg << ":ssl<";
+
+    if(flags_ & HSK_REUSED ) {
+        msg << "A";
+    }
+    else {
+        msg << "a";
+    }
+    msg << ">";
+
+    return msg.str();
 }
 
 
@@ -98,13 +101,6 @@ void baseSSLCom<L4Proto>::static_init() {
     baseCom::static_init();
 
     DEBS__("SSL: Static INIT");
-
-    if(false) {
-        // make compiler happy
-        mutex_buf = NULL;
-        locking_function(0,0,NULL,0);
-        id_function();
-    }
 
     // call openssl threads support - only once from all threads!
     std::call_once (baseSSLCom::openssl_thread_setup_done ,THREAD_setup);
