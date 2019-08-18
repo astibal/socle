@@ -324,39 +324,39 @@ SSL_CTX* SSLFactory::server_dtls_ctx_setup(EVP_PKEY* priv, X509* cert, const cha
 }
 
 
-SSLFactory* SSLFactory::create() {
+SSLFactory& SSLFactory::init () {
 
-    DIAS__("SSLFactory::create: loading central certification store: start");
+    DIAS__("SSLFactory::init: loading central certification store: start");
 
-    SSLFactory* fac = new SSLFactory();
-    bool ret = fac->load();
+    SSLFactory& fac = SSLFactory::factory();
+    bool ret = fac.load();
 
     if(! ret) {
-        FATS__("SSLFactory::create: failure loading certificates, bailing out.");
+        FATS__("SSLFactory::init: failure loading certificates, bailing out.");
         exit(2);
     }
 
-    fac->def_cl_ctx = fac->client_ctx_setup();
-    fac->def_dtls_cl_ctx = fac->client_dtls_ctx_setup();
+    fac.def_cl_ctx = fac.client_ctx_setup();
+    fac.def_dtls_cl_ctx = fac.client_dtls_ctx_setup();
 
-    DIAS__("SSLFactory::create: default ssl client context: ok");
+    DIAS__("SSLFactory::init: default ssl client context: ok");
 
-    if(fac->def_cl_capath.size() > 0) {
-        int r = SSL_CTX_load_verify_locations(fac->def_cl_ctx, nullptr, def_cl_capath.c_str());
-        DEB__("SSLFactory::create: loading default certification store: %s", r > 0 ? "ok" : "failed");
+    if(fac.def_cl_capath.size() > 0) {
+        int r = SSL_CTX_load_verify_locations(fac.def_cl_ctx, nullptr, def_cl_capath.c_str());
+        DEB__("SSLFactory::init: loading default certification store: %s", r > 0 ? "ok" : "failed");
 
         if(r <= 0) {
-            ERR__("SSLFactory::create: failed to load verify location: %d", r);
+            ERR__("SSLFactory::init: failed to load verify location: %d", r);
         }
     } else {
-        WARS__("SSLFactory::create: loading default certification store: path not set!");
+        WARS__("SSLFactory::init: loading default certification store: path not set!");
     }
 
 
-    fac->def_sr_ctx = fac->server_ctx_setup();
-    fac->def_dtls_sr_ctx = fac->server_dtls_ctx_setup();
+    fac.def_sr_ctx = fac.server_ctx_setup();
+    fac.def_dtls_sr_ctx = fac.server_dtls_ctx_setup();
 
-    DIAS__("SSLFactory::create: default ssl server context: ok");
+    DIAS__("SSLFactory::init: default ssl server context: ok");
 
     return fac;
 }
@@ -656,7 +656,7 @@ X509_PAIR* SSLFactory::spoof(X509* cert_orig, bool self_sign, std::vector<std::s
 
     
     if(!copy) {
-        ERR__("SSLFactory::spoof[%x]: cannot create request",this);
+        ERR__("SSLFactory::spoof[%x]: cannot init request",this);
         return NULL;
     }
     
@@ -665,7 +665,7 @@ X509_PAIR* SSLFactory::spoof(X509* cert_orig, bool self_sign, std::vector<std::s
     EVP_PKEY_free(pub_sr_cert);
 
     if (!(copy_subj = X509_NAME_new())) {
-        ERR__("SSLFactory::spoof[%x]: cannot create subject for request",this);
+        ERR__("SSLFactory::spoof[%x]: cannot init subject for request",this);
         return NULL;
     }
 
@@ -805,7 +805,7 @@ X509_PAIR* SSLFactory::spoof(X509* cert_orig, bool self_sign, std::vector<std::s
     X509_NAME *name = NULL;
 
 
-    // create new certificate 
+    // init new certificate
     if (!(cert = X509_new( ))) {
         ERR__("SSLFactory::spoof[%x]: error creating X509 object",this);
         return NULL;

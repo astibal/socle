@@ -117,10 +117,19 @@ private:
 
     std::mutex mutex_cache_write_;
 
+
+    SSLFactory() {};
 public:
+    // avoid having copies of SSLFactory
+    SSLFactory(SSLFactory const&) = delete;
+    void operator=(SSLFactory const&) = delete;
+    static SSLFactory& factory() {
+        static SSLFactory f;
+        return f;
+    }
 
     // creates static instance and calls load() and creates default values
-    static SSLFactory* create();
+    static SSLFactory& init();
 
     SSL_CTX* client_ctx_setup(EVP_PKEY* priv = nullptr, X509* cert = nullptr, const char* ciphers = nullptr);
     SSL_CTX* server_ctx_setup(EVP_PKEY* priv = nullptr, X509* cert = nullptr, const char* ciphers = nullptr);

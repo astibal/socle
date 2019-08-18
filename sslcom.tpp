@@ -89,7 +89,7 @@ std::string baseSSLCom<L4Proto>::flags_str()
 
 template <class L4Proto>
 void baseSSLCom<L4Proto>::certstore_setup() {
-    baseSSLCom::certstore(SSLFactory::create());
+    baseSSLCom::certstore(& SSLFactory::init());
 }
 
 template <class L4Proto>

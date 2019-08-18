@@ -7,7 +7,7 @@ add_library(socle_lib baseproxy.hpp lrproxy.hpp baseproxy.cpp hostcx.hpp hostcx.
 target_link_libraries(socle_lib socle_common_lib)
 
 if(UNIX)
-    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -Wall -std=c++11")
+    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -Wall -std=c++17")
 
     # detect Alpine - and disable backtrace_* function use
     if(EXISTS "/etc/alpine-release")
