@@ -33,6 +33,7 @@
 #include <map>
 
 #include <display.hpp>
+#include <stringformat.hpp>
 // logging levels
 
 #define iNON 0

@@ -20,13 +20,19 @@
 #define DISPLAY_HPP
 
 #include <string>
+#include <sstream>
 #include <vector>
+#include <cstring>
 #include <arpa/inet.h>
-
 
 class buffer;
 
-std::string string_format(const std::string& fmt, ...);
+
+
+std::string string_format_old(const char* fmt, ...);
+template <class ... Args>
+std::string string_format(const char* format, Args ... args);
+
 std::vector<std::string> 
             string_split(std::string str, char delimiter);
 std::string string_trim(const std::string& orig);
@@ -68,4 +74,43 @@ int inet_ss_address_unpack(sockaddr_storage *ptr, std::string* = nullptr, unsign
 int inet_ss_address_remap(sockaddr_storage *orig, sockaddr_storage *mapped);
 std::string inet_ss_str(sockaddr_storage *s);
 
-#endif
+
+template <typename ... Args>
+std::string string_printf(const std::string& fmt, const Args& ... args)
+{
+    std::stringstream ss;
+
+    size_t fmtIndex = 0;
+    size_t placeHolders = 0;
+    auto printFmt = [&fmt, &ss, &fmtIndex, &placeHolders]()
+    {
+        for (; fmtIndex < fmt.size(); ++fmtIndex)
+        {
+            if (fmt[fmtIndex] != '%')
+                ss << fmt[fmtIndex];
+            else if (++fmtIndex < fmt.size())
+            {
+                if (fmt[fmtIndex] == '%')
+                    ss << '%';
+                else
+                {
+                    ++fmtIndex;
+                    ++placeHolders;
+                    break;
+                }
+            }
+        }
+    };
+
+    ((printFmt(), ss, ss << args), ..., (printFmt()));
+
+    if (placeHolders < sizeof...(args))
+        throw std::runtime_error("extra arguments provided to printf");
+    if (placeHolders > sizeof...(args))
+        throw std::runtime_error("invalid format string: missing arguments");
+
+
+    return ss.str();
+}
+
+#endif // DISPLAY_HPP

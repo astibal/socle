@@ -35,10 +35,11 @@
 #include "stdio.h"
 #include "errno.h"
 
+class buffer;
 
 std::recursive_mutex formatter_lock;
 
-std::string string_format(const std::string& fmt, ...) {
+std::string string_format_old(const char* fmt, ...) {
     
     // there could be more precious implemenatation of this in the future
     std::lock_guard<std::recursive_mutex> l(formatter_lock);
@@ -49,7 +50,11 @@ std::string string_format(const std::string& fmt, ...) {
     while (1) {
         str.resize(size);
         va_start(ap, fmt);
-        int n = vsnprintf((char *)str.c_str(), size, fmt.c_str(), ap);
+
+        //  writing to c_str() produced data is undefined behaviour
+        //  https://en.cppreference.com/w/cpp/string/basic_string/c_str
+
+        int n = vsnprintf((char *)str.c_str(), size, fmt, ap);
         va_end(ap);
         if (n > -1 && n < size) {
             str.resize(n);
