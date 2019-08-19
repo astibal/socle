@@ -50,6 +50,14 @@ std::string sobject_info::to_string(int verbosity) {
 
 sobject::sobject() {
     std::lock_guard<std::recursive_mutex> l_(db().getlock());
+
+    static const uint64_t id_start = 0xCABA1ACABA1A;
+    static const uint64_t id_key =   0x3453ABC3450F;
+    static uint64_t id_current = id_start;
+
+    oid_ = id_key ^ id_current++;
+
+    oid_db().set(oid_, this);
     db().set(this,new sobject_info());
     mtr_created().update(1);
 }
@@ -57,6 +65,8 @@ sobject::sobject() {
 
 sobject::~sobject() {
     std::lock_guard<std::recursive_mutex> l_(db().getlock());
+
+    oid_db().erase(oid());
     db().erase(this);
     mtr_deleted().update(1);
 }
@@ -88,7 +98,11 @@ std::string sobjectDB::str_list(const char* class_criteria, const char* delimite
                 
                 //DIA_("comparing pointer: %s and %s",str_ptr.c_str(), criteria.c_str());
                 matched = (str_ptr == criteria);
-            } else {
+            } else if(criteria.compare(0,3,"oid") == 0) {
+                auto find_oid = criteria.substr(3);
+                matched = (std::to_string(ptr->oid()) == find_oid );
+            }
+            else {
                 //DIA_("comparing classname: %s and %s",ptr->class_name().c_str(), criteria.c_str());
                 matched = (ptr->class_name() == criteria || criteria == "*");
             }
@@ -103,7 +117,7 @@ std::string sobjectDB::str_list(const char* class_criteria, const char* delimite
                 if(obj_string.find(content_criteria) == std::string::npos) { continue; }
             }
 
-            ret << string_format("Id: 0x%lx | ",ptr) + obj_string;
+            ret << string_format("OID: %llx ptr: 0x%lx | ", ptr->oid(), ptr) + obj_string;
 
             if(verbosity >= DEB) {
                 ret << "\n";
@@ -156,8 +170,10 @@ std::string sobjectDB::str_stats(const char* criteria) {
     ret << "Performance: " << socle::sobject::mtr_created().get() << " new objects per second, "
                            << socle::sobject::mtr_deleted().get() << " deleted objects per second.\n";
 
-    ret << "Database contains: "<< object_counter << " entries, oldest " << oldest_age << "s, ";
+    ret << "Database contains: "<< object_counter << " matching entries (" << ( criteria ? criteria : "*" ) << "), oldest " << oldest_age << "s, ";
     ret << "youngest age "<< youngest_age << "s, average age is "<< avg_age << "s.";
+    ret << "\n";
+    ret << "Full DB size: " << db().cache().size() << " full OID DB size: " << oid_db().cache().size();
     return ret.str();
 }
 

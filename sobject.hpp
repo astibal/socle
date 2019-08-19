@@ -79,8 +79,9 @@ class sobject;
 class sobjectDB {
 
     ptr_cache<sobject*,sobject_info> db_;
+    ptr_cache<uint64_t,sobject> oid_db_;
 
-    sobjectDB() : db_("global object db",0,true) {}
+    sobjectDB() : db_("global object db",0, false), oid_db_("oid db", 0, false) {};
     virtual ~sobjectDB() = default;
 
 public:
@@ -89,9 +90,8 @@ public:
         return sobjdb;
     }
 
-    static ptr_cache<sobject*,sobject_info>& db() {
-        return sobjectDB::get().db_;
-    }
+    static ptr_cache<sobject*,sobject_info>& db() { return sobjectDB::get().db_; }
+    static ptr_cache<uint64_t,sobject>& oid_db() { return sobjectDB::get().oid_db_; }
 
     // convenience methods giving info in human readable string form
     static std::string str_list(const char* class_criteria = nullptr,
@@ -113,18 +113,26 @@ DECLARE_LOGGING(to_string);
 class sobject {
 
 public:
+    typedef uint64_t oid_type;
+
+private:
+    oid_type oid_;
+
+public:
     sobject();
     virtual ~sobject();
+    inline const oid_type oid() const { return oid_; };
 
     // ask kindly to stop use this object (for example, user implementation could set error indicator, etc. )
     virtual bool ask_destroy() = 0;
 
     // return string representation of the object on single line
-    virtual std::string to_string(int verbosity=iINF) { return this->class_name(); };
+    virtual std::string to_string(int verbosity=iINF) { std::stringstream ss; ss << this->class_name() << "-" << oid(); return ss.str(); };
 
     static meter& mtr_created() { static meter mtr_created_; return mtr_created_; } ;
     static meter& mtr_deleted() { static meter mtr_deleted_; return mtr_deleted_; } ;
     static ptr_cache<sobject*,sobject_info>& db() { return sobjectDB::db(); }
+    static ptr_cache<uint64_t, sobject>& oid_db() { return sobjectDB::oid_db(); }
     
 DECLARE_C_NAME("sobject");
 DECLARE_LOGGING(to_string);
