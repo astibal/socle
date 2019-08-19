@@ -21,17 +21,6 @@
 #include <unordered_map>
 #include "buffer.hpp"
 
-unsigned long long memPool::stat_acq = 0;
-unsigned long long memPool::stat_acq_size = 0;
-
-unsigned long long memPool::stat_ret = 0;
-unsigned long long memPool::stat_ret_size = 0;
-
-unsigned long long memPool::stat_alloc = 0;
-unsigned long long memPool::stat_alloc_size = 0;
-
-unsigned long long memPool::stat_out_free = 0;
-unsigned long long memPool::stat_out_free_size = 0;
 
 unsigned long long stat_mempool_alloc = 0;
 unsigned long long stat_mempool_realloc = 0;
@@ -54,8 +43,35 @@ const bool mem_chunk_t::trace_enabled = false;
 #endif
 
 
+
 memPool::memPool(std::size_t sz256, std::size_t sz1k, std::size_t sz5k, std::size_t sz10k, std::size_t sz20k):
-sz256(sz256), sz1k(sz1k), sz5k(sz5k), sz10k(sz10k), sz20k(sz20k) {
+        sz256(0), sz1k(0), sz5k(0), sz10k(0), sz20k(0)
+{
+    stat_acq = 0;
+    stat_acq_size = 0;
+
+    stat_ret = 0;
+    stat_ret_size = 0;
+
+    stat_alloc = 0;
+    stat_alloc_size = 0;
+
+    stat_out_free = 0;
+    stat_out_free_size = 0;
+
+    extend(sz256, sz1k, sz5k, sz10k, sz20k);
+}
+
+void memPool::extend(std::size_t n_sz256, std::size_t n_sz1k, std::size_t n_sz5k,
+                     std::size_t n_sz10k, std::size_t n_sz20k) {
+
+    std::lock_guard<std::mutex> l_(lock);
+
+    sz256 += n_sz256;
+    sz1k  += n_sz1k;
+    sz5k  += n_sz5k;
+    sz10k += n_sz10k;
+    sz20k += n_sz20k;
 
     for(unsigned int i = 0; i < sz256 ; i++) {
         for (int j = 0; j < 10 ; j++) available_32.emplace_back( mem_chunk(32) );
@@ -159,7 +175,7 @@ void* mempool_alloc(size_t s) {
     if(!buffer::use_pool)
         return malloc(s);
 
-    mem_chunk_t mch = buffer::pool.acquire(s);
+    mem_chunk_t mch = memPool::pool().acquire(s);
 
     if(mem_chunk::trace_enabled)
             mch.set_trace();
@@ -200,11 +216,11 @@ void* mempool_realloc(void* optr, size_t nsz) {
         return optr;
     }
 
-    mem_chunk_t new_m = buffer::pool.acquire(nsz);
+    mem_chunk_t new_m = memPool::pool().acquire(nsz);
 
     if(!new_m.ptr) {
 
-        buffer::pool.release(old_m);
+        memPool::pool().release(old_m);
         std::lock_guard<std::mutex> l(mempool_ptr_map_lock);
 
         auto i = mempool_ptr_map.find(optr);
@@ -220,7 +236,7 @@ void* mempool_realloc(void* optr, size_t nsz) {
         if(ptr_size)
             memcpy(new_m.ptr,optr, nsz <= ptr_size ? nsz : ptr_size);
 
-        buffer::pool.release(old_m);
+        memPool::pool().release(old_m);
 
         {
             std::lock_guard<std::mutex> l(mempool_ptr_map_lock);
@@ -256,7 +272,7 @@ void mempool_free(void* optr) {
     stat_mempool_free++;
     stat_mempool_free_size += ptr_size;
 
-    buffer::pool.release( mem_chunk(static_cast<unsigned char*>(optr), ptr_size) );
+    memPool::pool().release( mem_chunk(static_cast<unsigned char*>(optr), ptr_size) );
 }
 
 

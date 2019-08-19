@@ -39,6 +39,8 @@ class buffer;
 
 std::recursive_mutex formatter_lock;
 
+
+// don't use this function. Its behavior with writing to c_str() is undefined
 std::string string_format_old(const char* fmt, ...) {
     
     // there could be more precious implemenatation of this in the future

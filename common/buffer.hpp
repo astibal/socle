@@ -45,7 +45,6 @@ public:
   static bool use_pool;
 
 
-  static memPool pool;
 #ifdef SOCLE_MEM_PROFILE  
   static std::unordered_map<std::string,int> alloc_map;
   static std::mutex alloc_map_lock_;
@@ -181,7 +180,7 @@ inline buffer::~buffer () {
     if (free_ && capacity_ > 0) {
 
         if(use_pool) {
-            pool.release( {data_, capacity_ } );
+            memPool::pool().release( {data_, capacity_ } );
         }
         else {
             delete[] data_;
@@ -194,7 +193,7 @@ inline buffer::buffer (size_type s)
     : free_ (true) {
 
     if (use_pool) {
-        mem_chunk_t mch = pool.acquire(s);
+        mem_chunk_t mch = memPool::pool().acquire(s);
         data_ = mch.ptr;
         capacity_ = mch.capacity;
     } else {
@@ -214,7 +213,7 @@ inline buffer::buffer (size_type s, size_type c)
         throw std::invalid_argument ("size greater than capacity");
 
     if (use_pool) {
-        mem_chunk_t mch = pool.acquire(c);
+        mem_chunk_t mch = memPool::pool().acquire(c);
         data_ = mch.ptr;
         capacity_ = mch.capacity;
     }
@@ -232,7 +231,7 @@ inline buffer::buffer (const void* d, size_type s)
     if (s != 0) {
 
         if(use_pool) {
-            mem_chunk_t mch = pool.acquire(s);
+            mem_chunk_t mch = memPool::pool().acquire(s);
             data_ = mch.ptr;
             capacity_ = mch.capacity;
         }
@@ -263,7 +262,7 @@ inline buffer::buffer (const void* d, size_type s, size_type xc)
   if (c != 0)
   {
       if(use_pool) {
-          mem_chunk_t mch = pool.acquire(c);
+          mem_chunk_t mch = memPool::pool().acquire(c);
           data_ = mch.ptr;
           c = mch.capacity;
       }
@@ -299,7 +298,7 @@ inline buffer::buffer (const buffer& x)
     if(x.free_) {
 
         if(use_pool) {
-            mem_chunk_t mch = pool.acquire(x.capacity_);
+            mem_chunk_t mch = memPool::pool().acquire(x.capacity_);
             data_ = mch.ptr;
             capacity_ = mch.capacity;
         }
@@ -336,7 +335,7 @@ inline buffer& buffer::operator= (const buffer& x)
       if (free_ and data_ != nullptr ) {
           if(use_pool) {
 
-              pool.release( { data_, capacity_} );
+              memPool::pool().release( { data_, capacity_} );
           }
           else {
               delete[] data_;  // we HAD ownership
@@ -349,7 +348,7 @@ inline buffer& buffer::operator= (const buffer& x)
       if(x.free_) {
 
           if(use_pool) {
-              mem_chunk_t mch = pool.acquire(x.capacity_);
+              mem_chunk_t mch = memPool::pool().acquire(x.capacity_);
               data_ = mch.ptr;
               capacity_  = mch.capacity;
           }
@@ -408,7 +407,7 @@ inline void buffer::assign (const void* d, size_type s)
   {
     if (free_ && data_ != nullptr) {
         if(use_pool) {
-            pool.release( { data_, capacity_ } );
+            memPool::pool().release( { data_, capacity_ } );
         } else {
             delete[] data_;
             counter_free(capacity_);
@@ -416,7 +415,7 @@ inline void buffer::assign (const void* d, size_type s)
     }
 
     if(use_pool) {
-        mem_chunk_t mch = pool.acquire(s);
+        mem_chunk_t mch = memPool::pool().acquire(s);
 
         data_ = mch.ptr;
         capacity_ = mch.capacity;
@@ -441,7 +440,7 @@ inline void buffer::assign (void* d, size_type s, size_type c, bool own)
   if (free_ && data_ != nullptr) {
 
       if(use_pool) {
-          pool.release( { data_, capacity_ } );
+          memPool::pool().release( { data_, capacity_ } );
       }
       else {
           delete[] data_;
@@ -522,7 +521,7 @@ inline bool buffer::capacity (size_type c)
 
   if(use_pool) {
 
-      mem_chunk_t mch = pool.acquire(c);
+      mem_chunk_t mch = memPool::pool().acquire(c);
       d = mch.ptr;
       cd = mch.capacity;
   }
@@ -541,7 +540,7 @@ inline bool buffer::capacity (size_type c)
 
   if (free_ && data_ != nullptr)  {
       if(use_pool) {
-          pool.release( { data_, capacity_ } );
+          memPool::pool().release( { data_, capacity_ } );
       }
       else {
           delete[] data_;

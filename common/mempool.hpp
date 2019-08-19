@@ -99,7 +99,6 @@ typedef struct mem_chunk
 
 class memPool {
 
-public:
     std::size_t sz32;
     std::size_t sz64;
     std::size_t sz128;
@@ -108,11 +107,6 @@ public:
     std::size_t sz5k;
     std::size_t sz10k;
     std::size_t sz20k;
-
-    memPool(std::size_t sz256, std::size_t sz1k, std::size_t sz5k, std::size_t sz10k, std::size_t sz20k);
-
-    mem_chunk_t acquire(std::size_t sz);
-    void release(mem_chunk_t to_ret);
 
     std::vector<mem_chunk_t>* pick_acq_set(ssize_t s);
     std::vector<mem_chunk_t>* pick_ret_set(ssize_t s);
@@ -127,20 +121,54 @@ public:
     std::vector<mem_chunk_t> available_20k;
     std::vector<mem_chunk_t> available_big; // will be empty initially
 
-    static unsigned long long stat_acq;
-    static unsigned long long stat_acq_size;
+    memPool(std::size_t sz256, std::size_t sz1k, std::size_t sz5k, std::size_t sz10k, std::size_t sz20k);
 
-    static unsigned long long stat_ret;
-    static unsigned long long stat_ret_size;
+public:
 
-    static unsigned long long stat_alloc;
-    static unsigned long long stat_alloc_size;
+    static memPool& pool() {
+        static memPool m = memPool(5000,1000,10000,1000,800);
+        return m;
+    }
 
-    static unsigned long long stat_free;
-    static unsigned long long stat_free_size;
+    void extend(std::size_t sz256, std::size_t sz1k, std::size_t sz5k, std::size_t sz10k, std::size_t sz20k);
 
-    static unsigned long long stat_out_free;
-    static unsigned long long stat_out_free_size;
+    mem_chunk_t acquire(std::size_t sz);
+    void release(mem_chunk_t to_ret);
+
+    unsigned long long stat_acq;
+    unsigned long long stat_acq_size;
+
+    unsigned long long stat_ret;
+    unsigned long long stat_ret_size;
+
+    unsigned long long stat_alloc;
+    unsigned long long stat_alloc_size;
+
+    unsigned long long stat_free;
+    unsigned long long stat_free_size;
+
+    unsigned long long stat_out_free;
+    unsigned long long stat_out_free_size;
+
+    inline const std::vector<mem_chunk_t>::size_type mem_32_av() const { return available_32.size(); };
+    inline const std::vector<mem_chunk_t>::size_type mem_64_av() const { return available_64.size(); };
+    inline const std::vector<mem_chunk_t>::size_type mem_128_av() const { return available_128.size(); };
+    inline const std::vector<mem_chunk_t>::size_type mem_256_av() const { return available_256.size(); };
+    inline const std::vector<mem_chunk_t>::size_type mem_1k_av() const { return available_1k.size(); };
+    inline const std::vector<mem_chunk_t>::size_type mem_5k_av() const { return available_5k.size(); };
+    inline const std::vector<mem_chunk_t>::size_type mem_10k_av() const { return available_10k.size(); };
+    inline const std::vector<mem_chunk_t>::size_type mem_20k_av() const { return available_20k.size(); };
+    inline const std::vector<mem_chunk_t>::size_type mem_big_av() const { return available_big.size(); };
+
+
+    inline const std::size_t mem_32_sz() const { return sz32; };
+    inline const std::size_t mem_64_sz() const { return sz64; };
+    inline const std::size_t mem_128_sz() const { return sz128; };
+    inline const std::size_t mem_256_sz() const { return sz256; };
+    inline const std::size_t mem_1k_sz() const { return sz1k; };
+    inline const std::size_t mem_5k_sz() const { return sz5k; };
+    inline const std::size_t mem_10k_sz() const { return sz10k; };
+    inline const std::size_t mem_20k_sz() const { return sz20k; };
 
     std::mutex lock;
 };
