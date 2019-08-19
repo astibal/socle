@@ -5,3 +5,4 @@
 socle.kdev4
 **/*.pyc
 **/*.deb
+socle_version.h

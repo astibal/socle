@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 2.8)
 
+SET(SOCLE_DIR "${PROJECT_SOURCE_DIR}/../socle")
+
 include_directories ("${PROJECT_SOURCE_DIR}")
 include_directories ("common/")
 
@@ -14,4 +16,44 @@ if(UNIX)
         SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DLIBC_MUSL")
     endif()
 endif()
+
+if(EXISTS "${SOCLE_DIR}/.git")
+    execute_process(
+            COMMAND git rev-parse --abbrev-ref HEAD
+            WORKING_DIRECTORY ${SOCLE_DIR}
+            OUTPUT_VARIABLE SOCLE_GIT_BRANCH
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+
+    execute_process(
+            COMMAND git log -1 --format=%h
+            WORKING_DIRECTORY ${SOCLE_DIR}
+            OUTPUT_VARIABLE SOCLE_GIT_COMMIT_HASH
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+
+    execute_process(
+            COMMAND git describe --tags --dirty
+            WORKING_DIRECTORY ${SOCLE_DIR}
+            OUTPUT_VARIABLE SOCLE_GIT_VERSION
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+    )
+
+
+else(EXISTS "${SOCLE_DIR}/.git")
+    set(SOCLE_GIT_BRANCH "")
+    set(SOCLE_GIT_COMMIT_HASH "")
+    set(SOCLE_GIT_VERSION "")
+endif(EXISTS "${SOCLE_DIR}/.git")
+
+message(STATUS "Git current socle branch: ${SOCLE_GIT_BRANCH}")
+message(STATUS "Git commit socle hash: ${SOCLE_GIT_COMMIT_HASH}")
+message(STATUS "Git commit socleversion: ${SOCLE_GIT_VERSION}")
+
+message(STATUS "Generating socle_version.h")
+
+configure_file(
+        ${SOCLE_DIR}/socle_version.h.in
+        ${SOCLE_DIR}/socle_version.h
+)
 
