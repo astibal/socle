@@ -1145,6 +1145,7 @@ void baseSSLCom<L4Proto>::init_client() {
     if(sslcom_ssl) {
         DEBS___("SSLCom::init_client: freeing old sslcom_ssl");
         SSL_free(sslcom_ssl);
+        sslcom_ssl = nullptr;
     }
 
 
