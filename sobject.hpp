@@ -30,13 +30,6 @@
 
 namespace socle {
 
-std::string sobject_db_list(const char* class_criteria = nullptr,const char* delimiter = nullptr,int verbosity=iINF,const char* content_criteria=nullptr);
-std::string sobject_db_stats_string(const char* criteria);
-
-unsigned long time_update_counter_sec(time_t* last_time, unsigned long* prev_counter, unsigned long* curr_counter, int seconds, int increment=1);
-unsigned long time_get_counter_sec(time_t* last_time, unsigned long* counter, int seconds);
-
-int sobject_db_ask_destroy(void* ptr);
 
 /*
  * Accounting info for all sobjects.
@@ -65,7 +58,57 @@ struct sobject_info {
     DECLARE_LOGGING(to_string);
 };
 
-struct meter;
+struct meter {
+
+    explicit meter(int interval=1): interval_(interval) { last_update = time(nullptr); };
+
+    unsigned long prev_counter_{};
+    unsigned long curr_counter_{};
+
+    time_t last_update;
+    int interval_{1};
+
+
+    unsigned long update(unsigned long val);
+    unsigned long get() const { if(time(nullptr) > last_update + interval_) { return 0; } return prev_counter_; };
+};
+
+class sobject;
+
+// Singleton class - used as central sobject storage
+class sobjectDB {
+
+    ptr_cache<sobject*,sobject_info> db_;
+
+    sobjectDB() : db_("global object db",0,true) {}
+    virtual ~sobjectDB() = default;
+
+public:
+    static sobjectDB& get() {
+        static sobjectDB sobjdb = sobjectDB();
+        return sobjdb;
+    }
+
+    static ptr_cache<sobject*,sobject_info>& db() {
+        return sobjectDB::get().db_;
+    }
+
+    // convenience methods giving info in human readable string form
+    static std::string str_list(const char* class_criteria = nullptr,
+                                const char* delimiter = nullptr,
+                                int verbosity = iINF,
+                                const char* content_criteria = nullptr);
+
+    static std::string str_stats(const char* criteria);
+
+    // ask object to destruct itself
+    static int ask_destroy(void* ptr);
+
+    virtual std::string to_string(int verbosity=iINF) { return this->class_name(); };
+
+DECLARE_C_NAME("sobjectDB");
+DECLARE_LOGGING(to_string);
+};
 
 class sobject {
 
@@ -79,9 +122,9 @@ public:
     // return string representation of the object on single line
     virtual std::string to_string(int verbosity=iINF) { return this->class_name(); };
 
-    
-    static meter mtr_created;
-    static meter mtr_deleted;
+    static meter& mtr_created() { static meter mtr_created_; return mtr_created_; } ;
+    static meter& mtr_deleted() { static meter mtr_deleted_; return mtr_deleted_; } ;
+    static ptr_cache<sobject*,sobject_info>& db() { return sobjectDB::db(); }
     
 DECLARE_C_NAME("sobject");
 DECLARE_LOGGING(to_string);
@@ -174,27 +217,10 @@ class sref {
 };
 
 
-struct meter {
-    
-    explicit meter(int interval=1): interval_(interval) { last_update = time(nullptr); };
-    
-    unsigned long prev_counter_{};
-    unsigned long curr_counter_{};
-    
-    time_t last_update;
-    int interval_{1};
-    
-    
-    unsigned long update(unsigned long val);
-    unsigned long get() const { if(time(nullptr) > last_update + interval_) { return 0; } return prev_counter_; };
-};
-
 typedef spointer<std::vector<std::string>> spointer_vector_string;
 typedef spointer<std::vector<int>> spointer_vector_int;
 typedef spointer<std::set<int>> spointer_set_int;
 typedef sref<std::vector<std::string>> sref_vector_string;
-
-extern ptr_cache<sobject*,sobject_info> sobject_db;
 
 };
 #endif
