@@ -25,6 +25,7 @@
 #include <mempool.hpp>
 
 void* mempool_realloc(void*, size_t);
+void mempool_free(void*);
 
 template <class ... Args>
 std::string string_format(const char* format, Args ... args)
@@ -52,7 +53,10 @@ std::string string_format(const char* format, Args ... args)
 
 
     // w counts in also \0 terminator
-    return std::string((const char*)b, w);
+    std::string ret((const char*)b, w);
+    mempool_free(b);
+
+    return ret;
 }
 
 #endif //STRINGFORMAT_HPP
