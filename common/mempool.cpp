@@ -67,6 +67,9 @@ void memPool::extend(std::size_t n_sz256, std::size_t n_sz1k, std::size_t n_sz5k
 
     std::lock_guard<std::mutex> l_(lock);
 
+    sz32  += n_sz256*10;
+    sz64  += n_sz256;
+    sz128 += n_sz256;
     sz256 += n_sz256;
     sz1k  += n_sz1k;
     sz5k  += n_sz5k;
