@@ -209,7 +209,7 @@ SSL_CTX* SSLFactory::client_ctx_setup(EVP_PKEY* priv, X509* cert, const char* ci
     // testing for LogJam:
     // SSL_CTX_set_cipher_list(ctx,"kEECDH kEECDH kEDH HIGH !kRSA !RC4 !aNULL !eNULL !LOW !3DES !MD5 !EXP !DSS !PSK !SRP !kECDH !CAMELLIA !IDEA !SEED");
     SSL_CTX_set_options(ctx, def_cl_options); //used to be also SSL_OP_NO_TICKET+
-    SSL_CTX_set_session_cache_mode(ctx,SSL_SESS_CACHE_CLIENT);
+    SSL_CTX_set_session_cache_mode(ctx, SSL_SESS_CACHE_NO_INTERNAL);
 
 
 
@@ -248,7 +248,7 @@ SSL_CTX* SSLFactory::client_dtls_ctx_setup(EVP_PKEY* priv, X509* cert, const cha
     // testing for LogJam:
     // SSL_CTX_set_cipher_list(ctx,"kEECDH kEECDH kEDH HIGH !kRSA !RC4 !aNULL !eNULL !LOW !3DES !MD5 !EXP !DSS !PSK !SRP !kECDH !CAMELLIA !IDEA !SEED");
     // SSL_CTX_set_options(ctx,certstore()->def_cl_options); //used to be also SSL_OP_NO_TICKET+
-    SSL_CTX_set_session_cache_mode(ctx,SSL_SESS_CACHE_CLIENT);
+    SSL_CTX_set_session_cache_mode(ctx, SSL_SESS_CACHE_NO_INTERNAL);
 
 
 
@@ -277,6 +277,7 @@ SSL_CTX* SSLFactory::server_ctx_setup(EVP_PKEY* priv, X509* cert, const char* ci
 
     ciphers == nullptr ? SSL_CTX_set_cipher_list(ctx,"ALL:!ADH:!LOW:!EXP:!MD5:@STRENGTH") : SSL_CTX_set_cipher_list(ctx,ciphers);
     SSL_CTX_set_options(ctx, def_sr_options);
+    SSL_CTX_set_session_cache_mode(ctx, SSL_SESS_CACHE_NO_INTERNAL);
 
     DEBS__("SSLCom::server_ctx_setup: loading default key/cert");
     priv == nullptr ? SSL_CTX_use_PrivateKey(ctx, def_sr_key) : SSL_CTX_use_PrivateKey(ctx,priv);
@@ -309,6 +310,7 @@ SSL_CTX* SSLFactory::server_dtls_ctx_setup(EVP_PKEY* priv, X509* cert, const cha
 
     ciphers == nullptr ? SSL_CTX_set_cipher_list(ctx,"ALL:!ADH:!LOW:!EXP:!MD5:@STRENGTH") : SSL_CTX_set_cipher_list(ctx,ciphers);
     //SSL_CTX_set_options(ctx,certstore()->def_sr_options);
+    SSL_CTX_set_session_cache_mode(ctx, SSL_SESS_CACHE_NO_INTERNAL);
 
     DEBS__("SSLCom::server_dtls_ctx_setup: loading default key/cert");
     priv == nullptr ? SSL_CTX_use_PrivateKey(ctx, def_sr_key) : SSL_CTX_use_PrivateKey(ctx,priv);
