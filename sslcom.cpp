@@ -56,6 +56,8 @@ static void dyn_destroy_function(struct CRYPTO_dynlock_value *l,
 #pragma GCC diagnostic pop
 
 int THREAD_setup ( void ) {
+
+#ifndef USE_OPENSSL11
     int i;
     mutex_buf = new MUTEX_TYPE[CRYPTO_num_locks()];
 
@@ -82,10 +84,16 @@ int THREAD_setup ( void ) {
     DIAS_("OpenSSL: loading algorithms");
     SSLeay_add_ssl_algorithms();
 
+#else
+    DIAS_("OpenSSL: openssl1.1.x detected, using its own locking mechanisms.");
+#endif
+
     return 1;
 }
 
 int THREAD_cleanup ( void ) {
+
+#ifndef USE_OPENSSL11
     int i;
     if ( !mutex_buf ) {
         return 0;
@@ -102,6 +110,8 @@ int THREAD_cleanup ( void ) {
     
     delete[] mutex_buf;
     mutex_buf = NULL;
+#endif
+
     return 1;
 }
 

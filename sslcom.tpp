@@ -1770,10 +1770,24 @@ bool baseSSLCom<L4Proto>::store_session_if_needed() {
 
                 std::lock_guard<std::recursive_mutex> l_( certstore()->session_cache.getlock() );
 
+#if defined USE_OPENSSL111
+                if(SSL_SESSION_is_resumable(SSL_get0_session(sslcom_ssl))) {
+                    DIAS___("session is resumable");
+                    certstore()->session_cache.set(key, new session_holder(SSL_get1_session(sslcom_ssl)));
+                    DIA___("ticketing: key %s: keying material stored, cache size = %d",key.c_str(),certstore()->session_cache.cache().size());
+
+                    ret = true;
+
+                } else {
+                    DIAS___("session is NOT resumable");
+                }
+#else
                 certstore()->session_cache.set(key,new session_holder(SSL_get1_session(sslcom_ssl)));
                 DIA___("ticketing: key %s: keying material stored, cache size = %d",key.c_str(),certstore()->session_cache.cache().size());
 
                 ret = true;
+
+#endif // USE_OPENSSL11
             } else {
                 DIAS__("certificate verification failed, not storing in the cache.");
                 ret = false;
