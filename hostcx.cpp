@@ -584,17 +584,23 @@ buffer baseHostCX::to_read() {
 }
 
 void baseHostCX::to_write(buffer b) {
-    DEB_("HostCX::to_write[%s]: appending to write %d bytes, from buffer struct",c_name(),b.size());
     writebuf_.append(b);
     com()->set_write_monitor(socket());
-    DEB_("HostCX::to_write[%s]: write buffer size %d bytes",c_name(),writebuf_.size());
+    DEB_("HostCX::to_write(buf)[%s]: appending %d bytes, buffer size now %d bytes",c_name(),b.size(), writebuf_.size());
+}
+
+void baseHostCX::to_write(const std::string& s) {
+
+    writebuf_.append((unsigned char*)s.data(), s.size());
+    com()->set_write_monitor(socket());
+    DEB_("HostCX::to_write(ptr)[%s]: appending %d bytes, buffer size now %d bytes",c_name(),s.size(), writebuf_.size());
+
 }
 
 void baseHostCX::to_write(unsigned char* c, unsigned int l) {
-    DEB_("HostCX::to_write[%s]: appending to write %d bytes from pointer",c_name(),l);
     writebuf_.append(c,l);
     com()->set_write_monitor(socket());
-    DEB_("HostCX::to_write[%s]: write buffer size %d bytes",c_name(),writebuf_.size());
+    DEB_("HostCX::to_write(ptr)[%s]: appending %d bytes, buffer size now %d bytes",c_name(),l, writebuf_.size());
 }
 
 void baseHostCX::on_accept_socket(int fd) {
