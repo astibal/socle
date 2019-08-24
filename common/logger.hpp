@@ -643,7 +643,7 @@ public:
     std::list<int>& remote_targets() { return remote_targets_; }
     void remote_targets(std::string name, int s) { remote_targets_.push_back(s); target_names_[s] = name; }
 
-    int virtual write_log(loglevel level, std::string& sss);
+    virtual int write_log(loglevel level, std::string& sss);
     
     bool should_log_topic(loglevel& writer, loglevel& msg);
     
