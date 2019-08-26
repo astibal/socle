@@ -1126,6 +1126,9 @@ void baseSSLCom<L4Proto>::init_ssl_callbacks() {
         if(opt_ocsp_stapling_enabled || opt_ocsp_mode > 0) {
 
             if(certstore()->trust_store() != nullptr) {
+
+                std::lock_guard<std::recursive_mutex> l_(certstore()->lock());
+
                 DIA__("[%s]: OCSP stapling enabled, mode %d",hr(),opt_ocsp_stapling_mode);
                 SSL_set_tlsext_status_type(sslcom_ssl, TLSEXT_STATUSTYPE_ocsp);
                 SSL_CTX_set_tlsext_status_cb(sslcom_ctx,ocsp_resp_callback);
@@ -1150,10 +1153,16 @@ void baseSSLCom<L4Proto>::init_client() {
 
 
     if(l4_proto() == SOCK_STREAM) {
+
+        std::lock_guard<std::recursive_mutex> l_(certstore()->lock());
+
         sslcom_ctx = certstore()->default_tls_client_cx();
         sslcom_ssl = SSL_new(sslcom_ctx);
     } else 
     if(l4_proto() == SOCK_DGRAM) {
+
+        std::lock_guard<std::recursive_mutex> l_(certstore()->lock());
+
         sslcom_ctx = certstore()->default_dtls_client_cx();
         sslcom_ssl = SSL_new(sslcom_ctx);
     }
@@ -1216,10 +1225,16 @@ void baseSSLCom<L4Proto>::init_server() {
     DEB___("baseSSLCom<L4Proto>::init_server: l4 proto = %d", l4_proto());
     
     if(l4_proto() == SOCK_STREAM) {
+
+        std::lock_guard<std::recursive_mutex> l_(certstore()->lock());
+
         sslcom_ctx = certstore()->default_tls_server_cx();
         sslcom_ssl = SSL_new(sslcom_ctx);
     } else
     if(l4_proto() == SOCK_DGRAM) {
+
+        std::lock_guard<std::recursive_mutex> l_(certstore()->lock());
+
         sslcom_ctx = certstore()->default_dtls_server_cx();
         sslcom_ssl = SSL_new(sslcom_ctx);
         SSL_set_options(sslcom_ssl, SSL_OP_COOKIE_EXCHANGE);
@@ -1897,6 +1912,9 @@ bool baseSSLCom<L4Proto>::waiting_peer_hello() {
                     sslcom_peer_hello_received_ = true;
 
                     if(sslcom_peer_hello_sni_.size() > 0) {
+
+                        std::lock_guard<std::recursive_mutex> l_(certstore()->lock());
+
                         std::string subj = certstore()->find_subject_by_fqdn(sslcom_peer_hello_sni_);
                         if(subj.size() > 0) {
                             DIA___("SSLCom::waiting_peer_hello: peer's SNI found in subject cache: '%s'",subj.c_str());
@@ -1940,7 +1958,7 @@ bool baseSSLCom<L4Proto>::enforce_peer_cert_from_cache(std::string & subj) {
         if(peer()->owner_cx() != nullptr) {
             DIAS___("SSLCom::enforce_peer_cert_from_cache: about to force peer's side to use cached certificate");
 
-            //certstore()->lock();
+            std::lock_guard<std::recursive_mutex> l_(certstore()->lock());
 
             X509_PAIR* parek = certstore()->find(subj);
             if (parek != nullptr) {

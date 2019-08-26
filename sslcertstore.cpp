@@ -44,6 +44,9 @@ unsigned long SSLFactory::def_cl_options = SSL_OP_NO_SSLv3+SSL_OP_NO_SSLv2;
 unsigned long SSLFactory::def_sr_options = SSL_OP_NO_SSLv3+SSL_OP_NO_SSLv2;
 
 bool SSLFactory::load() {
+
+    std::lock_guard<std::recursive_mutex> l_(lock());
+
     bool ret = true;
     
     OpenSSL_add_all_algorithms();
@@ -109,18 +112,22 @@ bool SSLFactory::load_ca_cert() {
         fclose(fp_crt);
         return false;
     }
-    
 
-    if(ca_cert) {
-        X509_free(ca_cert);
-    }
-    if(ca_key) {
-        EVP_PKEY_free(ca_key);
+
+    {
+        std::lock_guard<std::recursive_mutex> l_(lock());
+
+        if (ca_cert) {
+            X509_free(ca_cert);
+        }
+        if (ca_key) {
+            EVP_PKEY_free(ca_key);
+        }
+
+        ca_cert = PEM_read_X509(fp_crt, NULL, NULL, NULL);
+        ca_key = PEM_read_PrivateKey(fp_key, NULL, NULL, (void *) certs_password.c_str());
     }
 
-    ca_cert = PEM_read_X509(fp_crt, NULL, NULL, NULL);  
-    ca_key = PEM_read_PrivateKey(fp_key,NULL, NULL, (void*)certs_password.c_str());
-    
     fclose(fp_crt);
     fclose(fp_key);
     
@@ -147,10 +154,13 @@ bool SSLFactory::load_def_cl_cert() {
         fclose(fp_crt);
         return false;
     }
-    
-    
-    def_cl_cert = PEM_read_X509(fp_crt, NULL, NULL, NULL);  
-    def_cl_key = PEM_read_PrivateKey(fp_key,NULL, NULL, NULL);
+
+    {
+        std::lock_guard<std::recursive_mutex> l_(lock());
+
+        def_cl_cert = PEM_read_X509(fp_crt, NULL, NULL, NULL);
+        def_cl_key = PEM_read_PrivateKey(fp_key, NULL, NULL, NULL);
+    }
     
     fclose(fp_crt);
     fclose(fp_key);
@@ -178,11 +188,13 @@ bool SSLFactory::load_def_sr_cert() {
         fclose(fp_crt);
         return false;
     }
-    
-    
-    def_sr_cert = PEM_read_X509(fp_crt, NULL, NULL, NULL);  
-    def_sr_key = PEM_read_PrivateKey(fp_key,NULL, NULL, NULL);
-    
+
+    {
+        std::lock_guard<std::recursive_mutex> l_(lock());
+
+        def_sr_cert = PEM_read_X509(fp_crt, NULL, NULL, NULL);
+        def_sr_key = PEM_read_PrivateKey(fp_key, NULL, NULL, NULL);
+    }
     fclose(fp_crt);
     fclose(fp_key);
     
@@ -193,7 +205,6 @@ bool SSLFactory::load_def_sr_cert() {
 SSL_CTX* SSLFactory::client_ctx_setup(EVP_PKEY* priv, X509* cert, const char* ciphers) {
 //SSL_CTX* SSLCom::client_ctx_setup() {
 
-    // SSLv3 -> latest TLS
     const SSL_METHOD *method = SSLv23_client_method();
 
     SSL_CTX* ctx = SSL_CTX_new (method);
@@ -206,29 +217,14 @@ SSL_CTX* SSLFactory::client_ctx_setup(EVP_PKEY* priv, X509* cert, const char* ci
 
     ciphers == nullptr ? SSL_CTX_set_cipher_list(ctx,"ALL:!ADH:!LOW:!aNULL:!EXP:!MD5:@STRENGTH") : SSL_CTX_set_cipher_list(ctx,ciphers);
 
-    // testing for LogJam:
-    // SSL_CTX_set_cipher_list(ctx,"kEECDH kEECDH kEDH HIGH !kRSA !RC4 !aNULL !eNULL !LOW !3DES !MD5 !EXP !DSS !PSK !SRP !kECDH !CAMELLIA !IDEA !SEED");
     SSL_CTX_set_options(ctx, def_cl_options); //used to be also SSL_OP_NO_TICKET+
     SSL_CTX_set_session_cache_mode(ctx, SSL_SESS_CACHE_NO_INTERNAL);
-
-
-
-//     DIAS__("SSLCom::client_ctx_setup: loading default key/cert");
-//     priv == nullptr ? SSL_CTX_use_PrivateKey(ctx,certstore()->def_cl_key) : SSL_CTX_use_PrivateKey(ctx,priv);
-//     cert == nullptr ? SSL_CTX_use_certificate(ctx,certstore()->def_cl_cert) : SSL_CTX_use_certificate(ctx,cert);
-//
-//     if (!SSL_CTX_check_private_key(ctx)) {
-//         ERRS__("SSLCom::client_ctx_setup: Private key does not match the certificate public key\n");
-//         exit(5);
-//     }
 
     return ctx;
 }
 
 SSL_CTX* SSLFactory::client_dtls_ctx_setup(EVP_PKEY* priv, X509* cert, const char* ciphers) {
-//SSL_CTX* SSLCom::client_ctx_setup() {
 
-    // SSLv3 -> latest TLS
 #ifdef USE_OPENSSL11
     const SSL_METHOD *method = DTLS_client_method();
 #else
@@ -245,28 +241,13 @@ SSL_CTX* SSLFactory::client_dtls_ctx_setup(EVP_PKEY* priv, X509* cert, const cha
 
     ciphers == nullptr ? SSL_CTX_set_cipher_list(ctx,"ALL:!ADH:!LOW:!aNULL:!EXP:!MD5:@STRENGTH") : SSL_CTX_set_cipher_list(ctx,ciphers);
 
-    // testing for LogJam:
-    // SSL_CTX_set_cipher_list(ctx,"kEECDH kEECDH kEDH HIGH !kRSA !RC4 !aNULL !eNULL !LOW !3DES !MD5 !EXP !DSS !PSK !SRP !kECDH !CAMELLIA !IDEA !SEED");
-    // SSL_CTX_set_options(ctx,certstore()->def_cl_options); //used to be also SSL_OP_NO_TICKET+
     SSL_CTX_set_session_cache_mode(ctx, SSL_SESS_CACHE_NO_INTERNAL);
-
-
-
-//     DIAS__("SSLCom::client_ctx_setup: loading default key/cert");
-//     priv == nullptr ? SSL_CTX_use_PrivateKey(ctx,certstore()->def_cl_key) : SSL_CTX_use_PrivateKey(ctx,priv);
-//     cert == nullptr ? SSL_CTX_use_certificate(ctx,certstore()->def_cl_cert) : SSL_CTX_use_certificate(ctx,cert);
-//
-//     if (!SSL_CTX_check_private_key(ctx)) {
-//         ERRS__("SSLCom::client_ctx_setup: Private key does not match the certificate public key\n");
-//         exit(5);
-//     }
 
     return ctx;
 }
 
 SSL_CTX* SSLFactory::server_ctx_setup(EVP_PKEY* priv, X509* cert, const char* ciphers) {
 
-    // SSLv3 -> latest TLS
     const SSL_METHOD *method = SSLv23_server_method();
     SSL_CTX* ctx = SSL_CTX_new (method);
 
@@ -331,6 +312,9 @@ SSLFactory& SSLFactory::init () {
     DIAS__("SSLFactory::init: loading central certification store: start");
 
     SSLFactory& fac = SSLFactory::factory();
+
+    std::lock_guard<std::recursive_mutex> l_(fac.lock());
+
     bool ret = fac.load();
 
     if(! ret) {
@@ -365,19 +349,21 @@ SSLFactory& SSLFactory::init () {
 
 
 void SSLFactory::destroy() {
-    if(ca_cert != NULL) X509_free(ca_cert);
-    if(ca_key != NULL) EVP_PKEY_free(ca_key);
-    
-    if(def_cl_cert != NULL) X509_free(def_cl_cert);
-    if(def_cl_key != NULL) EVP_PKEY_free(def_cl_key);
-    
-    if(def_sr_cert != NULL) X509_free(def_sr_cert);
-    if(def_sr_key != NULL) EVP_PKEY_free(def_sr_key);
 
-    for (auto i = cache_.begin(); i != cache_.end(); ++i ) {
-        std::string key = (*i).first;
-        
-        X509_PAIR* parek = (*i).second;
+    std::lock_guard<std::recursive_mutex> l_(lock());
+
+    if(ca_cert != nullptr) X509_free(ca_cert);
+    if(ca_key != nullptr) EVP_PKEY_free(ca_key);
+    
+    if(def_cl_cert != nullptr) X509_free(def_cl_cert);
+    if(def_cl_key != nullptr) EVP_PKEY_free(def_cl_key);
+    
+    if(def_sr_cert != nullptr) X509_free(def_sr_cert);
+    if(def_sr_key != nullptr) EVP_PKEY_free(def_sr_key);
+
+    for (auto i: cache_) {
+        std::string key = i.first;
+        X509_PAIR*  parek = i.second;
         
         DEB__("SSLFactory::destroy cache: %s",key.c_str());
         EVP_PKEY_free(parek->first);
@@ -402,9 +388,9 @@ void SSLFactory::destroy() {
 
 bool SSLFactory::add(std::string& subject,EVP_PKEY* cert_privkey, X509* cert, X509_REQ* req) {
 
-    X509_PAIR* parek = new X509_PAIR(cert_privkey,cert);
+    auto* parek = new X509_PAIR(cert_privkey,cert);
     
-    if (cert_privkey == NULL || cert == NULL || parek == NULL) {
+    if ( cert_privkey == nullptr || cert == nullptr || parek == nullptr ) {
         DIA__("SSLFactory::add[%x]: one of about to be stored components is NULL",this);
         return false;
     }
@@ -419,7 +405,7 @@ bool SSLFactory::add(std::string& subject,X509_PAIR* parek, X509_REQ* req) {
     
     try {
         // lock, don't mess with cache_, I will write into it now
-        mutex_cache_write_.lock();
+        std::lock_guard<std::recursive_mutex> l_(lock());
 
         // free underlying keypair
         if(cache().find(subject) != cache().end()) {
@@ -440,10 +426,7 @@ bool SSLFactory::add(std::string& subject,X509_PAIR* parek, X509_REQ* req) {
         op_status = false;
         DIA__("SSLFactory::add[%x] - exception caught: %s",this,e.what());
     }
-    
-    // now you can write too
-    mutex_cache_write_.unlock();
-    
+
     if(!op_status) {
         ERR__("Error to add certificate '%s' into memory cache!",subject.c_str());
         return false;
@@ -454,7 +437,8 @@ bool SSLFactory::add(std::string& subject,X509_PAIR* parek, X509_REQ* req) {
 
 X509_PAIR* SSLFactory::find(std::string& subject) {
 
-    // cache lookup
+    std::lock_guard<std::recursive_mutex> l_(lock());
+
     auto entry = cache().find(subject);
     if (entry == cache().end()) {
         DEB__("SSLFactory::find[%x]: NOT cached '%s'",this,subject.c_str());
@@ -464,31 +448,40 @@ X509_PAIR* SSLFactory::find(std::string& subject) {
         return (*entry).second;  //first is the map key (cert subject in our case)
     }    
     
-    return NULL;
+    return nullptr;
 }
 
 std::string SSLFactory::find_subject_by_fqdn(std::string& fqdn) {
-     auto entry = cache().find(fqdn);
-     if (entry == cache().end()) {
-        DEB__("SSLFactory::find_subject_by_fqdn[%x]: NOT cached '%s'",this, fqdn.c_str());
-     } else {
-        DEB__("SSLFactory::find_subject_by_fqdn[%x]: found cached '%s'",this,fqdn.c_str());
-        return (*entry).first;
-     }
 
-     std::regex hostname_re("^[a-zA-Z0-9-]+\\.");
-     std::string wildcard_fqdn = std::regex_replace(fqdn,hostname_re,"*.");
-     
-     entry = cache_.find(wildcard_fqdn);
-     if (entry == cache_.end()) {
-        DEB__("SSLFactory::find_subject_by_fqdn[%x]: wildcard NOT cached '%s'",this, wildcard_fqdn.c_str());
-     } else {
-        DEB__("SSLFactory::find_subject_by_fqdn[%x]: found cached wildcard '%s'",this,fqdn.c_str());
-        return (*entry).first;
-     }     
-     
-     
-     return "";     
+    {
+        std::lock_guard<std::recursive_mutex> l_(lock());
+
+        auto entry = cache().find(fqdn);
+        if (entry == cache().end()) {
+            DEB__("SSLFactory::find_subject_by_fqdn[%x]: NOT cached '%s'", this, fqdn.c_str());
+        } else {
+            DEB__("SSLFactory::find_subject_by_fqdn[%x]: found cached '%s'", this, fqdn.c_str());
+            return (*entry).first;
+        }
+    }
+
+    // do this outside locked section
+    std::regex hostname_re("^[a-zA-Z0-9-]+\\.");
+    std::string wildcard_fqdn = std::regex_replace(fqdn,hostname_re,"*.");
+
+    {
+        std::lock_guard<std::recursive_mutex> l_(lock());
+
+        auto entry = cache_.find(wildcard_fqdn);
+        if (entry == cache_.end()) {
+            DEB__("SSLFactory::find_subject_by_fqdn[%x]: wildcard NOT cached '%s'", this, wildcard_fqdn.c_str());
+        } else {
+            DEB__("SSLFactory::find_subject_by_fqdn[%x]: found cached wildcard '%s'", this, fqdn.c_str());
+            return (*entry).first;
+        }
+    }
+
+    return "";
 }
 
 //don't call erase for now, it can delete cert/key while being used by different threads!!!
@@ -499,7 +492,7 @@ void SSLFactory::erase(std::string& subject) {
     bool op_status = true;
     
     try {
-        mutex_cache_write_.lock();
+        std::lock_guard<std::recursive_mutex> l_(lock());
         
         X509_PAIR* p = find(subject);
         if(p) {
@@ -509,25 +502,27 @@ void SSLFactory::erase(std::string& subject) {
             
             delete p;
         }
-        
-        mutex_cache_write_.unlock();
     }
+
     catch(std::exception& e) {
         op_status = false;
-        DIA__("SSLFactory::add[x] - exception caught: %s",this,e.what());            
+        DIA__("SSLFactory::add[x] - exception caught: %s", this, e.what());
     }
     if(!op_status) {
-        ERR__("Error to remove certificate '%s' from cache",subject.c_str());
+        ERR__("failed removing certificate '%s' from cache", subject.c_str());
     }
     
     
 }
 
 int add_ext(STACK_OF(X509_EXTENSION) *sk, int nid, char *value) {
+
   X509_EXTENSION *ex;
-  ex = X509V3_EXT_conf_nid(NULL, NULL, nid, value);
+  ex = X509V3_EXT_conf_nid(nullptr, nullptr, nid, value);
+
   if (!ex)
-    return 0;
+      return 0;
+
   sk_X509_EXTENSION_push(sk, ex);
   return 1;
 }
@@ -565,7 +560,7 @@ std::vector<std::string> SSLFactory::get_sans(X509* x) {
                     DEBS__("SSLFactory::get_sans: adding subjAltName to extensions");
 #ifdef USE_OPENSSL11
 
-                    STACK_OF(GENERAL_NAME) *alt = (STACK_OF(GENERAL_NAME)*)X509V3_EXT_d2i(ex);
+                    auto* alt = (STACK_OF(GENERAL_NAME)*)X509V3_EXT_d2i(ex);
                     if(alt) {
 
                         int alt_len = sk_GENERAL_NAME_num(alt);
@@ -581,7 +576,7 @@ std::vector<std::string> SSLFactory::get_sans(X509* x) {
 
                             void* name_ptr = GENERAL_NAME_get0_value(gn, &name_type);
                             if(name_type == GEN_DNS) {
-                                ASN1_STRING *dns_name = (ASN1_STRING *) name_ptr; //in ASN1 we trust
+                                auto* dns_name = (ASN1_STRING *) name_ptr; //in ASN1 we trust
 
                                 std::string san((const char *) ASN1_STRING_get0_data(dns_name),
                                                 (unsigned long) ASN1_STRING_length(dns_name));
@@ -652,14 +647,14 @@ X509_PAIR* SSLFactory::spoof(X509* cert_orig, bool self_sign, std::vector<std::s
     DEB__("SSLFactory::spoof[%x]: generating CSR for '%s'",this,subject.c_str());    
         
     X509_REQ* copy = X509_REQ_new();
-    X509_NAME* copy_subj = NULL;
+    X509_NAME* copy_subj = nullptr;
     EVP_PKEY *pkey = def_sr_key;
     const EVP_MD *digest;
 
     
     if(!copy) {
         ERR__("SSLFactory::spoof[%x]: cannot init request",this);
-        return NULL;
+        return nullptr;
     }
     
     EVP_PKEY* pub_sr_cert = X509_get_pubkey(def_sr_cert);
@@ -668,13 +663,13 @@ X509_PAIR* SSLFactory::spoof(X509* cert_orig, bool self_sign, std::vector<std::s
 
     if (!(copy_subj = X509_NAME_new())) {
         ERR__("SSLFactory::spoof[%x]: cannot init subject for request",this);
-        return NULL;
+        return nullptr;
     }
 
     X509_NAME* n_dup = X509_NAME_dup(X509_get_subject_name(cert_orig));
     if (X509_REQ_set_subject_name(copy,n_dup) != 1) {
         ERR__("SSLFactory::spoof[%x]: error copying subject to request",this);
-        return NULL;
+        return nullptr;
     }
     
     // Copy extensions
@@ -788,7 +783,7 @@ X509_PAIR* SSLFactory::spoof(X509* cert_orig, bool self_sign, std::vector<std::s
     }
     else {
         ERR__("SSLFactory::spoof[%x]: error checking public key for a valid digest",this);
-        return NULL;
+        return nullptr;
     }
 #endif //USE_OPENSSL11
     
@@ -803,20 +798,20 @@ X509_PAIR* SSLFactory::spoof(X509* cert_orig, bool self_sign, std::vector<std::s
     DIA__("SSLFactory::spoof[%x]: faking certificate '%s'",this,subject.c_str());     
     
 
-    X509 *cert = NULL;
-    X509_NAME *name = NULL;
+    X509 *cert = nullptr;
+    X509_NAME *name = nullptr;
 
 
     // init new certificate
     if (!(cert = X509_new( ))) {
         ERR__("SSLFactory::spoof[%x]: error creating X509 object",this);
-        return NULL;
+        return nullptr;
     }
 
     // set version number for the certificate (X509v3) and then serial #
     if (X509_set_version (cert, 2L) != 1) {
         ERR__("SSLFactory::spoof[%x]: cannot set X509 version!",this);
-        return NULL;
+        return nullptr;
     }
 
     ASN1_INTEGER_set(X509_get_serialNumber(cert), serial++);
@@ -824,23 +819,23 @@ X509_PAIR* SSLFactory::spoof(X509* cert_orig, bool self_sign, std::vector<std::s
     // get public key from request
     if (!(pkey = X509_REQ_get_pubkey(copy))) {
         ERR__("SSLFactory::spoof[%x]: error getting public key from request",this);
-        return NULL;
+        return nullptr;
     }
 
     // Setting subject name
     if (!(name = X509_REQ_get_subject_name(copy))) {
         ERR__("SSLFactory::spoof[%x]: error getting subject name from request",this);
-        return NULL;
+        return nullptr;
     }
     if (X509_set_subject_name(cert, name) != 1) {
         ERR__("SSLFactory::spoof[%x]: error setting subject name of certificate",this);
-        return NULL;
+        return nullptr;
     }     
 
     int subjAltName_pos = -1;
-    X509_EXTENSION* subjAltName = NULL;
+    X509_EXTENSION* subjAltName = nullptr;
     
-    STACK_OF(X509_EXTENSION) *req_exts = NULL;
+    STACK_OF(X509_EXTENSION) *req_exts = nullptr;
     if (!(req_exts = X509_REQ_get_extensions(copy))) {
         INF__("SSLFactory::spoof[%x]: error getting the request's extension",this);
     } else {
@@ -852,17 +847,17 @@ X509_PAIR* SSLFactory::spoof(X509* cert_orig, bool self_sign, std::vector<std::s
     // Setting issuer
     if (!(name = X509_get_subject_name(ca_cert))) {
         ERR__("SSLFactory::spoof[%x]: error getting subject name from CA certificate",this);
-        return NULL;
+        return nullptr;
     }
     if (X509_set_issuer_name(cert, name) != 1) {
         ERR__("SSLFactory::spoof[%x]: error setting issuer name of certificate",this);
-        return NULL;
+        return nullptr;
         
     }
     // set public key in the certificate 
     if ((X509_set_pubkey( cert, pkey)) != 1) {
         ERR__("SSLFactory::spoof[%x]: error setting public key of the certificate",this);
-        return NULL;
+        return nullptr;
     }
     
     #define EXPIRE_START (-60*60*24)
@@ -870,7 +865,7 @@ X509_PAIR* SSLFactory::spoof(X509* cert_orig, bool self_sign, std::vector<std::s
     // set duration for the certificate
     if (!(X509_gmtime_adj(X509_get_notBefore(cert), EXPIRE_START))) {
         ERR__("SSLFactory::spoof[%x]: error setting beginning time of the certificate",this);
-        return NULL;
+        return nullptr;
     }
     
     #define DAYS_TILL_EXPIRE 364
@@ -878,18 +873,18 @@ X509_PAIR* SSLFactory::spoof(X509* cert_orig, bool self_sign, std::vector<std::s
 
     if (!(X509_gmtime_adj(X509_get_notAfter(cert), EXPIRE_SECS))) {
         ERR__("SSLFactory::spoof[%x]: error setting ending time of the certificate",this);
-        return NULL;
+        return nullptr;
     }
 
     X509V3_CTX ctx;
 
     
     // add x509v3 extensions as specified 
-    X509V3_set_ctx(&ctx, ca_cert, cert, NULL, NULL, 0);
+    X509V3_set_ctx(&ctx, ca_cert, cert, nullptr, nullptr, 0);
     for (int i = 0; i < EXT_COUNT; i++) {
 
         X509_EXTENSION * ext;
-        if (!(ext = X509V3_EXT_conf(NULL, &ctx, ext_ent[i].key, ext_ent[i].value))) {
+        if (!(ext = X509V3_EXT_conf(nullptr, &ctx, ext_ent[i].key, ext_ent[i].value))) {
             WAR__("SSLFactory::spoof[%x]: error on \"%s = %s\"",this,ext_ent[i].key, ext_ent[i].value);
             WAR__("SSLFactory::spoof[%x]: error creating X509 extension object",this);
             continue;
@@ -901,10 +896,10 @@ X509_PAIR* SSLFactory::spoof(X509* cert_orig, bool self_sign, std::vector<std::s
         X509_EXTENSION_free(ext);
     }
     
-    if(subjAltName != NULL) {
+    if(subjAltName != nullptr) {
         if (!X509_add_ext(cert, subjAltName, -1)) {
             ERR__("SSLFactory::spoof[%x]: error adding subjectAltName to certificate",this);
-            return NULL;
+            return nullptr;
         }
     }
     
@@ -931,13 +926,13 @@ X509_PAIR* SSLFactory::spoof(X509* cert_orig, bool self_sign, std::vector<std::s
     }
     else {
         ERR__("SSLFactory::spoof[%x]: error checking CA private key for a valid digest",this);
-        return NULL;
+        return nullptr;
     }
 #endif
 
     if (!(X509_sign(cert, sign_key, digest))) {
         ERR__("SSLFactory::spoof[%x]: error signing certificate",this);
-        return NULL;
+        return nullptr;
     }
 
     EVP_PKEY_free(pkey);  
