@@ -73,6 +73,7 @@ struct session_holder {
     uint32_t cnt_loaded = {0};
 };
 
+class SpoofOptions;
 
 class SSLFactory {
 
@@ -168,9 +169,11 @@ public:
     static std::string print_not_before(X509* x);
     static std::vector<std::string> get_sans(X509* x);
     static std::string get_sans_csv(X509* x);
-     
-    bool add(std::string& subject, EVP_PKEY* cert_privkey,X509* cert,X509_REQ* req=NULL);
-    bool add(std::string& subject, X509_PAIR* p,X509_REQ* req=NULL);
+
+    static std::string make_store_key(X509* cert_orig, const SpoofOptions& spo);
+
+    bool add(std::string& store_key, EVP_PKEY* cert_privkey,X509* cert,X509_REQ* req=NULL);
+    bool add(std::string& store_key, X509_PAIR* p,X509_REQ* req=NULL);
      
     X509_PAIR*  find(std::string& subject);
     std::string find_subject_by_fqdn(std::string& fqdn);

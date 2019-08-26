@@ -193,41 +193,18 @@ bool baseSSLMitmCom<SSLProto>::check_cert(const char* peer_name) {
 
 template <class SSLProto>
 bool baseSSLMitmCom<SSLProto>::spoof_cert(X509* cert_orig, SpoofOptions& spo) {
-    char tmp[512];
     DEB__("SSLMitmCom::spoof_cert[%x]: about to spoof certificate!",this);
     // get info from the peer certificate
     //
     // not used at this time
     // X509_NAME_get_text_by_NID(X509_get_subject_name(cert_orig),NID_commonName, tmp,512);
     // std::string cn(tmp);
-    
-    X509_NAME_oneline( X509_get_subject_name(cert_orig) , tmp, 512);
-    std::string subject(tmp);
-    std::string store_key = subject;
-    
-    
-    X509_PAIR* parek = nullptr;
-    
-    if(spo.self_signed == true) {
-        store_key += "+self_signed";
-    }
-    
-    std::vector<std::string> cert_sans = this->certstore()->get_sans(cert_orig);
-    for(auto s1: cert_sans) {
-        DUM__("SAN: '%s'",s1.c_str());
-        uint32_t c = socle_crc32(0xCABA1A,s1.c_str(),s1.size());
-       
-        DUM__("SAN CRC32: 0x%x",c);
-        store_key += string_format("+san32:%x",c);
-    }
-    
-    if(spo.sans.size() > 0) {
-        for(auto san: spo.sans) {
-            store_key += string_format("+san:%s",san.c_str());
-        }
-    }
 
-    // cache lookup - only if it's valid, verified cert
+    std::scoped_lock<std::recursive_mutex> l_(this->certstore()->lock());
+
+    std::string store_key = SSLFactory::make_store_key(cert_orig, spo);
+    X509_PAIR* parek = nullptr;
+
     parek = this->certstore()->find(store_key);
     if (parek) {
         DIA__("SSLMitmCom::spoof_cert[%x]: certstore hit for '%s'",this,store_key.c_str());

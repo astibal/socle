@@ -386,7 +386,7 @@ void SSLFactory::destroy() {
     }
 }
 
-bool SSLFactory::add(std::string& subject,EVP_PKEY* cert_privkey, X509* cert, X509_REQ* req) {
+bool SSLFactory::add(std::string& store_key,EVP_PKEY* cert_privkey, X509* cert, X509_REQ* req) {
 
     auto* parek = new X509_PAIR(cert_privkey,cert);
     
@@ -395,10 +395,10 @@ bool SSLFactory::add(std::string& subject,EVP_PKEY* cert_privkey, X509* cert, X5
         return false;
     }
     
-    return add(subject,parek,req);
+    return add(store_key,parek,req);
 }
 
-bool SSLFactory::add(std::string& subject,X509_PAIR* parek, X509_REQ* req) {
+bool SSLFactory::add(std::string& store_key,X509_PAIR* parek, X509_REQ* req) {
 
 
     bool op_status = true;
@@ -408,9 +408,9 @@ bool SSLFactory::add(std::string& subject,X509_PAIR* parek, X509_REQ* req) {
         std::lock_guard<std::recursive_mutex> l_(lock());
 
         // free underlying keypair
-        if(cache().find(subject) != cache().end()) {
-            DIA__("SSLFactory::add[%x] keypair associated with subject '%s' already exists (freeing)",this,subject.c_str());
-            auto keypair = cache()[subject];
+        if(cache().find(store_key) != cache().end()) {
+            ERR__("SSLFactory::add[%x] keypair associated with store_key '%s' already exists (freeing)",this,store_key.c_str());
+            auto keypair = cache()[store_key];
 
 
             // if this is last usage of keypair components, we want to free them
@@ -418,8 +418,8 @@ bool SSLFactory::add(std::string& subject,X509_PAIR* parek, X509_REQ* req) {
             X509_free(keypair->second);
         }
 
-        cache()[subject] = parek;
-        DIA__("SSLFactory::add[%x] cert %s",this,subject.c_str());
+        cache()[store_key] = parek;
+        DIA__("SSLFactory::add[%x] cert %s",this,store_key.c_str());
 
     }
     catch (std::exception& e) {
@@ -428,12 +428,85 @@ bool SSLFactory::add(std::string& subject,X509_PAIR* parek, X509_REQ* req) {
     }
 
     if(!op_status) {
-        ERR__("Error to add certificate '%s' into memory cache!",subject.c_str());
+        ERR__("Error to add certificate '%s' into memory cache!",store_key.c_str());
         return false;
     }
     
     return true;
 }
+
+
+#ifndef  USE_OPENSSL11
+
+std::string SSLFactory::make_store_key(X509* cert_orig, const SpoofOptions& spo) {
+
+    char tmp[512];
+    X509_NAME_oneline( X509_get_subject_name(cert_orig) , tmp, 512);
+    std::string subject(tmp);
+
+    std::stringstream store_key_ss;
+
+    store_key_ss << subject;
+
+    if(spo.self_signed) {
+        store_key_ss << "+self_signed";
+    }
+
+    std::vector<std::string> cert_sans = SSLFactory::get_sans(cert_orig);
+    for(auto const& s1: cert_sans) {
+        store_key_ss << string_format("+san:%s",s1.c_str());
+    }
+
+    if( ! spo.sans.empty() ) {
+        for(auto const& san: spo.sans) {
+            store_key_ss << string_format("+san:%s",san.c_str());
+        }
+    }
+
+    return store_key_ss.str();
+
+}
+
+#else
+
+std::string SSLFactory::make_store_key(X509* cert_orig, const SpoofOptions& spo) {
+
+    char tmp[512]; memset(tmp, 0, 512);
+
+    const ASN1_BIT_STRING* bs = nullptr;
+    const X509_ALGOR* pal = nullptr;
+
+    X509_get0_signature(&bs, &pal, cert_orig);
+
+    //TODO: add signature as part of the key, to cover new orig certificates with also new spoofed ones
+
+    X509_NAME_oneline( X509_get_subject_name(cert_orig) , tmp, 512);
+    std::string subject(tmp);
+
+    std::stringstream store_key_ss;
+
+    store_key_ss << subject;
+
+    if(spo.self_signed) {
+        store_key_ss << "+self_signed";
+    }
+
+    std::vector<std::string> cert_sans = SSLFactory::get_sans(cert_orig);
+    for(auto const& s1: cert_sans) {
+        store_key_ss << string_format("+san:%s",s1.c_str());
+    }
+
+    if( ! spo.sans.empty() ) {
+        for(auto const& san: spo.sans) {
+            store_key_ss << string_format("+san:%s",san.c_str());
+        }
+    }
+
+    return store_key_ss.str();
+
+}
+
+#endif
 
 X509_PAIR* SSLFactory::find(std::string& subject) {
 
