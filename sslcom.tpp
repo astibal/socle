@@ -1940,6 +1940,8 @@ bool baseSSLCom<L4Proto>::enforce_peer_cert_from_cache(std::string & subj) {
         if(peer()->owner_cx() != nullptr) {
             DIAS___("SSLCom::enforce_peer_cert_from_cache: about to force peer's side to use cached certificate");
 
+            //certstore()->lock();
+
             X509_PAIR* parek = certstore()->find(subj);
             if (parek != nullptr) {
                 DIA___("Found cached certificate %s based on fqdn search.",subj.c_str());

@@ -115,7 +115,7 @@ private:
     X509_CACHE cache_;
     X509_STORE* trust_store_ = nullptr;
 
-    std::mutex mutex_cache_write_;
+    std::recursive_mutex mutex_cache_write_;
 
 
     SSLFactory() {};
@@ -140,8 +140,8 @@ public:
     bool load();
 
     //always use locking when using this class!
-    void lock() { mutex_cache_write_.lock(); };
-    void unlock() { mutex_cache_write_.unlock(); }
+    std::recursive_mutex& lock() { return mutex_cache_write_; };
+
 
     // get spoofed certificate cache, based on cert's subject
     X509_CACHE& cache() { return cache_; };
