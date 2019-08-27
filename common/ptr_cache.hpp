@@ -203,7 +203,7 @@ private:
     
     T* default_value_ = nullptr;
     std::unordered_map<K,T*> cache_;
-    std::recursive_mutex lock_;
+    mutable std::recursive_mutex lock_;
     
     bool (*fn_expired_check)(T*) = nullptr;
     
