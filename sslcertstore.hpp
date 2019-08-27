@@ -46,13 +46,6 @@
 #define CA_CERTF  "ca-cert.pem"
 #define CA_KEYF   "ca-key.pem"
 
-typedef std::pair<EVP_PKEY*,X509*> X509_PAIR;
-typedef std::map<std::string,X509_PAIR*> X509_CACHE;
-typedef std::map<std::string,std::string> FQDN_CACHE;
-
-typedef expiring_int expiring_ocsp_result;
-struct crl_holder;
-typedef expiring_ptr<crl_holder> expiring_crl;
 
 #define SSLCERTSTORE_BUFSIZE 512
 
@@ -76,6 +69,22 @@ struct session_holder {
 class SpoofOptions;
 
 class SSLFactory {
+
+public:
+    typedef std::pair<EVP_PKEY*,X509*> X509_PAIR;
+    typedef std::map<std::string,X509_PAIR*> X509_CACHE;
+    typedef std::map<std::string,std::string> FQDN_CACHE;
+
+    typedef expiring_int expiring_ocsp_result;
+    typedef expiring_ptr<crl_holder> expiring_crl;
+
+
+    static expiring_ocsp_result* make_expiring_ocsp(bool result)
+                                { return new SSLFactory::expiring_ocsp_result(result, ssl_ocsp_status_ttl); };
+
+    static expiring_crl* make_expiring_crl(X509_CRL* crl)
+                                { return new SSLFactory::expiring_crl(new crl_holder(crl), ssl_crl_status_ttl); }
+
 
 private:
     
@@ -159,7 +168,7 @@ public:
     static std::string& default_cert_password() { return certs_password; }
 
     // our killer feature here
-    X509_PAIR* spoof(X509* cert_orig, bool self_sign=false, std::vector<std::string>* additional_sans=nullptr);
+    SSLFactory::X509_PAIR* spoof(X509* cert_orig, bool self_sign=false, std::vector<std::string>* additional_sans=nullptr);
      
     static int convert_ASN1TIME(ASN1_TIME*, char*, size_t);
     static std::string print_cert(X509*);
@@ -175,7 +184,7 @@ public:
     bool add(std::string& store_key, EVP_PKEY* cert_privkey,X509* cert,X509_REQ* req=NULL);
     bool add(std::string& store_key, X509_PAIR* p,X509_REQ* req=NULL);
      
-    X509_PAIR*  find(std::string& subject);
+    SSLFactory::X509_PAIR*  find(std::string& subject);
     std::string find_subject_by_fqdn(std::string& fqdn);
     void erase(std::string& subject);
      

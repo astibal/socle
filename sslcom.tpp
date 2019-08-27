@@ -656,7 +656,7 @@ int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
         const char* str_status = "unknown";
 
 
-        expiring_ocsp_result *cached_result = nullptr;
+        SSLFactory::expiring_ocsp_result *cached_result = nullptr;
 
         // ocsp_result_cache - locked
         {
@@ -692,7 +692,7 @@ int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
 
             std::lock_guard<std::recursive_mutex> l_(com->certstore()->ocsp_result_cache.getlock());
             // set cache for 3 minutes
-            certstore()->ocsp_result_cache.set(cn,new expiring_ocsp_result(is_revoked,certstore()->ssl_ocsp_status_ttl));
+            certstore()->ocsp_result_cache.set(cn, SSLFactory::make_expiring_ocsp(is_revoked));
         }
         
         
@@ -703,7 +703,7 @@ int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
             
             std::vector<std::string> crls = crl_urls(com->sslcom_target_cert);
             
-            expiring_crl* crl_h = nullptr;
+            SSLFactory::expiring_crl* crl_h = nullptr;
             X509_CRL* crl = nullptr;
 
 
@@ -746,7 +746,8 @@ int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
 
                         if(crl != nullptr) {
                             DIA__("Caching CRL 0x%x", crl);
-                            certstore()->crl_cache.set(crl_url.c_str(),new expiring_crl(new crl_holder(crl),certstore()->ssl_crl_status_ttl)); // but because we are locked, we are happy to overwrite it!
+                            certstore()->crl_cache.set(crl_url.c_str(),SSLFactory::make_expiring_crl(crl));
+                            // but because we are locked, we are happy to overwrite it!
                         }
                     } else {
                         WAR__("downloading CRL from %s failed.",crl_printable.c_str());
@@ -1960,7 +1961,7 @@ bool baseSSLCom<L4Proto>::enforce_peer_cert_from_cache(std::string & subj) {
 
             std::lock_guard<std::recursive_mutex> l_(certstore()->lock());
 
-            X509_PAIR* parek = certstore()->find(subj);
+            auto* parek = certstore()->find(subj);
             if (parek != nullptr) {
                 DIA___("Found cached certificate %s based on fqdn search.",subj.c_str());
                 baseSSLCom* p = dynamic_cast<baseSSLCom*>(peer());

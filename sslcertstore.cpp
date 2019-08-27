@@ -34,8 +34,8 @@ std::string SSLFactory::def_cl_capath;
 
 int SSLFactory::ssl_crl_status_ttl  = 86400;
 int SSLFactory::ssl_ocsp_status_ttl = 1800;
-ptr_cache<std::string,expiring_ocsp_result> SSLFactory::ocsp_result_cache("ocsp response cache",CERTSTORE_CACHE_SIZE,true);
-ptr_cache<std::string,expiring_crl> SSLFactory::crl_cache("crl cache",CERTSTORE_CACHE_SIZE,true);
+ptr_cache<std::string,SSLFactory::expiring_ocsp_result> SSLFactory::ocsp_result_cache("ocsp response cache",CERTSTORE_CACHE_SIZE,true);
+ptr_cache<std::string,SSLFactory::expiring_crl> SSLFactory::crl_cache("crl cache",CERTSTORE_CACHE_SIZE,true);
 ptr_cache<std::string,session_holder> SSLFactory::session_cache("ssl session cache",CERTSTORE_CACHE_SIZE,true);
 
 loglevel SSLFactory::log_level = NON;
@@ -508,7 +508,7 @@ std::string SSLFactory::make_store_key(X509* cert_orig, const SpoofOptions& spo)
 
 #endif
 
-X509_PAIR* SSLFactory::find(std::string& subject) {
+SSLFactory::X509_PAIR* SSLFactory::find(std::string& subject) {
 
     std::lock_guard<std::recursive_mutex> l_(lock());
 
@@ -694,7 +694,7 @@ std::string SSLFactory::get_sans_csv(X509 *x) {
     return string_csv(sans_vec);
 }
 
-X509_PAIR* SSLFactory::spoof(X509* cert_orig, bool self_sign, std::vector<std::string>* additional_sans) {
+SSLFactory::X509_PAIR* SSLFactory::spoof(X509* cert_orig, bool self_sign, std::vector<std::string>* additional_sans) {
     char tmp[2048];
     DEB__("SSLFactory::spoof[%x]: about to spoof certificate!",this);
     

@@ -203,7 +203,7 @@ bool baseSSLMitmCom<SSLProto>::spoof_cert(X509* cert_orig, SpoofOptions& spo) {
     std::scoped_lock<std::recursive_mutex> l_(this->certstore()->lock());
 
     std::string store_key = SSLFactory::make_store_key(cert_orig, spo);
-    X509_PAIR* parek = nullptr;
+    SSLFactory::X509_PAIR* parek = nullptr;
 
     parek = this->certstore()->find(store_key);
     if (parek) {
