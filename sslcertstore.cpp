@@ -409,18 +409,18 @@ bool SSLFactory::add(std::string& store_key,X509_PAIR* parek, X509_REQ* req) {
 
         // free underlying keypair
         if(cache().find(store_key) != cache().end()) {
-            ERR__("SSLFactory::add[%x] keypair associated with store_key '%s' already exists (freeing)",this,store_key.c_str());
+            ERR__("SSLFactory::add[%x] keypair associated with store_key '%s' already exists (keeping it there)",this,store_key.c_str());
             auto keypair = cache()[store_key];
 
+            DEB__("SSLFactory::add[%x]         existing pointers:  keyptr=0x%x certptr=0x%x",this, keypair->first, keypair->second);
+            DEB__("SSLFactory::add[%x]         offending pointers: keyptr=0x%x certptr=0x%x",this, parek->first, parek->second);
 
-            // if this is last usage of keypair components, we want to free them
-            EVP_PKEY_free(keypair->first);
-            X509_free(keypair->second);
+            op_status = false;
+        } else {
+
+            cache()[store_key] = parek;
+            DIA__("SSLFactory::add[%x] new cert '%s' successfully added to cache", this, store_key.c_str());
         }
-
-        cache()[store_key] = parek;
-        DIA__("SSLFactory::add[%x] cert %s",this,store_key.c_str());
-
     }
     catch (std::exception& e) {
         op_status = false;
