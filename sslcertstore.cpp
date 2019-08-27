@@ -1084,30 +1084,35 @@ std::string SSLFactory::print_not_after(X509* x) {
     return s;
 }
 
-std::string SSLFactory::print_cert(X509* x) {
+std::string SSLFactory::print_cert(X509* x, int indent) {
     char tmp[SSLCERTSTORE_BUFSIZE];
-    std::string s;
+    std::stringstream s;
+
+    std::string pref;
+    for(int i = 0; i < indent; i++) {
+        pref += " ";
+    }
 
     // get info from the peer certificate
     // TODO: should be replaced, as per https://linux.die.net/man/3/x509_name_get_text_by_nid - examples section
     X509_NAME_get_text_by_NID(X509_get_subject_name(x),NID_commonName, tmp,SSLCERTSTORE_BUFSIZE-1);
-    s.append("Common Name: ");
-    s.append(tmp);
-    s.append("\n ");
+    s << pref << "Common Name: ";
+    s << std::string(tmp);
+    s << "\n ";
     
 
     X509_NAME_oneline(X509_get_subject_name(x), tmp, SSLCERTSTORE_BUFSIZE-1);
-    s.append("Subject: ");
-    s.append(tmp);
-    s.append("\n ");
+    s << pref << "Subject: ";
+    s << std::string(tmp);
+    s << "\n ";
     
     X509_NAME* issuer = X509_get_issuer_name(x);
     if(!issuer) {
-    s.append("# Issuer: <unable to obtain issuer from certificate> \n ");
+    s << pref << "# Issuer: <unable to obtain issuer from certificate> \n ";
     } else {
         X509_NAME_oneline(issuer,tmp,SSLCERTSTORE_BUFSIZE-1);
-        s.append(string_format("Issuer: '%s'\n ",tmp));
-        s.append("\n ");
+        s << pref << string_format("Issuer: '%s'\n ",tmp);
+        s << "\n ";
         
     }
 
@@ -1117,21 +1122,18 @@ std::string SSLFactory::print_cert(X509* x) {
     int pkey_nid = OBJ_obj2nid(x->cert_info->key->algor->algorithm);
 #endif
     const char* sslbuf = OBJ_nid2ln(pkey_nid);
-    s.append("Signature type: ");
-    s.append(sslbuf);
-    s.append("\n ");
+    s << pref << "Signature type: ";
+    s << sslbuf;
+    s << "\n ";
 
     ASN1_TIME *not_before = X509_get_notBefore(x);
     ASN1_TIME *not_after = X509_get_notAfter(x);            
     
     convert_ASN1TIME(not_before, tmp, SSLCERTSTORE_BUFSIZE-1);    
-    s.append("Valid from: ");
-    s.append(tmp);
-    s.append("\n ");
+    s << pref << "Valid from: " << std::string(tmp) << "\n ";
+
     convert_ASN1TIME(not_after, tmp, SSLCERTSTORE_BUFSIZE-1);
-    s.append("Valid to: ");
-    s.append(tmp);
-    s.append("\n ");
+    s << pref << "Valid to: " << std::string(tmp) << "\n ";
 
 
 #ifdef USE_OPENSSL11
@@ -1139,8 +1141,8 @@ std::string SSLFactory::print_cert(X509* x) {
 
     BIO *ext_bio = BIO_new(BIO_s_mem());
     if (!ext_bio) {
-        s.append(" ... unable to allocate BIO");
-        return s;
+        s << " ... unable to allocate BIO";
+        return s.str();
     }
 
     X509V3_extensions_print(ext_bio, nullptr, exts, 0, 0);
@@ -1149,7 +1151,7 @@ std::string SSLFactory::print_cert(X509* x) {
     BIO_get_mem_ptr(ext_bio, &bptr);
     int sc = BIO_set_close(ext_bio, BIO_CLOSE);
 
-    s.append((const char*) bptr->data, bptr->length);
+    s << pref << string_format((const char*) bptr->data, bptr->length);
 
     BIO_free(ext_bio);
 
@@ -1159,33 +1161,30 @@ std::string SSLFactory::print_cert(X509* x) {
     int num_of_exts = 0;
     if (exts) {
         num_of_exts = sk_X509_EXTENSION_num(exts);
-        s.append("Extensions: ");
-        s.append("\n ");
+        s << pref << "Extensions: \n";;
 
     } else {
         num_of_exts = 0;
-        s.append(" Extensions: <no extenstions in the certificate> ");
-        s.append("\n ");
-
+        s << pref << " Extensions: <no extenstions in the certificate> \n");
     }
 
     for (int i=0; i < num_of_exts; i++) {
     
         X509_EXTENSION *ex = sk_X509_EXTENSION_value(exts, i);
         if(!ex) {
-            s.append(string_format("# Extension[%d] unable to extract extension from stack\n ",i));
+            s << pref << string_format("# Extension[%d] unable to extract extension from stack\n ",i);
             continue;
         }
 
         ASN1_OBJECT *obj = X509_EXTENSION_get_object(ex);
         if(!obj) {
-            s.append(string_format("# Extension[%d] unable to extract ASN1 object from extension\n ",i));
+            s << pref << string_format("# Extension[%d] unable to extract ASN1 object from extension\n ",i);
             continue;
         }
     
         BIO *ext_bio = BIO_new(BIO_s_mem());
         if (!ext_bio) {
-            s.append(string_format("# Extension[%d] unable to allocate memory for extension value BIO\n ",i));
+            s << pref << string_format("# Extension[%d] unable to allocate memory for extension value BIO\n ",i);
             continue;
         }
         else{
@@ -1219,21 +1218,21 @@ std::string SSLFactory::print_cert(X509* x) {
             if (nid == NID_undef) {
                 // no lookup found for the provided OID so nid came back as undefined.
                 OBJ_obj2txt(tmp, SSLCERTSTORE_BUFSIZE , (const ASN1_OBJECT *) obj, 1);
-                s.append(string_format("Extension[%d]: '%s'\n ", i, tmp));
+                s << pref string_format("Extension[%d]: '%s'\n ", i, tmp);
             } 
             else {
                 // the OID translated to a NID which implies that the OID has a known sn/ln
                 const char *c_ext_name = OBJ_nid2ln(nid);
                 if(!c_ext_name) { 
-                    s.append(string_format("Extension[%d]: <invalid X509v3 extension name>\n ",i));
+                    s << pref << string_format("Extension[%d]: <invalid X509v3 extension name>\n ",i);
                 }
                 else {
-                    s.append(string_format("Extension[%d]: '%s'\n ", i,c_ext_name));
+                    s << pref << string_format("Extension[%d]: '%s'\n ", i,c_ext_name);
                 }
             }
             
-            s.append(string_format("Extension[%d] length = %u\n ", i,bptr->length));
-            s.append(string_format("Extension[%d] value = '%s'\n ", i,bptr->data));
+            s << pref << string_format("Extension[%d] length = %u\n ", i,bptr->length);
+            s << pref << string_format("Extension[%d] value = '%s'\n ", i,bptr->data);
             
             BIO_free(ext_bio);
         }
@@ -1241,7 +1240,7 @@ std::string SSLFactory::print_cert(X509* x) {
 
 #endif
 
-    return s;
+    return s.str();
             
 }
 

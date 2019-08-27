@@ -50,7 +50,6 @@
 #define SSLCERTSTORE_BUFSIZE 512
 
 struct session_holder;
-typedef ptr_cache<std::string,session_holder> ssl_session_cache;
 
 struct crl_holder {
     X509_CRL* ptr = nullptr;
@@ -171,7 +170,7 @@ public:
     SSLFactory::X509_PAIR* spoof(X509* cert_orig, bool self_sign=false, std::vector<std::string>* additional_sans=nullptr);
      
     static int convert_ASN1TIME(ASN1_TIME*, char*, size_t);
-    static std::string print_cert(X509*);
+    static std::string print_cert(X509* cert, int indent=4);
     static std::string print_cn(X509*);
     static std::string print_issuer(X509* x);
     static std::string print_not_after(X509* x);
