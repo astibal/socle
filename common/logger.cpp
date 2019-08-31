@@ -51,7 +51,7 @@ loglevelmore LOG_EXEXACT = loglevelmore(true,true);
 
 logger* lout_ = nullptr;
 
-static  std::string level_table[] = {"None    ","Fatal   ","Critical","Error   ","Warning ","Notify  ","Informat","Diagnose","Debug   ","Dumpit  ","Extreme "};
+
 
 
 bool operator== (const loglevel& a, const loglevel& b) { return a.level_ == b.level_; }
@@ -98,46 +98,39 @@ logger* create_default_logger() {
 }
 
 void set_logger(logger* l) {
-    if (lout_ != nullptr) {
-        delete lout_;
-    }
-    
+    delete lout_;
     lout_ = l;
 }
 
 
-std::string ESC_(std::string s) {
+std::string ESC_ (const std::string &s) {
     std::string t = s;
     std::replace( t.begin(), t.end(), '%', '^');
     return t;
 }
 
 logger_profile::~logger_profile() { 
-    for(std::list<std::ostream*>::iterator i = targets_.begin(); i != targets_.end(); ++i) {  
-        if(*i != nullptr) { 
-                (*i)->flush(); 
-                delete *i; 
+    for(auto optr: targets_) {
+        if(optr) {
+                optr->flush();
+                delete optr;
             
         } 
     }
 }
 
 bool logger::periodic_start(unsigned int s) {
-	time_t now = time(NULL);
-	
-	if (now > last_period + s) {
-		last_period_status = true;
-	} else {
-		last_period_status = false;
-	}
-	
+	time_t now = time(nullptr);
+
+    last_period_status = now > last_period + s;
+
 	return last_period_status;
 }
 
 
 bool logger::periodic_end() {
 	if (last_period_status) {
-		time_t now = time(NULL);
+		time_t now = time(nullptr);
 		last_period = now;
 		
 		return true;
@@ -187,46 +180,45 @@ bool logger::should_log_topic(loglevel& writer, loglevel& msg) {
 int logger::write_log(loglevel level, std::string& sss) {
 
     bool really_dup = dup2_cout();
-    
-    for(std::list<std::ostream*>::iterator i = targets().begin(); i != targets().end(); ++i) {
-        if(target_profiles().find((uint64_t)*i) != target_profiles().end()) {
-            if(target_profiles()[(uint64_t)*i]->level_ < level && ! forced_) { continue; }
-            if(target_profiles()[(uint64_t)*i]->level_ == NON)    { continue; }
+
+    // targets are ostream pointers
+    for(auto* target: targets()) {
+
+        if(target_profiles().find((uint64_t) target) != target_profiles().end()) {
+            if(target_profiles()[(uint64_t)  target]->level_ < level) { continue; }
         }
         
-        if (!should_log_topic(target_profiles()[(uint64_t)*i]->level_,level)) continue;
+        if (!should_log_topic(target_profiles()[(uint64_t) target]->level_,level)) continue;
         
-        *(*i) << sss << std::endl;
-        //if(target_profiles()[(uint64_t)*i]->dup_to_cout_) really_dup = true;
+        *target << sss << std::endl;
     }
 
-    for(std::list<int>::iterator i = remote_targets().begin(); i != remote_targets().end(); ++i) {
+    for(int const& rem_target: remote_targets()) {
         
-        if(target_profiles().find((uint64_t)*i) != target_profiles().end()) { 
-            if(target_profiles()[(uint64_t)*i]->level_ < level && ! forced_ ) { continue; }
-            if(target_profiles()[(uint64_t)*i]->level_ == NON)     { continue; }
+        if(target_profiles().find((uint64_t) rem_target) != target_profiles().end()) {
+            if(target_profiles()[(uint64_t) rem_target]->level_ < level ) { continue; }
         }
         
-        if (!should_log_topic(target_profiles()[(uint64_t)*i]->level_,level)) continue;
+        if (!should_log_topic(target_profiles()[(uint64_t) rem_target]->level_,level)) continue;
             
         std::stringstream  s;
 
         // prefixes
-        if(target_profiles()[(uint64_t)*i]->logger_type == REMOTE_SYSLOG) {
-            s <<  string_format("<%d> ",target_profiles()[(uint64_t)*i]->syslog_settings.prival());
+        if(target_profiles()[(uint64_t) rem_target]->logger_type == REMOTE_SYSLOG) {
+            s <<  string_format("<%d> ",target_profiles()[(uint64_t) rem_target]->syslog_settings.prival());
         } 
         
         s << sss ;
         
         // suffixes
-        if(target_profiles()[(uint64_t)*i]->logger_type != REMOTE_SYSLOG) {
+        if(target_profiles()[(uint64_t) rem_target]->logger_type != REMOTE_SYSLOG) {
             s <<  "\r\n";
         } 
         
         std::string a = s.str();
         
-        if(::send(*i,a.c_str(),a.size(),0) < 0) {
-            std::cerr << string_format("logger::write_log: cannot write remote socket: %d",*i);
+        if(::send(rem_target, a.c_str(),a.size(),0) < 0) {
+            std::cerr << string_format("logger::write_log: cannot write remote socket: %d", rem_target);
         }
         
         //if(target_profiles()[(uint64_t)*i]->dup_to_cout_) really_dup = true;
@@ -241,128 +233,12 @@ int logger::write_log(loglevel level, std::string& sss) {
         }
         *o << sss << std::endl;
     }
-    
-    forced_ = false;
-
     return sss.size();
 }
 
-void logger::log(loglevel l, const std::string& fmt, ...) {
-
-    std::lock_guard<std::recursive_mutex> lck(mtx_lout);
-
-    if (l > level() && ! forced_) return;
-
-    struct timeval tv;
-    struct timezone tz;
-
-    gettimeofday(&tv,&tz);
-
-    time_t *now = &tv.tv_sec;
-    time(now);
-    struct tm *tmp;
-    tmp = localtime(now);	
-    char date[64];
 
 
-
-    std::string str;    
-    PROCESS_VALIST(str,fmt);
-    
-    
-    std::string desc = std::string(level_table[0]);
-    if (l > sizeof(level_table)-1) {
-		desc = string_format("%d",l);
-	} else {
-		desc = level_table[l.level()];
-	}    
-    
-    
-    std::stringstream ss;
-    int date_len = std::strftime(date,sizeof(date),"%y-%m-%d %H:%M:%S",tmp);
-    
-    if(flag_test(l.flags_,LOG_FLRAW)) {
-        ss << str;
-    }
-    else {
-        // default line format: date time.usec <threadid> loglevel - MSG
-        ss << std::string(date,date_len) << "." << string_format("%06d",tv.tv_usec) << " <" << std::hex << std::this_thread::get_id() << "> " << desc << " - " << str;
-    }
-
-
-    std::string sss = ss.str();
-    write_log(l,sss);
-};
-
-
-
-void logger::log2(loglevel l, const char* src, int line, const std::string& fmt, ...) {
-  
-    std::lock_guard<std::recursive_mutex> lck(mtx_lout);
-  
-    std::string src_info = string_format("%20s:%-4d: ",src,line);
-
-    std::string str;
-
-    PROCESS_VALIST(str,fmt);
-    
-    log(l,src_info + str);
-}
-
-
-void logger::log_w_name(loglevel l, std::string name, const std::string& fmt, ...) {
-
-    std::lock_guard<std::recursive_mutex> lck(mtx_lout);
-  
-    std::string  str;
-    PROCESS_VALIST(str,fmt);
-    log_w_name(l, name.c_str(), str);
-}
-
-void logger::log_w_name(loglevel l, const char* name, const std::string& fmt, ...) {
-
-    std::lock_guard<std::recursive_mutex> lck(mtx_lout);
-  
-    const char* n = "(null)";
-    if (name != nullptr) {
-        n = name;
-    }
-    
-    std::string  str;
-    PROCESS_VALIST(str,fmt);
-    log(l,string_format("[%s]: ",n)+str);
-}
-
-void logger::log2_w_name(loglevel l, const char* f, int li, std::string n, const std::string& fmt, ...) {
-  
-    std::lock_guard<std::recursive_mutex> lck(mtx_lout);  
-  
-    std::string  str;
-    PROCESS_VALIST(str,fmt);
-    log2_w_name(l, f,li, n.c_str(), str);
-}
-
-
-void logger::log2_w_name(loglevel l, const char* f, int li, const char* name, const std::string& fmt, ...) {
-  
-    std::lock_guard<std::recursive_mutex> lck(mtx_lout);  
-  
-    const char* n = "(null)";
-    if (name != nullptr) {
-        n = name;
-    }
-
-    std::string src_info = string_format("%20s:%-4d: ",f,li);
-    std::string c_name = string_format("[%s]: ",n);
-    
-    std::string str;  
-    PROCESS_VALIST(str,fmt);
-    log(l,src_info+c_name+str);
-}
-
-
-
-bool logger::click_timer ( std::string xname , int interval) {
+bool logger::click_timer (const std::string &xname, int interval) {
 	
 	std::lock_guard<std::mutex> lck(mtx_timers);
 	
@@ -379,7 +255,7 @@ bool logger::click_timer ( std::string xname , int interval) {
 		time_t l = (*r).second.last;
 		int i = (*r).second.timeout;
 		
-		time_t now = ::time(NULL);
+		time_t now = ::time(nullptr);
 		
 		if( now > l + i) {
 			(*r).second.last = now;
@@ -391,7 +267,7 @@ bool logger::click_timer ( std::string xname , int interval) {
 	
 	} else {
 		// we should establish a new timer
-		time_t now = ::time(NULL);		
+		time_t now = ::time(nullptr);
 		timer_tt tt;
 		tt.last = now;
 		tt.timeout = interval;
@@ -402,21 +278,21 @@ bool logger::click_timer ( std::string xname , int interval) {
 	}
 }
 
-
+// DEPRECATED: we don't need adjusting internal logging based on profiles anymore.
 loglevel logger::adjust_level() {
 
     loglevel curr_level = level();
     loglevel max_common_level = NON;
     
-    for(auto i = remote_targets().begin(); i != remote_targets().end(); ++i) {
-        loglevel this_level = target_profiles()[(uint64_t)(*i)]->level_;
-        if ( this_level > max_common_level) {
+    for( auto rem_target: remote_targets() ) {
+        loglevel this_level = target_profiles()[(uint64_t)rem_target]->level_;
+        if ( this_level > max_common_level ) {
             max_common_level = this_level;
         }
     }
-    for(auto i = targets().begin(); i != targets().end(); ++i) {
-        loglevel this_level = target_profiles()[(uint64_t)(*i)]->level_;
-        if ( this_level > max_common_level) {
+    for(auto* optr: targets()) {
+        loglevel this_level = target_profiles()[(uint64_t)optr]->level_;
+        if ( this_level > max_common_level ) {
             max_common_level = this_level;
         }
     }

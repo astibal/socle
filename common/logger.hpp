@@ -25,6 +25,7 @@
 #include <string>
 #include <iostream>
 #include <ctime>
+#include <sys/time.h>
 
 #include <thread>
 #include <mutex>
@@ -169,7 +170,8 @@ extern loglevel EXT;
 
 #define LOG_(lev,x,...) \
     if(get_logger()->level() >= (lev)) { \
-        if( ( ( get_logger()->print_srcline() && get_logger()->level() > INF ) || get_logger()->print_srcline_always() ) && !flag_test((lev).flags_,LOG_FLRAW)) { \
+        if( ( ( get_logger()->print_srcline() && get_logger()->level() > INF ) || get_logger()->print_srcline_always() ) \
+              && !flag_test((lev).flags_,LOG_FLRAW)) { \
             get_logger()->log2(lev,_FILE_,__LINE__,(x),__VA_ARGS__); \
         } else { \
             get_logger()->log(lev,(x),__VA_ARGS__); \
@@ -178,7 +180,8 @@ extern loglevel EXT;
 
 #define LOGS_(lev,x) \
     if(get_logger()->level() >= (lev)) { \
-        if( ( ( get_logger()->print_srcline() && get_logger()->level() > INF ) || get_logger()->print_srcline_always() ) && !flag_test((lev).flags_,LOG_FLRAW)) { \
+        if( ( ( get_logger()->print_srcline() && get_logger()->level() > INF ) || get_logger()->print_srcline_always() ) \
+              && !flag_test((lev).flags_,LOG_FLRAW)) { \
             get_logger()->log2(lev,_FILE_,__LINE__,(x)); \
         } else { \
             get_logger()->log(lev,(x)); \
@@ -200,11 +203,10 @@ extern loglevel EXT;
     }
 
 
-/* Define macros that log in some cases also source file and line number enabling object log_level atribute check */
+/* Define macros that log in some cases also source file and line number enabling object log_level attribute check */
 
 #define L_LOG_(lev,x,...) \
     if(log_level >= lev || get_logger()->level() >= lev) { \
-        get_logger()->force(log_level >= lev); \
         if( ( ( get_logger()->print_srcline() && get_logger()->level() > INF ) || ( get_logger()->print_srcline() && log_level > INF ) || get_logger()->print_srcline_always() ) && !flag_test((lev).flags_,LOG_FLRAW)) { \
             get_logger()->log2(lev,_FILE_,__LINE__,(x),__VA_ARGS__); \
         } else { \
@@ -214,7 +216,6 @@ extern loglevel EXT;
 
 #define L_LOGS_(lev,x) \
     if(log_level >= lev || get_logger()->level() >= lev) { \
-        get_logger()->force(log_level >= lev); \
         if( ( ( get_logger()->print_srcline() && get_logger()->level() > INF ) || ( get_logger()->print_srcline() && log_level > INF ) || get_logger()->print_srcline_always() ) && !flag_test((lev).flags_,LOG_FLRAW)) { \
             get_logger()->log2(lev,_FILE_,__LINE__,(x)); \
         } else { \
@@ -225,7 +226,6 @@ extern loglevel EXT;
 
 #define _T_L_LOG_(name,interval,lev,x,...) \
     if(this->log_level >= lev || get_logger()->level() >= lev) { \
-        get_logger()->force(log_level >= lev); \
         if( ( get_logger()->print_srcline() && get_logger()->level() > INF ) || ( get_logger()->print_srcline() && log_level > INF ) || get_logger()->print_srcline_always()) { \
             if(get_logger()->click_timer(name,interval)) { \
                 LOG_(lev,x,__VA_ARGS__); \
@@ -235,7 +235,6 @@ extern loglevel EXT;
 
 #define T_L_LOGS_(name,interval,lev,x) \
     if(this->log_level >= lev || get_logger()->level() >= lev) { \
-        get_logger()->force(log_level >= lev); \
         if( ( get_logger()->print_srcline() && get_logger()->level() > INF ) || ( get_logger()->print_srcline() && log_level > INF ) || get_logger()->print_srcline_always()) { \
             if(get_logger()->click_timer(name,interval)) { \
                 LOGS_(lev,x); \
@@ -247,9 +246,17 @@ extern loglevel EXT;
 /* Define macros that log objects with hr() function */    
     
 #define LN_LOG_(lev,x,...) \
-    if(this->get_this_log_level() >= lev || get_logger()->level() >= lev) { \
-        get_logger()->force(log_level >= lev); \
-        if( ( ( get_logger()->print_srcline() && get_logger()->level() > INF ) || ( get_logger()->print_srcline() && log_level > INF ) || get_logger()->print_srcline_always() ) && !flag_test((lev).flags_,LOG_FLRAW)) { \
+    if(this->get_this_log_level() >= lev || get_logger()->level() >= lev || this->log_level >= lev) { \
+        if(                                     \
+            (                                   \
+                ( get_logger()->print_srcline() &&  lev >= INF )   \
+                ||                          \
+                get_logger()->print_srcline_always()     \
+            )                                            \
+            &&                                           \
+            !flag_test((lev).flags_,LOG_FLRAW)           \
+          )                                              \
+        { \
             get_logger()->log2_w_name(lev,_FILE_,__LINE__,(hr()),(x),__VA_ARGS__); \
         } else { \
             get_logger()->log_w_name(lev,(hr()),(x),__VA_ARGS__); \
@@ -257,9 +264,17 @@ extern loglevel EXT;
     }
 
 #define LN_LOGS_(lev,x) \
-    if(this->get_this_log_level() >= lev || get_logger()->level() >= lev) { \
-        get_logger()->force(log_level >= lev); \
-        if( ( ( get_logger()->print_srcline() && get_logger()->level() > INF ) || ( get_logger()->print_srcline() && log_level > INF ) || get_logger()->print_srcline_always() ) && !flag_test((lev).flags_,LOG_FLRAW)) { \
+    if(this->get_this_log_level() >= lev || get_logger()->level() >= lev || this->log_level >= lev) { \
+        if(                                     \
+            (                                   \
+                ( get_logger()->print_srcline() &&  lev >= INF )   \
+                ||                          \
+                get_logger()->print_srcline_always()     \
+            )                                            \
+            &&                                           \
+            !flag_test((lev).flags_,LOG_FLRAW)           \
+          )                                              \
+        { \
             get_logger()->log2_w_name(lev,_FILE_,__LINE__,(hr()),(x)); \
         } else { \
             get_logger()->log_w_name(lev,(hr()),(x)); \
@@ -269,7 +284,6 @@ extern loglevel EXT;
         
 #define T_LN_LOG_(name,interval,lev,x,...) \
     if(this->get_this_log_level() >= lev || get_logger()->level() >= lev) { \
-        get_logger()->force(log_level >= lev); \
         if( ( get_logger()->print_srcline() && get_logger()->level() > INF ) || ( get_logger()->print_srcline() && log_level > INF ) || get_logger()->print_srcline_always()) { \
             if(get_logger()->click_timer(name,interval)) { \
                 LN_LOG_(lev,x,__VA_ARGS__); \
@@ -279,7 +293,6 @@ extern loglevel EXT;
 
 #define T_LN_LOGS_(name,interval,lev,x) \
     if(this->get_this_log_level() >= lev || get_logger()->level() >= lev) { \
-        get_logger()->force(log_level >= lev); \
         if( ( get_logger()->print_srcline() && get_logger()->level() > INF ) || ( get_logger()->print_srcline() && log_level > INF ) || get_logger()->print_srcline_always())) { \
             if(get_logger()->click_timer(name,interval)) { \
                 LN_LOGS_(lev,x); \
@@ -490,28 +503,6 @@ extern loglevel EXT;
 #define PERIOD_END get_logger()->periodic_end();
 
 
-#define VA_BUFFSIZE 2048
-// process valist, and fill std::string
-#define PROCESS_VALIST(str,fmt)     \
-    int size = VA_BUFFSIZE;         \
-    va_list ap;                     \
-    while (1) {                     \
-        str.resize(size);           \
-        va_start(ap, fmt);          \
-        int n = vsnprintf((char *)str.c_str(), size-1, fmt.c_str(), ap);  \
-        va_end(ap);                 \
-                                    \
-        if (n > -1 && n < size) {   \
-            str.resize(n);          \
-                break;              \
-        }                           \
-                                    \
-        if (n > -1)                 \
-            size = n + 1;           \
-        else                        \
-            size *= 2;              \
-    }                               \
-
 
 // EXTENDED LOGGING HELPER MACROS
 
@@ -548,7 +539,7 @@ public:                                             \
                     \
     virtual std::string class_name() { return this->class_name_; } \
     virtual const char* c_class_name() { return this->class_name_.c_str(); } \
-    virtual int size_of() { return sizeof (*this); }
+    /*virtual int size_of() { return sizeof (*this);  } */
 
     
 #define DECLARE_DEF_TO_STRING \
@@ -556,7 +547,7 @@ public:                                             \
     
 #include <algorithm>
 
-std::string ESC_(std::string s);
+std::string ESC_ (const std::string &s);
 
 #define ESC(x) ESC_(x).c_str()
 
@@ -598,9 +589,7 @@ public:
     //should we print it always, regarless of log level?
     bool print_srcline_always_ = false;
 
-    // next print output will be forced => printed regardless of it's level
-    bool forced_ = false;
-    
+
     // where to log?
     std::list<std::ostream*> targets_;
     std::list<int> remote_targets_;
@@ -634,7 +623,7 @@ public:
     inline void print_srcline_always(bool b) { print_srcline_always_ = b; }
     inline bool& print_srcline_always() { return print_srcline_always_; }
 
-    bool click_timer(std::string, int);
+    bool click_timer (const std::string &xname, int interval);
 
 
     std::list<std::ostream*>& targets() { return targets_; }
@@ -646,14 +635,20 @@ public:
     virtual int write_log(loglevel level, std::string& sss);
     
     bool should_log_topic(loglevel& writer, loglevel& msg);
-    
-    void log(loglevel l, const std::string& fmt, ...);
-    void log_w_name(loglevel l, const char* n, const std::string& fmt, ...);
-    void log_w_name(loglevel l, std::string n, const std::string& fmt, ...);
-    
-    void log2(loglevel l, const char* f, int li, const std::string& fmt, ...);
-    void log2_w_name(loglevel l, const char* f, int li, const char* n, const std::string& fmt, ...);
-    void log2_w_name(loglevel l, const char* f, int li, std::string n, const std::string& fmt, ...);
+
+    template <class ... Args>
+    void log(loglevel l, const std::string& fmt, Args ... args);
+    //void log_w_name(loglevel l, const char* n, const std::string& fmt, ...);
+
+    template <class ... Args>
+    void log_w_name(loglevel l, std::string n, const std::string& fmt, Args ... args);
+
+    template <class ... Args>
+    void log2(loglevel l, const char* f, int li, const std::string& fmt, Args ... args);
+    //void log2_w_name(loglevel l, const char* f, int li, const char* n, const std::string& fmt, ...);
+
+    template <class ... Args>
+    void log2_w_name(loglevel l, const char* f, int li, std::string n, const std::string& fmt, Args ... args);
     
     std::map<uint64_t,logger_profile*>& target_profiles() { return target_profiles_; }
     std::map<uint64_t,std::string>& target_names() { return target_names_; }
@@ -666,8 +661,6 @@ public:
         else return target_name(0);
     }
     
-    void force(bool b) { forced_ = b; }
-
     inline unsigned int period() { return period_; }
     inline void period(unsigned int p) { period_ = p; }
 
@@ -680,7 +673,8 @@ public:
     // Unless we change internal logging level, he will not see on remotes any INF messages, because
     // internal logging level prohibits processing of INF level, writer receives only NOT.
     // This methods interates through targets and sets logging level to highest level used by targets.
-    // @return log level difference, therefore negative if we decreased logging level, zero if unchanged, positive if log level is raised.
+    // @return log level difference, therefore negative if we decreased logging level, zero if unchanged,
+    // positive if log level is raised.
     loglevel adjust_level();
 };
 
@@ -690,6 +684,92 @@ extern logger* get_logger();
 extern logger* create_default_logger();
 extern void set_logger(logger*);
 
+static const std::string level_table[] = {"None    ","Fatal   ","Critical","Error   ","Warning ","Notify  ",
+                                          "Informat","Diagnose","Debug   ","Dumpit  ","Extreme "};
 
+#pragma GCC diagnostic ignored "-Wformat-security"
+#pragma GCC diagnostic push
+
+template <class ... Args>
+void logger::log(loglevel l, const std::string& fmt,  Args ... args) {
+
+    std::lock_guard<std::recursive_mutex> lck(mtx_lout);
+
+    struct timeval tv;
+    struct timezone tz;
+
+    gettimeofday(&tv,&tz);
+
+    time_t *now = &tv.tv_sec;
+    time(now);
+    struct tm *tmp;
+    tmp = localtime(now);
+    char date[64];
+
+
+
+    std::string str = string_format(fmt.c_str(), args...);
+
+
+    std::string desc = std::string(level_table[0]);
+    if (l > sizeof(level_table)-1) {
+        desc = string_format("%d",l);
+    } else {
+        desc = level_table[l.level()];
+    }
+
+
+    std::stringstream ss;
+    int date_len = std::strftime(date,sizeof(date),"%y-%m-%d %H:%M:%S",tmp);
+
+    if(flag_test(l.flags_,LOG_FLRAW)) {
+        ss << str;
+    }
+    else {
+        ss << std::string(date,date_len) << "." << string_format("%06d",tv.tv_usec) << " <";
+        ss << std::hex << std::this_thread::get_id() << "> " << desc << " - " << str;
+    }
+
+
+    std::string sss = ss.str();
+    write_log(l,sss);
+};
+
+
+template <class ... Args>
+void logger::log2(loglevel l, const char* src, int line, const std::string& fmt, Args ... args ) {
+
+    std::lock_guard<std::recursive_mutex> lck(mtx_lout);
+
+    std::string src_info = string_format("%20s:%-4d: ",src,line);
+
+    std::string str = string_format(fmt.c_str(), args...);
+
+    log(l,src_info + str);
+}
+
+
+template <class ... Args>
+void logger::log_w_name(loglevel l, std::string name, const std::string& fmt, Args ... args) {
+
+    std::lock_guard<std::recursive_mutex> lck(mtx_lout);
+
+    std::string  str = string_format(fmt.c_str(), args...);
+    log(l,string_format("[%s]: ",name.c_str())+str);
+}
+
+template <class ... Args>
+void logger::log2_w_name(loglevel l, const char* f, int li, std::string name, const std::string& fmt, Args ... args) {
+
+    std::lock_guard<std::recursive_mutex> lck(mtx_lout);
+
+    std::string src_info = string_format("%20s:%-4d: ",f,li);
+    std::string c_name = string_format("[%s]: ",name.c_str());
+
+    std::string str = string_format(fmt.c_str(), args...);
+    log(l,src_info+c_name+str);
+}
+
+#pragma GCC diagnostic pop
 
 #endif // LOGGER_HPP

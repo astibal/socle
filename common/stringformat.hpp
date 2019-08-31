@@ -27,6 +27,9 @@
 void* mempool_realloc(void*, size_t);
 void mempool_free(void*);
 
+#pragma GCC diagnostic ignored "-Wformat-security"
+#pragma GCC diagnostic push
+
 template <class ... Args>
 std::string string_format(const char* format, Args ... args)
 {
@@ -61,5 +64,7 @@ std::string string_format(const char* format, Args ... args)
 
     return ret;
 }
+
+#pragma GCC diagnostic pop
 
 #endif //STRINGFORMAT_HPP
