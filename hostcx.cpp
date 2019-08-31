@@ -20,6 +20,7 @@
 #include "logger.hpp"
 #include "display.hpp"
 #include "crc32.hpp"
+#include "iproxy.hpp"
 
 bool baseHostCX::socket_in_name = false;
 bool baseHostCX::online_name = false;
@@ -210,6 +211,8 @@ bool baseHostCX::is_connected() {
 }
 
 void baseHostCX::shutdown() {
+
+    parent_proxy(nullptr, '-');
 
     if(fds_ != 0) {
         com()->shutdown(fds_);
@@ -616,10 +619,18 @@ void baseHostCX::on_delay_socket(int fd) {
 }
 
 std::string baseHostCX::to_string(int verbosity) {
-    std::string r;
-    r+= this->name() + ( verbosity > INF ? string_format(" | fd=%d | rx_cnt=%d rx_b=%d / tx_cnt=%d tx_b=%d", com() ? com()->translate_socket(socket()) : socket(), meter_read_count,meter_read_bytes,
-                         meter_write_count,meter_write_bytes) : "");
-    return r;
+
+    std::stringstream r_str;
+
+    r_str << this->name();
+
+    if(verbosity > INF) {
+        r_str << string_format(" | fd=%d | rx_cnt=%d rx_b=%d / tx_cnt=%d tx_b=%d",
+                               com() ? com()->translate_socket(socket()) : socket(),
+                               meter_read_count, meter_read_bytes,
+                               meter_write_count, meter_write_bytes);
+    }
+    return r_str.str();
 }
 
 std::string baseHostCX::full_name(unsigned char side) {

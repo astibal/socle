@@ -121,6 +121,8 @@ bool operator==(const Host& h, const Host& hh);
  * 
  */
 
+class Proxy;
+
 class baseHostCX : public Host
 {
     
@@ -177,7 +179,10 @@ class baseHostCX : public Host
     
 protected:
     
-    baseCom* com_;
+    baseCom* com_ = nullptr;
+    Proxy* parent_proxy_ = nullptr;
+    unsigned char parent_flag_ = '0';
+
     bool rescan_in_flag_ = false;
     bool rescan_out_flag_ = false;
     
@@ -186,6 +191,9 @@ public:
     baseCom* com() const { return com_; }
     inline void com(baseCom* c) { com_ = c; if(c != nullptr) {  com_->init(this); } else { DIAS_("baseHostCX:com: setting com_ to nullptr"); } };
 
+    inline Proxy* parent_proxy() const { return parent_proxy_; };
+    inline unsigned char parent_flag() const { return parent_flag_; }
+    inline void parent_proxy(Proxy* p, unsigned char flag) { parent_proxy_ = p; parent_flag_ = flag; };
     
     bool readable() const { return com()->readable(socket()); };
     bool writable() const { return com()->writable(socket()); };
@@ -236,8 +244,8 @@ public:
 	virtual bool new_message() { return false; }
 
 	inline int unblock() { return com()->unblock(fds_);}
-	
-	void shutdown();
+
+	virtual void shutdown();
 	inline bool valid() { return ( fds_ > 0 && !error() ); };
 	inline bool error() { 
         if(com() != nullptr) return (error_ || com()->error());

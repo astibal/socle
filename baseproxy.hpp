@@ -38,18 +38,9 @@ received bytes from left socket is proxied to ALL right sockets and vice versa.
 Typical use will consists of one left and one right socket.
 */
 
+#include <iproxy.hpp>
 
-class Proxy {
-public:
-    virtual int prepare_sockets(baseCom*) = 0;   // which Com should be set: typically it should be the parent's proxy's Com
-    virtual int handle_sockets_once(baseCom*) = 0;    
-    virtual int run(void) = 0;
-    virtual void shutdown() = 0;
-    virtual ~Proxy() = 0;
-};
-
-
-class baseProxy : public epoll_handler
+class baseProxy : public epoll_handler, public Proxy
 {
 protected:
         
@@ -106,10 +97,10 @@ public:
     baseCom* com() { return com_; };
     baseProxy(baseCom* c);
     baseProxy(baseCom* c, int left_socket);
-    virtual ~baseProxy();
+    ~baseProxy() override;
     
     void parent(baseProxy *p) { parent_ = p; }
-    baseProxy* parent(void) { return parent_; }
+    baseProxy* parent() const { return parent_; }
 
     // add client sockets (left and right ones)
     void ladd(baseHostCX*);
@@ -170,7 +161,7 @@ public:
     virtual void right_shutdown();
     virtual void shutdown();
     
-    void sleep(void);
+    void sleep();
     
     virtual int run();
     virtual int prepare_sockets(baseCom*);   // which Com should be set: typically it should be the parent's proxy's Com
@@ -217,7 +208,7 @@ public:
     virtual void on_left_new_raw(int sock) {};
     virtual void on_right_new_raw(int sock) {};
         
-    virtual bool run_timers (void);
+    virtual bool run_timers ();
 
 
     inline bool write_left_bottleneck() const { return  write_left_neck_; }
@@ -228,6 +219,7 @@ public:
     unsigned int change_monitor_for_cx_vec(std::vector<baseHostCX*>* cx_vec, bool ifread, bool ifwrite,int pause_read, int pause_write);
     unsigned int change_side_monitoring(char side, bool ifread, bool ifwrite, int pause_read, int pause_write);
 
+    std::string to_string(int verbosity=iINF) override;
 protected:
     // internal functions which should not be used directly
     int read_socket(int,char);
@@ -237,12 +229,10 @@ protected:
 
     bool on_cx_timer(baseHostCX*);
     bool reset_timer();
-
-    virtual std::string to_string(int verbosity=iINF);
     
     // implement advanced logging
     DECLARE_C_NAME("baseProxy");
-    DECLARE_LOGGING(c_name);
+    DECLARE_LOGGING(to_string);
     
 private:
     unsigned int timer_interval = 1;

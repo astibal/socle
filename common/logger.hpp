@@ -64,12 +64,13 @@ extern loglevelmore LOG_EXEXACT;
 #define LOG_FLRAW  0x00000001  // don't print out any dates, or additional data  on the line, just this message
 
 struct logger_level {
-    logger_level(unsigned int l, unsigned int t) : level_(l),topic_(t) {}
-    logger_level(logger_level& l, unsigned int t) : level_(l.level_), topic_(t) {}
-    logger_level(logger_level& l, unsigned int t, unsigned int f) : level_(l.level_), topic_(t), flags_(f) {}
-    logger_level(unsigned int l, unsigned int t,loglevelmore* a) : level_(l),topic_(t), adv_(a) {}
-    logger_level(logger_level& l, unsigned int t, loglevelmore* a) : level_(l.level_), topic_(t), adv_(a) {}
-    logger_level(logger_level& l, unsigned int t, loglevelmore* a, unsigned int f) : level_(l.level_), topic_(t), adv_(a), flags_(f) {}
+    explicit logger_level(unsigned int l) : level_(l), topic_(0) {}
+    explicit logger_level(unsigned int l, unsigned int t) : level_(l),topic_(t) {}
+    explicit logger_level(logger_level& l, unsigned int t) : level_(l.level_), topic_(t) {}
+    explicit logger_level(logger_level& l, unsigned int t, unsigned int f) : level_(l.level_), topic_(t), flags_(f) {}
+    explicit logger_level(unsigned int l, unsigned int t,loglevelmore* a) : level_(l),topic_(t), adv_(a) {}
+    explicit logger_level(logger_level& l, unsigned int t, loglevelmore* a) : level_(l.level_), topic_(t), adv_(a) {}
+    explicit logger_level(logger_level& l, unsigned int t, loglevelmore* a, unsigned int f) : level_(l.level_), topic_(t), adv_(a), flags_(f) {}
 
     
     inline unsigned int level() const { return level_; }
@@ -531,13 +532,13 @@ private:                                \
     std::string name_ = string_name;   \
     std::string class_name_ = string_name;          \
 public:                                             \
-    virtual std::string& name()  { return this->name_; }          \
-    virtual const char* c_name() { return this->name_.c_str(); }; \
+    virtual std::string const& name() const  { return this->name_; }          \
+    virtual const char* c_name() const { return this->name_.c_str(); }; \
     virtual void name(const char* n) { name_ = n; };        \
     virtual void name(std::string n) { name_ = n; };        \
     \
                     \
-    virtual std::string class_name() { return this->class_name_; } \
+    virtual const std::string& class_name() { return this->class_name_; } \
     virtual const char* c_class_name() { return this->class_name_.c_str(); } \
     /*virtual int size_of() { return sizeof (*this);  } */
 

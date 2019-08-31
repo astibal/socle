@@ -5,7 +5,7 @@ SET(SOCLE_DIR "${PROJECT_SOURCE_DIR}/../socle")
 include_directories ("${PROJECT_SOURCE_DIR}")
 include_directories ("common/")
 
-add_library(socle_lib baseproxy.hpp lrproxy.hpp baseproxy.cpp hostcx.hpp hostcx.cpp lrproxy.cpp masterproxy.hpp masterproxy.cpp basecom.hpp basecom.cpp tcpcom.hpp tcpcom.cpp udpcom.hpp udpcom.cpp sslcom.hpp sslcom.cpp sslcom_dh.cpp sslmitmcom.hpp sslmitmcom.cpp sslcertstore.hpp sslcertstore.cpp traflog.hpp apphostcx.cpp epoll.hpp epoll.cpp sobject.cpp uxcom.cpp sslcertval.cpp traflog.cpp)
+add_library(socle_lib baseproxy.hpp lrproxy.hpp baseproxy.cpp hostcx.hpp hostcx.cpp lrproxy.cpp masterproxy.hpp masterproxy.cpp basecom.hpp basecom.cpp tcpcom.hpp tcpcom.cpp udpcom.hpp udpcom.cpp sslcom.hpp sslcom.cpp sslcom_dh.cpp sslmitmcom.hpp sslmitmcom.cpp sslcertstore.hpp sslcertstore.cpp traflog.hpp apphostcx.cpp epoll.hpp epoll.cpp sobject.cpp uxcom.cpp sslcertval.cpp traflog.cpp iproxy.hpp)
 target_link_libraries(socle_lib socle_common_lib)
 
 if(UNIX)

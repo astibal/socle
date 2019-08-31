@@ -80,6 +80,7 @@ void baseProxy::ladd(baseHostCX* cs) {
     com()->set_monitor(s);
     com()->set_poll_handler(s,this);
     left_sockets.push_back(cs);
+    cs->parent_proxy(this, 'L');
     DIA___("baseProxy::ladd: added socket: %s",cs->c_name());
 };
 
@@ -92,6 +93,7 @@ void baseProxy::radd(baseHostCX* cs) {
     com()->set_monitor(s);
     com()->set_poll_handler(s,this);
     right_sockets.push_back(cs);
+    cs->parent_proxy(this, 'R');
     DIA___("baseProxy::radd: added socket: %s",cs->c_name());
 };
 
@@ -103,6 +105,7 @@ void baseProxy::lbadd(baseHostCX* cs) {
     com()->set_monitor(s);
     com()->set_poll_handler(s,this);
     left_bind_sockets.push_back(cs);
+    cs->parent_proxy(this, 'L');
 	DIA___("baseProxy::lbadd: added bound socket: %s",cs->c_name());
 };
 
@@ -114,6 +117,7 @@ void baseProxy::rbadd(baseHostCX* cs) {
     com()->set_monitor(s);
     com()->set_poll_handler(s,this);
     right_bind_sockets.push_back(cs);
+    cs->parent_proxy(this, 'R');
 	DIA___("baseProxy::rbadd: added bound socket: %s",cs->c_name());
 };
 
@@ -125,6 +129,7 @@ void baseProxy::lpcadd(baseHostCX* cx) {
     com()->set_monitor(s);
     com()->set_poll_handler(s,this);
     left_pc_cx.push_back(cx);
+    cx->parent_proxy(this, 'L');
     DIA___("baseProxy::lpcadd: added perma socket: %s", cx->c_name());
 };
 
@@ -137,6 +142,7 @@ void baseProxy::rpcadd(baseHostCX* cx) {
     com()->set_poll_handler(s,this);
     
     right_pc_cx.push_back(cx);
+    cx->parent_proxy(this,'R');
     DIA___("baseProxy::rpcadd: added perma socket %s", cx->c_name());
 };
 
@@ -149,6 +155,7 @@ void baseProxy::ldaadd(baseHostCX* cs) {
     com()->set_poll_handler(s,this);
 
     left_delayed_accepts.push_back(cs);
+    cs->parent_proxy(this,'l');
     DIA___("baseProxy::ldaadd: added delayed socket: %s",cs->c_name());
 };
 
@@ -160,6 +167,7 @@ void baseProxy::rdaadd(baseHostCX* cs) {
     com()->set_poll_handler(s,this);
     
     right_delayed_accepts.push_back(cs);
+    cs->parent_proxy(this,'r');
     DIA___("baseProxy::rdaadd: added delayed socket: %s",cs->c_name());
 };
 
@@ -172,19 +180,22 @@ void baseProxy::left_shutdown() {
 	
 	int ld = left_delayed_accepts.size();
 	
-	for(typename std::vector<baseHostCX*>::iterator ii = left_bind_sockets.begin(); ii != left_bind_sockets.end(); ++ii) { (*ii)->shutdown(); };
-	for(typename std::vector<baseHostCX*>::iterator ii = left_sockets.begin(); ii != left_sockets.end(); ++ii) { (*ii)->shutdown();  };
-	for(typename std::vector<baseHostCX*>::iterator ii = left_pc_cx.begin(); ii != left_pc_cx.end(); ++ii) { (*ii)->shutdown(); };
-    for(typename std::vector<baseHostCX*>::iterator ii = left_delayed_accepts.begin(); ii != left_delayed_accepts.end(); ++ii) { (*ii)->shutdown(); };
+	for(auto* ii: left_bind_sockets) { ii->shutdown(); };
+	for(auto* ii: left_sockets) { ii->shutdown(); };
+	for(auto* ii: left_pc_cx) { ii->shutdown(); };
+    for(auto* ii: left_delayed_accepts) { ii->shutdown(); };
 
-    
-    for(typename std::vector<baseHostCX*>::iterator ii = left_bind_sockets.begin(); ii != left_bind_sockets.end(); ++ii) { delete(*ii); };
+
+    for(auto* ii: left_bind_sockets) { delete ii; };
     left_bind_sockets.clear();
-    for(typename std::vector<baseHostCX*>::iterator ii = left_sockets.begin(); ii != left_sockets.end(); ++ii) {  delete(*ii); };
+
+    for(auto* ii: left_sockets) {  delete ii; };
     left_sockets.clear();
-    for(typename std::vector<baseHostCX*>::iterator ii = left_pc_cx.begin(); ii != left_pc_cx.end(); ++ii) {  delete(*ii); };
+
+    for(auto* ii: left_pc_cx) {  delete ii; };
     left_pc_cx.clear();
-    for(typename std::vector<baseHostCX*>::iterator ii = left_delayed_accepts.begin(); ii != left_delayed_accepts.end(); ++ii) { delete(*ii); };
+
+    for(auto* ii: left_delayed_accepts) { delete ii; };
     left_delayed_accepts.clear();       
     
  	DEB___("baseProxy::left_shutdown: bind=%d(delayed=%d), sock=%d, perm=%d",lb,ld,ls,lp);
@@ -1223,7 +1234,7 @@ int baseProxy::run(void) {
     return 0;
 };
 
-void baseProxy::sleep(void) {
+void baseProxy::sleep() {
   
 	unsigned int x_time = sleep_time;
   
