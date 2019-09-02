@@ -52,8 +52,6 @@ loglevelmore LOG_EXEXACT = loglevelmore(true,true);
 logger* lout_ = nullptr;
 
 
-
-
 bool operator== (const loglevel& a, const loglevel& b) { return a.level_ == b.level_; }
 bool operator== (const loglevel& a, const unsigned int& b) { return a.level_ == b; }
 bool operator== (const unsigned int& a, const loglevel& b) { return a == b.level_; }
@@ -305,4 +303,3 @@ loglevel logger::adjust_level() {
     // return log level difference, therefore negative if we decreased logging level, zero if unchanged, positive if log level is raised.
     return max_common_level - curr_level;
 }
-    

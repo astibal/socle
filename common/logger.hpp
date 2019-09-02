@@ -32,6 +32,7 @@
 #include <vector>
 #include <list>
 #include <map>
+#include <functional>
 
 #include <display.hpp>
 #include <stringformat.hpp>
@@ -64,13 +65,13 @@ extern loglevelmore LOG_EXEXACT;
 #define LOG_FLRAW  0x00000001  // don't print out any dates, or additional data  on the line, just this message
 
 struct logger_level {
-    explicit logger_level(unsigned int l) : level_(l), topic_(0) {}
-    explicit logger_level(unsigned int l, unsigned int t) : level_(l),topic_(t) {}
-    explicit logger_level(logger_level& l, unsigned int t) : level_(l.level_), topic_(t) {}
-    explicit logger_level(logger_level& l, unsigned int t, unsigned int f) : level_(l.level_), topic_(t), flags_(f) {}
-    explicit logger_level(unsigned int l, unsigned int t,loglevelmore* a) : level_(l),topic_(t), adv_(a) {}
-    explicit logger_level(logger_level& l, unsigned int t, loglevelmore* a) : level_(l.level_), topic_(t), adv_(a) {}
-    explicit logger_level(logger_level& l, unsigned int t, loglevelmore* a, unsigned int f) : level_(l.level_), topic_(t), adv_(a), flags_(f) {}
+    logger_level(unsigned int l) : level_(l), topic_(0) {}
+    logger_level(unsigned int l, unsigned int t) : level_(l),topic_(t) {}
+    logger_level(logger_level& l, unsigned int t) : level_(l.level_), topic_(t) {}
+    logger_level(logger_level& l, unsigned int t, unsigned int f) : level_(l.level_), topic_(t), flags_(f) {}
+    logger_level(unsigned int l, unsigned int t,loglevelmore* a) : level_(l),topic_(t), adv_(a) {}
+    logger_level(logger_level& l, unsigned int t, loglevelmore* a) : level_(l.level_), topic_(t), adv_(a) {}
+    logger_level(logger_level& l, unsigned int t, loglevelmore* a, unsigned int f) : level_(l.level_), topic_(t), adv_(a), flags_(f) {}
 
     
     inline unsigned int level() const { return level_; }
@@ -769,8 +770,191 @@ void logger::log2_w_name(loglevel l, const char* f, int li, std::string name, co
 
     std::string str = string_format(fmt.c_str(), args...);
     log(l,src_info+c_name+str);
-}
+};
 
 #pragma GCC diagnostic pop
+
+
+class logan_lite {
+public:
+
+    logan_lite() : level(NON) {};
+
+    std::string topic;
+    loglevel level;
+
+    template<class ... Args>
+    void fat(const char* fmt, Args ... args) {
+        log(FAT, topic, fmt, args ...);
+    }
+    template<class ... Args>
+    void cri(const char* fmt, Args ... args) {
+        log(CRI, topic, fmt, args ...);
+    }
+    template<class ... Args>
+    void err(const char* fmt, Args ... args) {
+        log(ERR, topic, fmt, args ...);
+    }
+    template<class ... Args>
+    void war(const char* fmt, Args ... args) {
+        log(WAR, topic, fmt, args ...);
+    }
+    template<class ... Args>
+    void noti(const char* fmt, Args ... args) {
+        log(NOT, topic, fmt, args ...);
+    }
+    template<class ... Args>
+    void inf(const char* fmt, Args ... args) {
+        log(INF, topic, fmt, args ...);
+    }
+    template<class ... Args>
+    void dia(const char* fmt, Args ... args) {
+        log(DIA, topic, fmt, args ...);
+    }
+    template<class ... Args>
+    void deb(const char* fmt, Args ... args) {
+        log(DEB, topic, fmt, args ...);
+    }
+    template<class ... Args>
+    void dum(const char* fmt, Args ... args) {
+        log(DUM, topic, fmt, args ...);
+    }
+    template<class ... Args>
+    void ext(const char* fmt, Args ... args) {
+        log(EXT, topic, fmt, args ...);
+    }
+
+
+    template<class ... Args>
+    void log(loglevel lev, const std::string& topic, const char* fmt, Args ... args) {
+        if( level >= lev) {
+            std::stringstream ms;
+            ms << "[" << topic << "]: " << string_format(fmt, args...);
+
+            get_logger()->log(lev, ms.str());
+        }
+    }
+};
+
+class logan {
+public:
+
+    std::map <std::string, loglevel> topic_db_;
+    std::string default_topic_;
+
+    loglevel& operator[] (std::string topic) {
+
+        std::scoped_lock<std::recursive_mutex> l_(lock_);
+
+        auto it = topic_db_.find(topic);
+
+        if(it != topic_db_.end()) {
+            // found loglevel
+            return it->second;
+        } else {
+            loglevel l = loglevel(0,0);
+            topic_db_.emplace( std::pair<std::string, loglevel>(topic, l));
+            return this->operator[](topic);
+        }
+    }
+
+
+    // use selected object's loglevel. Returns its name;
+    template<class T>
+    static std::string use(const T& r) {
+        get()[r.name()] = r.get_this_log_level();
+
+        return r.name();
+    };
+
+    // return specifically crafted logger for the object (must be created with DECLARE_ and DEFINE_LOGGING!)
+    template<class T>
+    static logan_lite attach(T& ref) {
+        logan_lite l = logan_lite();
+        l.topic = ref.hr();
+        l.level = ref.get_this_log_level();
+
+        return l;
+    }
+
+    template<class ... Args>
+    static void fat(const std::string& topic, const char* fmt, Args ... args) {
+        return log(FAT, topic, fmt, args ...);
+    }
+
+    template<class ... Args>
+    static void cri(const std::string& topic, const char* fmt, Args ... args) {
+        return log(CRI, topic, fmt, args ...);
+    }
+
+    template<class ... Args>
+    static void err(const std::string& topic, const char* fmt, Args ... args) {
+        return log(ERR, topic, fmt, args ...);
+    }
+
+    template<class ... Args>
+    static void war(const std::string& topic, const char* fmt, Args ... args) {
+        return log(WAR, topic, fmt, args ...);
+    }
+
+    template<class ... Args>
+    static void noti(const std::string& topic, const char* fmt, Args ... args) {
+        return log(NOT, topic, fmt, args ...);
+    }
+
+    template<class ... Args>
+    static void inf(const std::string& topic, const char* fmt, Args ... args) {
+        return log(INF, topic, fmt, args ...);
+    }
+
+    template<class ... Args>
+    static void dia(const std::string& topic, const char* fmt, Args ... args) {
+        return log(DIA, topic, fmt, args ...);
+    }
+
+    template<class ... Args>
+    static void deb(const std::string& topic, const char* fmt, Args ... args) {
+        return log(DEB, topic, fmt, args ...);
+    }
+
+    template<class ... Args>
+    static void dum(const std::string& topic, const char* fmt, Args ... args) {
+        return log(DUM, topic, fmt, args ...);
+    }
+
+    template<class ... Args>
+    static void ext(const std::string& topic, const char* fmt, Args ... args) {
+        return log(EXT, topic, fmt, args ...);
+    }
+
+    template<class ... Args>
+    static void log(loglevel lev, const std::string& topic, const char* fmt, Args ... args) {
+
+        auto topic_lev = NON;
+
+        {
+            // don't lock too long. Logs could be quite talkative.
+            std::scoped_lock<std::recursive_mutex> l_(get().lock_);
+            topic_lev = get()[topic];
+        }
+
+        if( topic_lev >= lev) {
+            std::stringstream ms;
+            ms << "[" << topic << "]: " << string_format(fmt, args...);
+
+            get_logger()->log(lev, ms.str());
+        }
+    }
+
+    static logan& get() {
+        static logan l;
+        return l;
+    }
+
+private:
+    std::recursive_mutex lock_;
+};
+
+
 
 #endif // LOGGER_HPP
