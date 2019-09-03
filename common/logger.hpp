@@ -775,59 +775,68 @@ void logger::log2_w_name(loglevel l, const char* f, int li, std::string name, co
 #pragma GCC diagnostic pop
 
 
+class logan;
+
 class logan_lite {
+
+private:
+    std::string topic_;
+    loglevel level_;
+
 public:
 
-    logan_lite() : level(NON) {};
+    friend class logan;
 
-    std::string topic;
-    loglevel level;
+    logan_lite() : level_(NON) {};
+
+    virtual std::string topic() { return topic_; }
+    virtual loglevel level() { return level_; }
 
     template<class ... Args>
     void fat(const char* fmt, Args ... args) {
-        log(FAT, topic, fmt, args ...);
+        log(FAT, topic(), fmt, args ...);
     }
     template<class ... Args>
     void cri(const char* fmt, Args ... args) {
-        log(CRI, topic, fmt, args ...);
+        log(CRI, topic(), fmt, args ...);
     }
     template<class ... Args>
     void err(const char* fmt, Args ... args) {
-        log(ERR, topic, fmt, args ...);
+        log(ERR, topic(), fmt, args ...);
     }
     template<class ... Args>
     void war(const char* fmt, Args ... args) {
-        log(WAR, topic, fmt, args ...);
+        log(WAR, topic(), fmt, args ...);
     }
     template<class ... Args>
     void noti(const char* fmt, Args ... args) {
-        log(NOT, topic, fmt, args ...);
+        log(NOT, topic(), fmt, args ...);
     }
     template<class ... Args>
     void inf(const char* fmt, Args ... args) {
-        log(INF, topic, fmt, args ...);
+        log(INF, topic(), fmt, args ...);
     }
     template<class ... Args>
     void dia(const char* fmt, Args ... args) {
-        log(DIA, topic, fmt, args ...);
+        log(DIA, topic(), fmt, args ...);
     }
     template<class ... Args>
     void deb(const char* fmt, Args ... args) {
-        log(DEB, topic, fmt, args ...);
+        log(DEB, topic(), fmt, args ...);
     }
     template<class ... Args>
     void dum(const char* fmt, Args ... args) {
-        log(DUM, topic, fmt, args ...);
+        log(DUM, topic(), fmt, args ...);
     }
     template<class ... Args>
     void ext(const char* fmt, Args ... args) {
-        log(EXT, topic, fmt, args ...);
+        log(EXT, topic(), fmt, args ...);
     }
 
 
     template<class ... Args>
     void log(loglevel lev, const std::string& topic, const char* fmt, Args ... args) {
-        if( level >= lev) {
+        if( level() >= lev) {
             std::stringstream ms;
             ms << "[" << topic << "]: " << string_format(fmt, args...);
 
@@ -836,11 +845,36 @@ public:
     }
 };
 
+template <class T>
+class logan_attached : public logan_lite {
+public:
+    logan_attached() = delete;
+    logan_attached(T* ptr) : logan_lite() {
+        ptr_ = ptr;
+    }
+
+    std::string topic() override {
+        if(ptr_)
+            return ptr_->hr();
+
+        return "(nullptr)";
+    }
+
+    loglevel level() override {
+        if(ptr_)
+            return ptr_->get_this_log_level();
+
+        return NON;
+    }
+
+private:
+    T* ptr_ = nullptr;
+};
+
 class logan {
 public:
 
     std::map <std::string, loglevel> topic_db_;
-    std::string default_topic_;
 
     loglevel& operator[] (std::string topic) {
 
@@ -868,11 +902,27 @@ public:
     };
 
     // return specifically crafted logger for the object (must be created with DECLARE_ and DEFINE_LOGGING!)
+    // take current hr() and use it as the topic. Due its nature it's safer to use.
+    // if you can assure object's lifetime during the logger life, use attach instead.
     template<class T>
-    static logan_lite attach(T& ref) {
+    static logan_lite touch(T& ref) {
         logan_lite l = logan_lite();
-        l.topic = ref.hr();
-        l.level = ref.get_this_log_level();
+        l.topic_ = ref.hr();
+        l.level_ = ref.get_this_log_level();
+
+        return l;
+    };
+
+    template<class T>
+    static logan_attached<T> attach(T* ptr) {
+        logan_attached<T> l = logan_attached<T>(ptr);
+        return l;
+    };
+
+    static logan_lite create(std::string s) {
+        logan_lite l = logan_lite();
+        l.topic_ = s;
+        l.level_ = get_logger()->level();
 
         return l;
     }
