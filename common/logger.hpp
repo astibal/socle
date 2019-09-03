@@ -779,7 +779,8 @@ class logan;
 
 class logan_lite {
 
-private:
+protected:
+
     std::string topic_;
     loglevel level_;
 
@@ -790,7 +791,10 @@ public:
     logan_lite() : level_(NON) {};
 
     virtual std::string topic() { return topic_; }
+    virtual        void topic(std::string s) { topic_ = s; }
+
     virtual loglevel level() { return level_; }
+    virtual void     level(loglevel l) { level_ = l; }
 
     template<class ... Args>
     void fat(const char* fmt, Args ... args) {
@@ -854,6 +858,11 @@ public:
     }
 
     std::string topic() override {
+
+        // somebody overrode topic, use it.
+        if(! topic_.empty())
+            return topic_;
+
         if(ptr_)
             return ptr_->hr();
 
@@ -861,10 +870,14 @@ public:
     }
 
     loglevel level() override {
-        if(ptr_)
-            return ptr_->get_this_log_level();
 
-        return NON;
+        loglevel l = NON;
+
+        if(ptr_)
+            l =  ptr_->get_this_log_level();
+
+        // check if level_ is overriden. If so, use it.
+        return l >= level_ ? l : level_;
     }
 
 private:
