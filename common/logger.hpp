@@ -781,20 +781,26 @@ class logan_lite {
 
 protected:
 
+    // loging name in catalogue
     std::string topic_;
-    loglevel level_;
+
+    // loging message prefix in log line
+    std::string prefix_;
 
 public:
 
     friend class logan;
 
-    logan_lite() : level_(NON) {};
+    logan_lite() {};
 
     virtual std::string topic() { return topic_; }
     virtual        void topic(std::string s) { topic_ = s; }
 
-    virtual loglevel level() { return level_; }
-    virtual void     level(loglevel l) { level_ = l; }
+    virtual std::string prefix() { return prefix_; }
+    virtual        void prefix(std::string s) { prefix_ = s; }
+
+    virtual loglevel level();
+    virtual void     level(loglevel l);
 
     template<class ... Args>
     void fat(const char* fmt, Args ... args) {
@@ -842,7 +848,11 @@ public:
     void log(loglevel lev, const std::string& topic, const char* fmt, Args ... args) {
         if( level() >= lev) {
             std::stringstream ms;
-            ms << "[" << topic << "]: " << string_format(fmt, args...);
+            ms << "[" << topic;
+            if(! prefix().empty() ) {
+                ms << "|" << prefix();
+            }
+            ms << "]: " << string_format(fmt, args...);
 
             get_logger()->log(lev, ms.str());
         }
@@ -859,9 +869,21 @@ public:
 
     std::string topic() override {
 
-        // somebody overrode topic, use it.
+        // somebody's overriden topic, use it.
         if(! topic_.empty())
             return topic_;
+
+        if(ptr_)
+            return ptr_->name();
+
+        return "(nullptr)";
+    }
+
+    std::string prefix() override {
+
+        // somebody's overriden prefix, use it.
+        if(! prefix_.empty())
+            return prefix_;
 
         if(ptr_)
             return ptr_->hr();
@@ -877,7 +899,7 @@ public:
             l =  ptr_->get_this_log_level();
 
         // check if level_ is overriden. If so, use it.
-        return l >= level_ ? l : level_;
+        return logan_lite::level();
     }
 
 private:
@@ -920,8 +942,8 @@ public:
     template<class T>
     static logan_lite touch(T& ref) {
         logan_lite l = logan_lite();
-        l.topic_ = ref.hr();
-        l.level_ = ref.get_this_log_level();
+        l.topic_ = ref.name();
+        l.prefix_ = ref.hr();
 
         return l;
     };
@@ -935,7 +957,6 @@ public:
     static logan_lite create(std::string s) {
         logan_lite l = logan_lite();
         l.topic_ = s;
-        l.level_ = get_logger()->level();
 
         return l;
     }
@@ -996,8 +1017,7 @@ public:
         auto topic_lev = NON;
 
         {
-            // don't lock too long. Logs could be quite talkative.
-            std::scoped_lock<std::recursive_mutex> l_(get().lock_);
+            // operator[] is lock-protected
             topic_lev = get()[topic];
         }
 

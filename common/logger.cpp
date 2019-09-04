@@ -303,3 +303,12 @@ loglevel logger::adjust_level() {
     // return log level difference, therefore negative if we decreased logging level, zero if unchanged, positive if log level is raised.
     return max_common_level - curr_level;
 }
+
+
+loglevel logan_lite::level() {
+    return logan::get()[topic_];
+}
+
+void logan_lite::level(loglevel l) {
+    logan::get()[topic_] = l;
+}
