@@ -204,7 +204,7 @@ public:
     void peer(baseHostCX* p) { peer_ = p; com()->peer_ = peer()->com(); }
     baseCom* peercom() const { if(peer()) { return peer()->com(); } return nullptr; }
     
-    inline std::string& log() { return com()->log_buffer_; };
+    inline std::string& comlog() { return com()->log_buffer_; };
 public:
 	/* meters */
 	unsigned int meter_read_count;
