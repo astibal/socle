@@ -29,8 +29,8 @@ std::vector<std::string> ocsp_urls(X509 *x509)
 {
     std::vector<std::string> list;
     STACK_OF(OPENSSL_STRING) *ocsp_list = X509_get1_ocsp(x509);
-    for (int j = 0; j < sk_OPENSSL_STRING_num(ocsp_list); j++)
-    {
+    for (int j = 0; j < sk_OPENSSL_STRING_num(ocsp_list); j++) {
+
         list.push_back( std::string( sk_OPENSSL_STRING_value(ocsp_list, j) ) ); 
     }
     X509_email_free(ocsp_list);
@@ -41,21 +41,35 @@ std::vector<std::string> ocsp_urls(X509 *x509)
 int ocsp_prepare_request(OCSP_REQUEST **req, X509 *cert, const EVP_MD *cert_id_md,X509 *issuer,
                 STACK_OF(OCSP_CERTID) *ids)
 {
+
+    auto log = logan::create("ocsp");
+
     OCSP_CERTID *id;
-    if(!issuer)
-        {
-        DIAS_("prepareRequest: No issuer certificate specified");
+    if(!issuer) {
+
+        log.err("prepareRequest: No issuer certificate specified");
         return 0;
-        }
-    if(!*req) *req = OCSP_REQUEST_new();
-    if(!*req) goto err;
+    }
+
+    if(! *req )
+        *req = OCSP_REQUEST_new();
+
+    if(! *req )
+        goto err;
+
     id = OCSP_cert_to_id(cert_id_md, cert, issuer);
-    if(!id || !sk_OCSP_CERTID_push(ids, id)) goto err;
-    if(!OCSP_request_add0_id(*req, id)) goto err;
+
+    if( !id || !sk_OCSP_CERTID_push(ids, id) )
+        goto err;
+
+    if(! OCSP_request_add0_id(*req, id) )
+        goto err;
+
     return 1;
  
     err:
-        DIAS_("prepareRequest: Error Creating OCSP request");
+        log.err("prepareRequest: Error Creating OCSP request");
+
     return 0;
 }
 
@@ -65,47 +79,49 @@ OCSP_RESPONSE * ocsp_query_responder(BIO *err, BIO *cbio, char *path,
 {
     int fd;
     int rv;
-    OCSP_REQ_CTX *ctx = NULL;
-    OCSP_RESPONSE *rsp = NULL;
-    fd_set confds;
-    struct timeval tv;
+    OCSP_REQ_CTX *ctx = nullptr;
+    OCSP_RESPONSE *rsp = nullptr;
+    fd_set confds{0};
+
+    timeval tv;
+
+    auto log = logan::create("ocsp");
  
     if (req_timeout != -1)
         BIO_set_nbio(cbio, 1);
  
     rv = BIO_do_connect(cbio);
  
-    if ((rv <= 0) && ((req_timeout == -1) || !BIO_should_retry(cbio)))
-        {
-        DIAS_("queryResponder: Error connecting BIO");
-        return NULL;
-        }
+    if( (rv <= 0) && ((req_timeout == -1) || !BIO_should_retry(cbio)) ) {
+
+        log.err("queryResponder: Error connecting BIO");
+        return nullptr;
+    }
  
-    if (BIO_get_fd(cbio, &fd) <= 0)
-        {
-        DIAS_("queryResponder: Can't get connection fd");
+    if (BIO_get_fd(cbio, &fd) <= 0) {
+        log.err("queryResponder: Can't get connection fd");
         goto err;
-        }
+    }
  
-    if (req_timeout != -1 && rv <= 0)
-        {
+    if (req_timeout != -1 && rv <= 0) {
+
         FD_ZERO(&confds);
         FD_SET(fd, &confds);
         tv.tv_usec = 0;
         tv.tv_sec = req_timeout;
-        rv = select(fd + 1, NULL, &confds, NULL, &tv);
-        if (rv == 0)
-            {
-            DIAS_("queryResponder: Timeout on connect");
+        rv = select(fd + 1, nullptr, &confds, nullptr, &tv);
+        if (rv == 0){
+
+            log.err("queryResponder: Timeout on connect");
         
             //BIO_puts(err, "Timeout on connect\n");
-            return NULL;
-            }
+            return nullptr;
         }
+    }
  
-    ctx = OCSP_sendreq_new(cbio, path, NULL, -1);
+    ctx = OCSP_sendreq_new(cbio, path, nullptr, -1);
     if (!ctx)
-        return NULL;
+        return nullptr;
  
     if (!OCSP_REQ_CTX_add1_header(ctx, "Host", host))
         goto err;
@@ -113,39 +129,51 @@ OCSP_RESPONSE * ocsp_query_responder(BIO *err, BIO *cbio, char *path,
     if (!OCSP_REQ_CTX_set1_req(ctx, req))
         goto err;
  
-    for (;;)
-        {
+    for (;;) {
+
         rv = OCSP_sendreq_nbio(&rsp, ctx);
         if (rv != -1)
             break;
         if (req_timeout == -1)
             continue;
+
         FD_ZERO(&confds);
         FD_SET(fd, &confds);
+
         tv.tv_usec = 0;
         tv.tv_sec = req_timeout;
-        if (BIO_should_read(cbio))
-            rv = select(fd + 1, &confds, NULL, NULL, &tv);
-        else if (BIO_should_write(cbio))
-            rv = select(fd + 1, NULL, &confds, NULL, &tv);
-        else
-            {
-            DIAS_("queryResponder: Unexpected retry condition");
-            goto err;
-            }
-        if (rv == 0)
-            {
-            DIAS_("queryResponder: Timeout on request");
-            break;
-            }
-        if (rv == -1)
-            {
-            DIAS_("queryResponder: Select error");
-            break;
-            }
- 
+
+        if( BIO_should_read(cbio) ) {
+
+            log.deb("queryResponder: select - wait for reading");
+            rv = select(fd + 1, &confds, nullptr, nullptr, &tv);
         }
+        else if( BIO_should_write(cbio) ) {
+
+            log.deb("queryResponder: select - wait for writing");
+            rv = select(fd + 1, nullptr, &confds, nullptr, &tv);
+        }
+        else {
+            log.war("queryResponder: unexpected retry condition");
+            goto err;
+        }
+
+
+        if (rv == 0) {
+            log.err("queryResponder: timeout on request");
+            break;
+        }
+        else if (rv == -1) {
+            log.err("queryResponder: Select error");
+            break;
+        }
+        else {
+            log.deb("queryResponder: select ok - returned %d", rv);
+        }
+    }
+
     err:
+
     if (ctx)
         OCSP_REQ_CTX_free(ctx);
  
@@ -156,8 +184,8 @@ OCSP_RESPONSE * ocsp_send_request(BIO *err, OCSP_REQUEST *req,
             char *host, char *path, char *port, int use_ssl,
             int req_timeout)
 {
-    BIO *cbio = NULL;
-    OCSP_RESPONSE *resp = NULL;
+    BIO *cbio = nullptr;
+    OCSP_RESPONSE *resp = nullptr;
     cbio = BIO_new_connect(host);
     if (cbio && port && use_ssl==0)
     {
@@ -243,8 +271,8 @@ int ocsp_check_cert(X509 *x509, X509 *issuer, int req_timeout)
     if (issuer)
     {
         //build ocsp request
-        OCSP_REQUEST *req = NULL;
-        //STACK_OF(CONF_VALUE) *headers = NULL;
+        OCSP_REQUEST *req = nullptr;
+        //STACK_OF(CONF_VALUE) *headers = nullptr;
         STACK_OF(OCSP_CERTID) *ids = sk_OCSP_CERTID_new_null();
         const EVP_MD *cert_id_md = EVP_sha1();
         ocsp_prepare_request(&req, x509, cert_id_md, issuer, ids);
@@ -253,7 +281,7 @@ int ocsp_check_cert(X509 *x509, X509 *issuer, int req_timeout)
         STACK_OF(OPENSSL_STRING) *ocsp_list = X509_get1_ocsp(x509);
         for (int j = 0; j < sk_OPENSSL_STRING_num(ocsp_list) && is_revoked==-1; j++)
         {
-            char *host = NULL, *port = NULL, *path = NULL; 
+            char *host = nullptr, *port = nullptr, *path = nullptr;
             int use_ssl;
             //std::string ocsp_url0 = std::string( sk_OPENSSL_STRING_value(ocsp_list, j) );
 
@@ -296,8 +324,8 @@ int ocsp_check_bytes(const char cert_bytes[], const char issuer_bytes[])
     BIO *bio_mem2 = BIO_new(BIO_s_mem());
     BIO_puts(bio_mem1, cert_bytes);
     BIO_puts(bio_mem2, issuer_bytes);
-    X509 * x509 = PEM_read_bio_X509(bio_mem1, NULL, NULL, NULL);
-    X509 * issuer = PEM_read_bio_X509(bio_mem2, NULL, NULL, NULL);
+    X509 * x509 = PEM_read_bio_X509(bio_mem1, nullptr, nullptr, nullptr);
+    X509 * issuer = PEM_read_bio_X509(bio_mem2, nullptr, nullptr, nullptr);
     int ret =  ocsp_check_cert(x509, issuer);
     BIO_free(bio_mem1);
     BIO_free(bio_mem2);
@@ -374,13 +402,13 @@ int crl_verify_trust(X509 *x509, X509* issuer, X509_CRL *crl_file, const std::st
     sk_X509_push(chain, issuer);
  
     X509_STORE *store=X509_STORE_new();
-    if (store==NULL) { 
+    if (store==nullptr) {
         INFS_("crl_verify_trust: X509_STORE_new failed"); 
         return 0; 
     }
  
     X509_LOOKUP *lookup=X509_STORE_add_lookup(store,X509_LOOKUP_file());
-    if (lookup==NULL) { 
+    if (lookup==nullptr) {
         INFS_("crl_verify_trust: X509_STORE_add_lookup failed"); 
         X509_STORE_free(store);
         return 0; 
@@ -421,7 +449,7 @@ std::vector<std::string> crl_urls(X509 *x509)
 {
     std::vector<std::string> list;
     int nid = NID_crl_distribution_points;
-    STACK_OF(DIST_POINT) * dist_points =(STACK_OF(DIST_POINT) *)X509_get_ext_d2i(x509, nid, NULL, NULL);
+    STACK_OF(DIST_POINT) * dist_points =(STACK_OF(DIST_POINT) *)X509_get_ext_d2i(x509, nid, nullptr, nullptr);
     for (int j = 0; j < sk_DIST_POINT_num(dist_points); j++)
     {
         DIST_POINT *dp = sk_DIST_POINT_value(dist_points, j);
@@ -463,7 +491,7 @@ std::vector<std::string> crl_urls(X509 *x509)
 
 std::string fingerprint(X509* cert) {
 
-  const EVP_MD *fprint_type = NULL;
+  const EVP_MD *fprint_type = nullptr;
   unsigned fprint_size;
   unsigned char fprint[EVP_MAX_MD_SIZE];
 
@@ -486,7 +514,7 @@ X509 *new_x509(const char* cert_bytes)
 {
     BIO *bio_mem = BIO_new(BIO_s_mem());
     BIO_puts(bio_mem, cert_bytes);
-    X509 * x509 = PEM_read_bio_X509(bio_mem, NULL, NULL, NULL);
+    X509 * x509 = PEM_read_bio_X509(bio_mem, nullptr, nullptr, nullptr);
     BIO_free(bio_mem);
     return x509;
 }
@@ -495,7 +523,7 @@ X509_CRL *new_CRL(const char* cert_bytes)
 {
     BIO *bio_mem = BIO_new(BIO_s_mem());
     BIO_puts(bio_mem, cert_bytes);
-    X509_CRL * crl = d2i_X509_CRL_bio(bio_mem, NULL);
+    X509_CRL * crl = d2i_X509_CRL_bio(bio_mem, nullptr);
     BIO_free(bio_mem);
     return crl;
 }
@@ -506,7 +534,7 @@ X509_CRL *new_CRL(buffer& b)
     BIO_write(bio_mem,b.data(),b.size());
     EXT_("new_CRL: \n%s",hex_dump(b).c_str())
     
-    X509_CRL * crl = d2i_X509_CRL_bio(bio_mem, NULL);
+    X509_CRL * crl = d2i_X509_CRL_bio(bio_mem, nullptr);
     
     BIO_free(bio_mem);
     return crl;
@@ -517,7 +545,7 @@ X509_CRL *new_CRL(buffer& b)
 X509_CRL *new_CRL_from_file(const char* crl_filename)
 {
     BIO *bio = BIO_new_file(crl_filename, "r");
-    X509_CRL *crl=d2i_X509_CRL_bio(bio,NULL); //if (format == FORMAT_PEM) crl=PEM_read_bio_X509_CRL(in,NULL,NULL,NULL);
+    X509_CRL *crl=d2i_X509_CRL_bio(bio,nullptr); //if (format == FORMAT_PEM) crl=PEM_read_bio_X509_CRL(in,nullptr,nullptr,nullptr);
     BIO_free(bio);
     return crl;
 }

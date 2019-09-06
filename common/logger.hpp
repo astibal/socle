@@ -864,7 +864,7 @@ class logan_attached : public logan_lite {
 public:
     logan_attached() = default;
     logan_attached(T* ptr) : logan_lite(), ptr_(ptr) {}
-    logan_attached(T* ptr, std::string area) : logan_lite(), area_(area), ptr_(ptr) {}
+    logan_attached(T* ptr, std::string area) : logan_lite(), ptr_(ptr), area_(area) {}
 
 
     std::string topic() override {
