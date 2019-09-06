@@ -862,10 +862,10 @@ public:
 template <class T>
 class logan_attached : public logan_lite {
 public:
-    logan_attached() = delete;
-    logan_attached(T* ptr) : logan_lite() {
-        ptr_ = ptr;
-    }
+    logan_attached() = default;
+    logan_attached(T* ptr) : logan_lite(), ptr_(ptr) {}
+    logan_attached(T* ptr, std::string area) : logan_lite(), area_(area), ptr_(ptr) {}
+
 
     std::string topic() override {
 
@@ -891,19 +891,19 @@ public:
         return "(nullptr)";
     }
 
-    loglevel level() override {
+    loglevel level() override;
+    void level(loglevel l) override;
+    virtual void this_level(loglevel l);
 
-        loglevel l = NON;
-
-        if(ptr_)
-            l =  ptr_->get_this_log_level();
-
-        // check if level_ is overriden. If so, use it.
-        return logan_lite::level();
+    void area(const std::string& ref);
+    std::string area() const {
+        return area_;
     }
 
 private:
     T* ptr_ = nullptr;
+
+    std::string area_;
 };
 
 class logan {
@@ -953,6 +953,13 @@ public:
         logan_attached<T> l = logan_attached<T>(ptr);
         return l;
     };
+
+    template<class T>
+    static logan_attached<T> attach(T* ptr, std::string area) {
+        logan_attached<T> l = logan_attached<T>(ptr, area);
+        return l;
+    };
+
 
     static logan_lite create(std::string s) {
         logan_lite l = logan_lite();
@@ -1038,6 +1045,57 @@ private:
     std::recursive_mutex lock_;
 };
 
+template <class T>
+loglevel logan_attached<T>::level() {
 
+    loglevel l_name = NON;
+    loglevel l_this = NON;
+    loglevel l_area = NON;
+
+    if(ptr_) {
+        l_this = ptr_->get_this_log_level();
+    }
+
+    if( ! area().empty() ) {
+        l_area = logan::get()[area()];
+    }
+
+    l_name = l_area = logan::get()[topic()];
+
+    if( l_area > l_this)
+        return l_area;
+
+    if( l_name > l_this )
+        return l_this;
+
+    if( l_this > NON)
+        return l_this;
+
+    // return damn default
+    return logan_lite::level();
+}
+
+template <class T>
+void logan_attached<T>::level(loglevel l) {
+    if(ptr_)
+        ptr_->log_level_ref() = l;
+}
+
+template <class T>
+void logan_attached<T>::this_level(loglevel l) {
+    if(ptr_)
+        ptr_->get_this_log_level() = l;
+}
+
+template <class T>
+void logan_attached<T>::area(const std::string& ref) {
+    area_ = ref;
+
+    if(logan::get().topic_db_.find(area_) == logan::get().topic_db_.end()) {
+
+        // set area logging level
+        logan::get()[area_] = NON;
+    }
+}
 
 #endif // LOGGER_HPP
