@@ -30,7 +30,7 @@ int MasterProxy::prepare_sockets(baseCom* xcom)
     
     r += baseProxy::prepare_sockets(xcom);
     for(auto p: proxies()) {
-        if(p && !p->dead()) {
+        if(p && !p->state().dead()) {
             r += p->prepare_sockets(xcom); // fill my fd_sets!
         }
     }    
@@ -49,7 +49,7 @@ bool MasterProxy::run_timers (void)
                 continue;
             }
 
-            if(p->dead()) {
+            if(p->state().dead()) {
                 delete p;
                 proxies().erase(p);
             } else {
@@ -77,7 +77,7 @@ int MasterProxy::handle_sockets_once(baseCom* xcom) {
     
     for(auto p: proxies()) {
                 
-        if (p->dead()) { 
+        if (p->state().dead()) {
             p->shutdown();
             proxies_shutdown++;
         } else {
@@ -88,7 +88,7 @@ int MasterProxy::handle_sockets_once(baseCom* xcom) {
     
     for(auto p: proxies()) {
         
-        if (p->dead()) { 
+        if (p->state().dead()) {
             delete(p);
             proxies().erase(p); 
                         

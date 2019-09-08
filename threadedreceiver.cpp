@@ -54,7 +54,7 @@ ThreadedReceiver<Worker,SubWorker>::~ThreadedReceiver() {
 
         for(unsigned int i = 0; i <= nthreads; i++) {
             Worker* ptr =  workers_[i];
-            ptr->dead(true);
+            ptr->state().dead(true);
         }
         
         for(unsigned int i = 0; i <= nthreads; i++) {
@@ -591,83 +591,91 @@ int ThreadedReceiver<Worker, SubWorker>::pop_for_worker(int id) {
 template<class SubWorker>
 int ThreadedReceiverProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
     
-    ThreadedReceiver<ThreadedReceiverProxy<SubWorker>,SubWorker> *p = (ThreadedReceiver<ThreadedReceiverProxy<SubWorker>,SubWorker> *)MasterProxy::parent();
-    if(p == NULL) {
+    auto *p = (ThreadedReceiver<ThreadedReceiverProxy<SubWorker>,SubWorker> *)MasterProxy::parent();
+    if(p == nullptr) {
         FATS_("PARENT is NULL");
     }
-    
-    if(p->dead()) {
-        // set myself dead too!
-        this->dead(true);
-    }
-    
-    uint32_t s = p->pop_for_worker(worker_id_);
-    if(s > 0) {
-        
-        // this session key is for us!
-        DIA_("ThreadedReceiverProxy::handle_sockets_once: new data notification for %d",s);
+    else {
+        if (p->state().dead()) {
+            // set myself dead too!
+            this->state().dead(true);
+        }
 
-            if (((unsigned int)s) % workers_total == (unsigned int)worker_id_) {
-                DIA_("ThreadedReceiverProxy::%d is for me!",s);
+        uint32_t s = p->pop_for_worker(worker_id_);
+        if (s > 0) {
 
-                DIA_("ThreadedReceiverProxy::handle_sockets_once: DatagramCom::datagrams_received.size() = %d",DatagramCom::datagrams_received.size());
-                    
+            // this session key is for us!
+            DIA_("ThreadedReceiverProxy::handle_sockets_once: new data notification for %d", s);
+
+            if (((unsigned int) s) % workers_total == (unsigned int) worker_id_) {
+                DIA_("ThreadedReceiverProxy::%d is for me!", s);
+
+                DIA_("ThreadedReceiverProxy::handle_sockets_once: DatagramCom::datagrams_received.size() = %d",
+                     DatagramCom::datagrams_received.size());
+
                 auto it_record = DatagramCom::datagrams_received.find(s);
-                
-                if(it_record != DatagramCom::datagrams_received.end()) {
 
-                    DIA_("ThreadedReceiverProxy::handle_sockets_once[%d]: found in datagram pool",s);
-                    
-                    Datagram& record = (*it_record).second;
-                    
-                    DEB_("Record dump: cx=0x%x dst=%s embryonic=%d real_socket=%d reuse=%d rx_size=0x%x socket=%d src=%s", 
-                                record.cx, inet_ss_str(&record.dst).c_str(),record.embryonic, record.real_socket, record.reuse, record.rx.size(),record.socket, inet_ss_str(&record.src).c_str());
-                    
+                if (it_record != DatagramCom::datagrams_received.end()) {
+
+                    DIA_("ThreadedReceiverProxy::handle_sockets_once[%d]: found in datagram pool", s);
+
+                    Datagram &record = (*it_record).second;
+
+                    DEB_("Record dump: cx=0x%x dst=%s embryonic=%d real_socket=%d reuse=%d rx_size=0x%x socket=%d src=%s",
+                         record.cx, inet_ss_str(&record.dst).c_str(), record.embryonic, record.real_socket,
+                         record.reuse, record.rx.size(), record.socket, inet_ss_str(&record.src).c_str());
+
                     if (!record.reuse) {
                         //record.embryonic = false; // it's not embryonic anymore, when we pick it up!
-                        
-                        DIA_("ThreadedReceiverProxy::handle_sockets_once[%d]: embryonic connection, creating new CX with bound socket %d",s,record.socket);
-                        
+
+                        DIA_("ThreadedReceiverProxy::handle_sockets_once[%d]: embryonic connection, creating new CX with bound socket %d",
+                             s, record.socket);
+
                         // create new cx
-                        
+
                         int socket = s;
-                        
+
                         auto cx = this->new_cx(socket);
                         record.cx = cx;
-                        
-                        if(!cx->read_waiting_for_peercom()) {
+
+                        if (!cx->read_waiting_for_peercom()) {
                             cx->on_accept_socket(socket);
                         }
                         cx->idle_delay(120);
-                        auto cx_dcom = dynamic_cast<DatagramCom*>(cx->com());
-                        auto cx_bcom = dynamic_cast<baseCom*>(cx->com());
-                        
-                        
-                        if(cx_bcom == nullptr || cx_dcom == nullptr) {
-                            WAR_("ThreadedReceiverProxy::handle_sockets_once[%d]: new object's Com is not DatagramCom and baseCom",s);
+                        auto cx_dcom = dynamic_cast<DatagramCom *>(cx->com());
+                        auto cx_bcom = dynamic_cast<baseCom *>(cx->com());
+
+
+                        if (cx_bcom == nullptr || cx_dcom == nullptr) {
+                            WAR_("ThreadedReceiverProxy::handle_sockets_once[%d]: new object's Com is not DatagramCom and baseCom",
+                                 s);
                             delete cx;
-                            
+
                         } else {
                             cx_bcom->nonlocal_dst(this->com()->nonlocal_dst());
                             cx_bcom->resolve_nonlocal_dst_socket(s);
-                        
-                            DIA_("ThreadedReceiverProxy::handle_sockets_once[%d]: CX created, bound socket %d ,nonlocal: %s:%u",s, record.socket,cx->com()->nonlocal_dst_host().c_str(),cx->com()->nonlocal_dst_port());
-                            this->on_left_new(cx);                            
+
+                            DIA_("ThreadedReceiverProxy::handle_sockets_once[%d]: CX created, bound socket %d ,nonlocal: %s:%u",
+                                 s, record.socket, cx->com()->nonlocal_dst_host().c_str(),
+                                 cx->com()->nonlocal_dst_port());
+                            this->on_left_new(cx);
                         }
-                        
+
 
                     } else {
-                        DIA_("ThreadedReceiverProxy::handle_sockets_once[%d]: already existing pseudo-connection with bound socket %d",s,record.socket);
+                        DIA_("ThreadedReceiverProxy::handle_sockets_once[%d]: already existing pseudo-connection with bound socket %d",
+                             s, record.socket);
 //                         DIA_("ThreadedReceiverProxy::handle_sockets_once[%d]: what to do?",s);
                     }
                 }
 
             } else {
-                EXT_("ThreadedReceiverProxy::handle_sockets_once: %d belongs to someone else..",s);
+                EXT_("ThreadedReceiverProxy::handle_sockets_once: %d belongs to someone else..", s);
             }
-    } else if (s != 0){
-        DIA_("ThreadedReceiverProxy::handle_sockets_once: new unknown data notification for %d",s);
+        } else if (s != 0) {
+            DIA_("ThreadedReceiverProxy::handle_sockets_once: new unknown data notification for %d", s);
+        }
     }
-    
-     return MasterProxy::handle_sockets_once(com());
+
+    return MasterProxy::handle_sockets_once(com());
 }

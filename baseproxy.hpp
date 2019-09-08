@@ -43,14 +43,34 @@ Typical use will consists of one left and one right socket.
 class baseProxy : public epoll_handler, public Proxy
 {
 protected:
-        
-    bool dead_;
+
+
+    struct proxy_state {
+        bool dead_ = false;
+
+        bool error_on_read = false;
+        bool error_on_write = false;
+
+        // when writing didn't write all data in writebuf
+        bool write_left_neck_ = false;
+        bool write_right_neck_ = false;
+
+        inline bool dead() const { return dead_; }
+        inline void dead(bool d) { dead_ = d; /* might be handy sometimes. if(dead_) { INF_("dead bt: %s",bt().c_str()); } */ }
+
+        inline bool write_left_bottleneck() const { return  write_left_neck_; }
+        void write_left_bottleneck(bool n) { write_left_neck_ = n; }
+
+        inline bool write_right_bottleneck() const { return  write_right_neck_; }
+        void write_right_bottleneck(bool n) { write_right_neck_ = n; }
+    };
+
+    proxy_state status_;
+
     bool new_raw_;
     baseProxy* parent_ = nullptr;
 
-    bool error_on_read;
-    bool error_on_write;
-    
+
     std::vector<baseHostCX*> left_sockets;
     std::vector<baseHostCX*> right_sockets;
 
@@ -67,19 +87,26 @@ protected:
     //  -- this is important for some features like SSL MiTM, and it also preserves resources 
     //        => it's useful for session *original* direction side (usually and by convention it's the left side)
     std::vector<baseHostCX*> left_delayed_accepts;
-    std::vector<baseHostCX*> right_delayed_accepts;   
+    std::vector<baseHostCX*> right_delayed_accepts;
 
     
-    unsigned int sleep_time; // microseconds
+    unsigned int sleep_time_; // microseconds
     unsigned int sleep_factor_ = 0; // how many times we slept already. Resets if we woke up.
-    
-    unsigned int meter_last_read;
-    unsigned int meter_last_write;
+
+
+    struct metering {
+        unsigned int last_read = 0;
+        unsigned int last_write = 0;
+    };
+    metering meters;
+
     unsigned int handle_last_status;
         
     bool pollroot_ = false;    
 
 public:
+    proxy_state& state() { return status_; }
+
     static const unsigned int HANDLE_OK = 0;
     static const unsigned int HANDLE_LEFT_ERROR = -1;
     static const unsigned int HANDLE_RIGHT_ERROR = -2;
@@ -95,8 +122,7 @@ public:
     
     baseCom* com_;
     baseCom* com() { return com_; };
-    baseProxy(baseCom* c);
-    baseProxy(baseCom* c, int left_socket);
+    explicit baseProxy(baseCom* c);
     ~baseProxy() override;
     
     void parent(baseProxy *p) { parent_ = p; }
@@ -132,23 +158,18 @@ public:
     std::vector<baseHostCX*>& rda() { return right_delayed_accepts; }
 
 
-    inline bool dead() const { return dead_; }
-    inline void dead(bool d) { dead_ = d; /* might be handy sometimes. if(dead_) { INF_("dead bt: %s",bt().c_str()); } */ } 
-    
     inline bool new_raw() const { return new_raw_; }
     inline void new_raw(bool r) { new_raw_ = r; } 	
     
-    void set_polltime(unsigned int, unsigned int);
-    inline void set_sleeptime(unsigned int n) { sleep_time = n; };
-    inline unsigned int get_sleeptime() { return sleep_time; }
+    inline void sleep_time(unsigned int n) { sleep_time_ = n; };
+    inline unsigned int sleep_time() const { return sleep_time_; }
+    void sleep();
 
 
-    
+
     // bind proxy to a port (typically left side)
-    int left_bind(unsigned short);
-    int right_bind(unsigned short);
     int bind(unsigned short, unsigned char);
-    int bind(const char*, unsigned char); // support for AF_UNIX and similar
+    int bind(std::string const&, unsigned char); // support for AF_UNIX and similar
         
     // permanently (re)connected sockets
     int left_connect(const char*, const char*,bool=false);
@@ -159,29 +180,27 @@ public:
     // shutdown utils, deletes HostCX
     virtual void left_shutdown();
     virtual void right_shutdown();
-    virtual void shutdown();
-    
-    void sleep();
-    
-    virtual int run();
-    virtual int prepare_sockets(baseCom*);   // which Com should be set: typically it should be the parent's proxy's Com
+    void shutdown() override;
+
+    int run() override;
+    int prepare_sockets(baseCom*) override;   // which Com should be set: typically it should be the parent's proxy's Com
     
     // normal sockets (proxying data)
-    virtual bool handle_cx_events(unsigned char side, baseHostCX* cx); // return false to break socket loop. Always call this one in your overide.
-    virtual bool handle_cx_read(unsigned char side, baseHostCX* cx);   // return false to break socket loop. Always call this one in your overide.
-    virtual bool handle_cx_write(unsigned char side, baseHostCX* cx);  // return false to break socket loop. Always call this one in your overide.
+    virtual bool handle_cx_events(unsigned char side, baseHostCX* cx); // return false to break socket loop. Always call this one in your override.
+    virtual bool handle_cx_read(unsigned char side, baseHostCX* cx);   // return false to break socket loop. Always call this one in your override.
+    virtual bool handle_cx_write(unsigned char side, baseHostCX* cx);  // return false to break socket loop. Always call this one in your override.
     virtual bool handle_cx_read_once(unsigned char side, baseCom* xcom, baseHostCX* cx);
     virtual bool handle_cx_write_once(unsigned char side, baseCom* xcom, baseHostCX* cx);
     
     //bound sockets
     bool handle_cx_new(unsigned char side, baseCom* xcom, baseHostCX* cx);
     
-    virtual int handle_sockets_once(baseCom*);
-    virtual void handle_event(baseCom* com) {
+    int handle_sockets_once(baseCom*) override;
+    void handle_event(baseCom* com) override {
         handle_sockets_once(com);
     };
 
-    inline bool pollroot() { return pollroot_; };
+    inline bool pollroot() const { return pollroot_; };
     inline void pollroot(bool b) { pollroot_ = b; };
         
     // overide to create custom context objects
@@ -211,38 +230,32 @@ public:
     virtual bool run_timers ();
 
 
-    inline bool write_left_bottleneck() const { return  write_left_neck_; }
-    void write_left_bottleneck(bool n) { write_left_neck_ = n; }
-    inline bool write_right_bottleneck() const { return  write_right_neck_; }
-    void write_right_bottleneck(bool n) { write_right_neck_ = n; }
-
     unsigned int change_monitor_for_cx_vec(std::vector<baseHostCX*>* cx_vec, bool ifread, bool ifwrite,int pause_read, int pause_write);
     unsigned int change_side_monitoring(char side, bool ifread, bool ifwrite, int pause_read, int pause_write);
 
     std::string to_string(int verbosity=iINF) override;
 protected:
-    // internal functions which should not be used directly
-    int read_socket(int,char);
-        
-    time_t last_tick_;
-    time_t clock_;
+
+    struct clicker {
+        time_t last_tick_;
+        time_t clock_;
+        unsigned int timer_interval = 1;
+
+        clicker(): last_tick_(0), clock_(0) {
+            time(&last_tick_);
+            time(&clock_);
+        };
+        bool reset_timer();
+    };
+    clicker clicker_;
 
     bool on_cx_timer(baseHostCX*);
-    bool reset_timer();
     
     // implement advanced logging
     DECLARE_C_NAME("baseProxy");
     DECLARE_LOGGING(to_string);
-    
-private:
-    unsigned int timer_interval = 1;
 
-    // when writing didn't write all data in writebuf
-    bool write_left_neck_ = false;
-    bool write_right_neck_ = false;
 };
-
-typedef std::vector<baseHostCX*>::iterator cx_iterator;
 
 #endif
 

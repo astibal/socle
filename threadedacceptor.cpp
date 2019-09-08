@@ -52,7 +52,7 @@ ThreadedAcceptor<Worker,SubWorker>::~ThreadedAcceptor() {
 
 		for(unsigned int i = 0; i <= nthreads; i++) {
 			Worker* ptr =  workers_[i];
-			ptr->dead(true);
+			ptr->state().dead(true);
 		}
 		
 		for(unsigned int i = 0; i <= nthreads; i++) {
@@ -168,32 +168,32 @@ int ThreadedAcceptor<Worker,SubWorker>::pop() {
 template<class SubWorker>
 int ThreadedAcceptorProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
 	
-	ThreadedAcceptor<ThreadedAcceptorProxy<SubWorker>,SubWorker> *p = (ThreadedAcceptor<ThreadedAcceptorProxy<SubWorker>,SubWorker> *)MasterProxy::parent();
-	if(p == NULL) {
+	auto *p = (ThreadedAcceptor<ThreadedAcceptorProxy<SubWorker>,SubWorker> *)MasterProxy::parent();
+	if(p == nullptr) {
 		FATS_("PARENT is NULL");
-	}
-	
-	if(p->dead()) {
-        // set myself dead too!
-        this->dead(true);
-    }
-	
-	int s = p->pop();
-	if(s > 0) {
-		DIA_("ThreadedAcceptorProxy::run: removed from queue: 0x%016llx (socket %d)",s,s);
+	} else {
 
-		auto cx = this->new_cx(s);
-		if(!cx->read_waiting_for_peercom()) {
-            cx->on_accept_socket(s);
-        } else {
-            cx->on_delay_socket(s);
+        if (p->state().dead()) {
+            // set myself dead too!
+            this->state().dead(true);
         }
-		cx->com()->nonlocal_dst(this->com()->nonlocal_dst());
-		cx->com()->resolve_nonlocal_dst_socket(s);
-		this->on_left_new(cx);
 
-	}
-	
+        int s = p->pop();
+        if (s > 0) {
+            DIA_("ThreadedAcceptorProxy::run: removed from queue: 0x%016llx (socket %d)", s, s);
+
+            auto cx = this->new_cx(s);
+            if (!cx->read_waiting_for_peercom()) {
+                cx->on_accept_socket(s);
+            } else {
+                cx->on_delay_socket(s);
+            }
+            cx->com()->nonlocal_dst(this->com()->nonlocal_dst());
+            cx->com()->resolve_nonlocal_dst_socket(s);
+            this->on_left_new(cx);
+
+        }
+    }
 	return MasterProxy::handle_sockets_once(com());
 }
 
