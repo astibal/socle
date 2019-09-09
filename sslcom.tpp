@@ -728,7 +728,7 @@ int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
             cached_result = com->certstore()->ocsp_result_cache.get(cn);
 
             if (cached_result != nullptr) {
-                is_revoked = cached_result->value;
+                is_revoked = cached_result->value();
                 str_status = str_cached;
             } else {
                 is_revoked = ocsp_check_cert(com->sslcom_target_cert, com->sslcom_target_issuer);
@@ -777,7 +777,7 @@ int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
                 crl_h = certstore()->crl_cache.get(crl_url);
                 
                 if(crl_h != nullptr) {
-                    crl = crl_h->value->ptr;
+                    crl = crl_h->value()->ptr;
                     log.dia("found cached crl: %s",crl_printable.c_str());
                     str_status = str_cached;
                 }
