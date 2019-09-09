@@ -31,7 +31,168 @@
 
 namespace socle {
 
-class fileWriter {
+struct expiring_fd : public expiring_int {
+    ~expiring_fd() override {
+        ::close(value());
+    }
+};
+
+class expiring_ofstream : public expiring_ptr<std::ofstream> {
+
+public:
+    expiring_ofstream(std::ofstream* o, unsigned int sec) : expiring_ptr<std::ofstream>(o, sec) {};
+    ~expiring_ofstream() override {
+
+        auto* optr = dynamic_cast<std::ofstream*>(value());
+        if(optr) {
+            if(optr->is_open()) {
+                optr->flush();
+                optr->close();
+            }
+        }
+    }
+
+    bool expired() override  {
+        auto log = logan::create("socle.expiring_ofstream");
+        auto r = expiring_ptr<std::ofstream>::expired();
+
+        log.deb("0x%x: now=%d expired_at=%d, result=%d", value(), time(nullptr), expired_at(), r);
+
+        return r;
+    }
+
+    static bool is_expired(expiring_ofstream *ptr) { return ptr->expired(); }
+};
+
+
+class baseFileWriter {
+public:
+    // returns number of written bytes in str written into fnm
+    virtual std::size_t write(std::string const& fnm, std::string const& str) = 0;
+
+    // unguaranteed flush - stream will be flushed to disk if possible
+    virtual bool flush(std::string const& fnm) = 0;
+
+    // open the file
+    virtual bool open(std::string const& fnm) = 0;
+
+    // close the file
+    virtual bool close(std::string const& fnm) = 0;
+
+    // is this writer opened?
+    virtual bool opened() = 0;
+    virtual ~baseFileWriter() = default;
+};
+
+class poolFileWriter : public baseFileWriter {
+
+
+    explicit poolFileWriter(): ofstream_pool("ofstream-pool", 30, true ) {
+        ofstream_pool.expiration_check(expiring_ofstream::is_expired);
+        ofstream_pool.opportunistic_removal(2);
+
+        log = logan::create("socle.poolFileWriter");
+    }
+
+public:
+    poolFileWriter& operator=(poolFileWriter const&) = delete;
+    poolFileWriter(poolFileWriter const&) = delete;
+
+    static poolFileWriter* instance() {
+        static poolFileWriter w = poolFileWriter();
+        return &w;
+    }
+
+    std::size_t write(std::string const& fnm, std::string const& str) override {
+
+        std::scoped_lock<std::recursive_mutex> l_(ofstream_pool.getlock());
+
+        auto o = get_ofstream(fnm);
+
+        if(!o) return 0;
+
+        (*o) << str;
+
+
+        auto sz = str.size();
+
+        log.dia("file: %s: written %dB", fnm.c_str(), sz);
+        return sz;
+    };
+
+    std::ofstream* get_ofstream(std::string const& fnm, bool create = true) {
+        auto optr = ofstream_pool.get(fnm);
+        if (! optr) {
+
+            if(! create) {
+                log.dia("file: %s: stream not found.", fnm.c_str());
+                return nullptr;
+            }
+
+            log.dia("file: %s: creating a new stream", fnm.c_str());
+
+            for(auto s: ofstream_pool.items()) {
+                log.deb("pool item: %s", s.c_str());
+            }
+
+            auto* stream = new std::ofstream(fnm , std::ofstream::out | std::ofstream::app);
+            ofstream_pool.set(fnm, new expiring_ofstream(stream, 60));
+
+            return stream;
+        } else {
+            log.deb("file: %s: existing stream", fnm.c_str());
+            return optr->value();
+        }
+    }
+
+    bool flush(std::string const& fnm) override {
+
+        std::scoped_lock<std::recursive_mutex> l_(ofstream_pool.getlock());
+
+        auto o = get_ofstream(fnm, false);
+        if(o) {
+            o->flush();
+            log.dia("file: %s: flushed", fnm.c_str());
+            return true;
+        }
+
+        return false;
+    }
+
+    bool close(std::string const& fnm) override {
+
+        std::scoped_lock<std::recursive_mutex> l_(ofstream_pool.getlock());
+
+        auto o = get_ofstream(fnm, false);
+        if(o) {
+            ofstream_pool.erase(fnm);
+
+            log.dia("file: %s: erased", fnm.c_str());
+            return true;
+        }
+
+        return false;
+    }
+
+    // trafLog compatible API
+    bool open(std::string const& fnm) override {
+
+        auto* o = get_ofstream(fnm);
+
+        return o != nullptr;
+    }
+
+    // pool writer is always opened
+    bool opened() override { return true; };
+
+private:
+    logan_lite log;
+
+    // pool of opened streams. If expired, they will be closed and destruct.
+    ptr_cache<std::string, expiring_ofstream> ofstream_pool;
+};
+
+class fileWriter : public baseFileWriter {
 
     std::ofstream* writer_;
     bool opened_;
@@ -40,12 +201,12 @@ class fileWriter {
 public:
     explicit fileWriter() : writer_(nullptr), opened_(false) {};
 
-    inline bool opened() const { return opened_; }
+    bool opened() override { return opened_; }
     inline void opened(bool b) { opened_ = b; }
 
     inline std::string filename() const { return filename_; };
 
-    virtual std::size_t write_disk(std::string const& str) {
+    std::size_t write(std::string const&fnm, std::string const& str) override {
 
         if(! writer_) return 0;
 
@@ -53,7 +214,7 @@ public:
         return str.size();
     }
 
-    virtual bool open(std::string const& fnm) {
+    bool open(std::string const& fnm) override {
 
         if(writer_) return true;
 
@@ -72,6 +233,12 @@ public:
         return false;
     }
 
+    bool close(std::string const& fnm) override {
+        close();
+
+        return !opened();
+    }
+
     virtual void close() {
         opened(false);
 
@@ -85,9 +252,22 @@ public:
             filename_.clear();
         }
     }
+
+    bool flush(std::string const& fnm) override {
+        if(writer_) {
+            writer_->flush();
+
+            return true;
+        }
+
+        return false;
+
+    }
 };
 
 class trafLog : public sobject {
+
+    static const bool use_pool_writer = true;
 
 public:
 	trafLog(baseProxy *p,const char* d_dir, const char* f_prefix, const char* f_suffix) : sobject(),
@@ -100,10 +280,25 @@ public:
 	writer_key_r_("???:???") {
         create_writer_key();
         proxy_ = nullptr;
+
+        if(!use_pool_writer) {
+            writer_ = new fileWriter();
+        } else {
+            writer_ = poolFileWriter::instance();
+        }
 	}
 	
 	~trafLog() override {
-	}
+
+	    if(writer_) {
+	        if(! writer_key_.empty()) {
+	            writer_->close(writer_key_);
+	        }
+	    }
+
+	    if(! use_pool_writer)
+	        delete writer_;
+	};
 
     bool ask_destroy() override {
         delete this;
@@ -115,7 +310,7 @@ private:
 	baseProxy *proxy_;
     bool status_;
 
-    fileWriter writer_;
+    baseFileWriter* writer_ = nullptr;
     
     std::string data_dir;
     std::string file_prefix;
@@ -269,21 +464,21 @@ public:
 		
 		if(status()) {
 
-            if(! writer_.opened() ) {
-                if (writer_.open(writer_key_)) {
+            if(! writer_->opened() ) {
+                if (writer_->open(writer_key_)) {
                     DIA_("writer '%s' created",writer_key_l_.c_str());
                 } else {
-                    ERR_("write '%s' failed to create dump file!",writer_key_l_.c_str());
+                    ERR_("write '%s' failed to open dump file!",writer_key_l_.c_str());
                 }
             }
             
-            if (writer_.opened()) {
+            if (writer_->opened()) {
 
                 std::stringstream ss;
                 ss << d << "+" << now.tv_usec << ": "<< k1 << "(" << k2 << ")\n";
                 ss << s << '\n';
 
-                writer_.write_disk(ss.str());
+                writer_->write(writer_key_, ss.str());
 
             } else {
                 ERRS_("cannot write to stream, writer not opened.");
@@ -293,7 +488,7 @@ public:
 	
 	
     std::string to_string(int verbosity = iINF) override {
-        return string_format("Traflog: file=%s opened=%d",writer_key_.c_str(),writer_.opened());
+        return string_format("Traflog: file=%s opened=%d",writer_key_.c_str(),writer_->opened());
     }
 	
     DECLARE_C_NAME("trafLog");
