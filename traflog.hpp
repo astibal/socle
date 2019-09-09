@@ -121,6 +121,9 @@ public:
     };
 
     std::ofstream* get_ofstream(std::string const& fnm, bool create = true) {
+
+        std::scoped_lock<std::recursive_mutex> l_(ofstream_pool.getlock());
+
         auto optr = ofstream_pool.get(fnm);
         if (! optr) {
 

@@ -125,6 +125,8 @@ public:
     
     int max_size() const { return max_size_; }
 
+    unsigned int opportunistic_removal() const { return opportunistic_removal_; };
+    void opportunistic_removal(unsigned int oppo) { opportunistic_removal_ = oppo; };
     
     bool erase(K k) {
         std::lock_guard<std::recursive_mutex> l(lock_);
@@ -220,6 +222,8 @@ public:
 private:
     bool auto_delete_ = true;
     unsigned int max_size_ = 0;
+    unsigned int opportunistic_removal_ = 0;
+
     std::deque<K> items_;
     
     T* default_value_ = nullptr;
