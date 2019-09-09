@@ -31,34 +31,81 @@
 
 namespace socle {
 
+class fileWriter {
+
+    std::ofstream* writer_;
+    bool opened_;
+    std::string filename_;
+
+public:
+    explicit fileWriter() : writer_(nullptr), opened_(false) {};
+
+    inline bool opened() const { return opened_; }
+    inline void opened(bool b) { opened_ = b; }
+
+    inline std::string filename() const { return filename_; };
+
+    virtual std::size_t write_disk(std::string const& str) {
+
+        if(! writer_) return 0;
+
+        *writer_ << str;
+        return str.size();
+    }
+
+    virtual bool open(std::string const& fnm) {
+
+        if(writer_) return true;
+
+        if(fnm.empty()) {
+            return false;
+        }
+
+        writer_ = new std::ofstream(fnm , std::ofstream::out | std::ofstream::app);
+        if(writer_->is_open()) {
+            filename_ = fnm;
+            opened(true);
+            return true;
+        }
+
+        close();
+        return false;
+    }
+
+    virtual void close() {
+        opened(false);
+
+        if(writer_) {
+            if(writer_->is_open()) {
+                writer_->close();
+            }
+
+            delete writer_;
+            writer_ = nullptr;
+            filename_.clear();
+        }
+    }
+};
+
 class trafLog : public sobject {
 
 public:
 	trafLog(baseProxy *p,const char* d_dir, const char* f_prefix, const char* f_suffix) : sobject(),
     proxy_(p),
-	opened_(false),
 	status_(true),
 	data_dir(d_dir),
 	file_prefix(f_prefix),
 	file_suffix(f_suffix),
-	writer_(NULL),
 	writer_key_l_("???:???"),
 	writer_key_r_("???:???") {
         create_writer_key();
         proxy_ = nullptr;
 	}
 	
-	virtual ~trafLog() {
-        
-        if(writer_ != nullptr) {
-            writer_->close();
-            delete writer_;
-        }
-    }
+	~trafLog() override {
+	}
 
-    std::string filename;
-
-    virtual bool ask_destroy() { 
+    bool ask_destroy() override {
         delete this;
        
         return true;
@@ -66,39 +113,60 @@ public:
     
 private:
 	baseProxy *proxy_;
-	bool opened_;
     bool status_;
+
+    fileWriter writer_;
     
     std::string data_dir;
     std::string file_prefix;
     std::string file_suffix;
-    
-	std::ofstream *writer_;
+
 	std::string writer_key_l_;
 	std::string writer_key_r_;
-	std::string host_l_;	
-	
-	
+	std::string host_l_;
+
+
+    std::string writer_key_;
+
+
 	std::string create_writer_key(char side) {
         
-        if(proxy_ == nullptr) {
+        if(! proxy_ ) {
             return "";
         }
         
         std::string lh;
-        if(proxy_->ls().size()) lh = proxy_->ls().at(0)->host();
-        else if(proxy_->lda().size()) lh = proxy_->lda().at(0)->host();
+        if(! proxy_->ls().empty()) {
+            lh = proxy_->ls().at(0)->host();
+        }
+        else {
+            if(! proxy_->lda().empty()) {
+                lh = proxy_->lda().at(0)->host();
+            }
+        }
 
         std::string l;
-        if(proxy_->ls().size()) l = proxy_->ls().at(0)->name();
-        else if(proxy_->lda().size()) l = proxy_->lda().at(0)->name();
+        if(! proxy_->ls().empty() ) {
+            l = proxy_->ls().at(0)->name();
+        }
+        else {
+            if(! proxy_->lda().empty()) {
+                l = proxy_->lda().at(0)->name();
+            }
+        }
 
         std::string r;
-        if(proxy_->rs().size()) r = proxy_->rs().at(0)->name();
-        else if(proxy_->rda().size()) r = proxy_->rda().at(0)->name();
+        if(! proxy_->rs().empty()) {
+            r = proxy_->rs().at(0)->name();
+        }
+        else {
+            if( ! proxy_->rda().empty()) {
+                r = proxy_->rda().at(0)->name();
+            }
+        }
 
         if (proxy_->lsize() > 0) {
-            host_l_ = lh.c_str();
+            host_l_ = lh;
         }
         
         if (side == 'L' || side == 'l') {
@@ -131,12 +199,12 @@ private:
 		}
 	}
 	
-	void create_writer_key() {
+	std::string create_writer_key() {
         writer_key_l_ = create_writer_key('L');
         writer_key_r_ = create_writer_key('R');
         
-        if(writer_key_l_.size() == 0 || writer_key_r_.size() == 0) {
-            return;
+        if(writer_key_l_.empty() || writer_key_r_.empty()) {
+            return "";
         }
         
         mkdir(data_dir.c_str(),700);
@@ -144,58 +212,33 @@ private:
         std::string hostdir = data_dir+"/"+host_l_+"/";
         mkdir(hostdir.c_str(),0770);
 
-        time_t now = time(0);
-        struct tm loc;
+        time_t now = time(nullptr);
+        tm loc{0};
+
         localtime_r(&now,&loc);
-        std::string datedir = string_format("%d-%02d-%02d/",loc.tm_year+1900,loc.tm_mon+1,loc.tm_mday);
+
+        std::string datedir = string_format("%d-%02d-%02d/", loc.tm_year+1900, loc.tm_mon+1, loc.tm_mday);
         mkdir((hostdir+datedir).c_str(),700);
         
-        std::string file_datepart = string_format("%02d-%02d-%02d_",loc.tm_hour,loc.tm_min,loc.tm_sec);
+        std::string file_datepart = string_format("%02d-%02d-%02d_", loc.tm_hour, loc.tm_min, loc.tm_sec);
+
+        std::stringstream ss;
         
-        
-        filename = hostdir + datedir + file_prefix + file_datepart + writer_key_l_ + "." + file_suffix;
+        ss << hostdir << datedir << file_prefix << file_datepart << writer_key_l_ << "." << file_suffix;
+        writer_key_ = ss.str();
+
+        return writer_key_;
     }
 
-   
-	bool create_writer() {
-		
-        if(filename.size() == 0) {
-            return false;
-        }
-        
-		writer_ = new std::ofstream(filename, std::ofstream::out | std::ofstream::app);
-		if(writer_->is_open()) {
-			opened_ = true;
-			return true;
-		}
-		
-        close_writer();
-		return false;
-	}
-
-	void close_writer() {
-        opened_ = false;
-        
-        if(writer_) {
-            if(writer_->is_open()) {
-                writer_->close();
-            }
-            
-            delete writer_;
-            writer_ = nullptr;        
-        }
-    }
 
 public:
-	inline bool opened() { return opened_; }
-	inline void opened(bool b) { opened_ = b; }
 
 	inline bool status() { return status_; }
     inline void status(bool b) { status_ = b; }
 
   
-	void left_write(buffer b) {  write('L',b); };
-	void right_write(buffer b) {  write('R',b); };
+	void left_write(buffer const& b) {  write('L',b); };
+	void right_write(buffer const& b) {  write('R',b); };
 	
 	void write(char side, buffer b) {
 		if (side == 'l' || side == 'L') {
@@ -207,43 +250,50 @@ public:
 
 	void left_write(std::string s) {  write('L',s); };
 	void right_write(std::string s) {  write('R',s); };
-	
+
 	virtual void write(char side, std::string s) {
 		
-		timeval now;
-		gettimeofday(&now,NULL);
+		timeval now{0};
+		gettimeofday(&now, nullptr);
 		char d[64];
 		memset(d,0,64);
 		ctime_r(&now.tv_sec,d);
 		
 		std::string& k1 = writer_key_l_;
 		std::string& k2 = writer_key_r_;
+
 		if (side == 'R' || side == 'r') {
 			k1 = writer_key_r_;
 			k2 = writer_key_l_;
 		}
 		
 		if(status()) {
-            
-            if(! opened()) {
-                if (create_writer()) {
+
+            if(! writer_.opened() ) {
+                if (writer_.open(writer_key_)) {
                     DIA_("writer '%s' created",writer_key_l_.c_str());
                 } else {
                     ERR_("write '%s' failed to create dump file!",writer_key_l_.c_str());
                 }
             }
             
-            if (opened()) {
-                
-                *writer_ << d << "+" << now.tv_usec << ": "<< k1 << "(" << k2 << ")\n";
-                *writer_ << s << '\n';
+            if (writer_.opened()) {
+
+                std::stringstream ss;
+                ss << d << "+" << now.tv_usec << ": "<< k1 << "(" << k2 << ")\n";
+                ss << s << '\n';
+
+                writer_.write_disk(ss.str());
+
+            } else {
+                ERRS_("cannot write to stream, writer not opened.");
             }
         }   
 	}
 	
 	
-    virtual std::string to_string(int verbosity = iINF) {
-        return string_format("Traflog: file=%s opened=%d ofstream=0x%x",filename.c_str(),opened(),writer_);
+    std::string to_string(int verbosity = iINF) override {
+        return string_format("Traflog: file=%s opened=%d",writer_key_.c_str(),writer_.opened());
     }
 	
     DECLARE_C_NAME("trafLog");
