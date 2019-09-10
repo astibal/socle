@@ -52,34 +52,34 @@ loglevelmore LOG_EXEXACT = loglevelmore(true,true);
 logger* lout_ = nullptr;
 
 
-bool operator== (const loglevel& a, const loglevel& b) { return a.level_ == b.level_; }
-bool operator== (const loglevel& a, const unsigned int& b) { return a.level_ == b; }
-bool operator== (const unsigned int& a, const loglevel& b) { return a == b.level_; }
+bool operator== (const loglevel& a, const loglevel& b) { return a.level() == b.level(); }
+bool operator== (const loglevel& a, const unsigned int& b) { return a.level() == b; }
+bool operator== (const unsigned int& a, const loglevel& b) { return a == b.level(); }
 
 
-bool operator<= (const loglevel& a, const loglevel& b) { return a.level_ <= b.level_; }
-bool operator<= (const loglevel& a, const unsigned int& b) { return a.level_ <= b; }
-bool operator<= (const unsigned int& a, const loglevel& b) { return a <= b.level_; }
+bool operator<= (const loglevel& a, const loglevel& b) { return a.level() <= b.level(); }
+bool operator<= (const loglevel& a, const unsigned int& b) { return a.level() <= b; }
+bool operator<= (const unsigned int& a, const loglevel& b) { return a <= b.level(); }
 
 
-bool operator>= (const loglevel& a, const loglevel& b) { return a.level_ >= b.level_; }
-bool operator>= (const loglevel& a, const unsigned int& b) { return a.level_ >= b; }
-bool operator>= (const unsigned int& a, const loglevel& b) { return a >= b.level_; }
+bool operator>= (const loglevel& a, const loglevel& b) { return a.level() >= b.level(); }
+bool operator>= (const loglevel& a, const unsigned int& b) { return a.level() >= b; }
+bool operator>= (const unsigned int& a, const loglevel& b) { return a >= b.level(); }
 
 
-bool operator!= (const loglevel& a, const loglevel& b) { return a.level_ != b.level_; }
-bool operator!= (const loglevel& a, const unsigned int& b) { return a.level_ != b; }
-bool operator!= (const unsigned int& a, const loglevel& b) { return a != b.level_; }
+bool operator!= (const loglevel& a, const loglevel& b) { return a.level() != b.level(); }
+bool operator!= (const loglevel& a, const unsigned int& b) { return a.level() != b; }
+bool operator!= (const unsigned int& a, const loglevel& b) { return a != b.level(); }
 
 
-bool operator> (const loglevel& a, const loglevel& b) { return a.level_ > b.level_; }
-bool operator> (const loglevel& a, const unsigned int& b) { return a.level_ > b; }
-bool operator> (const unsigned int& a, const loglevel& b) { return a > b.level_; }
+bool operator> (const loglevel& a, const loglevel& b) { return a.level() > b.level(); }
+bool operator> (const loglevel& a, const unsigned int& b) { return a.level() > b; }
+bool operator> (const unsigned int& a, const loglevel& b) { return a > b.level(); }
 
 
-bool operator< (const loglevel& a, const loglevel& b) { return a.level_ < b.level_; }
-bool operator< (const loglevel& a, const unsigned int& b) { return a.level_ < b; }
-bool operator< (const unsigned int& a, const loglevel& b) { return a < b.level_; }
+bool operator< (const loglevel& a, const loglevel& b) { return a.level() < b.level(); }
+bool operator< (const loglevel& a, const unsigned int& b) { return a.level() < b; }
+bool operator< (const unsigned int& a, const loglevel& b) { return a < b.level(); }
 
 loglevel operator-(const loglevel& a, const loglevel& b) { loglevel r = a; r.level(a.level() - b.level()); return r; }
 loglevel operator-(const loglevel& a, const unsigned int& b) { loglevel r = a; r.level(a.level() - b); return r; }
@@ -305,10 +305,23 @@ loglevel logger::adjust_level() {
 }
 
 
-loglevel logan_lite::level() {
-    return logan::get()[topic_];
+loglevel* logan_lite::level() {
+    if(! my_loglevel) {
+        my_loglevel = logan::get()[topic_];
+    }
+
+    return my_loglevel;
 }
 
 void logan_lite::level(loglevel l) {
-    logan::get()[topic_] = l;
+
+    if(!my_loglevel) {
+        my_loglevel = logan::get()[topic_];
+    }
+    my_loglevel->level(l.level());
+    my_loglevel->topic(l.topic());
+    my_loglevel->more(l.more()); // shallow copy?
+    my_loglevel->flags(l.flags());
+    my_loglevel->subject(l.subject());
+    my_loglevel->area(l.area());
 }

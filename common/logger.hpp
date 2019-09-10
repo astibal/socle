@@ -64,7 +64,9 @@ extern loglevelmore LOG_EXEXACT;
 #define LOG_FLNONE 0x00000000
 #define LOG_FLRAW  0x00000001  // don't print out any dates, or additional data  on the line, just this message
 
-struct logger_level {
+class logger_level {
+
+public:
     logger_level(unsigned int l) : level_(l), topic_(0) {}
     logger_level(unsigned int l, unsigned int t) : level_(l),topic_(t) {}
     logger_level(logger_level& l, unsigned int t) : level_(l.level_), topic_(t) {}
@@ -75,20 +77,32 @@ struct logger_level {
 
     
     inline unsigned int level() const { return level_; }
+    inline unsigned int& level_ref() { return level_; }
+
     inline unsigned int topic() const { return topic_; }
-    const loglevelmore* more(void) const { return adv_; }
+    inline loglevelmore* more(void) const { return adv_; }
+    inline unsigned int flags() const { return flags_; }
+    inline std::string subject() const { return subject_; }
+    inline std::string area() const { return area_; }
+
 
     void level(unsigned int l) { level_ = l; }
     void topic(unsigned int t) { topic_ = t; }
     void more(loglevelmore* a) { adv_ = a; }
-    
+    void flags(unsigned int f) { flags_ = f; }
+    void subject(std::string const& str) { subject_ = str; }
+    void area(std::string const& str) { area_ = str; }
+
+    std::string to_string(int verbosity=iINF) { return string_format("level:%d topic:%d",level_,topic_); };
+private:
     unsigned int level_ {iINF};
     unsigned int topic_ {iNON};
     loglevelmore* adv_{nullptr};
     
     unsigned int flags_{LOG_FLNONE};
-    
-    std::string to_string(int verbosity=iINF) { return string_format("level:%d topic:%d",level_,topic_); };
+
+    std::string subject_;
+    std::string area_;
 };
 
 typedef struct logger_level loglevel;
@@ -173,7 +187,7 @@ extern loglevel EXT;
 #define LOG_(lev,x,...) \
     if(get_logger()->level() >= (lev)) { \
         if( ( ( get_logger()->print_srcline() && get_logger()->level() > INF ) || get_logger()->print_srcline_always() ) \
-              && !flag_test((lev).flags_,LOG_FLRAW)) { \
+              && !flag_test((lev).flags(),LOG_FLRAW)) { \
             get_logger()->log2(lev,_FILE_,__LINE__,(x),__VA_ARGS__); \
         } else { \
             get_logger()->log(lev,(x),__VA_ARGS__); \
@@ -183,7 +197,7 @@ extern loglevel EXT;
 #define LOGS_(lev,x) \
     if(get_logger()->level() >= (lev)) { \
         if( ( ( get_logger()->print_srcline() && get_logger()->level() > INF ) || get_logger()->print_srcline_always() ) \
-              && !flag_test((lev).flags_,LOG_FLRAW)) { \
+              && !flag_test((lev).flags(),LOG_FLRAW)) { \
             get_logger()->log2(lev,_FILE_,__LINE__,(x)); \
         } else { \
             get_logger()->log(lev,(x)); \
@@ -209,7 +223,7 @@ extern loglevel EXT;
 
 #define L_LOG_(lev,x,...) \
     if(log_level >= lev || get_logger()->level() >= lev) { \
-        if( ( ( get_logger()->print_srcline() && get_logger()->level() > INF ) || ( get_logger()->print_srcline() && log_level > INF ) || get_logger()->print_srcline_always() ) && !flag_test((lev).flags_,LOG_FLRAW)) { \
+        if( ( ( get_logger()->print_srcline() && get_logger()->level() > INF ) || ( get_logger()->print_srcline() && log_level > INF ) || get_logger()->print_srcline_always() ) && !flag_test((lev).flags(),LOG_FLRAW)) { \
             get_logger()->log2(lev,_FILE_,__LINE__,(x),__VA_ARGS__); \
         } else { \
             get_logger()->log(lev,(x),__VA_ARGS__); \
@@ -218,7 +232,7 @@ extern loglevel EXT;
 
 #define L_LOGS_(lev,x) \
     if(log_level >= lev || get_logger()->level() >= lev) { \
-        if( ( ( get_logger()->print_srcline() && get_logger()->level() > INF ) || ( get_logger()->print_srcline() && log_level > INF ) || get_logger()->print_srcline_always() ) && !flag_test((lev).flags_,LOG_FLRAW)) { \
+        if( ( ( get_logger()->print_srcline() && get_logger()->level() > INF ) || ( get_logger()->print_srcline() && log_level > INF ) || get_logger()->print_srcline_always() ) && !flag_test((lev).flags(),LOG_FLRAW)) { \
             get_logger()->log2(lev,_FILE_,__LINE__,(x)); \
         } else { \
             get_logger()->log(lev,(x)); \
@@ -256,7 +270,7 @@ extern loglevel EXT;
                 get_logger()->print_srcline_always()     \
             )                                            \
             &&                                           \
-            !flag_test((lev).flags_,LOG_FLRAW)           \
+            !flag_test((lev).flags(),LOG_FLRAW)           \
           )                                              \
         { \
             get_logger()->log2_w_name(lev,_FILE_,__LINE__,(hr()),(x),__VA_ARGS__); \
@@ -274,7 +288,7 @@ extern loglevel EXT;
                 get_logger()->print_srcline_always()     \
             )                                            \
             &&                                           \
-            !flag_test((lev).flags_,LOG_FLRAW)           \
+            !flag_test((lev).flags(),LOG_FLRAW)           \
           )                                              \
         { \
             get_logger()->log2_w_name(lev,_FILE_,__LINE__,(hr()),(x)); \
@@ -513,6 +527,7 @@ extern loglevel EXT;
 public:                                      \
     const char* hr() { hr_ = this->get_name_func(); return hr_.c_str(); }; \
     static loglevel& log_level_ref() { return log_level; } \
+    loglevel& this_log_level_ref() { return this_log_level_; } \
     static loglevel log_level;                             \
     virtual loglevel get_this_log_level() const { return this_log_level_ > log_level ? this_log_level_: log_level ; }     \
     virtual void set_this_log_level(loglevel nl) { this_log_level_ = nl; }  \
@@ -564,7 +579,7 @@ struct logger_profile_syslog {
     int facility = 23; // local7
     int severity = 6;  // information;
     
-    inline int prival() const { return facility * 8 + ( (severity > DEB) ? DEB.level_ : severity ); };
+    inline int prival() const { return facility * 8 + ( (severity > DEB) ? DEB.level() : severity ); };
 };
 
 
@@ -724,7 +739,7 @@ void logger::log(loglevel l, const std::string& fmt,  Args ... args) {
     std::stringstream ss;
     int date_len = std::strftime(date,sizeof(date),"%y-%m-%d %H:%M:%S",tmp);
 
-    if(flag_test(l.flags_,LOG_FLRAW)) {
+    if(flag_test(l.flags(),LOG_FLRAW)) {
         ss << str;
     }
     else {
@@ -775,11 +790,37 @@ void logger::log2_w_name(loglevel l, const char* f, int li, std::string name, co
 #pragma GCC diagnostic pop
 
 
+#define  xext(x)  if(*(x).level() > EXT) (x).ext
+#define  xdum(x)  if(*(x).level() > DUM) (x).dum
+#define  xdeb(x)  if(*(x).level() > DEB) (x).deb
+#define  xdia(x)  if(*(x).level() > DIA) (x).dia
+#define  xinf(x)  if(*(x).level() > INF) (x).inf
+#define  xnot(x)  if(*(x).level() > NOT) (x).noti
+#define  xwar(x)  if(*(x).level() > WAR) (x).war
+#define  xerr(x)  if(*(x).level() > ERR) (x).err
+#define  xcri(x)  if(*(x).level() > CRI) (x).cri
+#define  xfat(x)  if(*(x).level() > FAT) (x).fat
+
+
+#define  _ext  if(*log.level() > DUM) log.ext
+#define  _dum  if(*log.level() > DUM) log.dum
+#define  _deb  if(*log.level() > DEB) log.deb
+#define  _dia  if(*log.level() > DIA) log.dia
+#define  _inf  if(*log.level() > INF) log.inf
+#define  _not  if(*log.level() > NOT) log.noti
+#define  _war  if(*log.level() > WAR) log.war
+#define  _err  if(*log.level() > ERR) log.err
+#define  _cri  if(*log.level() > CRI) log.cri
+
+
+
 class logan;
 
 class logan_lite {
 
 protected:
+
+    loglevel* my_loglevel = nullptr;
 
     // loging name in catalogue
     std::string topic_;
@@ -799,7 +840,7 @@ public:
     virtual std::string prefix() { return prefix_; }
     virtual        void prefix(std::string s) { prefix_ = s; }
 
-    virtual loglevel level();
+    virtual loglevel* level();
     virtual void     level(loglevel l);
 
     template<class ... Args>
@@ -846,7 +887,7 @@ public:
 
     template<class ... Args>
     void log(loglevel lev, const std::string& topic, const char* fmt, Args ... args) {
-        if( level() >= lev) {
+        if( *level() >= lev) {
             std::stringstream ms;
             ms << "[" << topic;
             if(! prefix().empty() ) {
@@ -866,6 +907,7 @@ public:
     logan_attached(T* ptr) : logan_lite(), ptr_(ptr) {}
     logan_attached(T* ptr, std::string area) : logan_lite(), ptr_(ptr), area_(area) {}
 
+    loglevel* my_area_loglevel = nullptr;
 
     std::string topic() override {
 
@@ -891,7 +933,7 @@ public:
         return "(nullptr)";
     }
 
-    loglevel level() override;
+    loglevel* level() override;
     void level(loglevel l) override;
     virtual void this_level(loglevel l);
 
@@ -909,21 +951,23 @@ private:
 class logan {
 public:
 
-    std::map <std::string, loglevel> topic_db_;
+    std::map <std::string, loglevel*> topic_db_;
 
-    loglevel& operator[] (std::string topic) {
+    loglevel* operator[] (std::string subject) {
 
         std::scoped_lock<std::recursive_mutex> l_(lock_);
 
-        auto it = topic_db_.find(topic);
+        auto it = topic_db_.find(subject);
 
         if(it != topic_db_.end()) {
             // found loglevel
             return it->second;
         } else {
-            loglevel l = loglevel(0,0);
-            topic_db_.emplace( std::pair<std::string, loglevel>(topic, l));
-            return this->operator[](topic);
+            loglevel* l = new loglevel(0,0);
+            l->subject(subject);
+
+            topic_db_.emplace( std::pair<std::string, loglevel*>(subject, l));
+            return this->operator[](subject);
         }
     }
 
@@ -1021,14 +1065,9 @@ public:
     template<class ... Args>
     static void log(loglevel lev, const std::string& topic, const char* fmt, Args ... args) {
 
-        auto topic_lev = NON;
+        auto* topic_lev = get()[topic];
 
-        {
-            // operator[] is lock-protected
-            topic_lev = get()[topic];
-        }
-
-        if( topic_lev >= lev) {
+        if( *topic_lev >= lev) {
             std::stringstream ms;
             ms << "[" << topic << "]: " << string_format(fmt, args...);
 
@@ -1046,29 +1085,32 @@ private:
 };
 
 template <class T>
-loglevel logan_attached<T>::level() {
+loglevel* logan_attached<T>::level() {
 
-    loglevel l_name = NON;
-    loglevel l_this = NON;
-    loglevel l_area = NON;
+    loglevel* l_this = nullptr;
+    loglevel* l_name = nullptr;
+    loglevel* l_area = nullptr;
 
     if(ptr_) {
-        l_this = ptr_->get_this_log_level();
+        l_this = &ptr_->this_log_level_ref();
     }
 
     if( ! area().empty() ) {
-        l_area = logan::get()[area()];
+        if(! my_area_loglevel) {
+            my_area_loglevel = logan::get()[area()];
+        }
+        l_area = my_area_loglevel;
     }
 
-    l_name = l_area = logan::get()[topic()];
+    l_name = logan_lite::level();
 
-    if( l_area > l_this)
+    if( *l_area > *l_this)
         return l_area;
 
-    if( l_name > l_this )
+    if( *l_name > *l_this )
         return l_this;
 
-    if( l_this > NON)
+    if( *l_this > NON)
         return l_this;
 
     // return damn default
@@ -1089,12 +1131,15 @@ void logan_attached<T>::this_level(loglevel l) {
 
 template <class T>
 void logan_attached<T>::area(const std::string& ref) {
+
+    if(area() == ref) return;
+
     area_ = ref;
 
     if(logan::get().topic_db_.find(area_) == logan::get().topic_db_.end()) {
 
         // set area logging level
-        logan::get()[area_] = NON;
+        my_area_loglevel = logan::get()[area_];
     }
 }
 

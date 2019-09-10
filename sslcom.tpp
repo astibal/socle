@@ -104,7 +104,7 @@ void baseSSLCom<L4Proto>::static_init() {
 
     baseCom::static_init();
 
-    log.deb("SSL: Static INIT");
+    _deb("SSL: Static INIT");
 
     // call openssl threads support - only once from all threads!
     std::call_once (baseSSLCom::openssl_thread_setup_done ,THREAD_setup);
@@ -173,29 +173,29 @@ void baseSSLCom<L4Proto>::ssl_info_callback(const SSL* s, int where, int ret) {
 
     if (where & SSL_CB_LOOP)
     {
-        log.deb("[%s]: SSLCom::ssl_info_callback: %s:%s",name.c_str(),str,SSL_state_string_long(s));
+        _deb("[%s]: SSLCom::ssl_info_callback: %s:%s",name.c_str(),str,SSL_state_string_long(s));
     }
     else if (where & SSL_CB_ALERT)
     {
         str=(where & SSL_CB_READ)?"read":"write";
-        log.dia("[%s]: SSLCom::ssl_info_callback: SSL3 alert %s:%s:%s", name.c_str(), str, SSL_alert_type_string_long(ret), SSL_alert_desc_string_long(ret));
+        _dia("[%s]: SSLCom::ssl_info_callback: SSL3 alert %s:%s:%s", name.c_str(), str, SSL_alert_type_string_long(ret), SSL_alert_desc_string_long(ret));
     }
     else if (where & SSL_CB_EXIT)
     {
         if (ret == 0) {
-            log.deb("[%s]: SSLCom::ssl_info_callback: %s:failed in %s", name.c_str(), str,SSL_state_string_long(s));
+            _deb("[%s]: SSLCom::ssl_info_callback: %s:failed in %s", name.c_str(), str,SSL_state_string_long(s));
 
 #ifndef USE_OPENSSL11
             // close the session
             if(com != nullptr)
                 if(com->owner_cx() != nullptr) {
                     com->owner_cx()->error(true);
-                    log.dia("[%s]: failure callback, owning CX error flag set", name.c_str());
+                    _dia("[%s]: failure callback, owning CX error flag set", name.c_str());
                 }
 #endif
         }
         else if (ret < 0)  {
-            log.deb("[%s]: SSLCom::ssl_info_callback %s:error in %s", name.c_str(), str,SSL_state_string_long(s));
+            _deb("[%s]: SSLCom::ssl_info_callback %s:error in %s", name.c_str(), str,SSL_state_string_long(s));
         }
     }
 
@@ -210,7 +210,7 @@ void baseSSLCom<L4Proto>::log_profiling_stats(unsigned int lev) {
     if(n != nullptr) {
         name = n;
     }
-    
+
     log.log(loglevel(lev,0), "  [%s]: prof_accept_cnt %d, prof_connect_cnt %d, prof_peek_cnt %d, prof_read_cnt %d, prof_want_read_cnt %d, prof_want_write_cnt %d, prof_write_cnt %d",name, com->prof_accept_cnt   , com->prof_connect_cnt   , com->prof_peek_cnt   , com->prof_read_cnt   , com->prof_want_read_cnt   , com->prof_want_write_cnt   , com->prof_write_cnt);
     log.log(loglevel(lev,0), "  [%s]: prof_accept_ok %d, prof_connect_ok %d",name, com->prof_accept_ok, com->prof_connect_ok);
 }
@@ -301,15 +301,15 @@ void baseSSLCom<L4Proto>::ssl_msg_callback(int write_p, int version, int content
         msg_direction = "sent";
     }
 
-    log.deb("[%s]: SSLCom::ssl_msg_callback: %s/%s has been %s",name,msg_version,msg_content_type,msg_direction);
+    _deb("[%s]: SSLCom::ssl_msg_callback: %s/%s has been %s",name,msg_version,msg_content_type,msg_direction);
 
     if(content_type == 21) {
-        log.deb("[%s]: SSLCom::ssl_msg_callback: alert dump:\n%s",name,hex_dump((unsigned char*)buf,len).c_str());
+        _deb("[%s]: SSLCom::ssl_msg_callback: alert dump:\n%s",name,hex_dump((unsigned char*)buf,len).c_str());
         uint16_t int_code = ntohs(buffer::get_at_ptr<uint16_t>((unsigned char*)buf));
         uint8_t level = buffer::get_at_ptr<uint8_t>((unsigned char*)buf);
         uint8_t code = buffer::get_at_ptr<uint8_t>((unsigned char*)buf+1);
         if(com) {
-            log.dia("[%s]: SSLCom::ssl_msg_callback: alert info: %s/%s [%d/%d]",name,SSL_alert_type_string_long(int_code),SSL_alert_desc_string_long(int_code),level,code);
+            _dia("[%s]: SSLCom::ssl_msg_callback: alert info: %s/%s [%d/%d]",name,SSL_alert_type_string_long(int_code),SSL_alert_desc_string_long(int_code),level,code);
 
             
             if(code == 10) {
@@ -319,7 +319,7 @@ void baseSSLCom<L4Proto>::ssl_msg_callback(int write_p, int version, int content
             
             // if level is Fatal, log com error and close. 
             if(level > 1) {
-                log.err("[%s]: SSL alert: %s/%s [%d/%d]",name,SSL_alert_type_string_long(int_code),SSL_alert_desc_string_long(int_code),level,code);
+                _err("[%s]: SSL alert: %s/%s [%d/%d]",name,SSL_alert_type_string_long(int_code),SSL_alert_desc_string_long(int_code),level,code);
                 com->error(ERROR_UNSPEC);
             }
             
@@ -333,16 +333,16 @@ void baseSSLCom<L4Proto>::ssl_msg_callback(int write_p, int version, int content
                 int bits = check_server_dh_size(ssl);
                 if(bits < 768) {
                     if(bits > 0) {
-                        log.war("  [%s]: server dh key bits equivalent: %d",name,bits);
+                        _war("  [%s]: server dh key bits equivalent: %d",name,bits);
                         SSL_shutdown(ssl);
                         if(com->owner_cx() != nullptr) {
                             com->owner_cx()->error(true);
                         }
                     } else {
-                        log.war("  [%s]: PFS not used!",name);
+                        _war("  [%s]: PFS not used!",name);
                     }
                 } else {
-                    log.dia("  [%s]: server dh key bits equivalent: %d",name,bits);
+                    _dia("  [%s]: server dh key bits equivalent: %d",name,bits);
                 }
 #endif
             }
@@ -366,41 +366,41 @@ int baseSSLCom<L4Proto>::check_server_dh_size(SSL* ssl) {
 
     auto log = logan::create("ssl");
 
-    log.deb("Checking peer DH parameters:");
+    _deb("Checking peer DH parameters:");
     if(ssl != nullptr) {
         if (ssl->session != nullptr) {
             if(ssl->session->sess_cert != nullptr) {
                 DH* dh = ssl->session->sess_cert->peer_dh_tmp;
                 if(dh != nullptr) {
                     int s = DH_size(dh)*8;
-                    log.deb("Server DH size: %d",s);
+                    _deb("Server DH size: %d",s);
                     return s;
                 }
                 else if (ssl->session->sess_cert->peer_ecdh_tmp != nullptr) {
                     EC_KEY* ec = ssl->session->sess_cert->peer_ecdh_tmp;
-                    log.deb("check_server_dh_size: have peer ecdh key");
+                    _deb("check_server_dh_size: have peer ecdh key");
                     EC_POINT* pub = ec->pub_key;
                     int xb = BN_num_bits(&pub->X);
                     int yb = BN_num_bits(&pub->Y);
-                    log.deb("check_server_dh_size: have peer ecdh key size: %d,%d",xb,yb);
+                    _deb("check_server_dh_size: have peer ecdh key size: %d,%d",xb,yb);
 
                     // maybe  there is better formula than *6.
                     if(xb < yb) return xb*6;
                     return yb*6;
                 }
                 else {
-                    log.deb("check_server_dh_size: both dh and ecdh is null");
+                    _deb("check_server_dh_size: both dh and ecdh is null");
                 }
             } else {
-                log.deb("check_server_dh_size: sess_cert is null");
+                _deb("check_server_dh_size: sess_cert is null");
             }
         } else {
-            log.deb("check_server_dh_size: session is null");
+            _deb("check_server_dh_size: session is null");
         }
     } else {
-        log.deb("check_server_dh_size: ssl is null");
+        _deb("check_server_dh_size: ssl is null");
     }
-    log.deb("done.");
+    _deb("done.");
     return 0;
 #endif
 }
@@ -416,7 +416,7 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx) {
 
     auto log = logan::create("ssl");
 
-    log.deb("SSLCom::ssl_client_vrfy_callback: data index = %d, ok = %d, depth = %d",idx,ok,depth);
+    _deb("SSLCom::ssl_client_vrfy_callback: data index = %d, ok = %d, depth = %d",idx,ok,depth);
 
     SSL* ssl = static_cast<SSL*>(X509_STORE_CTX_get_ex_data(ctx, SSL_get_ex_data_X509_STORE_CTX_idx()));
     void* data = SSL_get_ex_data(ssl, sslcom_ssl_extdata_index);
@@ -444,28 +444,28 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx) {
 
     if(com != nullptr) {
         if (depth == 0) {
-            if(com->sslcom_target_cert) { log.err("already having peer cert"); X509_free(com->sslcom_target_cert); }
+            if(com->sslcom_target_cert) { _err("already having peer cert"); X509_free(com->sslcom_target_cert); }
             com->sslcom_target_cert = X509_dup(xcert);
         }
         else if (depth == 1) {
-            if(com->sslcom_target_issuer) { log.err("already having peer issuer"); X509_free(com->sslcom_target_issuer); }
+            if(com->sslcom_target_issuer) { _err("already having peer issuer"); X509_free(com->sslcom_target_issuer); }
             com->sslcom_target_issuer = X509_dup(xcert);
         }
         else if (depth == 2) {
-            if(com->sslcom_target_issuer_issuer)  { log.err("already having peer issuer_issuer"); X509_free(com->sslcom_target_issuer_issuer); }
+            if(com->sslcom_target_issuer_issuer)  { _err("already having peer issuer_issuer"); X509_free(com->sslcom_target_issuer_issuer); }
             com->sslcom_target_issuer_issuer = X509_dup(xcert);
         }
     }
 
     if (!ok) {
         if (err_cert) {
-            log.dia("[%s]: SSLCom::ssl_client_vrfy_callback: '%s' issued by '%s'",name,SSLFactory::print_cn(err_cert).c_str(),
+            _dia("[%s]: SSLCom::ssl_client_vrfy_callback: '%s' issued by '%s'",name,SSLFactory::print_cn(err_cert).c_str(),
                   SSLFactory::print_issuer(err_cert).c_str());
         }
         else {
-            log.dia("[%s]: SSLCom::ssl_client_vrfy_callback: no server certificate",name);
+            _dia("[%s]: SSLCom::ssl_client_vrfy_callback: no server certificate",name);
         }
-        log.dia("[%s]: SSLCom::ssl_client_vrfy_callback: %d:%s",name, err, X509_verify_cert_error_string(err));
+        _dia("[%s]: SSLCom::ssl_client_vrfy_callback: %d:%s",name, err, X509_verify_cert_error_string(err));
     }
 
     switch (err)  {
@@ -473,7 +473,7 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx) {
         case X509_V_ERR_UNABLE_TO_VERIFY_LEAF_SIGNATURE:
         case X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT:
 
-            log.dia("[%s]: SSLCom::ssl_client_vrfy_callback: unknown issuer: %d", name, err);
+            _dia("[%s]: SSLCom::ssl_client_vrfy_callback: unknown issuer: %d", name, err);
 
             if(com != nullptr) {
                 com->verify_set(UNKNOWN_ISSUER);
@@ -487,7 +487,7 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx) {
         case X509_V_ERR_SELF_SIGNED_CERT_IN_CHAIN:
         case X509_V_ERR_CERT_UNTRUSTED:
 
-            log.dia("[%s]: SSLCom::ssl_client_vrfy_callback: self-signed cert in the chain: %d", name, err);
+            _dia("[%s]: SSLCom::ssl_client_vrfy_callback: self-signed cert in the chain: %d", name, err);
 
             if(com != nullptr) {
                 com->verify_set(SELF_SIGNED_CHAIN);
@@ -502,7 +502,7 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx) {
             break;
         case X509_V_ERR_DEPTH_ZERO_SELF_SIGNED_CERT:
 
-            log.dia("[%s]: SSLCom::ssl_client_vrfy_callback: end-entity cert is self-signed: %d", name, err);
+            _dia("[%s]: SSLCom::ssl_client_vrfy_callback: end-entity cert is self-signed: %d", name, err);
 
             if(com != nullptr) {
                 com->verify_set(SELF_SIGNED);
@@ -518,7 +518,7 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx) {
 
         case X509_V_ERR_CERT_NOT_YET_VALID:
         case X509_V_ERR_ERROR_IN_CERT_NOT_BEFORE_FIELD:
-            log.dia("[%s]: SSLCom::ssl_client_vrfy_callback: not before: %s",name, SSLFactory::print_not_before(err_cert).c_str());
+            _dia("[%s]: SSLCom::ssl_client_vrfy_callback: not before: %s",name, SSLFactory::print_not_before(err_cert).c_str());
             if(com != nullptr) {
                 com->verify_set(INVALID);
                 if(com->opt_allow_not_valid_cert) {
@@ -532,7 +532,7 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx) {
             break;
         case X509_V_ERR_CERT_HAS_EXPIRED:
         case X509_V_ERR_ERROR_IN_CERT_NOT_AFTER_FIELD:
-            log.dia("[%s]: SSLCom::ssl_client_vrfy_callback: not after: %s",name, SSLFactory::print_not_after(err_cert).c_str());
+            _dia("[%s]: SSLCom::ssl_client_vrfy_callback: not after: %s",name, SSLFactory::print_not_after(err_cert).c_str());
             if(com != nullptr) {
                 com->verify_set(INVALID);
                 if(com->opt_allow_not_valid_cert) {
@@ -545,24 +545,24 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx) {
 
             break;
         case X509_V_ERR_NO_EXPLICIT_POLICY:
-            log.dia("[%s]: SSLCom::ssl_client_vrfy_callback: no explicit policy",name);
+            _dia("[%s]: SSLCom::ssl_client_vrfy_callback: no explicit policy",name);
             break;
             
     }
     
     
     if (err == X509_V_OK && ok == 2) {
-        log.dia("[%s]: SSLCom::ssl_client_vrfy_callback: explicit policy", name);
+        _dia("[%s]: SSLCom::ssl_client_vrfy_callback: explicit policy", name);
     }
 
     std::string cn = "unknown";
     if(xcert != nullptr) {   
         cn = SSLFactory::print_cn(xcert) + ";"+ fingerprint(xcert);
     }
-    log.dia("[%s]: SSLCom::ssl_client_vrfy_callback[%d:%s]: returning %s (pre-verify %d)",name,depth,cn.c_str(),(ret > 0 ? "ok" : "failed" ),ok);
+    _dia("[%s]: SSLCom::ssl_client_vrfy_callback[%d:%s]: returning %s (pre-verify %d)",name,depth,cn.c_str(),(ret > 0 ? "ok" : "failed" ),ok);
 
     if(ret <= 0) {
-        log.noti("[%s]: target server ssl certificate check failed:%d: %s",name, err,X509_verify_cert_error_string(err));
+        _not("[%s]: target server ssl certificate check failed:%d: %s",name, err,X509_verify_cert_error_string(err));
     }
     
     
@@ -572,19 +572,19 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx) {
          
             int is_revoked = baseSSLCom::ocsp_explicit_check(com);
 
-            log.deb("[%s]: SSLCom::ssl_client_vrfy_callback[%d:%s]: explicit check returned %d",name, depth, cn.c_str(), is_revoked);
+            _deb("[%s]: SSLCom::ssl_client_vrfy_callback[%d:%s]: explicit check returned %d",name, depth, cn.c_str(), is_revoked);
 
             if(is_revoked  == 0) { 
                 ret = 1;
             }
             else if(is_revoked > 0)  {
-                log.dia("[%s]: SSLCom::ssl_client_vrfy_callback[%d:%s]: revoked",name, depth, cn.c_str());
+                _dia("[%s]: SSLCom::ssl_client_vrfy_callback[%d:%s]: revoked",name, depth, cn.c_str());
 
                 com->verify_set(REVOKED);
                 ret = 0;
                 
                 if(com->opt_failed_certcheck_replacement) {
-                    log.dia("[%s]: SSLCom::ssl_client_vrfy_callback[%d:%s]: revoked, but replacement is enabled",
+                    _dia("[%s]: SSLCom::ssl_client_vrfy_callback[%d:%s]: revoked, but replacement is enabled",
                             name, depth, cn.c_str());
                     ret = 1;
                 }
@@ -592,7 +592,7 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx) {
             }
         } else {
             if(com->opt_ocsp_mode == 0 || (! com->opt_ocsp_enforce_in_verify) )
-                log.dia("[%s]: SSLCom::ssl_client_vrfy_callback[%d:%s]: ocsp not enabled",name, depth, cn.c_str());
+                _dia("[%s]: SSLCom::ssl_client_vrfy_callback[%d:%s]: ocsp not enabled",name, depth, cn.c_str());
         }
     }
 
@@ -647,7 +647,7 @@ DH* baseSSLCom<L4Proto>::ssl_dh_callback(SSL* s, int is_export, int key_length) 
 
     auto log = logan::create("ssl");
 
-    log.dia("[%s]: SSLCom::ssl_dh_callback: %d bits requested",name,key_length);
+    _dia("[%s]: SSLCom::ssl_dh_callback: %d bits requested",name,key_length);
     switch(key_length) {
         case 512:
             //return get_dh512();
@@ -683,7 +683,7 @@ EC_KEY* baseSSLCom<L4Proto>::ssl_ecdh_callback(SSL* s, int is_export, int key_le
     }
 
     auto log = logan::create("ssl");
-    log.dia("[%s]: SSLCom::ssl_ecdh_callback: %d bits requested", name, key_length);
+    _dia("[%s]: SSLCom::ssl_ecdh_callback: %d bits requested", name, key_length);
     return nullptr;
 }
 
@@ -736,18 +736,18 @@ int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
             }
         }
 
-        log.dia("[%s]: SSLCom::ocsp_explicit_check[%s]: ocsp is_revoked = %d)",name,cn.c_str(),is_revoked);
+        _dia("[%s]: SSLCom::ocsp_explicit_check[%s]: ocsp is_revoked = %d)",name,cn.c_str(),is_revoked);
         
         com->ocsp_cert_is_revoked = is_revoked;
         if(is_revoked > 0) {
-            log.war("Connection from %s: certificate %s is revoked (%s OCSP))",name,cn.c_str(),str_status);
+            _war("Connection from %s: certificate %s is revoked (%s OCSP))",name,cn.c_str(),str_status);
         } else if (is_revoked == 0){
-            log.dia("Connection from %s: certificate %s is valid (%s OCSP))",name,cn.c_str(),str_status);
+            _dia("Connection from %s: certificate %s is valid (%s OCSP))",name,cn.c_str(),str_status);
         } else {
             /*< 0*/
             if(com->opt_ocsp_mode > 1) {
             }
-            log.war("Connection from %s: certificate %s revocation status is unknown (%s OCSP))",name,cn.c_str(),str_status);
+            _war("Connection from %s: certificate %s revocation status is unknown (%s OCSP))",name,cn.c_str(),str_status);
         }
 
         
@@ -762,7 +762,7 @@ int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
         if(is_revoked < 0) {
             //if(true) { // testing -- uncomment if needed to test CRL download despite we have OCSP result (and comment if statement above ;))
             
-            log.noti("Connection from %s: certificate OCSP revocation status cannot be obtained)",name);
+            _not("Connection from %s: certificate OCSP revocation status cannot be obtained)",name);
             
             std::vector<std::string> crls = crl_urls(com->sslcom_target_cert);
             
@@ -778,16 +778,16 @@ int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
                 
                 if(crl_h != nullptr) {
                     crl = crl_h->value()->ptr;
-                    log.dia("found cached crl: %s",crl_printable.c_str());
+                    _dia("found cached crl: %s",crl_printable.c_str());
                     str_status = str_cached;
                 }
                 else {
-                    log.dia("crl not cached: %s",crl_printable.c_str());
+                    _dia("crl not cached: %s",crl_printable.c_str());
                     
                     const int tolerated_dnld_time = 3;
                     time_t start = ::time(nullptr);
 
-                    log.dia("Connection from %s: downloading CRL at %s)",name,crl_printable.c_str());
+                    _dia("Connection from %s: downloading CRL at %s)",name,crl_printable.c_str());
 
                     buffer b;
                     bool dnld_failed = false;
@@ -798,9 +798,9 @@ int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
                         time_t t_dif = ::time(nullptr) - start;
                         
                         int crl_size = b.size();
-                        log.dia("CRL downloaded: size %d bytes in %d seconds",crl_size,t_dif);
+                        _dia("CRL downloaded: size %d bytes in %d seconds",crl_size,t_dif);
                         if(t_dif > tolerated_dnld_time) {
-                            log.war("it took long time to download CRL. You should consider to disable CRL check :(");
+                            _war("it took long time to download CRL. You should consider to disable CRL check :(");
                         }
 
                         crl = new_CRL(b);
@@ -808,12 +808,12 @@ int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
                         
 
                         if(crl != nullptr) {
-                            log.dia("Caching CRL 0x%x", crl);
+                            _dia("Caching CRL 0x%x", crl);
                             certstore()->crl_cache.set(crl_url.c_str(),SSLFactory::make_expiring_crl(crl));
                             // but because we are locked, we are happy to overwrite it!
                         }
                     } else {
-                        log.war("downloading CRL from %s failed.",crl_printable.c_str());
+                        _war("downloading CRL from %s failed.",crl_printable.c_str());
                     }
 
                 }
@@ -826,31 +826,31 @@ int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
                                                      com->sslcom_target_issuer,
                                                      crl,
                                                      com->certstore()->default_client_ca_path().c_str());
-                    log.dia("CRL 0x%x trusted = %d",crl, crl_trust);
+                    _dia("CRL 0x%x trusted = %d",crl, crl_trust);
                     
                     bool trust_blindly_downloaded_CRL = true;
                     if(crl_trust == 0 && !trust_blindly_downloaded_CRL) {
-                        log.war("CRL %s is not verified, it's untrusted",crl_printable.c_str());
+                        _war("CRL %s is not verified, it's untrusted",crl_printable.c_str());
                     }
                     else {
                         if(crl_trust == 0 && crl_h == nullptr) {
                             // complain only at download time only
-                            log.noti("CRL %s is not verified, but we are instructed to trust it.",crl_printable.c_str());
+                            _not("CRL %s is not verified, but we are instructed to trust it.",crl_printable.c_str());
                         }
-                        log.dia("Checking revocation status: CRL 0x%x", crl);
+                        _dia("Checking revocation status: CRL 0x%x", crl);
                         is_revoked_by_crl = crl_is_revoked_by(com->sslcom_target_cert,com->sslcom_target_issuer,crl);
                     }
                 }
 
-                log.dia("CRL says this certificate is revoked = %d",is_revoked_by_crl);
+                _dia("CRL says this certificate is revoked = %d",is_revoked_by_crl);
 
                 if(is_revoked_by_crl > 0) {
-                    log.war("Connection from %s: certificate %s revocation status is revoked (%s CRL))",name,cn.c_str(),str_status);
+                    _war("Connection from %s: certificate %s revocation status is revoked (%s CRL))",name,cn.c_str(),str_status);
                 } else
                 if(is_revoked_by_crl == 0) {
-                    log.dia("Connection from %s: certificate %s revocation status is valid (%s CRL))",name,cn.c_str(),str_status);
+                    _dia("Connection from %s: certificate %s revocation status is valid (%s CRL))",name,cn.c_str(),str_status);
                 } else {
-                    log.war("Connection from %s: certificate %s revocation status is still unknown (%s CRL))",name,cn.c_str(),str_status);
+                    _war("Connection from %s: certificate %s revocation status is still unknown (%s CRL))",name,cn.c_str(),str_status);
                 }
                 
                 is_revoked = is_revoked_by_crl;
@@ -866,7 +866,7 @@ int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
         com->verify_set(REVOKED);
     }
 
-    log.dia("ocsp_explicit_check: final result %d", is_revoked);
+    _dia("ocsp_explicit_check: final result %d", is_revoked);
     return is_revoked;
 }
 
@@ -1179,7 +1179,7 @@ void baseSSLCom<L4Proto>::init_ssl_callbacks() {
     }
 
 
-    log.deb("init ssl callbacks");
+    _deb("init ssl callbacks");
 
     // add this pointer to ssl external data
     if(sslcom_ssl_extdata_index < 0) {
@@ -1197,13 +1197,13 @@ void baseSSLCom<L4Proto>::init_ssl_callbacks() {
 
                 std::lock_guard<std::recursive_mutex> l_(certstore()->lock());
 
-                log.dia("[%s]: OCSP stapling enabled, mode %d",hr(),opt_ocsp_stapling_mode);
+                _dia("[%s]: OCSP stapling enabled, mode %d",hr(),opt_ocsp_stapling_mode);
                 SSL_set_tlsext_status_type(sslcom_ssl, TLSEXT_STATUSTYPE_ocsp);
                 SSL_CTX_set_tlsext_status_cb(sslcom_ctx,ocsp_resp_callback);
                 SSL_CTX_set_tlsext_status_arg(sslcom_ctx, this);
             }
             else {
-                log.err("cannot load trusted store for OCSP. Fail-open.");
+                _err("cannot load trusted store for OCSP. Fail-open.");
                 opt_ocsp_stapling_mode = 0;
             }
         }

@@ -55,7 +55,7 @@ class poolFileWriter : public baseFileWriter {
 
 
     explicit poolFileWriter(): ofstream_pool("ofstream-pool", 30, true ) {
-        log = logan::create("socle.poolFileWriter");
+        //X log = logan::create("socle.poolFileWriter");
     }
 
 public:
@@ -81,7 +81,7 @@ public:
 
         auto sz = str.size();
 
-        log.dia("file: %s: written %dB", fnm.c_str(), sz);
+        //X log.dia("file: %s: written %dB", fnm.c_str(), sz);
         return sz;
     };
 
@@ -93,36 +93,36 @@ public:
         if (! optr) {
 
             if(! create) {
-                log.dia("file: %s: stream not found.", fnm.c_str());
+                //X log.dia("file: %s: stream not found.", fnm.c_str());
                 return nullptr;
             }
 
-            log.dia("file: %s: creating a new stream", fnm.c_str());
+            //X log.dia("file: %s: creating a new stream", fnm.c_str());
 
             for(auto s: ofstream_pool.items()) {
-                log.deb("pool item: %s", s.c_str());
+                //X log.deb("pool item: %s", s.c_str());
             }
 
             auto* stream = new std::ofstream(fnm , std::ofstream::out | std::ofstream::app);
 
             bool replaced = ofstream_pool.set(fnm, stream);
-            log.deb("new ostream %s -> 0x%x (replaced=%d)", fnm.c_str(), stream, replaced);
+            //X log.deb("new ostream %s -> 0x%x (replaced=%d)", fnm.c_str(), stream, replaced);
 
             auto entry = ofstream_pool.cache().find(fnm);
             if(entry != ofstream_pool.cache().end()) {
 
                 auto* exo = entry->second;
-                log.deb("new ofstream entry: 0x%x", exo);
+                //X log.deb("new ofstream entry: 0x%x", exo);
 
             } else {
 
-                log.deb("cannot find inserted entry!!!");
+                //X log.deb("cannot find inserted entry!!!");
             }
 
 
             return ofstream_pool.get(fnm);
         } else {
-            log.deb("file: %s: existing stream", fnm.c_str());
+            //X log.deb("file: %s: existing stream", fnm.c_str());
             return optr;
         }
     }
@@ -134,7 +134,7 @@ public:
         auto o = get_ofstream(fnm, false);
         if(o) {
             o->flush();
-            log.dia("file: %s: flushed", fnm.c_str());
+            //X log.dia("file: %s: flushed", fnm.c_str());
             return true;
         }
 
@@ -149,7 +149,7 @@ public:
         if(o) {
             ofstream_pool.erase(fnm);
 
-            log.dia("file: %s: erased", fnm.c_str());
+            //X log.dia("file: %s: erased", fnm.c_str());
             return true;
         }
 
@@ -168,7 +168,7 @@ public:
     bool opened() override { return true; };
 
 private:
-    logan_lite log;
+    //logan_lite log;
 
     // pool of opened streams. If expired, they will be closed and destruct.
     ptr_cache<std::string, std::ofstream> ofstream_pool;

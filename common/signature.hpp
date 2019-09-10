@@ -55,8 +55,8 @@ public:
     unsigned int append(SourceType src,const void* data, size_t len) {
         if(flow_.size() == 0) {
 
-            log.dia("New flow init: side: %c: %d bytes",src,len);
-            log.dum("New flow init: side: %c: incoming  data:\n%s",src,hex_dump((unsigned char*)data,len).c_str());
+            _dia("New flow init: side: %c: %d bytes",src,len);
+            _dum("New flow init: side: %c: incoming  data:\n%s",src,hex_dump((unsigned char*)data,len).c_str());
             auto b = new buffer(data,len);
             // src initialized by value, buffer is pointer
             std::pair<SourceType,buffer*> t(src,b);
@@ -64,9 +64,9 @@ public:
             update_counters_.push_back(1);
         }
         else if (flow_.back().first == src) {
-            
-            log.deb("Flow::append: to current side: %c: %d bytes",src, len);
-            log.dum("Flow::append: to current side: %c: incoming  data:\n%s",src,hex_dump((unsigned char*)data,  len > 128 ? 128 : len ).c_str());
+
+            _deb("Flow::append: to current side: %c: %d bytes",src, len);
+            _dum("Flow::append: to current side: %c: incoming  data:\n%s",src,hex_dump((unsigned char*)data,  len > 128 ? 128 : len ).c_str());
             
             if(domain() == SOCK_STREAM) {
                 flow_.back().second->append(data,len);
@@ -74,7 +74,7 @@ public:
                 counter_ref++;
             }
             else {
-                log.dia("Flow::append: datagrams, so packetized (new buffer on same side)");
+                _dia("Flow::append: datagrams, so packetized (new buffer on same side)");
                 auto b = new buffer(data,len);
                 // src initialized by value, buffer is pointer
                 std::pair<SourceType,buffer*> t(src,b);
@@ -83,8 +83,8 @@ public:
             }
         }
         else if (flow_.back().first != src) {
-            log.deb("Flow::append: to new side: %c: %d bytes",src,len);
-            log.dum("Flow::append: to new side: %c: incoming data:\n%s",src,hex_dump((unsigned char*)data,len > 128 ? 128 : len ).c_str());
+            _deb("Flow::append: to new side: %c: %d bytes",src,len);
+            _dum("Flow::append: to new side: %c: incoming data:\n%s",src,hex_dump((unsigned char*)data,len > 128 ? 128 : len ).c_str());
             auto b = new buffer(data,len);
             // src initialized by value, buffer is pointer
             std::pair<SourceType,buffer*> t(src,b);
@@ -154,8 +154,12 @@ public:
 class baseMatch {
 protected:
     std::string expr_;
-    explicit baseMatch(const char* e): expr_(e) { log = logan::create("inspect"); };
-    explicit baseMatch(std::string& e): expr_(e) { log = logan::create("inspect"); };
+    explicit baseMatch(const char* e): expr_(e) {
+        log = logan::create("inspect");
+    };
+    explicit baseMatch(std::string& e): expr_(e) {
+        log = logan::create("inspect");
+    };
     baseMatch(std::string& e, unsigned int o, unsigned int b) : expr_(e), match_limits_offset(o), match_limits_bytes(b) { expr() = e; }  
 public:
     // directly accessible match constrains
@@ -187,20 +191,20 @@ public:
         range result;
         
         auto s = std::string(str,len);
-        log.ext("simpleMatch::match: '%s', len='%d' ",hex_dump((unsigned char*)s.c_str(),len).c_str(),len);
+        _ext("simpleMatch::match: '%s', len='%d' ",hex_dump((unsigned char*)s.c_str(),len).c_str(),len);
         
         range loc = search_function(expr(),s);
         
 
         if(loc == NULLRANGE) {
-            log.deb("simpleMatch::match: <0,-1>");
+            _deb("simpleMatch::match: <0,-1>");
             result = NULLRANGE;
             
         } else {
             int loc_pos = loc.first;
             int loc_len = loc.second;
-            
-            log.deb("simpleMatch::match: <%d,%d>", loc_pos, loc_len);
+
+            _deb("simpleMatch::match: <%d,%d>", loc_pos, loc_len);
             result = range( loc_pos, loc_pos + loc_len - 1 );
         }
 
@@ -210,11 +214,11 @@ public:
     virtual range search_function(std::string &expr, std::string &str) { 
         int where = str.find(expr);
 
-        if(log.level() >= DUM) {
-            log.dum("simpleMatch::search_function: \nexpr:\n%s\ndata:\n%s",expr.c_str(),hex_dump((unsigned char*)str.c_str(), str.size() > 128 ? 128 : str.size() ).c_str());
+        if(*log.level() >= DUM) {
+            _dum("simpleMatch::search_function: \nexpr:\n%s\ndata:\n%s",expr.c_str(),hex_dump((unsigned char*)str.c_str(), str.size() > 128 ? 128 : str.size() ).c_str());
         }
         else {
-            log.deb("simpleMatch::search_function: \nexpr: '%s'",expr.c_str());
+            _deb("simpleMatch::search_function: \nexpr: '%s'",expr.c_str());
         }
         
         if (where < 0) {
@@ -251,8 +255,8 @@ public:
     ~flowMatch() {
         for( typename std::vector<std::pair<SourceType,baseMatch*>>::iterator i = signature_.begin(); i != signature_.end(); i++ ) {
             auto match = (*i).second;
-            
-            log.deb("flowmatch::destructor: deleting signature %p",match);
+
+            _deb("flowmatch::destructor: deleting signature %p",match);
 //             delete match;
         }
     }
@@ -291,7 +295,7 @@ public:
         unsigned int cur_flow = flow_step;
         baseMatch* sig_match = nullptr;
 
-        log.deb("flowMatch::match: search flow from #%d/%d: %s :sig pos = %d/%d",flow_step,f->flow().size(),vrangetos(ret).c_str(),sig_pos,signature_.size());
+        _deb("flowMatch::match: search flow from #%d/%d: %s :sig pos = %d/%d",flow_step,f->flow().size(),vrangetos(ret).c_str(),sig_pos,signature_.size());
         
         bool first_iter = true;
         SourceType last_src;
@@ -338,14 +342,14 @@ public:
                 }
                 
                 // DEBUGS
-                log.deb("flowMatch::match: flow %d/%d : dirchange: %d",cur_flow,f->flow().size(),direction_change);
-                log.deb("flowMatch::match: processing signature[%s]: %s", std::to_string(sig_src).c_str(), sig_match->expr().c_str());
-                log.deb("flowMatch::match: pattern[%s] view-size=%d",std::to_string(ff_src).c_str(), ff_view.size());
-                log.dum("flowMatch::match: data=\n%s",hex_dump(ff_view.data(),ff_view.size()).c_str());
+                _deb("flowMatch::match: flow %d/%d : dirchange: %d",cur_flow,f->flow().size(),direction_change);
+                _deb("flowMatch::match: processing signature[%s]: %s", std::to_string(sig_src).c_str(), sig_match->expr().c_str());
+                _deb("flowMatch::match: pattern[%s] view-size=%d",std::to_string(ff_src).c_str(), ff_view.size());
+                _dum("flowMatch::match: data=\n%s",hex_dump(ff_view.data(),ff_view.size()).c_str());
                 range r = sig_match->match((const char*)ff_view.data(),(unsigned int)ff_view.size());
                 
                 if( r != NULLRANGE) {
-                    log.deb("flowMatch::match: result: %s",rangetos(r).c_str());
+                    _deb("flowMatch::match: result: %s",rangetos(r).c_str());
 
                     if(cur_flow == (ret.size() - 1)) {
                         // if previous result was NULLRANGE, remove
@@ -354,7 +358,7 @@ public:
                     
                     ret.push_back(r);
                     ++sig_pos;
-                    //log.dia("flowMatch::match: interim match on signature[%s]: %s", std::to_string(sig_src).c_str(), sig_match->expr().c_str());
+                    _dia("flowMatch::match: interim match on signature[%s]: %s", std::to_string(sig_src).c_str(), sig_match->expr().c_str());
 
                 }
                 else {
@@ -362,11 +366,11 @@ public:
                     if(cur_flow != (ret.size() - 1)) {
                             ret.push_back(NULLRANGE);
                     }
-                    log.deb("flowMatch::match: interim nok");
+                    _deb("flowMatch::match: interim nok");
                 }
             }
             else {
-                log.deb("flowMatch::match: different direction, skipping.");
+                _deb("flowMatch::match: different direction, skipping.");
                 if(cur_flow != (ret.size() - 1)) {
                         ret.push_back(NULLRANGE);
                 }
@@ -379,7 +383,7 @@ public:
             auto sig_size = signature_.size();
 
             // do a nice logging, but don't waste time when it's not needed
-            if(log.level() >= DIA) {
+            if(*log.level() >= DIA) {
 
                 std::string sig;
                 if (sig_match)
@@ -392,7 +396,7 @@ public:
                     muchly = "full";
                 }
 
-                log.dia("flowMatch::match: %s result %d/%d: %s",  muchly.c_str(), sig_pos, sig_size, sig.c_str());
+                _dia("flowMatch::match: %s result %d/%d: %s",  muchly.c_str(), sig_pos, sig_size, sig.c_str());
             }
 
             if(sig_pos >= sig_size) {
@@ -400,7 +404,7 @@ public:
             }
 
         } else {
-            log.deb("flowMatch::match: nok");
+            _deb("flowMatch::match: nok");
         }
         
         return false;
@@ -421,9 +425,9 @@ public:
     range search_function(std::string &expr, std::string &str) override {
         std::smatch m;
         std::regex_search ( str , m, expr_comp_ );
-        
-        log.dum("regexMatch::search_function: \nexpr:\n%s\ndata:\n%s",expr.c_str(),hex_dump((unsigned char*)str.c_str(),str.size()).c_str());
-        log.deb("regexMatch::search_function: matches %d times.", m.size());
+
+        _dum("regexMatch::search_function: \nexpr:\n%s\ndata:\n%s",expr.c_str(),hex_dump((unsigned char*)str.c_str(),str.size()).c_str());
+        _deb("regexMatch::search_function: matches %d times.", m.size());
         
         for ( unsigned int i = 0; i < m.size(); ++i ) {
             // we need just single(first) result 
