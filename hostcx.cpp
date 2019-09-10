@@ -380,20 +380,18 @@ int baseHostCX::read() {
         // if buffer is full, let's reallocate it and try read again (to save system resources)
 
         // testing break
-        break;
+        // break;
 
         if(readbuf_.size() >= readbuf_.capacity()) {
             DIA_("HostCX::read[%s]: read buffer reached it's current capacity %d/%d bytes",c_name(),readbuf_.size(),readbuf_.capacity());
-            if(readbuf_.capacity() + HOSTCX_BUFFSIZE <= HOSTCX_BUFFMAXSIZE) {
 
-                if (readbuf_.capacity(readbuf_.capacity() + HOSTCX_BUFFSIZE)) {
+            if(readbuf_.capacity() * 2  <= HOSTCX_BUFFMAXSIZE) {
+
+                if (readbuf_.capacity(readbuf_.capacity() * 2)) {
                     DIA_("HostCX::read[%s]: read buffer resized capacity %d/%d bytes",c_name(),readbuf_.size(),readbuf_.capacity());
-                    continue;
 
                 } else {
                     NOT_("HostCX::read[%s]: memory tension: read buffer cannot be resized!",c_name());
-                    // we left potentially some bytes in system buffer
-                    com()->forced_read(true);
                 }
             }
             else {
@@ -405,10 +403,6 @@ int baseHostCX::read() {
         break;
 
     }
-
-    //int l = com()->read(socket(), ptr, max_len, 0);
-    //int l = recv(socket(), ptr, max_len, MSG_PEEK);
-
 
     if (l > 0) {
 

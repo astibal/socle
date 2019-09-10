@@ -35,8 +35,8 @@
 #include <lockbuffer.hpp>
 #include <display.hpp>
 
-#define HOSTCX_BUFFSIZE 20480
-#define HOSTCX_BUFFMAXSIZE (100*HOSTCX_BUFFSIZE)
+#define HOSTCX_BUFFSIZE 1024
+#define HOSTCX_BUFFMAXSIZE (1024*HOSTCX_BUFFSIZE)
 
 //! Basic Host structure class
 /*! 
