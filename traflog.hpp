@@ -31,39 +31,6 @@
 
 namespace socle {
 
-struct expiring_fd : public expiring_int {
-    ~expiring_fd() override {
-        ::close(value());
-    }
-};
-
-class expiring_ofstream : public expiring_ptr<std::ofstream> {
-
-public:
-    expiring_ofstream(std::ofstream* o, unsigned int sec) : expiring_ptr<std::ofstream>(o, sec) {};
-    ~expiring_ofstream() override {
-
-        auto* optr = dynamic_cast<std::ofstream*>(value());
-        if(optr) {
-            if(optr->is_open()) {
-                optr->flush();
-                optr->close();
-            }
-        }
-    }
-
-    bool expired() override  {
-        auto log = logan::create("socle.expiring_ofstream");
-        auto r = expiring_ptr<std::ofstream>::expired();
-
-        log.deb("0x%x: now=%d expired_at=%d, result=%d", value(), time(nullptr), expired_at(), r);
-
-        return r;
-    }
-
-    static bool is_expired(expiring_ofstream *ptr) { return ptr->expired(); }
-};
-
 
 class baseFileWriter {
 public:
@@ -88,9 +55,6 @@ class poolFileWriter : public baseFileWriter {
 
 
     explicit poolFileWriter(): ofstream_pool("ofstream-pool", 30, true ) {
-        ofstream_pool.expiration_check(expiring_ofstream::is_expired);
-        ofstream_pool.opportunistic_removal(2);
-
         log = logan::create("socle.poolFileWriter");
     }
 
@@ -111,6 +75,7 @@ public:
 
         if(!o) return 0;
 
+        o->flush();
         (*o) << str;
 
 
@@ -139,12 +104,26 @@ public:
             }
 
             auto* stream = new std::ofstream(fnm , std::ofstream::out | std::ofstream::app);
-            ofstream_pool.set(fnm, new expiring_ofstream(stream, 60));
 
-            return stream;
+            bool replaced = ofstream_pool.set(fnm, stream);
+            log.deb("new ostream %s -> 0x%x (replaced=%d)", fnm.c_str(), stream, replaced);
+
+            auto entry = ofstream_pool.cache().find(fnm);
+            if(entry != ofstream_pool.cache().end()) {
+
+                auto* exo = entry->second;
+                log.deb("new ofstream entry: 0x%x", exo);
+
+            } else {
+
+                log.deb("cannot find inserted entry!!!");
+            }
+
+
+            return ofstream_pool.get(fnm);
         } else {
             log.deb("file: %s: existing stream", fnm.c_str());
-            return optr->value();
+            return optr;
         }
     }
 
@@ -192,7 +171,7 @@ private:
     logan_lite log;
 
     // pool of opened streams. If expired, they will be closed and destruct.
-    ptr_cache<std::string, expiring_ofstream> ofstream_pool;
+    ptr_cache<std::string, std::ofstream> ofstream_pool;
 };
 
 class fileWriter : public baseFileWriter {
