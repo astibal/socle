@@ -192,9 +192,7 @@ public:
             cache()[k] = v;
             
             if(max_size_ > 0) {
-                items_.push_back(k);
-
-                log.deb("ptr_cache::set[%s]: current size %d", c_name(), items_.size());
+                log.deb("ptr_cache::set[%s]: current size %d/%d", c_name(), items_.size(), max_size_);
 
                 while( items_.size() > max_size_) {
                     log.deb("ptr_cache::set[%s]: max size reached!", c_name());
@@ -203,13 +201,17 @@ public:
                     if(!erase(to_delete)) {
                         if( opportunistic_removal() == 0 ) {
                             // log removal errors only if opportunistic removal is enabled
-                            log.noti("ptr_cache::set[%s]: cannot erase expired object : not found!", c_name());
+                            log.noti("ptr_cache::set[%s]: cannot erase oldest object: not found!", c_name());
                         }
+                    } else {
+                        log.dia("ptr_cache::set[%s]: oldest object removed", c_name());
                     }
                     
                     items_.pop_front();
                     log.dia("ptr_cache::set[%s]: max size: object removed from cache", c_name());
                 }
+
+                items_.push_back(k);
             }
         }
 
