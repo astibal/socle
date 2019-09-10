@@ -73,7 +73,7 @@ baseHostCX::baseHostCX(baseCom* c, const char* h, const char* p): Host(h, p) {
     com()->init(this);
 }
 
-baseHostCX::baseHostCX(baseCom* c, unsigned int s) {
+baseHostCX::baseHostCX(baseCom* c, int s) {
 
     permanent_ = false;
     last_reconnect_ = 0;
@@ -147,7 +147,7 @@ bool baseHostCX::opening_timeout() {
         DUMS_("already opened")
         return false;
     } else {
-        time_t now = time(NULL);
+        time_t now = time(nullptr);
         if (now - t_connected > reconnect_delay()) {
             DIAS_("opening timeout");
             return true;
@@ -159,7 +159,7 @@ bool baseHostCX::opening_timeout() {
 
 
 bool baseHostCX::idle_timeout() {
-    time_t now = time(NULL);
+    time_t now = time(nullptr);
     if (now - w_activity > idle_delay() && now - w_activity) {
         DIAS_("idle timeout");
         return true;
@@ -230,7 +230,7 @@ void baseHostCX::shutdown() {
 
 std::string& baseHostCX::name(bool force) {
 
-    if(name__.size() == 0 || online_name || force) {
+    if(name__.empty() || online_name || force) {
         if (reduced()) {
             std::string com_name = "?";
             if(com() != nullptr) {
@@ -281,7 +281,7 @@ bool baseHostCX::reconnect(int delay) {
         connect();
 
         DEB_("HostCX::reconnect[%s]: reconnect attempt (previous at %u)",c_name(),last_reconnect_);
-        last_reconnect_ = time(NULL);
+        last_reconnect_ = time(nullptr);
 
         return true;
     }
@@ -291,7 +291,7 @@ bool baseHostCX::reconnect(int delay) {
     }
     else if (reduced() ) {
         ERR_("HostCX::reconnect[%s]: reconnecting reduced CX is not possible",c_name());
-        last_reconnect_ = time(NULL);
+        last_reconnect_ = time(nullptr);
         return false;
     }
 
@@ -326,7 +326,7 @@ int baseHostCX::read() {
 
     ssize_t l = 0;
 
-    while(1) {
+    while(true) {
 
         // append-like behavior: append to the end of the buffer, don't exceed max. capacity!
         void *cur_read_ptr = &(readbuf_.data()[readbuf_.size()]);
@@ -398,8 +398,6 @@ int baseHostCX::read() {
             }
             else {
                 DIA_("HostCX::read[%s]: buffer already reached it's maximum capacity.",c_name());
-                // we left potentially some bytes in system buffer
-                com()->forced_read(true);
             }
         }
 
@@ -622,7 +620,7 @@ std::string baseHostCX::to_string(int verbosity) {
 
     std::stringstream r_str;
 
-    r_str << this->name();
+    r_str << name();
 
     if(verbosity > INF) {
         r_str << string_format(" | fd=%d | rx_cnt=%d rx_b=%d / tx_cnt=%d tx_b=%d",
@@ -639,7 +637,7 @@ std::string baseHostCX::full_name(unsigned char side) {
     int t_s = socket();
     std::string  t_ss;
     if(socket_in_name) t_ss  = string_format("::%d:",t_s);
-    std::string t_c = "";
+    std::string t_c;
     if (com() != nullptr)  t_c = com()->shortname();
 
     const char* p = "?";

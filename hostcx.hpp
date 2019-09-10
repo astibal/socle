@@ -139,13 +139,13 @@ class baseHostCX : public Host
 	
 	bool permanent_; 	      //!< indice if we want to reconnect, if socket fails (unless HostCX is reduced)
 	time_t last_reconnect_;   //!< last time of an attempt to reconnect
-	int reconnect_delay_ = 30; //!< how often we will reconnect the socket (in seconds)
-	int idle_delay_ = 3600;     // when connection is idle for this time, it will timeout
+	unsigned short reconnect_delay_ = 30; //!< how often we will reconnect the socket (in seconds)
+	unsigned short idle_delay_ = 3600;     // when connection is idle for this time, it will timeout
 
-	time_t t_connected; 	  //!< connection timeout facility, useful when socket is opened non-blocking
+	time_t t_connected{0}; 	  //!< connection timeout facility, useful when socket is opened non-blocking
 	
-	time_t w_activity;
-    time_t r_activity;
+	time_t w_activity{0};
+    time_t r_activity{0};
 	
 	
 	/* socket I/O facility */
@@ -176,6 +176,9 @@ class baseHostCX : public Host
 
     // after writing all data into the socket we should shutdown the socket
     bool close_after_write_ = false;
+
+    // larval connection facility
+    bool opening_ = false;
     
 protected:
     
@@ -215,7 +218,7 @@ public:
 public:
 	
     baseHostCX( baseCom* c, const char* h, const char* p );
-	baseHostCX(baseCom* c, unsigned int s);
+	baseHostCX(baseCom* c, int s);
 	virtual ~baseHostCX();
 	
     void rename() { name(true); }
@@ -224,8 +227,7 @@ public:
 	
     ssize_t processed_bytes() { return processed_bytes_; };
     
-	// larval connection facility
-	bool opening_ = false;
+
 	inline bool opening() { return opening_; }
 	inline void opening(bool b) { opening_ = b; if (b) { time(&t_connected); time(&w_activity); time(&r_activity); } }
 	// if we are trying to open socket too long - effective for non-blocking sockets only
