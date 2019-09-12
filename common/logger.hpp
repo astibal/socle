@@ -905,7 +905,9 @@ class logan_attached : public logan_lite {
 public:
     logan_attached() = default;
     logan_attached(T* ptr) : logan_lite(), ptr_(ptr) {}
-    logan_attached(T* ptr, std::string area) : logan_lite(), ptr_(ptr), area_(area) {}
+    logan_attached(T* ptr, std::string area) : logan_lite(), ptr_(ptr), area_(area) {
+        if(ptr_) topic(ptr->class_name());
+    }
 
     loglevel* my_area_loglevel = nullptr;
 
@@ -916,9 +918,12 @@ public:
             return topic_;
 
         if(ptr_)
-            return ptr_->name();
+            return ptr_->class_name();
 
         return "(nullptr)";
+    }
+    void topic(std::string s) override {
+        logan_lite::topic(s);
     }
 
     std::string prefix() override {
@@ -1108,7 +1113,7 @@ loglevel* logan_attached<T>::level() {
         return l_area;
 
     if( *l_name > *l_this )
-        return l_this;
+        return l_name;
 
     if( *l_this > NON)
         return l_this;
