@@ -96,7 +96,7 @@ public:
   unsigned char& at (size_type);
   unsigned char at (size_type) const;
   
-  template <typename T> T get_at(int idx) const;
+  template <typename T> T get_at(unsigned int idx) const;
   template <typename T> static T get_at_ptr(unsigned char* data);
 
   size_type find (unsigned char, size_type pos = 0) const;
@@ -608,7 +608,7 @@ inline unsigned char buffer::at (size_type i) const
 }
 
 template <typename T>
-T buffer::get_at(int idx) const
+T buffer::get_at(unsigned int idx) const
 {
     if(idx + sizeof(T) - 1 >= size_)
         throw std::out_of_range ("buffer: index out of range: " + std::to_string((int)idx) + " of " + std::to_string(size_));
