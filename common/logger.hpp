@@ -790,27 +790,27 @@ void logger::log2_w_name(loglevel l, const char* f, int li, std::string name, co
 #pragma GCC diagnostic pop
 
 
-#define  xext(x)  if(*(x).level() > EXT) (x).ext
-#define  xdum(x)  if(*(x).level() > DUM) (x).dum
-#define  xdeb(x)  if(*(x).level() > DEB) (x).deb
-#define  xdia(x)  if(*(x).level() > DIA) (x).dia
-#define  xinf(x)  if(*(x).level() > INF) (x).inf
-#define  xnot(x)  if(*(x).level() > NOT) (x).noti
-#define  xwar(x)  if(*(x).level() > WAR) (x).war
-#define  xerr(x)  if(*(x).level() > ERR) (x).err
-#define  xcri(x)  if(*(x).level() > CRI) (x).cri
-#define  xfat(x)  if(*(x).level() > FAT) (x).fat
+#define  xext(x)  if(*(x).level() >= EXT) (x).ext
+#define  xdum(x)  if(*(x).level() >= DUM) (x).dum
+#define  xdeb(x)  if(*(x).level() >= DEB) (x).deb
+#define  xdia(x)  if(*(x).level() >= DIA) (x).dia
+#define  xinf(x)  if(*(x).level() >= INF) (x).inf
+#define  xnot(x)  if(*(x).level() >= NOT) (x).noti
+#define  xwar(x)  if(*(x).level() >= WAR) (x).war
+#define  xerr(x)  if(*(x).level() >= ERR) (x).err
+#define  xcri(x)  if(*(x).level() >= CRI) (x).cri
+#define  xfat(x)  if(*(x).level() >= FAT) (x).fat
 
 
-#define  _ext  if(*log.level() > DUM) log.ext
-#define  _dum  if(*log.level() > DUM) log.dum
-#define  _deb  if(*log.level() > DEB) log.deb
-#define  _dia  if(*log.level() > DIA) log.dia
-#define  _inf  if(*log.level() > INF) log.inf
-#define  _not  if(*log.level() > NOT) log.noti
-#define  _war  if(*log.level() > WAR) log.war
-#define  _err  if(*log.level() > ERR) log.err
-#define  _cri  if(*log.level() > CRI) log.cri
+#define  _ext  if(*log.level() >= EXT) log.ext
+#define  _dum  if(*log.level() >= DUM) log.dum
+#define  _deb  if(*log.level() >= DEB) log.deb
+#define  _dia  if(*log.level() >= DIA) log.dia
+#define  _inf  if(*log.level() >= INF) log.inf
+#define  _not  if(*log.level() >= NOT) log.noti
+#define  _war  if(*log.level() >= WAR) log.war
+#define  _err  if(*log.level() >= ERR) log.err
+#define  _cri  if(*log.level() >= CRI) log.cri
 
 
 
