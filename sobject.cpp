@@ -197,9 +197,9 @@ int sobjectDB::ask_destroy(void* ptr) {
 
 long unsigned int meter::update(unsigned long val) {
     
-    time_t now = time(nullptr);
+    auto now = std::chrono::system_clock::now();
     
-    if( now - last_update > interval_) {
+    if( now - last_update > std::chrono::seconds(interval_)) {
         // threshold is reached => counter contains all bytes in previous second
         last_update = now;
         prev_counter_  = curr_counter_;
@@ -213,4 +213,21 @@ long unsigned int meter::update(unsigned long val) {
     return prev_counter_;
 }
 
+    unsigned long update(unsigned long val);
+
+unsigned long meter::get() const {
+
+        auto now = std::chrono::system_clock::now();;
+
+        if( now > last_update + std::chrono::seconds(interval_)) {
+            // not updated for a while
+            return 0;
+        }
+        else if(now > last_update) {
+            // we are in the window if this update
+            return ( curr_counter_ + prev_counter_)  / 2;
+        }
+
+        return prev_counter_;
+    };
 }

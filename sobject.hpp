@@ -60,17 +60,20 @@ struct sobject_info {
 
 struct meter {
 
-    explicit meter(int interval=1): interval_(interval) { last_update = time(nullptr); };
+private:
 
     unsigned long prev_counter_{};
     unsigned long curr_counter_{};
 
-    time_t last_update;
+    std::chrono::system_clock::time_point last_update{};
     int interval_{1};
 
+public:
+
+    explicit meter(int interval=1): interval_(interval) { last_update = std::chrono::system_clock::now(); };
 
     unsigned long update(unsigned long val);
-    unsigned long get() const { if(time(nullptr) > last_update + interval_) { return 0; } return prev_counter_; };
+    [[nodiscard]] unsigned long get() const;
 };
 
 class sobject;
