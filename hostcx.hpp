@@ -210,10 +210,10 @@ public:
     inline std::string& comlog() { return com()->log_buffer_; };
 public:
 	/* meters */
-	unsigned int meter_read_count;
-	unsigned int meter_write_count;
-	unsigned int meter_read_bytes;
-	unsigned int meter_write_bytes;
+	unsigned int  meter_read_count;
+    unsigned int  meter_write_count;
+    buffer::size_type  meter_read_bytes;
+    buffer::size_type  meter_write_bytes;
 	
 public:
 	

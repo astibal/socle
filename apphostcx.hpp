@@ -33,40 +33,42 @@ class AppHostCX: public baseHostCX {
 public:
     AppHostCX(baseCom* c, unsigned int s);
     AppHostCX(baseCom* c, const char* h, const char* p);
-    
-    static const int DETECT_MAX_BYTES = 20000;
 
-    static const int MODE_NONE = 0;
-    static const int MODE_PRE = 1;
-    static const int MODE_POST = 2;
-    int mode_ = MODE_NONE;
-    int mode() { return mode_; }
-    void mode(int m) { mode_ = m; }
+    static unsigned int& max_detect_bytes() {
+        static unsigned int DETECT_MAX_BYTES = 20000;
+        return DETECT_MAX_BYTES;
+    }
+
+    typedef enum { MODE_NONE = 0, MODE_PRE = 1, MODE_POST = 2 } mode_t;
+
+    [[nodiscard]]
+    mode_t mode() const { return mode_; }
+    void mode(mode_t m) { mode_ = m; }
     
     sensorType& starttls_sensor() { return starttls_sensor_; };
     sensorType& sensor() { return sensor_; };
-    int zip_signatures(sensorType& s, std::vector<duplexFlowMatch*>& v); // create pairs of results and pointers to (somewhere, already created) signatures.
-    
-    virtual ~AppHostCX() {};
 
-    inline duplexFlow& flow() { return this->appflow_; }
-    inline duplexFlow* flowptr() { return &this->appflow_; }
+    // create pairs of results and pointers to (somewhere, already created) signatures.
+    int make_sig_states(sensorType& sig_states, std::vector<duplexFlowMatch*>& source_signatures);
+    
+    ~AppHostCX() override = default;
+
+    inline duplexFlow& flow() { return appflow_; }
+    inline duplexFlow* flowptr() { return &appflow_; }
+
+    std::string to_string(int verbosity=iINF) {
+        return string_format("AppHostCX: flow-size: %d[%s]",
+                                                           flow().flow().size()),
+                                                                baseHostCX::to_string(verbosity);
+    };
 protected:
-    unsigned int peek_read_counter = 0;
-    unsigned int peek_write_counter = 0;
-    duplexFlow appflow_;
-    
-    //FIXME: select more appropriate storage than vector. Pair will contain some "result-struct" instad of bool
-    sensorType sensor_;
-    sensorType starttls_sensor_;
-    
 
     // detection mode is done in "post" phase
-    virtual void post_read();
-    virtual void post_write();
+    void post_read() override;
+    void post_write() override;
     
-    virtual void pre_read();
-    virtual void pre_write();
+    void pre_read() override;
+    void pre_write() override;
     
     bool detect(sensorType&,char side); // signature detection engine
     virtual void inspect(char side) { }; // to be overriden for ALG inspectors
@@ -74,9 +76,22 @@ protected:
     virtual void on_detect(duplexFlowMatch*, flowMatchState&, vector_range&);
     virtual void on_starttls() {};
 
-protected:
+
+private:
+    logan_attached<AppHostCX> log;
+
+    duplexFlow appflow_;
+    buffer::size_type peek_read_counter = 0;
+    buffer::size_type peek_write_counter = 0;
+
     bool upgrade_starttls = false;
 
+    sensorType sensor_;
+    sensorType starttls_sensor_;
+    mode_t mode_ = MODE_NONE;
+
+    DECLARE_C_NAME("AppHostCX");
+    DECLARE_LOGGING(to_string);
 };
 
 
