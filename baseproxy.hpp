@@ -255,6 +255,8 @@ protected:
     DECLARE_C_NAME("baseProxy");
     DECLARE_LOGGING(to_string);
 
+private:
+    logan_attached<baseProxy> log;
 };
 
 #endif
