@@ -413,7 +413,7 @@ bool version_check(std::string real_string ,std::string v) {
             real_int = std::stoi(real_ver.at(i));
             target_int = std::stoi(target_ver.at(i));
         }
-        catch(std::invalid_argument e) {
+        catch(std::invalid_argument const& e) {
             //printf("error: cannot convert to a number\n");
 
             // so far we succeeded with version checks
@@ -514,9 +514,9 @@ int safe_val(std::string s, int default_val) {
     try {
         ret = std::stoi(s);
     }
-    catch(std::invalid_argument) {}
-    catch(std::out_of_range) {}
-    catch(std::exception) {}
+    catch(std::invalid_argument const&) {}
+    catch(std::out_of_range const& ) {}
+    catch(std::exception const&) {}
 
     return ret;
 }

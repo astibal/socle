@@ -2176,7 +2176,7 @@ int baseSSLCom<L4Proto>::parse_peer_hello() {
 
         DIA___("SSLCom::parse_peer_hello: return status %d",ret);
     }
-    catch (std::out_of_range e) {
+    catch (std::out_of_range const& e) {
         DIAS___(string_format("SSLCom::parse_peer_hello: failed to parse hello: %s",e.what()).c_str());
         error(ERROR_UNSPEC);
     }
