@@ -96,6 +96,8 @@ extern int SSLCOM_CLIENTHELLO_TIMEOUT;
 extern int SSLCOM_READ_TIMEOUT;
 extern int SSLCOM_WRITE_TIMEOUT;
 
+enum class ret_handshake { ERROR=-1, AGAIN=0, SUCCESS=1, BYPASS=2 };
+
 template <class L4Proto>
 class baseSSLCom : public L4Proto, public virtual baseCom {
 
@@ -143,10 +145,15 @@ protected:
 	bool sslcom_server_=false;
     
 	int sslcom_fd=0;
-    
-    //handhake handler called from read/write - you will not want to use it directly
-	int waiting();
-        
+
+
+
+    bool handshake_peer_client(); // check if peer received already ClientHello
+    ret_handshake handshake();
+        void handshake_dia_error2(int op_code, int err, unsigned int err2);
+        int handshake_client();
+        int handshake_server();
+
     // SNI
     struct timeval timer_start;
     

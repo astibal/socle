@@ -32,7 +32,7 @@ bool baseSSLMitmCom<SSLProto>::check_cert(const char* peer_name) {
     bool r = SSLProto::check_cert(peer_name);
     X509* cert = SSL_get_peer_certificate(SSLProto::sslcom_ssl);
     
-    baseSSLMitmCom* p = dynamic_cast<baseSSLMitmCom*>(this->peer());
+    auto* p = dynamic_cast<baseSSLMitmCom*>(this->peer());
     
     if(p != nullptr) {
         // FIXME: this is not right, design another type of test
@@ -71,7 +71,7 @@ bool baseSSLMitmCom<SSLProto>::check_cert(const char* peer_name) {
                 DIA___("Target server SAN/CN line: %s",candidate.c_str());
                 
                 std::vector<std::string> can_dns = string_split(candidate,',');
-                for(std::string can_dns_item: can_dns) {
+                for(std::string const& can_dns_item: can_dns) {
                     std::string item = string_trim(can_dns_item);
                     DIA___("           SAN/CN entry: '%s'",item.c_str());   
                     
