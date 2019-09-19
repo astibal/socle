@@ -69,6 +69,10 @@ public:
         return &w;
     }
 
+    std::recursive_mutex& ofstream_lock() { return ofstream_pool.getlock(); }
+    ptr_cache<std::string, std::ofstream>& ofstream_cache() { return ofstream_pool; };
+
+
     std::size_t write(std::string const& fnm, std::string const& str) override {
 
         std::scoped_lock<std::recursive_mutex> l_(ofstream_pool.getlock());
@@ -355,6 +359,12 @@ public:
         static threadedPoolFileWriter w = threadedPoolFileWriter();
         return &w;
     }
+
+    std::mutex& queue_lock() { return  queue_lock_; }
+    std::unordered_map<std::string, std::queue<std::string>>& queue() { return task_queue_; };
+    std::queue<std::string>& task_files()  { return task_files_; };
+
+
     // write won't actually write to file, but will queue that task
     size_t write(std::string const &fnm, std::string const &str) override {
         {
