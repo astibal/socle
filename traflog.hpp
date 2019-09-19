@@ -26,6 +26,8 @@
 #include <sys/time.h>
 #include <fstream>
 #include <iostream>
+#include <deque>
+#include <queue>
 
 #include <sobject.hpp>
 
@@ -53,7 +55,7 @@ public:
 
 class poolFileWriter : public baseFileWriter {
 
-
+protected:
     explicit poolFileWriter(): ofstream_pool("ofstream-pool", 30, true ) {
         log = logan::create("socle.poolFileWriter");
     }
@@ -247,6 +249,129 @@ public:
     }
 };
 
+
+class threadedPoolFileWriter : public poolFileWriter {
+
+    // map of log messages
+    std::unordered_map<std::string, std::queue<std::string>> task_queue_;
+    // files to handle - worker thread will remove file he works on from *task_files_* and ads it to *active_files*
+    std::queue<std::string> task_files_;
+    std::mutex queue_lock_;
+
+
+    // worker thread controlling mutex.
+    std::mutex workload_mutex_;
+
+    explicit threadedPoolFileWriter() {
+        log = logan::create("socle.threadedPoolFileWriter");
+
+        // add 2 workers.
+        add_worker();
+        add_worker();
+    }
+
+    ~threadedPoolFileWriter() {
+        stop_signal_ = true;
+        for( auto& t: threads_) {
+            if(t.joinable())
+                t.join();
+        }
+    }
+
+    void add_worker() {
+        auto t = std::thread(&threadedPoolFileWriter::worker, this);
+        threads_.emplace_back(std::move(t));
+    }
+
+    void worker() {
+        :: pthread_setname_np(pthread_self(), "sx-thwrt");
+        while(! stop_signal_)
+        {
+            bool wait = false;
+            std::string fnm;
+            {
+                std::scoped_lock<std::mutex> l_(queue_lock_);
+                if (task_files_.empty()) {
+                    wait = true;
+                } else {
+                    fnm = task_files_.front();
+                    task_files_.pop();
+                }
+            }
+            // we will wait if the queue was empty or handled by other workers
+            if(wait || fnm.empty()) {
+                ::usleep(1000);
+            } else {
+                // we work on 'fnm' file
+                bool cont = true;
+                do {
+                    std::string msg;
+                    {
+                        // get the string
+                        std::scoped_lock<std::mutex> l_(queue_lock_);
+
+                        auto it = task_queue_.find(fnm);
+                        if(it != task_queue_.end()) {
+                            auto& myqueue = task_queue_[fnm];
+                            if(! myqueue.empty()) {
+                                msg = myqueue.front();
+                                myqueue.pop();
+
+                                // shortcut - if this was last element, dont continue
+                                if(myqueue.empty()) {
+                                    task_queue_.erase(fnm);
+                                    cont = false;
+                                }
+                            } else {
+                                // myqueue is empty
+                                task_queue_.erase(fnm);
+                                cont = false;
+                            }
+
+                        } else{
+                            // fnm not it hash
+                            cont = false;
+                        }
+                    }
+
+                    // queue is now unlocked!!!
+                    // OK - we get the string, let's write it to the stream
+                    poolFileWriter::write(fnm, msg);
+
+                } while(cont);
+            }
+        }
+    }
+
+    bool stop_signal_ = false;
+    std::vector<std::thread> threads_;
+
+    logan_lite log;
+public:
+    threadedPoolFileWriter& operator=(threadedPoolFileWriter const&) = delete;
+    threadedPoolFileWriter(poolFileWriter const&) = delete;
+
+    static threadedPoolFileWriter* instance() {
+        static threadedPoolFileWriter w = threadedPoolFileWriter();
+        return &w;
+    }
+    // write won't actually write to file, but will queue that task
+    size_t write(std::string const &fnm, std::string const &str) override {
+        {
+            // ad this file to tasks, but only if it's not already handled by worker
+            std::scoped_lock<std::mutex> l_(queue_lock_);
+            if(task_queue_.find(fnm) == task_queue_.end()) {
+                task_files_.push(fnm);
+            }
+            task_queue_[fnm].push(str);
+        }
+
+        // we enqueued it, just returning its size
+        return str.size();
+    }
+
+};
+
 class trafLog : public sobject {
 
     static const bool use_pool_writer = true;
@@ -266,7 +391,7 @@ public:
         if(!use_pool_writer) {
             writer_ = new fileWriter();
         } else {
-            writer_ = poolFileWriter::instance();
+            writer_ = threadedPoolFileWriter::instance();
         }
 	}
 	
