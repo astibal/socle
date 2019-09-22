@@ -425,7 +425,7 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx) {
     baseSSLCom* com = static_cast<baseSSLCom*>(data);
     if(com != nullptr) {
         
-        baseSSLCom* pcom = dynamic_cast<baseSSLCom*>(com->peer());
+        auto* pcom = dynamic_cast<baseSSLCom*>(com->peer());
         if(pcom != nullptr) {
             const char* n = pcom->hr();
             if(n != nullptr) {
@@ -2349,7 +2349,7 @@ int baseSSLCom<L4Proto>::read ( int __fd, void* __buf, size_t __n, int __flags )
         EXT___("SSLCom::read[%d]: about to read  max %4d bytes",__fd,__n);
 
         ERR_clear_error();
-        int r = SSL_read (sslcom_ssl,__buf+total_r,__n-total_r);
+        int r = SSL_read (sslcom_ssl, __buf + total_r, __n - total_r);
         prof_read_cnt++;
 
         if(r == 0) {

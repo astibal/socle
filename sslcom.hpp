@@ -77,14 +77,14 @@
 /* This array will store all of the mutexes available to OpenSSL. */
 static MUTEX_TYPE* mutex_buf = nullptr;
 void locking_function ( int mode, int n, const char * file, int line );
-unsigned long id_function ( void );
+unsigned long id_function ();
 
 
 #pragma GCC diagnostic pop 
 #pragma GCC diagnostic pop 
 
-int THREAD_setup ( void );
-int THREAD_cleanup ( void );
+int THREAD_setup ();
+int THREAD_cleanup ();
 
 struct CRYPTO_dynlock_value
 {
@@ -111,16 +111,16 @@ protected:
 
     logan_attached<baseSSLCom<L4Proto>> log;
 
-	SSL_CTX* sslcom_ctx = NULL;
-	SSL*     sslcom_ssl = NULL;
-	BIO*	 sslcom_sbio = NULL;
+	SSL_CTX* sslcom_ctx = nullptr;
+	SSL*     sslcom_ssl = nullptr;
+	BIO*	 sslcom_sbio = nullptr;
     
     //SSL external data offset, used by openssl callbacks
     static int sslcom_ssl_extdata_index;
     
     //preferred key/cert pair to be loaded, instead of default one
-    X509*     sslcom_pref_cert = NULL;
-    EVP_PKEY* sslcom_pref_key  = NULL;
+    X509*     sslcom_pref_cert = nullptr;
+    EVP_PKEY* sslcom_pref_key  = nullptr;
 	
     //ECDH parameters
     EC_KEY *sslcom_ecdh = nullptr;
@@ -131,12 +131,12 @@ protected:
     X509* sslcom_target_issuer_issuer = nullptr;
     
 	// states of read/writes
-	int sslcom_read_blocked_on_write=0;
+	int sslcom_read_blocked_on_write = 0;
 	
         int sslcom_write_blocked_on_read=0;
         int sslcom_write_blocked_on_write=0;
         
-	int sslcom_read_blocked=0;
+	int sslcom_read_blocked = 0;
 	
     //handshake pending flag
 	bool sslcom_waiting=true;
@@ -164,7 +164,7 @@ protected:
     //if we are actively waiting for something, it doesn't make sense to process peer events (which creates unnecessary load)
     inline bool unmonitor_peer() { 
         if(peer()) { 
-            baseSSLCom* p = dynamic_cast<baseSSLCom*>(peer()); 
+            auto* p = dynamic_cast<baseSSLCom*>(peer());
             if(p != nullptr) {
                 unset_monitor(p->sslcom_fd); 
                 return true; 
@@ -174,7 +174,7 @@ protected:
     }
     inline bool monitor_peer() { 
         if(peer()) { 
-            baseSSLCom* p = dynamic_cast<baseSSLCom*>(peer());   
+            auto* p = dynamic_cast<baseSSLCom*>(peer());
             if(p != nullptr) {
                 set_monitor(p->sslcom_fd); 
                 return true; 
@@ -183,13 +183,13 @@ protected:
         return false; 
     } 
 
-    //if enabled, upgreade_client_socket or upgreade_server_socket are called automatically
+    //if enabled, upgrade_client_socket or upgrade_server_socket are called automatically
     //during waiting().
     bool auto_upgrade_ = true;
     bool auto_upgraded_ = false;
     
     //it's waiting for it's usage or removal
-	char* ssl_waiting_host = NULL;
+	char* ssl_waiting_host = nullptr;
 	
     // return true if peer already received client hello. For server side only (currently). 
     inline bool sslcom_peer_hello_received() { return sslcom_peer_hello_received_; }
@@ -200,7 +200,7 @@ protected:
     //peeks peer socket for client_hello. For server side only (currently).
     bool waiting_peer_hello();
     
-    //parses peer hello and stores interesing data (e.g. SNI information). For server side only (currently).
+    //parses peer hello and stores interesting data (e.g. SNI information). For server side only (currently).
     int parse_peer_hello();
     unsigned short parse_peer_hello_extensions(buffer& b, unsigned int curpos);
     
@@ -224,7 +224,7 @@ protected:
     inline bool sslcom_status() { return sslcom_status_; }
     inline void sslcom_status(bool b) { sslcom_status_ = b; }
 
-    virtual std::string flags_str();
+    std::string flags_str() override;
 private:
     typedef enum { HSK_REUSED = 0x4 } sslcom_flags;
     unsigned long flags_ = 0;
@@ -245,19 +245,15 @@ public:
     static std::once_flag certstore_setup_done;    
 
     static SSLFactory* certstore() { return sslcom_certstore_; };
-    static void certstore(SSLFactory* c) { if (sslcom_certstore_ != NULL) { delete sslcom_certstore_; }  sslcom_certstore_ = c; };
+    static void certstore(SSLFactory* c) { delete sslcom_certstore_; sslcom_certstore_ = c; };
 	
     //called just once
-	virtual void static_init();
+	void static_init() override;
     
     //com has to be init() before used
-	virtual void init(baseHostCX* owner);
-    virtual baseCom* replicate() { return new baseSSLCom(); } ;
-    // virtual const char* name() { return "ssl"; };
-    // virtual const char* hr();
-    // std::string hr_;
-    
-    
+	void init(baseHostCX* owner) override;
+    baseCom* replicate() override { return new baseSSLCom(); } ;
+
     //initialize callbacks. Basically it sets external data for SSL object.
     void init_ssl_callbacks();
 
@@ -293,33 +289,33 @@ public:
     virtual bool store_session_if_needed();
     virtual bool load_session_if_needed();
 	
-	virtual bool readable (int s);
-	virtual bool writable (int s);
+	bool readable (int s) override;
+	bool writable (int s) override;
 	
-	virtual void accept_socket ( int sockfd	);
-    virtual void delay_socket ( int sockfd );
+	void accept_socket (int sockfd) override;
+    void delay_socket (int sockfd) override;
     
     bool auto_upgrade() { return auto_upgrade_; }
     void auto_upgrade(bool b) { auto_upgrade_ = b; }
     bool upgraded() { return auto_upgraded_; }
-    void upgraded(bool b) { if(upgraded() && b == true) { NOTS___("double upgrade detected"); } auto_upgraded_ = b; }
+    void upgraded(bool b) { if(upgraded() && b) { NOTS___("double upgrade detected"); } auto_upgraded_ = b; }
     
     // set if waiting() should wait for peer hello.
     bool should_wait_for_peer_hello() { return should_wait_for_peer_hello_; }
     void should_wait_for_peer_hello(bool b) { should_wait_for_peer_hello_ = b; }
     socle::sref_vector_string& sni_filter_to_bypass() { return sni_filter_to_bypass_; }
     
-    virtual int connect ( const char* host, const char* port, bool blocking = false );
-	virtual int read ( int __fd, void* __buf, size_t __n, int __flags );
-	virtual int write ( int __fd, const void* __buf, size_t __n, int __flags );
+    int connect ( const char* host, const char* port, bool blocking = false ) override;
+	int read ( int __fd, void* __buf, size_t __n, int __flags ) override;
+	int write ( int __fd, const void* __buf, size_t __n, int __flags ) override;
 	
-	virtual void cleanup();
+	void cleanup() override;
 
-    virtual bool com_status();
+    bool com_status() override;
     
     
-    virtual void shutdown(int __fd);    
-    virtual ~baseSSLCom() {
+    void shutdown(int __fd) override;
+    ~baseSSLCom() override {
         if(sslcom_refcount_incremented__) {
 #ifdef USE_OPENSSL11
             EVP_PKEY_free(sslcom_pref_key);
@@ -365,7 +361,7 @@ public:
     bool opt_bypass = false;
     bool bypass_me_and_peer();
     
-    static std::string ci_def_filter;;
+    static std::string ci_def_filter;
     
     bool opt_left_kex_dh = true;       // enable/disable pfs (DHE and ECDHE suites)
     bool opt_left_kex_rsa = true;      // enable also kRSA
@@ -426,9 +422,9 @@ public:
                                 HOSTNAME_FAILED=0x40
                                                         } verify_status_t;
                                 
-    int verify_status = VERIFY_OK;
-    inline void verify_set(int s) { verify_status |= (verify_status_t)s; }
-    inline bool verify_check(int s) const { return (verify_status & s); }
+    unsigned int verify_status = VERIFY_OK;
+    inline void verify_set(unsigned int s) { verify_status |= (verify_status_t)s; }
+    inline bool verify_check(unsigned int s) const { return (verify_status & s); }
     inline int verify_get() const { return (int) verify_status; }
 
     DECLARE_C_NAME("SSLCom");
