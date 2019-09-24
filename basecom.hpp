@@ -176,7 +176,8 @@ public:
     // support for pseudo-socket, we call it virtual socket. It's negative numbered socket 
     // which can ne used by Com classes for socket translations (see UDPCom, for example)
     virtual int translate_socket(int vsock) { return vsock; };
-    
+    virtual void on_new_socket(int __fd) {};
+
     // syscall wrapper 
     virtual int accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen_) = 0;
 

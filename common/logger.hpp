@@ -21,11 +21,8 @@
 #define LOGGER_HPP
 
 #include <cstring>
-
-#include <string>
 #include <iostream>
 #include <ctime>
-#include <sys/time.h>
 
 #include <thread>
 #include <mutex>
@@ -33,6 +30,8 @@
 #include <list>
 #include <map>
 #include <functional>
+#include <algorithm>
+#include <iomanip>
 
 #include <display.hpp>
 #include <stringformat.hpp>
@@ -51,7 +50,7 @@
 #define iEXT 10
 
 struct logger_adv_info {
-    logger_adv_info() {}
+    logger_adv_info() = default;
     logger_adv_info(bool et, bool ee) : exclusive_topic(et), exclusive_exact(ee) {};
     bool exclusive_topic = false;  // don't log to generic log on true
     bool exclusive_exact = false;  // don't write to all topic logger, write to topic logger with the same code specified.
@@ -67,7 +66,7 @@ extern loglevelmore LOG_EXEXACT;
 class logger_level {
 
 public:
-    logger_level(unsigned int l) : level_(l), topic_(0) {}
+    explicit logger_level(unsigned int l) : level_(l), topic_(0) {}
     logger_level(unsigned int l, unsigned int t) : level_(l),topic_(t) {}
     logger_level(logger_level& l, unsigned int t) : level_(l.level_), topic_(t) {}
     logger_level(logger_level& l, unsigned int t, unsigned int f) : level_(l.level_), topic_(t), flags_(f) {}
@@ -75,15 +74,15 @@ public:
     logger_level(logger_level& l, unsigned int t, loglevelmore* a) : level_(l.level_), topic_(t), adv_(a) {}
     logger_level(logger_level& l, unsigned int t, loglevelmore* a, unsigned int f) : level_(l.level_), topic_(t), adv_(a), flags_(f) {}
 
-    
-    inline unsigned int level() const { return level_; }
-    inline unsigned int& level_ref() { return level_; }
 
-    inline unsigned int topic() const { return topic_; }
-    inline loglevelmore* more(void) const { return adv_; }
-    inline unsigned int flags() const { return flags_; }
-    inline std::string subject() const { return subject_; }
-    inline std::string area() const { return area_; }
+    [[nodiscard]] inline unsigned int level() const { return level_; }
+    [[nodiscard]] inline unsigned int& level_ref() { return level_; }
+
+    [[nodiscard]] inline unsigned int topic() const { return topic_; }
+    [[nodiscard]] inline loglevelmore* more() const { return adv_; }
+    [[nodiscard]] inline unsigned int flags() const { return flags_; }
+    [[nodiscard]] inline std::string subject() const { return subject_; }
+    [[nodiscard]] inline std::string area() const { return area_; }
 
 
     void level(unsigned int l) { level_ = l; }
@@ -562,7 +561,6 @@ public:                                             \
 #define DECLARE_DEF_TO_STRING \
     virtual std::string to_string(int verbosity=iINF) { return this->class_name(); };    
     
-#include <algorithm>
 
 std::string ESC_ (const std::string &s);
 
@@ -710,20 +708,17 @@ static const std::string level_table[] = {"None    ","Fatal   ","Critical","Erro
 template <class ... Args>
 void logger::log(loglevel l, const std::string& fmt,  Args ... args) {
 
-    std::lock_guard<std::recursive_mutex> lck(mtx_lout);
 
-    struct timeval tv;
-    struct timezone tz;
+    auto now = std::chrono::system_clock::now();
+    auto millisecs=
+            std::chrono::duration_cast<std::chrono::milliseconds>(
+                    now.time_since_epoch()
+            );
+  //auto seconds = millisecs.count()/1000;
+    auto usec   = (millisecs.count()%1000)*1000;
 
-    gettimeofday(&tv,&tz);
-
-    time_t *now = &tv.tv_sec;
-    time(now);
-    struct tm *tmp;
-    tmp = localtime(now);
-    char date[64];
-
-
+    auto tt = std::chrono::system_clock::to_time_t(now);
+    auto tm = *std::localtime(&tt);
 
     std::string str = string_format(fmt.c_str(), args...);
 
@@ -737,18 +732,20 @@ void logger::log(loglevel l, const std::string& fmt,  Args ... args) {
 
 
     std::stringstream ss;
-    int date_len = std::strftime(date,sizeof(date),"%y-%m-%d %H:%M:%S",tmp);
 
     if(flag_test(l.flags(),LOG_FLRAW)) {
         ss << str;
     }
     else {
-        ss << std::string(date,date_len) << "." << string_format("%06d",tv.tv_usec) << " <";
+        ss << std::put_time(&tm, "%y-%m-%d %H:%M:%S") << "." << string_format("%06d", usec) << " <";
         ss << std::hex << std::this_thread::get_id() << "> " << desc << " - " << str;
     }
 
 
     std::string sss = ss.str();
+
+    //std::lock_guard<std::recursive_mutex> lck(mtx_lout);
+
     write_log(l,sss);
 };
 
@@ -928,7 +925,7 @@ public:
 
     std::string prefix() override {
 
-        // somebody's overriden prefix, use it.
+        // somebody's overridden prefix, use it.
         if(! prefix_.empty())
             return prefix_;
 
@@ -943,7 +940,7 @@ public:
     virtual void this_level(loglevel l);
 
     void area(const std::string& ref);
-    std::string area() const {
+    [[nodiscard]] std::string area() const {
         return area_;
     }
 
@@ -953,12 +950,64 @@ private:
     std::string area_;
 };
 
+class logan_tracer : public logan_lite {
+public:
+    explicit logan_tracer() : logan_lite(), start_(std::chrono::high_resolution_clock::now()) {}
+
+    typedef std::vector<std::pair<long, std::string>> usec_msg_tupples;
+    usec_msg_tupples& records() { return records_; }
+
+
+    long delta() const {
+        auto now = std::chrono::high_resolution_clock::now();
+        auto delta = now - start_;
+
+        std::chrono::microseconds d = std::chrono::duration_cast<std::chrono::microseconds>(now - start_);
+        return d.count();
+    }
+
+    template<class C, class ... Args>
+    void trace(C* object, const char* fmt, Args ... args) {
+        trace( object->to_string(iINF),fmt, args ...);
+    }
+
+    template<class ... Args>
+    void trace(std::string const& str, const char* fmt, Args ... args) {
+
+        std::stringstream s;
+
+        if(! name().empty() ) {
+            s << name() << ": ";
+        }
+
+        s << str;
+        s << " => ";
+        s << string_format(fmt, args... );
+
+        auto p = std::make_pair(delta(), s.str());
+        records().push_back(p);
+    };
+
+
+    const std::string &name() const {
+        return name_;
+    }
+    void name(const std::string &name) {
+        name_ = name;
+    }
+
+private:
+    std::chrono::high_resolution_clock::time_point start_;
+    usec_msg_tupples records_;
+    std::string name_;
+};
+
 class logan {
 public:
 
     std::map <std::string, loglevel*> topic_db_;
 
-    loglevel* operator[] (std::string subject) {
+    loglevel* operator[] (std::string const& subject) {
 
         std::scoped_lock<std::recursive_mutex> l_(lock_);
 

@@ -304,7 +304,7 @@ void baseSSLCom<L4Proto>::ssl_msg_callback(int write_p, int version, int content
     _deb("[%s]: SSLCom::ssl_msg_callback: %s/%s has been %s",name,msg_version,msg_content_type,msg_direction);
 
     if(content_type == 21) {
-        _deb("[%s]: SSLCom::ssl_msg_callback: alert dump:\n%s",name,hex_dump((unsigned char*)buf,len).c_str());
+        _dum("[%s]: SSLCom::ssl_msg_callback: alert dump:\n%s",name,hex_dump((unsigned char*)buf,len).c_str());
         uint16_t int_code = ntohs(buffer::get_at_ptr<uint16_t>((unsigned char*)buf));
         uint8_t level = buffer::get_at_ptr<uint8_t>((unsigned char*)buf);
         uint8_t code = buffer::get_at_ptr<uint8_t>((unsigned char*)buf+1);
@@ -425,7 +425,7 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx) {
     baseSSLCom* com = static_cast<baseSSLCom*>(data);
     if(com != nullptr) {
         
-        baseSSLCom* pcom = dynamic_cast<baseSSLCom*>(com->peer());
+        auto* pcom = dynamic_cast<baseSSLCom*>(com->peer());
         if(pcom != nullptr) {
             const char* n = pcom->hr();
             if(n != nullptr) {
@@ -1485,6 +1485,7 @@ void baseSSLCom<L4Proto>::accept_socket ( int sockfd )  {
 
     DIA___("SSLCom::accept_socket[%d]: attempt %d",sockfd,prof_accept_cnt);
 
+    L4Proto::on_new_socket(sockfd);
     L4Proto::accept_socket(sockfd);
 
     if(l4_proto() == SOCK_DGRAM && sockfd < 0) {
@@ -1621,150 +1622,207 @@ int baseSSLCom<L4Proto>::upgrade_server_socket(int sockfd) {
     return sockfd;
 }
 
-// return -1 on unrecoverable and we should stop
-// return 0 when still waiting
-// return > 0 when not waiting anymore
 
 template <class L4Proto>
-int baseSSLCom<L4Proto>::waiting() {
-
-    const char* op_accept = "accept";
-    const char* op_connect = "connect";
-    const char* op_unknown = "?unknown?";
-
-    const char* op = op_unknown;
-
-    if (sslcom_ssl == NULL and ! auto_upgrade()) {
-        WARS___("SSLCom::ssl_waiting: sslcom_ssl = NULL");
-        return -1;
+int baseSSLCom<L4Proto>::handshake_server() {
+    if(auto_upgrade() && !upgraded()) {
+        DIA___("SSLCom::handshake: server auto upgrade socket %d",sslcom_fd);
+        upgrade_server_socket(sslcom_fd);
     }
 
-    int r = 0;
+    int op_code = SSL_accept(sslcom_ssl);
 
-    if (!is_server() ) {
+    prof_accept_cnt++;
+    baseSSLCom::counter_ssl_accept++;
 
-        // if we still wait for client hello, try to fetch and enforce (first attempt not successful on connect())
-        if(!sslcom_peer_hello_received()) {
+    return op_code;
+}
 
-            if(! waiting_peer_hello()) {
-                // nope, still nothing. Wait further
-                return 0;
-            }
+template <class L4Proto>
+bool baseSSLCom<L4Proto>::handshake_peer_client() {
 
-            // if we got here, upgrade client socket prior SSL_connect! Keep it here, it has to be just once!
-            if(auto_upgrade()) {
-                DIA___("SSLCom::waiting[%d]: executing client auto upgrade",sslcom_fd);
-                if(owner_cx() != nullptr && sslcom_fd == 0) {
-                    sslcom_fd = owner_cx()->socket();
-                    DIA___("SSLCom::waiting[%d]: socket 0 has been auto-upgraded to owner's socket",sslcom_fd);
-                }
-                upgrade_client_socket(sslcom_fd);
-            }
+    // if we still wait for client hello, try to fetch and enforce (first attempt not successful on connect())
+    if(!sslcom_peer_hello_received()) {
+
+        if(! waiting_peer_hello()) {
+            // nope, still nothing. Wait further
+            return false;
         }
 
-        // we have client hello
-        if(sslcom_peer_hello_received()) {
-            
-            DEBS___("SSLCom:waiting: check SNI filter");
-            
-            // Do we have sni_filter_to_bypass set? If so, check if we do have also SNI
-            // and check all entries in the filter.
-            
-            if(sni_filter_to_bypass_.refval() != nullptr) {
-                if(sslcom_peer_hello_sni().size() > 0) {
-                
-                    for(std::string& filter_element: *sni_filter_to_bypass_.refval()) {
+        // if we got here, upgrade client socket prior SSL_connect! Keep it here, it has to be just once!
+        if(auto_upgrade()) {
+            DIA___("SSLCom::waiting[%d]: executing client auto upgrade",sslcom_fd);
+            if(owner_cx() != nullptr && sslcom_fd == 0) {
+                sslcom_fd = owner_cx()->socket();
+                DIA___("SSLCom::waiting[%d]: socket 0 has been auto-upgraded to owner's socket",sslcom_fd);
+            }
+            upgrade_client_socket(sslcom_fd);
+        }
+    }
 
-                        std::size_t pos = sslcom_peer_hello_sni().rfind(filter_element);
-                        if(pos != std::string::npos && pos + filter_element.size() >= sslcom_peer_hello_sni().size()) {
-                            
-                            //ok, we know SNI ends with the filter entry. We need to check if the character BEFORE match pos in SNI is '.' to prevent
-                            // match www.mycnn.com with cnn.com SNI entry.
-                            bool cont = true;
-                            
-                            if(pos > 0) {
-                                if(sslcom_peer_hello_sni().at(pos - 1) != '.') {
-                                    DIA___("%s NOT bypassed with sni filter %s",sslcom_peer_hello_sni().c_str(),filter_element.c_str());
-                                    cont = false;
-                                }
+    // we have client hello
+    if(sslcom_peer_hello_received()) {
+
+        DEBS___("SSLCom:waiting: check SNI filter");
+
+        // Do we have sni_filter_to_bypass set? If so, check if we do have also SNI
+        // and check all entries in the filter.
+
+        if (sni_filter_to_bypass_.refval() != nullptr) {
+            if (sslcom_peer_hello_sni().size() > 0) {
+
+                for (std::string &filter_element: *sni_filter_to_bypass_.refval()) {
+
+                    std::size_t pos = sslcom_peer_hello_sni().rfind(filter_element);
+                    if (pos != std::string::npos && pos + filter_element.size() >= sslcom_peer_hello_sni().size()) {
+
+                        //ok, we know SNI ends with the filter entry. We need to check if the character BEFORE match pos in SNI is '.' to prevent
+                        // match www.mycnn.com with cnn.com SNI entry.
+                        bool cont = true;
+
+                        if (pos > 0) {
+                            if (sslcom_peer_hello_sni().at(pos - 1) != '.') {
+                                DIA___("%s NOT bypassed with sni filter %s", sslcom_peer_hello_sni().c_str(),
+                                       filter_element.c_str());
+                                cont = false;
                             }
-                            
-                            if(cont) {
-                                DIA___("SSLCom:waiting: matched SNI filter: %s!",filter_element.c_str());
-                                sni_filter_to_bypass_matched = true;
+                        }
 
-                                baseSSLCom* p = dynamic_cast<baseSSLCom*>(peer());
-                                if(p != nullptr) {
-                                    opt_bypass = true;
-                                    p->opt_bypass = true;
-                                    
-                                    INF___("%s bypassed with sni filter %s",sslcom_peer_hello_sni().c_str(),filter_element.c_str());
-                                    return 0;
-                                } else {
-                                    DIAS___("SSLCom:waiting: SNI filter matched, but peer is not SSLCom");
-                                }
+                        if (cont) {
+                            DIA___("SSLCom:waiting: matched SNI filter: %s!", filter_element.c_str());
+                            sni_filter_to_bypass_matched = true;
+
+                            auto *p = dynamic_cast<baseSSLCom *>(peer());
+                            if (p != nullptr) {
+                                opt_bypass = true;
+                                p->opt_bypass = true;
+
+                                INF___("%s bypassed with sni filter %s", sslcom_peer_hello_sni().c_str(),
+                                       filter_element.c_str());
+                                return false;
+                            } else {
+                                DIAS___("SSLCom:waiting: SNI filter matched, but peer is not SSLCom");
                             }
                         }
                     }
                 }
             }
-
-            DEBS___("SSLCom::waiting: before SSL_connect");
-
-            ERR_clear_error();
-            r = SSL_connect(sslcom_ssl);
-            prof_connect_cnt++;
-
-            //debug counter
-            baseSSLCom::counter_ssl_connect++;
         }
-        op = op_connect;
-    }
-    else if(is_server()) {
-
-        if(auto_upgrade() && !upgraded()) {
-            DIA___("SSLCom::waiting: server auto upgrade socket %d",sslcom_fd);
-            upgrade_server_socket(sslcom_fd);
-        }
-
-        ERR_clear_error();
-        r = SSL_accept(sslcom_ssl);
-        prof_accept_cnt++;
-
-        baseSSLCom::counter_ssl_accept++;
-
-        op = op_accept;
     }
 
+    return true;
+}
 
-    if (r < 0) {
-        int err = SSL_get_error(sslcom_ssl,r);
-        long err2 = ERR_get_error();
-        
+// return values according to SSL_connect, except:
+// return 2 when connection should be bypassed due to clienthello
+template <class L4Proto>
+int baseSSLCom<L4Proto>::handshake_client() {
+
+    int r = -1;
+
+    DEBS___("SSLCom::waiting: before SSL_connect");
+
+    ERR_clear_error();
+    r = SSL_connect(sslcom_ssl);
+
+    prof_connect_cnt++;
+    baseSSLCom::counter_ssl_connect++;
+
+    return r;
+}
+
+template <class L4Proto>
+void baseSSLCom<L4Proto>::handshake_dia_error2(int op_code, int err, unsigned int xerr2) {
+
+    unsigned long err2 = xerr2;
+    int maxiter = 16;
+
+    do {
+        if(err2 != 0) {
+            constexpr unsigned int sz = 256;
+            char err_desc[sz]; memset(err_desc, 0, sz);
+            ERR_error_string(err2, err_desc);
+
+            DIA___("SSLCom::handshake:   error code: %s", err_desc);
+            err2 = ERR_get_error();
+        }
+
+        if(maxiter-- <= 0) {
+            ERRS___("handshake_dia_error2: too many errors in the stack");
+            break;
+        }
+    } while (err2 != 0);
+}
+
+// return -1 on unrecoverable and we should stop
+// return 0 when still waiting
+// return > 0 when not waiting anymore
+
+template <class L4Proto>
+ret_handshake baseSSLCom<L4Proto>::handshake() {
+
+    const char* op_accept = "accept";
+    const char* op_connect = "connect";
+    const char* op_unknown = "?unknown?";
+
+    const char* op_descr = op_unknown;
+
+    if (sslcom_ssl == nullptr and ! auto_upgrade()) {
+        WARS___("SSLCom::handshake: sslcom_ssl = NULL");
+        return ret_handshake::ERROR;
+    }
+
+    ret_handshake XXXXto_ret = ret_handshake::AGAIN;
+    int op_code = -1;
+
+
+    ERR_clear_error();
+
+    if (!is_server() ) {
+        op_descr = op_connect;
+
+        if(! handshake_peer_client() ) {
+            DIA___("SSLCom::handshake: %s on socket %d: waiting for the peer...", op_descr, sslcom_fd);
+            return ret_handshake::AGAIN;
+        }
+
+        op_code = handshake_client();
+
+    }
+    else {
+        op_descr = op_accept;
+        op_code = handshake_server();
+    }
+
+    int err = SSL_get_error(sslcom_ssl, op_code);
+    unsigned long err2 = ERR_get_error();
+
+    DIA___("SSLCom::handshake: %s on socket %d: r=%d, err=%d, err2=%d", op_descr, sslcom_fd, op_code, err, err2);
+
+    // general error handling code - both accept and connect yield the same errors
+    if (op_code < 0) {
+        // potentially OK if non-blocking socket
+
         if (err == SSL_ERROR_WANT_READ) {
-            DIA___("SSLCom::waiting: SSL_%s[%d]: pending on want_read",op,sslcom_fd);
+            DIA___("SSLCom::handshake: SSL_%s[%d]: pending on want_read", op_descr , sslcom_fd);
 
             sslcom_waiting = true;
             prof_want_read_cnt++;
-            
+
+            // unmonitor, wait a while and monitor read back
             rescan_read(sslcom_fd);
-            
-            // forced_read(true);
-            // sslcom_waiting_read = true;
-            
-            return 0;
+
+            return ret_handshake::AGAIN;
         }
         else if (err == SSL_ERROR_WANT_WRITE) {
-            DIA___("SSLCom::waiting: SSL_%s[%d]: pending on want_write",op,sslcom_fd);
+            DIA___("SSLCom::handshake: SSL_%s[%d]: pending on want_write", op_descr, sslcom_fd);
 
             sslcom_waiting = true;
             prof_want_write_cnt++;
-            // forced_write(true);
-            // sslcom_waiting_write = true;
-            
-            //master()->poller.modify(sslcom_fd,EPOLLIN|EPOLLOUT);
+
+            // unmonitor, wait a while and monitor write only
             set_write_monitor_only(sslcom_fd);
-            return 0;
+            return ret_handshake::AGAIN;
         }
         // this is error code produced by SSL_connect via OCSP callback. 
         // Unfortunately this error code is undocumented, added here to make it work
@@ -1772,60 +1830,60 @@ int baseSSLCom<L4Proto>::waiting() {
         else if (err2 == 654741622 || err2 == 654741605) {
             
             if(ocsp_cert_is_revoked > 0) {
-                DIAS___("SSLCom::waiting: aborted due to certificate verification failure.");
-                return -1;
+                DIAS___("SSLCom::handshake: aborted due to certificate verification failure.");
+                return ret_handshake::ERROR;
             }
             
-            return 0; //?
+            return ret_handshake::AGAIN; // return again, we continue.
         }
         else {
-            DIA___("SSLCom::waiting: SSL_%s: error: %d:%d",op,err,err2);
-            do {
-                if(err2 != 0 || LEV_(DEB)) {
-                    DIA___("SSLCom::waiting:   error code: %s",ERR_error_string(err2,nullptr));
-                    err2 = ERR_get_error();
-                }
-            } while (err2 != 0);
+            // any other error < 0 is considered as BAD thing.
 
-
+            DIA___("SSLCom::handshake: SSL_%s: error: %d:%d",op_descr , err, err2);
+            handshake_dia_error2(op_code, err, err2);
             sslcom_waiting = true;
-            return -1;
+            return ret_handshake::ERROR;
         }
 
-    } else if (r == 0) {
-        DIA___("SSLCom::waiting: SSL failed: %s, ret %d",op ,r);
-
-        long err2 = ERR_get_error();
-        DIA___("SSLCom::waiting:   error code: %s",ERR_error_string(err2,nullptr));
+    } else if (op_code == 0) {
+        // positively handshake error signalled by SSL_connect or SSL_accept
+        DIA___("SSLCom::handshake: SSL_%s: error: %d:%d",op_descr , err, err2);
+        handshake_dia_error2(op_code, err, err2);
 
         // shutdown OK, but connection failed
         sslcom_waiting = false;
-        return -1;
+        return ret_handshake::ERROR;
+    }
+    else if (op_code == 2) {
+
+        // our internal signalling for bypass
+        opt_bypass = true;
+        DIAS___("SSLCom::handshake: bypassed.");
+
+        return ret_handshake::AGAIN;
     }
 
-    if(!is_server()) {
-        prof_connect_ok++;
-    } else {
-        prof_accept_ok++;
-        if(SSL_session_reused(sslcom_ssl)) {
-            flags_ |= HSK_REUSED;
-        }
+
+    if(SSL_session_reused(sslcom_ssl)) {
+        flags_ |= HSK_REUSED;
     }
 
-    DEB___("SSLCom::waiting: operation succeeded: %s", op);
-    sslcom_waiting = false;
 
     if(!is_server()) {
         check_cert(ssl_waiting_host);
         store_session_if_needed();
     }
 
-    if(sslkeylog) {
+    if(( op_code > 0 ) && sslkeylog) {
+        // dump only successfully established connections
         dump_keys();
         sslkeylog = false;
-    }    
-    
-    return r;
+    }
+
+    DIA___("SSLCom::handshake: %s finished on socket %d", op_descr, sslcom_fd);
+    sslcom_waiting = false;
+
+    return ret_handshake::AGAIN;
 }
 
 
@@ -2122,7 +2180,8 @@ int baseSSLCom<L4Proto>::parse_peer_hello() {
                 if(session_id_length > 0) {
                     session_id = b.view(curpos,session_id_length);
                     curpos+=session_id_length;
-                    DEB___("SSLCom::parse_peer_hello: session_id (length %d):\n%s",session_id_length, hex_dump(session_id.data(),session_id.size()).c_str());
+                    DEB___("SSLCom::parse_peer_hello: session_id (length %d)",session_id_length);
+                    DUM___("SSLCom::parse_peer_hello: session_id :\n%s",hex_dump(session_id.data(),session_id.size()).c_str());
                 } else {
                     DEBS___("SSLCom::parse_peer_hello: no session_id found.");
                 }
@@ -2176,7 +2235,7 @@ int baseSSLCom<L4Proto>::parse_peer_hello() {
 
         DIA___("SSLCom::parse_peer_hello: return status %d",ret);
     }
-    catch (std::out_of_range e) {
+    catch (std::out_of_range const& e) {
         DIAS___(string_format("SSLCom::parse_peer_hello: failed to parse hello: %s",e.what()).c_str());
         error(ERROR_UNSPEC);
     }
@@ -2240,12 +2299,12 @@ int baseSSLCom<L4Proto>::read ( int __fd, void* __buf, size_t __n, int __flags )
     // non-blocking socket can be still opening
     if( sslcom_waiting ) {
         DUM___("SSLCom::read[%d]: still waiting for handshake to complete.",__fd);
-        int c = waiting();
+        ret_handshake c = handshake();
 
-        if (c == 0) {
+        if (c == ret_handshake::AGAIN) {
             DUM___("SSLCom:: read[%d]: ssl_waiting() returned %d: still waiting",__fd,c);
             return -1;
-        } else if (c < 0) {
+        } else if (c == ret_handshake::ERROR) {
             DIA___("SSLCom:: read[%d]: ssl_waiting() returned %d: unrecoverable!",__fd,c);
             return 0;
         }
@@ -2291,7 +2350,7 @@ int baseSSLCom<L4Proto>::read ( int __fd, void* __buf, size_t __n, int __flags )
         EXT___("SSLCom::read[%d]: about to read  max %4d bytes",__fd,__n);
 
         ERR_clear_error();
-        int r = SSL_read (sslcom_ssl,__buf+total_r,__n-total_r);
+        int r = SSL_read (sslcom_ssl, __buf + total_r, __n - total_r);
         prof_read_cnt++;
 
         if(r == 0) {
@@ -2450,11 +2509,11 @@ int baseSSLCom<L4Proto>::write ( int __fd, const void* __buf, size_t __n, int __
     if( sslcom_waiting ) {
         DUM___("SSLCom::write[%d]: still waiting for handshake to complete.",__fd);
 
-        int c = waiting();
-        if (c == 0) {
+        ret_handshake c = handshake();
+        if (c == ret_handshake::AGAIN) {
             DUM___("SSLCom::write[%d]: ssl_waiting() returned %d: still waiting",__fd,c);
             return 0;
-        } else if (c < 0) {
+        } else if (c == ret_handshake::ERROR) {
             DIA___("SSLCom::write[%d]: ssl_waiting() returned %d: unrecoverable!",__fd,c);
             return -1;
         }
