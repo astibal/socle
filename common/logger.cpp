@@ -250,8 +250,8 @@ bool logger::click_timer (const std::string &xname, int interval) {
 	auto r = timers.find(name);
 	if (r != timers.end()) {
 		// we found entry
-		time_t l = (*r).second.last;
-		int i = (*r).second.timeout;
+		time_t l = r->second.last;
+		int i = r->second.timeout;
 		
 		time_t now = ::time(nullptr);
 		
