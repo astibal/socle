@@ -39,6 +39,7 @@ public:
 	virtual void on_right_new_raw(int);
 	
 	virtual int run(void);
+	void on_run_round() override;
 	
 	int push(int);
 	int pop();
@@ -66,7 +67,8 @@ template<class SubWorker>
 class ThreadedAcceptorProxy : public MasterProxy {
 public:
 	ThreadedAcceptorProxy(baseCom* c, int worker_id): MasterProxy(c), worker_id_(worker_id) {}
-	virtual int handle_sockets_once(baseCom*);	
+	virtual int handle_sockets_once(baseCom*);
+    void on_run_round() override;
     
     static int workers_total;
 protected:

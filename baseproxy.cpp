@@ -1236,6 +1236,8 @@ int baseProxy::run() {
             if (virt_global_hack && !udp_in_set.empty())  _deb("baseProxy::run: virtual hack, virtuals: %d", udp_in_set.size());
             if (counter_fence_fail) _err("baseProxy::run: fence failures: %d", counter_fence_fail);
         }
+
+        on_run_round();
     }
 
     return 0;

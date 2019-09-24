@@ -510,7 +510,7 @@ int ThreadedReceiver<Worker,SubWorker>::create_workers(int count) {
 
 
 template<class Worker, class SubWorker>
-int ThreadedReceiver<Worker,SubWorker>::run(void) {
+int ThreadedReceiver<Worker,SubWorker>::run() {
     
     pollroot(true);
     create_workers(worker_count_preference());
@@ -527,6 +527,10 @@ int ThreadedReceiver<Worker,SubWorker>::run(void) {
     return nthreads;
 }
 
+template<class Worker, class SubWorker>
+void ThreadedReceiver<Worker,SubWorker>::on_run_round() {
+    std::this_thread::yield();
+}
 
 template<class Worker, class SubWorker>
 int ThreadedReceiver<Worker,SubWorker>::push(int s) { 
@@ -678,4 +682,10 @@ int ThreadedReceiverProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
     }
 
     return MasterProxy::handle_sockets_once(com());
+}
+
+
+template<class SubWorker>
+void ThreadedReceiverProxy<SubWorker>::on_run_round () {
+    std::this_thread::yield();
 }
