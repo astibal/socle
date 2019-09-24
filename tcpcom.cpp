@@ -15,7 +15,7 @@
     You  should have received a copy of the GNU Lesser General Public
     License along with this library.
 */
-
+#include <netinet/tcp.h>
 #include <tcpcom.hpp>
 #include <internet.hpp>
 
@@ -27,7 +27,7 @@ void TCPCom::init(baseHostCX* owner) {
 };
 
 int TCPCom::connect(const char* host, const char* port, bool blocking) { 
-    struct addrinfo hints;
+    struct addrinfo hints{};
     struct addrinfo *gai_result, *rp;
     int sfd = -1;
     int gai;
@@ -52,10 +52,12 @@ int TCPCom::connect(const char* host, const char* port, bool blocking) {
     and) try the next address. */
 
     for (rp = gai_result; rp != NULL; rp = rp->ai_next) {
+        DEB_("TCPCom::connect[%s:%s]: gai info found",host,port);
+
         sfd = socket(rp->ai_family, rp->ai_socktype,
                     rp->ai_protocol);
 
-        DEB_("TCPCom::connect[%s:%s]: gai info found",host,port);
+        on_new_socket(sfd);
         // Keep it here: would be good if we can do something like this in the future
         
         if(nonlocal_src()) {
@@ -123,7 +125,7 @@ int TCPCom::connect(const char* host, const char* port, bool blocking) {
 
 int TCPCom::bind(unsigned short port) {
     int s;
-    sockaddr_storage sa;
+    sockaddr_storage sa{};
 
     sa.ss_family = bind_sock_family;
     
@@ -156,7 +158,10 @@ int TCPCom::bind(unsigned short port) {
 
 
 int TCPCom::accept ( int sockfd, sockaddr* addr, socklen_t* addrlen_ ) {
-    return ::accept(sockfd,addr,addrlen_);
+    int news = ::accept(sockfd,addr,addrlen_);
+    on_new_socket(news);
+
+    return news;
 }
 
 bool TCPCom::is_connected(int s) {
@@ -223,4 +228,12 @@ bool TCPCom::com_status() {
     // T_DUMS_("tcpcom_status_nok",1,"TCPCom::com_status: returning 0");
     DEBS_("TCPCom::com_status: returning 0");
     return false;    
+}
+
+void TCPCom::on_new_socket(int __fd) {
+    int optval = 1;
+    setsockopt(__fd, IPPROTO_TCP, TCP_NODELAY , &optval, sizeof optval);
+    setsockopt(__fd, IPPROTO_TCP, TCP_QUICKACK , &optval, sizeof optval);
+
+    baseCom::on_new_socket(__fd);
 }

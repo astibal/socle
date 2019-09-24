@@ -66,10 +66,12 @@ public:
     virtual bool is_connected(int s);
     virtual bool com_status();
 
+    void on_new_socket(int __fd) override;
+
 protected:
     int tcpcom_fd = 0;
-    unsigned int connect_sock_family = AF_UNSPEC;
-    unsigned int connect_sock_type = SOCK_STREAM;
+    int connect_sock_family = AF_UNSPEC;
+    int connect_sock_type = SOCK_STREAM;
     unsigned int bind_sock_family = AF_INET6;
     unsigned int bind_sock_type = SOCK_STREAM;
     unsigned int bind_sock_protocol = IPPROTO_TCP;

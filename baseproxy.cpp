@@ -141,7 +141,7 @@ void baseProxy::rpcadd(baseHostCX* cx) {
 
 
 void baseProxy::ldaadd(baseHostCX* cs) {
-    
+    cs->unblock();
     int s = cs->com()->translate_socket(cs->socket());
     
     com()->set_monitor(s);
@@ -154,6 +154,7 @@ void baseProxy::ldaadd(baseHostCX* cs) {
 
 
 void baseProxy::rdaadd(baseHostCX* cs) {
+    cs->unblock();
     int s = cs->com()->translate_socket(cs->socket());
     
     com()->set_monitor(s);

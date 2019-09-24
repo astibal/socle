@@ -1485,6 +1485,7 @@ void baseSSLCom<L4Proto>::accept_socket ( int sockfd )  {
 
     DIA___("SSLCom::accept_socket[%d]: attempt %d",sockfd,prof_accept_cnt);
 
+    L4Proto::on_new_socket(sockfd);
     L4Proto::accept_socket(sockfd);
 
     if(l4_proto() == SOCK_DGRAM && sockfd < 0) {
