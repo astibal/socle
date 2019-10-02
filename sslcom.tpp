@@ -1359,7 +1359,7 @@ void baseSSLCom<L4Proto>::init_server() {
 
     SSL_set_session(sslcom_ssl, NULL);
     
-    if(opt_right_no_tickets) {
+    if(opt_left_no_tickets) {
         SSL_set_options(sslcom_ssl,SSL_OP_NO_TICKET);
     }    
     
