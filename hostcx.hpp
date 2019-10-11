@@ -190,7 +190,9 @@ protected:
     bool rescan_out_flag_ = false;
     
 public:
-    
+
+    typedef enum { INIT, ACCEPTED, CONNECTING, CONNECTED, IO, CLOSING, CLOSED } fsm_t;
+
     baseCom* com() const { return com_; }
     inline void com(baseCom* c) { com_ = c; if(c != nullptr) {  com_->init(this); } else { DIAS_("baseHostCX:com: setting com_ to nullptr"); } };
 
@@ -238,8 +240,10 @@ public:
     bool write_waiting_for_peercom ();
 	inline void read_waiting_for_peercom (bool p) { read_waiting_for_peercom_ = p; }
 	inline void write_waiting_for_peercom (bool p) { write_waiting_for_peercom_ = p; }
-	inline void waiting_for_peercom (bool p) { read_waiting_for_peercom(p);
-        write_waiting_for_peercom(p); }
+	inline void waiting_for_peercom (bool p) {
+	    read_waiting_for_peercom(p);
+        write_waiting_for_peercom(p);
+	}
 	
 	// add the facility to indicate to owning object there something he should pay attention
 	// this us dummy implementation returning false
@@ -260,15 +264,15 @@ public:
 		}
 	};
     inline void remove_socket() { fds_ = 0; closing_fds_ = 0; };
-    
-	int socket() const { return fds_; };
-	int real_socket() const { if(com_) { return com_->translate_socket(fds_); } return socket(); }
 
-    bool is_connected();
-    int closed_socket() const { return closing_fds_; };
-	
-	void permanent(bool p) { permanent_=p; }
-	bool permanent(void) const { return permanent_; }
+    [[nodiscard]] int socket() const { return fds_; };
+    [[nodiscard]] int real_socket() const { if(com_) { return com_->translate_socket(fds_); } return socket(); }
+
+    [[nodiscard]] bool is_connected();
+    [[nodiscard]] int closed_socket() const { return closing_fds_; };
+
+    void permanent(bool p) { permanent_=p; }
+    [[nodiscard]] bool permanent() const { return permanent_; }
 
 	/*!
 	 Before the next *process()* is invoked, 
@@ -278,14 +282,14 @@ public:
 	void auto_finish(bool a) { auto_finish_ = a; } 
 	bool auto_finish() { return auto_finish_; }
 
-	bool reduced() const { return !( host_.size() && port_.size() ); } 
+    [[nodiscard]] bool reduced() const { return !( host_.size() && port_.size() ); }
 	int connect(bool blocking=false);
 	bool reconnect(int delay=5);
 	inline int reconnect_delay() { return reconnect_delay_; }
 	inline int idle_delay() { return idle_delay_; };
         inline void idle_delay(int d) { idle_delay_ = d; };
     
-	inline bool should_reconnect_now() { time_t now = time(NULL); return (now - last_reconnect_ > reconnect_delay() && !reduced()); }
+	inline bool should_reconnect_now() { time_t now = time(nullptr); return (now - last_reconnect_ > reconnect_delay() && !reduced()); }
 	
 	inline lockbuffer* readbuf() { return &readbuf_; }
 	inline lockbuffer* writebuf() { return &writebuf_; } 
