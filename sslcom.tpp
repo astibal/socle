@@ -142,10 +142,48 @@ std::string& baseSSLCom<L4Proto>::to_string()  {
     return hr_;
 }
 
+// server callback on internal cache miss
+template <class L4Proto>
+SSL_SESSION* baseSSLCom<L4Proto>::server_get_session_callback(SSL* ssl, const unsigned char* , int, int* ) {
+    SSL_SESSION* ret = nullptr;
+    auto log = logan::create("ssl.callback");
+
+    void* data = SSL_get_ex_data(ssl, baseSSLCom::extdata_index());
+    const char *name = "unknown_cx";
+    auto* com = static_cast<baseSSLCom*>(data);
+    if(com != nullptr) {
+        const char* n = com->hr();
+        if(n != nullptr) {
+            name = n;
+        }
+    }
+
+    _inf("lookup server session[%s]: SSL: 0x%x", name, ssl);
+    return ret;
+}
+template <class L4Proto>
+int baseSSLCom<L4Proto>::new_session_callback(SSL* ssl, SSL_SESSION* session) {
+    auto log = logan::create("ssl.callback");
+
+    void* data = SSL_get_ex_data(ssl, baseSSLCom::extdata_index());
+    const char *name = "unknown_cx";
+    auto* com = static_cast<baseSSLCom*>(data);
+    if(com != nullptr) {
+        const char* n = com->hr();
+        if(n != nullptr) {
+            name = n;
+        }
+    }
+
+    _inf("new session[%s]: SSL: 0x%x, SSL_SESSION: 0x%x", name, ssl, session);
+
+    return 1;
+}
+
+
+
 template <class L4Proto>
 void baseSSLCom<L4Proto>::ssl_info_callback(const SSL* s, int where, int ret) {
-
-
 
 #ifdef USE_OPENSSL11
     // dropping support for this here, new API masks out msg_callback_arg
@@ -163,7 +201,7 @@ void baseSSLCom<L4Proto>::ssl_info_callback(const SSL* s, int where, int ret) {
     }
 #endif
     const char *str;
-    auto log = logan::create("ssl");
+    auto log = logan::create("ssl.callback");
 
     int w = where& ~SSL_ST_MASK;
 
@@ -1185,7 +1223,7 @@ void baseSSLCom<L4Proto>::init_ssl_callbacks() {
     if(sslcom_ssl_extdata_index < 0) {
         sslcom_ssl_extdata_index = SSL_get_ex_new_index(0, (void*) "sslcom object", nullptr, nullptr, nullptr);
     }
-    SSL_set_ex_data(sslcom_ssl,sslcom_ssl_extdata_index,(void*)this);
+    SSL_set_ex_data(sslcom_ssl,sslcom_ssl_extdata_index, static_cast<void*>(this));
 
     if(! is_server()) {
         SSL_set_verify(sslcom_ssl,SSL_VERIFY_PEER,&ssl_client_vrfy_callback);
@@ -1197,9 +1235,9 @@ void baseSSLCom<L4Proto>::init_ssl_callbacks() {
 
                 std::lock_guard<std::recursive_mutex> l_(certstore()->lock());
 
-                _dia("[%s]: OCSP stapling enabled, mode %d",hr(),opt_ocsp_stapling_mode);
+                _dia("[%s]: OCSP stapling enabled, mode %d", hr(), opt_ocsp_stapling_mode);
                 SSL_set_tlsext_status_type(sslcom_ssl, TLSEXT_STATUSTYPE_ocsp);
-                SSL_CTX_set_tlsext_status_cb(sslcom_ctx,ocsp_resp_callback);
+                SSL_CTX_set_tlsext_status_cb(sslcom_ctx, ocsp_resp_callback);
                 SSL_CTX_set_tlsext_status_arg(sslcom_ctx, this);
             }
             else {

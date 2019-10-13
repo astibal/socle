@@ -42,14 +42,7 @@
 
 // Threading support
 
-#if defined(WIN32)
-    #define MUTEX_TYPE HANDLE
-    #define MUTEX_SETUP(x) (x) = CreateMutex(NULL, FALSE, NULL)
-    #define MUTEX_CLEANUP(x) CloseHandle(x)
-    #define MUTEX_LOCK(x) WaitForSingleObject((x), INFINITE)
-    #define MUTEX_UNLOCK(x) ReleaseMutex(x)
-    #define THREAD_ID GetCurrentThreadId( )
-#elif defined (_POSIX_THREADS)
+#if defined (_POSIX_THREADS)
     /* _POSIX_THREADS is normally defined in unistd.h if pthreads are available
        on your platform. */
 //     #define MUTEX_TYPE pthread_mutex_t
@@ -106,7 +99,14 @@ public:
     
     virtual std::string& to_string();
     std::string get_peer_sni() { return sslcom_peer_hello_sni().c_str(); } //return copy of SNI
-    
+
+    enum class client_state_t { NONE, INIT, PEER_CLIENTHELLO_WAIT , PEER_CLIENTHELLO_RECVD, CONNECTING, CONNECTED };
+    client_state_t client_state_ = client_state_t::NONE;
+
+    static int extdata_index() { return sslcom_ssl_extdata_index; };
+    static SSL_SESSION* server_get_session_callback(SSL* ssl, const unsigned char* , int, int* );
+    static int new_session_callback(SSL* ssl, SSL_SESSION* session);
+
 protected:
 
     logan_attached<baseSSLCom<L4Proto>> log;
@@ -298,7 +298,7 @@ public:
     bool auto_upgrade() { return auto_upgrade_; }
     void auto_upgrade(bool b) { auto_upgrade_ = b; }
     bool upgraded() { return auto_upgraded_; }
-    void upgraded(bool b) { if(upgraded() && b) { NOTS___("double upgrade detected"); } auto_upgraded_ = b; }
+    void upgraded(bool b) { if(upgraded() && b) { _not("double upgrade detected"); } auto_upgraded_ = b; }
     
     // set if waiting() should wait for peer hello.
     bool should_wait_for_peer_hello() { return should_wait_for_peer_hello_; }
@@ -378,17 +378,13 @@ public:
     bool opt_right_allow_rc4 = false;
     bool opt_right_allow_aes128 = true;
     bool opt_right_no_tickets = false;
-    
+
     bool opt_ocsp_stapling_enabled = false; // should we insist on OCSP response?
     int  opt_ocsp_stapling_mode = 0;        // 0 - allow all, log unverified. 1 - allow all, but don't allow unverified. 2 - as 1. but require all connections to have stapling reponse
     bool opt_ocsp_enforce_in_verify = false;     // stapling was not able to get status, we need use OCSP at the end of verify
-    #define SOCLE_OCSP_STAP_MODE_LOOSE   0
-    #define SOCLE_OCSP_STAP_MODE_STRICT  1
-    #define SOCLE_OCSP_STAP_MODE_REQUIRE 2 
+    int  opt_ocsp_mode = 0;
 
     int ocsp_cert_is_revoked = -1;
-    
-    int opt_ocsp_mode = 0;
     static int ocsp_explicit_check(baseSSLCom* com);
     static int ocsp_resp_callback_explicit(baseSSLCom* com, int required);
     
@@ -411,7 +407,7 @@ public:
                                                         // 1 - pass, don't provide any certificate to server
                                                         // 2 - bypass next connection
     
-    // verify status. Added also verify pseudostatus for client cert request.
+    // verify status. Added also verify pseudo-status for client cert request.
     typedef enum {  VERIFY_OK=0x0, 
                     UNKNOWN_ISSUER=0x1, 
                     SELF_SIGNED=0x2, 
@@ -520,8 +516,9 @@ typedef struct sess_cert_st
   
 #endif 
 
-
 #endif //USE_OPENSSL11
 
+#endif //SSLCOM_HPP
+
 #include <sslcom.tpp>
-#endif
+
