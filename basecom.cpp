@@ -20,6 +20,9 @@
 #include <hostcx.hpp>
 #include <internet.hpp>
 #include <linux/in6.h>
+#include <linux/netfilter_ipv4.h>
+#include <linux/netfilter_ipv6.h>
+
 
 int baseCom::poll_msec = 100;
 int baseCom::rescan_poll_multiplier = 2;
