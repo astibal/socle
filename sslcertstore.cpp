@@ -222,6 +222,10 @@ SSL_CTX* SSLFactory::client_ctx_setup(EVP_PKEY* priv, X509* cert, const char* ci
 
     SSL_CTX_sess_set_new_cb(ctx, SSLCom::new_session_callback);
 
+    #ifdef USE_OPENSSL111
+    SSL_CTX_set_keylog_callback(ctx, SSLCom::ssl_keylog_callback);
+    #endif
+
     return ctx;
 }
 
@@ -245,6 +249,9 @@ SSL_CTX* SSLFactory::client_dtls_ctx_setup(EVP_PKEY* priv, X509* cert, const cha
 
     SSL_CTX_set_session_cache_mode(ctx, SSL_SESS_CACHE_NO_INTERNAL);
 
+    #ifdef USE_OPENSSL111
+    SSL_CTX_set_keylog_callback(ctx, SSLCom::ssl_keylog_callback);
+    #endif
     return ctx;
 }
 
@@ -275,6 +282,9 @@ SSL_CTX* SSLFactory::server_ctx_setup(EVP_PKEY* priv, X509* cert, const char* ci
         ERRS__("SSLCom::server_ctx_setup: private key does not match the certificate public key\n");
         exit(5);
     }
+    #ifdef USE_OPENSSL111
+    SSL_CTX_set_keylog_callback(ctx, SSLCom::ssl_keylog_callback);
+    #endif
 
     return ctx;
 }
@@ -308,6 +318,10 @@ SSL_CTX* SSLFactory::server_dtls_ctx_setup(EVP_PKEY* priv, X509* cert, const cha
         ERRS__("SSLCom::server_dtls_ctx_setup: private key does not match the certificate public key\n");
         exit(5);
     }
+
+    #ifdef USE_OPENSSL111
+    SSL_CTX_set_keylog_callback(ctx, SSLCom::ssl_keylog_callback);
+    #endif
 
     return ctx;
 }

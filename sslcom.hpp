@@ -264,8 +264,11 @@ public:
     
     virtual void init_server();
     int upgrade_server_socket(int s);
-    
+
     bool sslkeylog = false;
+    // openssl API >= 1.1.1
+    static void ssl_keylog_callback(const SSL* ssl, const char* line);
+    // openssl API <=1.1.0
     void dump_keys();
 
     bool is_server() { return sslcom_server_; }

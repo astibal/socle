@@ -1584,11 +1584,13 @@ void baseSSLCom<L4Proto>::accept_socket ( int sockfd )  {
         if(SSL_session_reused(sslcom_ssl)) {
             flags_ |= HSK_REUSED;
         }
-        
+
+#ifndef USE_OPENSSL111
         if(sslkeylog) {
             dump_keys();
             sslkeylog = false;
         }
+#endif
         
     } else {
         DIA___("SSLCom::accept_socket[%d]: ret %d, need to call later.",sockfd,r);
@@ -1597,10 +1599,25 @@ void baseSSLCom<L4Proto>::accept_socket ( int sockfd )  {
 }
 
 template <class L4Proto>
+void baseSSLCom<L4Proto>::ssl_keylog_callback(const SSL* ssl, const char* line) {
+    void* data = SSL_get_ex_data(ssl, sslcom_ssl_extdata_index);
+    baseSSLCom* com = static_cast<baseSSLCom*>(data);
+
+    if(com && com->sslkeylog) {
+        LOGS_(loglevel(NOT,flag_add(iNOT,CRT|KEYS),&LOG_EXEXACT,LOG_FLRAW),line);
+    }
+}
+
+
+template <class L4Proto>
 void baseSSLCom<L4Proto>::dump_keys() {
     if(sslkeylog) {
+        std::string ret;
 
-#ifdef USE_OPENSSL11
+        #ifdef USE_OPENSSL111
+        // this should not be called with openssl1.1.1, which has its own keylog callback
+
+        #elif def USE_OPENSSL11
         unsigned char client_random[SSL3_RANDOM_SIZE];
         memset(client_random, 0, SSL3_RANDOM_SIZE);
 
@@ -1610,18 +1627,18 @@ void baseSSLCom<L4Proto>::dump_keys() {
         SSL_get_client_random(sslcom_ssl, client_random, SSL3_RANDOM_SIZE);
         SSL_SESSION_get_master_key(SSL_get_session(sslcom_ssl), master_key, SSL3_MASTER_SECRET_SIZE);
 
-        std::string ret = string_format("CLIENT_RANDOM %s %s",
+        ret = string_format("CLIENT_RANDOM %s %s",
                 hex_print(client_random, SSL3_RANDOM_SIZE).c_str(),
                 hex_print(master_key, SSL3_MASTER_SECRET_SIZE).c_str()
         );
-#else
-        std::string ret = string_format("CLIENT_RANDOM %s %s",
+
+        #else
+        ret = string_format("CLIENT_RANDOM %s %s",
                       hex_print(sslcom_ssl->s3->client_random, SSL3_RANDOM_SIZE).c_str(),
                       hex_print(sslcom_ssl->session->master_key, SSL3_MASTER_SECRET_SIZE).c_str()
         );
 
-#endif // USE_OPENSSL11
-
+        #endif // USE_OPENSSL11
 
         LOGS_(loglevel(NOT,flag_add(iNOT,CRT|KEYS),&LOG_EXEXACT,LOG_FLRAW),ret.c_str());
     }
@@ -1912,11 +1929,13 @@ ret_handshake baseSSLCom<L4Proto>::handshake() {
         store_session_if_needed();
     }
 
+#ifndef USE_OPENSSL111
     if(( op_code > 0 ) && sslkeylog) {
         // dump only successfully established connections
         dump_keys();
         sslkeylog = false;
     }
+#endif
 
     DIA___("SSLCom::handshake: %s finished on socket %d", op_descr, sslcom_fd);
     sslcom_waiting = false;
@@ -2795,11 +2814,13 @@ int baseSSLCom<L4Proto>::upgrade_client_socket(int sock) {
         forced_write(true);
 
         upgraded(true);
-        
+
+#ifndef USE_OPENSSL111
         if(sslkeylog) {
             dump_keys();
             sslkeylog = false;
-        }        
+        }
+#endif
     }
 
 
