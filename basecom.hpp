@@ -43,6 +43,7 @@ class baseHostCX;
 
 class baseCom {
 public:
+    static bool& GLOBAL_IO_BLOCKING() { static bool b = false; return b; }
     static bool debug_log_data_crc;
     
     friend class baseHostCX;
@@ -164,7 +165,7 @@ public:
     virtual baseCom* replicate() = 0;
 //     virtual std::string& name() = 0;
     
-    virtual int connect(const char* , const char* , bool = false) = 0;
+    virtual int connect(const char* , const char*) = 0;
     virtual int read(int __fd, void* __buf, size_t __n, int __flags) = 0;
     virtual int peek(int __fd, void* __buf, size_t __n, int __flags) = 0;
     virtual int write(int __fd, const void* __buf, size_t __n, int __flags) = 0;

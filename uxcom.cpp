@@ -20,7 +20,7 @@
 
 
 // obviously, port is ignored
-int UxCom::connect(const char* host, const char* noop_port, bool blocking) { 
+int UxCom::connect(const char* host, const char* noop_port) {
 
     const char* port = "";
     int sfd = -1;
@@ -38,7 +38,7 @@ int UxCom::connect(const char* host, const char* noop_port, bool blocking) {
     server.sun_family = connect_sock_family;
     strcpy(server.sun_path,host);
     
-    if (not blocking) {
+    if (not GLOBAL_IO_BLOCKING()) {
         unblock(sfd);
 
         if (::connect(sfd, (struct sockaddr *) &server, sizeof(struct sockaddr_un)) < 0) {

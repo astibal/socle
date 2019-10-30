@@ -120,19 +120,23 @@ baseHostCX::~baseHostCX() {
 }
 
 
-int baseHostCX::connect(bool blocking) {
+int baseHostCX::connect() {
+
+    if(! com()) {
+        return -1;
+    }
 
     opening(true);
 
-    DEB_("HostCX::connect[%s]: blocking=%d",c_name(),blocking);
-    fds_ = com()->connect(host_.c_str(),port_.c_str(),blocking);
+    DEB_("HostCX::connect[%s]: blocking=%d",c_name(), com()->GLOBAL_IO_BLOCKING());
+    fds_ = com()->connect(host_.c_str(),port_.c_str());
     error_ = false;
 
-    if (fds_ > 0 && blocking) {
+    if (fds_ > 0 && com()->GLOBAL_IO_BLOCKING()) {
         DEB_("HostCX::connect[%s]: blocking, connected successfully, socket %d",c_name(),fds_);
         opening(false);
     }
-    else if (blocking) {
+    else if (com()->GLOBAL_IO_BLOCKING()) {
         DEB_("HostCX::connect[%s]: blocking, failed!",c_name());
         opening(false);
     }

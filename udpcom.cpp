@@ -124,7 +124,7 @@ bool UDPCom::com_status() {
     return baseCom::com_status();
 }
 
-int UDPCom::connect(const char* host, const char* port, bool blocking) {
+int UDPCom::connect(const char* host, const char* port) {
     struct addrinfo hints;
     struct addrinfo *gai_result, *rp;
     int sfd = -1;
@@ -230,7 +230,7 @@ int UDPCom::connect(const char* host, const char* port, bool blocking) {
         //DEB_("connect[%d]: rp contains: %s/%s:%d", sfd, inet_family_str(fa).c_str(),rps.c_str(),port );
         
         ::connect(sfd,(sockaddr*)&udpcom_addr,sizeof(sockaddr));
-        if(!blocking) {
+        if(! GLOBAL_IO_BLOCKING() ) {
             unblock(sfd);
         }
         

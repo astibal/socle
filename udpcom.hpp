@@ -103,7 +103,7 @@ public:
     virtual void init(baseHostCX* owner);
     virtual baseCom* replicate() { return new UDPCom(); };
     
-    virtual int connect(const char* host, const char* port, bool blocking = false);
+    int connect(const char* host, const char* port) override;
     virtual int bind(unsigned short port);
     virtual int bind(const char* path) { return -1; };  
     virtual int accept ( int sockfd, sockaddr* addr, socklen_t* addrlen_ );

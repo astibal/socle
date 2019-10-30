@@ -283,7 +283,7 @@ public:
 	bool auto_finish() { return auto_finish_; }
 
     [[nodiscard]] bool reduced() const { return !( host_.size() && port_.size() ); }
-	int connect(bool blocking=false);
+	int connect();
 	bool reconnect(int delay=5);
 	inline int reconnect_delay() { return reconnect_delay_; }
 	inline int idle_delay() { return idle_delay_; };

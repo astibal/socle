@@ -35,8 +35,7 @@ template<class SubWorker>
 int ThreadedReceiverProxy<SubWorker>::workers_total = 2;
 
 template<class Worker, class SubWorker>
-ThreadedReceiver<Worker,SubWorker>::ThreadedReceiver(baseCom* c): baseProxy(c),
-threads_(NULL) {
+ThreadedReceiver<Worker,SubWorker>::ThreadedReceiver(baseCom* c): baseProxy(c), threads_(nullptr) {
     baseProxy::new_raw(true);
     
     if(version_check(get_kernel_version(),"3.4")) {

@@ -54,8 +54,8 @@ public:
     
     virtual baseCom* replicate() { return new UxCom(); };
     
-    virtual int connect(const char* host, const char* port, bool blocking = false);
-    virtual int bind(unsigned short port);  //this bind is deprecated, returning always -1. Use bind(const char*).
+    int connect(const char* host, const char* port) override;
+    int bind(unsigned short port) final;  //this bind is deprecated, returning always -1. Use bind(const char*).
     virtual int bind(const char* name);
     
     DECLARE_C_NAME("UxCom")

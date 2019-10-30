@@ -308,7 +308,7 @@ public:
     void should_wait_for_peer_hello(bool b) { should_wait_for_peer_hello_ = b; }
     socle::sref_vector_string& sni_filter_to_bypass() { return sni_filter_to_bypass_; }
     
-    int connect ( const char* host, const char* port, bool blocking = false ) override;
+    int connect( const char* host, const char* port) override;
 	int read ( int __fd, void* __buf, size_t __n, int __flags ) override;
 	int write ( int __fd, const void* __buf, size_t __n, int __flags ) override;
 	

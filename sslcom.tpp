@@ -2830,8 +2830,8 @@ int baseSSLCom<L4Proto>::upgrade_client_socket(int sock) {
 }
 
 template <class L4Proto>
-int baseSSLCom<L4Proto>::connect ( const char* host, const char* port, bool blocking )  {
-    int sock = L4Proto::connect( host, port, blocking );
+int baseSSLCom<L4Proto>::connect(const char* host, const char* port)  {
+    int sock = L4Proto::connect( host, port);
 
     DIA___("SSLCom::connect[%d]: %s connected",sock,L4Proto::name().c_str());
     sock = upgrade_client_socket(sock);

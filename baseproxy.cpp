@@ -1321,7 +1321,7 @@ int baseProxy::left_connect ( const char* host, const char* port, bool blocking)
 {
 	baseHostCX* cx = new_cx(host,port);
 	
-	int sock = cx->connect(blocking);
+	int sock = cx->connect();
         if(sock > 0) {
             _dia("baseProxy::left_connect: successfully created socket %d", sock);
             lpcadd(cx);
@@ -1336,7 +1336,7 @@ int baseProxy::left_connect ( const char* host, const char* port, bool blocking)
 int baseProxy::right_connect ( const char* host, const char* port, bool blocking)
 {
 	baseHostCX* cx = new_cx(host,port);
-        int sock = cx->connect(blocking);
+        int sock = cx->connect();
         if(sock > 0) {
             _dia("baseProxy::left_connect: successfully created socket %d", sock);
             rpcadd(cx);

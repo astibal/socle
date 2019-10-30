@@ -26,7 +26,7 @@ void TCPCom::init(baseHostCX* owner) {
     baseCom::init(owner); 
 };
 
-int TCPCom::connect(const char* host, const char* port, bool blocking) { 
+int TCPCom::connect(const char* host, const char* port) {
     struct addrinfo hints{};
     struct addrinfo *gai_result, *rp;
     int sfd = -1;
@@ -51,7 +51,7 @@ int TCPCom::connect(const char* host, const char* port, bool blocking) {
     If socket(2) (or connect(2)) fails, we (close the socket
     and) try the next address. */
 
-    for (rp = gai_result; rp != NULL; rp = rp->ai_next) {
+    for (rp = gai_result; rp != nullptr; rp = rp->ai_next) {
         DEB_("TCPCom::connect[%s:%s]: gai info found",host,port);
 
         sfd = socket(rp->ai_family, rp->ai_socktype,
@@ -78,7 +78,7 @@ int TCPCom::connect(const char* host, const char* port, bool blocking) {
             continue;
         }
         
-        if (not blocking) {
+        if (not GLOBAL_IO_BLOCKING()) {
             unblock(sfd);
 
             if (::connect(sfd, rp->ai_addr, rp->ai_addrlen) < 0) {
@@ -110,7 +110,7 @@ int TCPCom::connect(const char* host, const char* port, bool blocking) {
         ERR_("TCPCom::connect[%s:%s]: socket[%d]: connect failed",host,port,sfd);
     }
     
-    if (rp == NULL) {
+    if (rp == nullptr) {
         ERR_("TCPCom::connect[%s:%s]: socket[%d]: connect failed",host,port,sfd);
         return -2;
     }
