@@ -39,10 +39,10 @@ ThreadedReceiver<Worker,SubWorker>::ThreadedReceiver(baseCom* c): baseProxy(c), 
     baseProxy::new_raw(true);
     
     if(version_check(get_kernel_version(),"3.4")) {
-        DEBS_("Acceptor: kernel supports O_DIRECT");
+        _deb("Acceptor: kernel supports O_DIRECT");
         pipe2(sq__hint,O_DIRECT|O_NONBLOCK);
     } else {
-        WARS_("Acceptor: kernel doesn't support O_DIRECT");
+        _war("Acceptor: kernel doesn't support O_DIRECT");
         pipe2(sq__hint,O_NONBLOCK);
     } 
 }
@@ -75,24 +75,24 @@ bool ThreadedReceiver<Worker,SubWorker>::is_quick_port(int sock, short unsigned 
     
     //  if list is set, use it, otherwise use virtual sockets for everything than udp/443 (DTLS)
     if(get_quick_list() != nullptr) {
-        DUM_("ThreadedReceiver::is_quick_port[%d]: reading quick list",sock);
+        _dum("ThreadedReceiver::is_quick_port[%d]: reading quick list",sock);
         std::vector<int>& ref = *get_quick_list();
         for(int x: ref) {
             if(dport == x || 0 == x) {
-                DUM_("ThreadedReceiver::is_quick_port[%d]: port %d is quick",sock, dport);
+                _dum("ThreadedReceiver::is_quick_port[%d]: port %d is quick",sock, dport);
                 use_virtual_socket = true;
             } else {
-                DUM_("ThreadedReceiver::is_quick_port[%d]: port %d is cooked",sock, dport);
+                _dum("ThreadedReceiver::is_quick_port[%d]: port %d is cooked",sock, dport);
             }
         }
     }
     else {
         const int ex_port = 443;
         if(dport != ex_port) {
-            DUM_("ThreadedReceiver::is_quick_port[%d]: port %d is quick (default)",sock, dport);
+            _dum("ThreadedReceiver::is_quick_port[%d]: port %d is quick (default)",sock, dport);
             use_virtual_socket = true;
         } else {
-            DUM_("ThreadedReceiver::is_quick_port[%d]: port %d is cooked (default)",sock, dport);
+            _dum("ThreadedReceiver::is_quick_port[%d]: port %d is cooked (default)",sock, dport);
         }
     }
     
@@ -126,13 +126,13 @@ uint32_t ThreadedReceiver<Worker,SubWorker>::create_session_key6(sockaddr_storag
 template<class Worker, class SubWorker>
 void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
     
-    DIA_("ThreadedReceiver::on_left_new_raw[%d]: start",sock);
+    _dia("ThreadedReceiver::on_left_new_raw[%d]: start",sock);
 
     unsigned char dummy_buffer[32];
     int iter = 0;
     
     do {
-        DEB___("receiver read iteration %d",iter++);
+        _deb("receiver read iteration %d",iter++);
         
         unsigned char recv_buf_[2048];
         char cmbuf[256];
@@ -168,7 +168,7 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
         // iterate through all the control headers
         for ( struct cmsghdr* cmsg = CMSG_FIRSTHDR(&msg); cmsg != NULL; cmsg = CMSG_NXTHDR(&msg, cmsg))   {
 
-            DEB_("ThreadedReceiver::on_left_new_raw[%d]: ancillary data level=%d, type=%d",sock,cmsg->cmsg_level,cmsg->cmsg_type);
+            _deb("ThreadedReceiver::on_left_new_raw[%d]: ancillary data level=%d, type=%d",sock,cmsg->cmsg_level,cmsg->cmsg_type);
                 
             // ignore the control headers that don't match what we need .. SOL_IP 
             if (
@@ -187,7 +187,7 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
                 
                 use_virtual_socket = is_quick_port(sock, dport);
                 
-                DIA_("ThreadedReceiver::on_left_new_raw[%d]: datagram from: %s/%s:%u to %s/%s:%u (%s)", 
+                _dia("ThreadedReceiver::on_left_new_raw[%d]: datagram from: %s/%s:%u to %s/%s:%u (%s)",
                             sock, 
                             inet_family_str(src_family).c_str(),str_src_host.c_str(), sport,
                             inet_family_str(dst_family).c_str(),str_dst_host.c_str(), dport,
@@ -195,30 +195,30 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
                             );
                 
                 if(src_family == AF_INET) {
-                    DEBS_("session key: source socket is IPv4");
+                    _deb("session key: source socket is IPv4");
 
                     session_key = create_session_key4(&from,&orig);
                 }
                 else if(src_family == AF_INET6) {
-                    DEBS_("session key: source socket is IPv6");
+                    _deb("session key: source socket is IPv6");
 
                     session_key = create_session_key6(&from,&orig);
                 }
 
-                DEB_("ThreadedReceiver::on_left_new_raw[%d]: session key %d", sock, session_key );
+                _deb("ThreadedReceiver::on_left_new_raw[%d]: session key %d", sock, session_key );
                 break;
             }
         }
         
         if (!found_origdst) {
-            ERR_("ThreadedReceiver::on_left_new_raw[%d]: getting original destination failed, (cmsg->cmsg_type==IP_ORIGDSTADDR)",sock);
+            _err("ThreadedReceiver::on_left_new_raw[%d]: getting original destination failed, (cmsg->cmsg_type==IP_ORIGDSTADDR)",sock);
         } else {
 
-            DIA_("ThreadedReceiver::on_left_new_raw[%d]: new data for key %d",sock,session_key);
+            _dia("ThreadedReceiver::on_left_new_raw[%d]: new data for key %d",sock,session_key);
             
             DatagramCom* c = dynamic_cast<DatagramCom*>(com());
             if(c == nullptr) {
-                WAR_("ThreadedReceiver::on_left_new_raw[%d]: my com() is not Datagram storage!",sock);
+                _war("ThreadedReceiver::on_left_new_raw[%d]: my com() is not Datagram storage!",sock);
                 exit(1);
             }
             
@@ -233,7 +233,7 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
             
             if(it == DatagramCom::datagrams_received.end()) {
                 // new session key (new udp "connection")
-                DEB_("ThreadedReceiver::on_left_new_raw[%d]: inserting new session key in storage: %d",sock, session_key);
+                _deb("ThreadedReceiver::on_left_new_raw[%d]: inserting new session key in storage: %d",sock, session_key);
 
                 clash:
                 
@@ -268,32 +268,32 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
                         
                         int pton = inet_pton(AF_INET,str_src_host.c_str(),&ss_src.sin_addr);
                         if(pton != 1) {
-                            ERR___("inet_pton error for src: %d:%s",pton,string_error().c_str());
+                            _err("inet_pton error for src: %d:%s",pton,string_error().c_str());
                         } else {
                             char b[64]; memset(b,0,64);
                             inet_ntop(AF_INET,&ss_src.sin_addr,b,64);
                             
-                            DUM___("inet_pton  okay for src: %s", b);
+                            _dum("inet_pton  okay for src: %s", b);
                         } 
                         ss_src.sin_port = htons(sport); 
                         ss_src.sin_family = AF_INET;
 
                         pton = inet_pton(AF_INET,str_dst_host.c_str(),&ss_dst.sin_addr);
                         if( pton != 1) {
-                            ERR___("inet_pton error for dst: %d:%s",pton,string_error().c_str());
+                            _err("inet_pton error for dst: %d:%s",pton,string_error().c_str());
                         }else {
                             char b[64]; memset(b,0,64);
                             inet_ntop(AF_INET,&ss_dst.sin_addr,b,64);
                             
-                            DUM___("inet_pton  okay for dst: %s", b);
+                            _dum("inet_pton  okay for dst: %s", b);
                         } 
                         ss_dst.sin_port = htons(dport);
                         ss_dst.sin_family = AF_INET;
                         
                         ret_bin = ::bind (d.socket, (sockaddr*)&ss_dst, sizeof (struct sockaddr_in));
-                        if(ret_bin != 0) DIA___("ipv4 transparenting: bind error: %s",string_error().c_str()); // bind is not succeeding with already bound socket ... => this will create empbryonic connection
+                        if(ret_bin != 0) _dia("ipv4 transparenting: bind error: %s",string_error().c_str()); // bind is not succeeding with already bound socket ... => this will create empbryonic connection
                         ret_con = ::connect(d.socket,(sockaddr*)&ss_src,sizeof (struct sockaddr_in));
-                        if(ret_con != 0) ERR___("ipv4 transparenting: connect error: %s",string_error().c_str());
+                        if(ret_con != 0) _err("ipv4 transparenting: connect error: %s",string_error().c_str());
                         
                     } else {
 
@@ -311,23 +311,23 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
                         inet_pton(AF_INET6,str_dst_host.c_str(),&ss_dst); ss_dst.ss_family=AF_INET6; ((sockaddr_in6*)&ss_dst)->sin6_port = htons(dport);
 
                         ret_bin = ::bind (d.socket, (struct sockaddr*)&(d.dst), sizeof (struct sockaddr_storage));
-                        if(ret_bin != 0) DIA___("ipv6 transparenting: bind error: %s",string_error().c_str()); // bind is not succeeding with already bound socket ... => this will create empbryonic connection
+                        if(ret_bin != 0) _dia("ipv6 transparenting: bind error: %s",string_error().c_str()); // bind is not succeeding with already bound socket ... => this will create empbryonic connection
                         ret_con = ::connect(d.socket,(struct sockaddr*)&(d.src),sizeof (struct sockaddr_storage));
-                        if(ret_con != 0) ERR___("ipv6 transparenting: connect error: %s",string_error().c_str());
+                        if(ret_con != 0) _err("ipv6 transparenting: connect error: %s",string_error().c_str());
                     }
 
                 }
 
-                DIA___("ThreadedReceiver::on_left_new_raw[new %d]: datagram from: %s/%s:%u to %s/%s:%u", 
+                _dia("ThreadedReceiver::on_left_new_raw[new %d]: datagram from: %s/%s:%u to %s/%s:%u",
                             d.socket, 
                             inet_family_str(src_family).c_str(),str_src_host.c_str(), sport,
                             inet_family_str(dst_family).c_str(),str_dst_host.c_str(), dport
                             );            
                 
                 if(use_virtual_socket) {
-                    DIA___("ThreadedReceiver transparenting for inbound connection: connect=%d, bind=%d",ret_con,ret_bin);
+                    _dia("ThreadedReceiver transparenting for inbound connection: connect=%d, bind=%d",ret_con,ret_bin);
                 } else {
-                    DIA___("ThreadedReceiver using virtual socket %d",session_key);
+                    _dia("ThreadedReceiver using virtual socket %d",session_key);
                 }
                 
                 
@@ -385,9 +385,9 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
                 }
                 
                 if(clashed) {
-                    DIA_("ThreadedReceiver::on_left_new_raw[%d]: re-inserting clashed session key in storage: key=%d, bytes=%d",sock, session_key,n_it.rx.size());
+                    _dia("ThreadedReceiver::on_left_new_raw[%d]: re-inserting clashed session key in storage: key=%d, bytes=%d",sock, session_key,n_it.rx.size());
                 } else {
-                    DIA_("ThreadedReceiver::on_left_new_raw[%d]: inserting new session key in storage: key=%d, bytes=%d",sock, session_key,n_it.rx.size());
+                    _dia("ThreadedReceiver::on_left_new_raw[%d]: inserting new session key in storage: key=%d, bytes=%d",sock, session_key,n_it.rx.size());
                 }
                 push(session_key);
             }
@@ -406,13 +406,13 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
                 d_src = inet_ss_str(&o_it.src);
                 d_dst = inet_ss_str(&o_it.dst);
                 
-                DEB_("ThreadedReceiver::on_left_new_raw[%d]: key %d: clash test %s:%s vs. %s:%s", sock, session_key, s_src.c_str(),s_dst.c_str(),d_src.c_str(),d_dst.c_str());
+                _deb("ThreadedReceiver::on_left_new_raw[%d]: key %d: clash test %s:%s vs. %s:%s", sock, session_key, s_src.c_str(),s_dst.c_str(),d_src.c_str(),d_dst.c_str());
                                 
                 
                 if( s_src != d_src || s_dst != d_dst) { clashed_cond = true; }
                 
                 if(clashed_cond) {
-                    DIA_("ThreadedReceiver::on_left_new_raw[%d]: key %d: session clash with cx@%x!",sock, session_key,o_it.cx);
+                    _dia("ThreadedReceiver::on_left_new_raw[%d]: key %d: session clash with cx@%x!",sock, session_key,o_it.cx);
                     clashed = true;
                     clashed_cx = o_it.cx;
                     
@@ -425,8 +425,8 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
                 if(o_it.rx.size() != 0) {
                     // If there are data, we apparently can't catch up with the speed.
                     // replace current data. Application is not interested in old UDP datagrams.
-                    DIA___("ThreadedReceiver::on_left_new_raw[%d]: key %d: dropped %dB of non-proxied data",sock, session_key,o_it.rx.size());
-                    DEB___("                              data for key %d\n%s",session_key,hex_dump(o_it.rx,4).c_str());
+                    _dia("ThreadedReceiver::on_left_new_raw[%d]: key %d: dropped %dB of non-proxied data",sock, session_key,o_it.rx.size());
+                    _deb("                              data for key %d\n%s",session_key,hex_dump(o_it.rx,4).c_str());
                 }
                     
                 
@@ -449,19 +449,19 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
                     // mark target cx's socket as write-monitor, triggering proxy session.
                     if(o_it.cx->peercom()) {
                         int ps = o_it.cx->peer()->socket();
-                        DEB___("write socket hint to peer's socket: %d",ps);
+                        _deb("write socket hint to peer's socket: %d",ps);
                         o_it.cx->peercom()->set_write_monitor(ps); 
                     } else {
-                        ERRS___("write socket hint to peer's socket can't be set, peer or peercom doesn't exist!");
+                        _err("write socket hint to peer's socket can't be set, peer or peercom doesn't exist!");
                     } 
                 }
 /*                
                 UDPCom* uc = dynamic_cast<UDPCom*>(com()->master());
                 uc->in_virt_set.insert(session_key);*/
                     
-                DEB___("                          NEW data for key %d\n%s",session_key,hex_dump(o_it.rx,4).c_str());
+                _deb("                          NEW data for key %d\n%s",session_key,hex_dump(o_it.rx,4).c_str());
                 
-                DIA_("ThreadedReceiver::on_left_new_raw[%d]: existing key %d: %dB data buffered",sock, session_key,o_it.rx.size());
+                _dia("ThreadedReceiver::on_left_new_raw[%d]: existing key %d: %dB data buffered",sock, session_key,o_it.rx.size());
             }
         }
     } while(::recv(sock, dummy_buffer,32,O_NONBLOCK|MSG_PEEK) > 0);
@@ -469,7 +469,7 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
 
 template<class Worker, class SubWorker>
 void ThreadedReceiver<Worker,SubWorker>::on_right_new_raw(int s) {
-    DIA_("ThreadedReceiver::on_right_new: connection [%d] pushed to the queue",s);
+    _dia("ThreadedReceiver::on_right_new: connection [%d] pushed to the queue",s);
     push(s);
 
 }
@@ -484,7 +484,7 @@ int ThreadedReceiver<Worker,SubWorker>::create_workers(int count) {
     
     Worker::workers_total = nthreads;
     
-    DIA_("Detected %d cores to use.", nthreads);
+    _dia("Detected %d cores to use.", nthreads);
     
     threads_ = new std::thread*[nthreads];
     workers_ = new Worker*[nthreads];
@@ -494,10 +494,10 @@ int ThreadedReceiver<Worker,SubWorker>::create_workers(int count) {
         w->com()->nonlocal_dst(this->com()->nonlocal_dst());
         w->parent((baseProxy*)this);
         w->pollroot(true);
-        DIA_("ThreadedReceiver::create_workers setting worker's queue hint pipe socket %d",sq__hint[0]);
+        _dia("ThreadedReceiver::create_workers setting worker's queue hint pipe socket %d",sq__hint[0]);
         w->com()->set_hint_monitor(sq__hint[0]);        
         
-        DIA_("Created ThreadedWorkerProxy %x",w);
+        _dia("Created ThreadedWorkerProxy %x",w);
         workers_[i] = w;
         
         // also init threads pool
@@ -517,7 +517,7 @@ int ThreadedReceiver<Worker,SubWorker>::run() {
     for( unsigned int i = 0; i < nthreads; i++) {
         auto w = workers_[i];
         std::thread* ptr = new std::thread(&Worker::run,w);
-        DIA_("ThreadedReceiver::run: started new thread[%d]: ptr=%x, thread_id=%d",i,ptr,ptr->get_id())
+        _dia("ThreadedReceiver::run: started new thread[%d]: ptr=%x, thread_id=%d",i,ptr,ptr->get_id());
         threads_[i] = ptr;
     }
     
@@ -553,7 +553,7 @@ int ThreadedReceiver<Worker,SubWorker>::pop() {
 
     char dummy_buffer[1];
     ::read(sq__hint[0],dummy_buffer,1);
-    DIA_("ThreadedReceiver::pop_for_worker: clearing sq__hint %c",dummy_buffer[0]);
+    _dia("ThreadedReceiver::pop_for_worker: clearing sq__hint %c",dummy_buffer[0]);
 
     return s;
 }
@@ -576,11 +576,11 @@ int ThreadedReceiver<Worker, SubWorker>::pop_for_worker(int id) {
     if (((unsigned int)b) % Worker::workers_total == (unsigned int)id) {
         int r = sq_.back();
         sq_.pop_back();
-        DIA_("ThreadedReceiver::pop_for_worker: pop-ing %d for worker %d, queue size %d",r,id,sq_.size());
+        _dia("ThreadedReceiver::pop_for_worker: pop-ing %d for worker %d, queue size %d",r,id,sq_.size());
 
         char dummy_buffer[1];
         ::read(sq__hint[0],dummy_buffer,1);
-        DIA_("ThreadedReceiver::pop_for_worker: clearing sq__hint %c",dummy_buffer[0]);
+        _dia("ThreadedReceiver::pop_for_worker: clearing sq__hint %c",dummy_buffer[0]);
 
         return r;
     }
@@ -608,30 +608,30 @@ int ThreadedReceiverProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
         if (s > 0) {
 
             // this session key is for us!
-            DIA_("ThreadedReceiverProxy::handle_sockets_once: new data notification for %d", s);
+            _dia("ThreadedReceiverProxy::handle_sockets_once: new data notification for %d", s);
 
             if (((unsigned int) s) % workers_total == (unsigned int) worker_id_) {
-                DIA_("ThreadedReceiverProxy::%d is for me!", s);
+                _dia("ThreadedReceiverProxy::%d is for me!", s);
 
-                DIA_("ThreadedReceiverProxy::handle_sockets_once: DatagramCom::datagrams_received.size() = %d",
+                _dia("ThreadedReceiverProxy::handle_sockets_once: DatagramCom::datagrams_received.size() = %d",
                      DatagramCom::datagrams_received.size());
 
                 auto it_record = DatagramCom::datagrams_received.find(s);
 
                 if (it_record != DatagramCom::datagrams_received.end()) {
 
-                    DIA_("ThreadedReceiverProxy::handle_sockets_once[%d]: found in datagram pool", s);
+                    _dia("ThreadedReceiverProxy::handle_sockets_once[%d]: found in datagram pool", s);
 
                     Datagram &record = (*it_record).second;
 
-                    DEB_("Record dump: cx=0x%x dst=%s embryonic=%d real_socket=%d reuse=%d rx_size=0x%x socket=%d src=%s",
+                    _deb("Record dump: cx=0x%x dst=%s embryonic=%d real_socket=%d reuse=%d rx_size=0x%x socket=%d src=%s",
                          record.cx, inet_ss_str(&record.dst).c_str(), record.embryonic, record.real_socket,
                          record.reuse, record.rx.size(), record.socket, inet_ss_str(&record.src).c_str());
 
                     if (!record.reuse) {
                         //record.embryonic = false; // it's not embryonic anymore, when we pick it up!
 
-                        DIA_("ThreadedReceiverProxy::handle_sockets_once[%d]: embryonic connection, creating new CX with bound socket %d",
+                        _dia("ThreadedReceiverProxy::handle_sockets_once[%d]: embryonic connection, creating new CX with bound socket %d",
                              s, record.socket);
 
                         // create new cx
@@ -650,7 +650,7 @@ int ThreadedReceiverProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
 
 
                         if (cx_bcom == nullptr || cx_dcom == nullptr) {
-                            WAR_("ThreadedReceiverProxy::handle_sockets_once[%d]: new object's Com is not DatagramCom and baseCom",
+                            _war("ThreadedReceiverProxy::handle_sockets_once[%d]: new object's Com is not DatagramCom and baseCom",
                                  s);
                             delete cx;
 
@@ -658,7 +658,7 @@ int ThreadedReceiverProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
                             cx_bcom->nonlocal_dst(this->com()->nonlocal_dst());
                             cx_bcom->resolve_nonlocal_dst_socket(s);
 
-                            DIA_("ThreadedReceiverProxy::handle_sockets_once[%d]: CX created, bound socket %d ,nonlocal: %s:%u",
+                            _dia("ThreadedReceiverProxy::handle_sockets_once[%d]: CX created, bound socket %d ,nonlocal: %s:%u",
                                  s, record.socket, cx->com()->nonlocal_dst_host().c_str(),
                                  cx->com()->nonlocal_dst_port());
                             this->on_left_new(cx);
@@ -666,17 +666,17 @@ int ThreadedReceiverProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
 
 
                     } else {
-                        DIA_("ThreadedReceiverProxy::handle_sockets_once[%d]: already existing pseudo-connection with bound socket %d",
+                        _dia("ThreadedReceiverProxy::handle_sockets_once[%d]: already existing pseudo-connection with bound socket %d",
                              s, record.socket);
-//                         DIA_("ThreadedReceiverProxy::handle_sockets_once[%d]: what to do?",s);
+//                         _dia("ThreadedReceiverProxy::handle_sockets_once[%d]: what to do?",s);
                     }
                 }
 
             } else {
-                EXT_("ThreadedReceiverProxy::handle_sockets_once: %d belongs to someone else..", s);
+                _ext("ThreadedReceiverProxy::handle_sockets_once: %d belongs to someone else..", s);
             }
         } else if (s != 0) {
-            DIA_("ThreadedReceiverProxy::handle_sockets_once: new unknown data notification for %d", s);
+            _dia("ThreadedReceiverProxy::handle_sockets_once: new unknown data notification for %d", s);
         }
     }
 

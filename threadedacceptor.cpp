@@ -38,10 +38,10 @@ ThreadedAcceptor<Worker,SubWorker>::ThreadedAcceptor(baseCom* c): baseProxy(c),
 threads_(NULL) {
     baseProxy::new_raw(true);
     if(version_check(get_kernel_version(),"3.4")) {
-        DEBS_("Acceptor: kernel supports O_DIRECT");
+        _deb("Acceptor: kernel supports O_DIRECT");
         pipe2(sq__hint,O_DIRECT|O_NONBLOCK);
     } else {
-        WARS_("Acceptor: kernel doesn't support O_DIRECT");
+        _war("Acceptor: kernel doesn't support O_DIRECT");
         pipe2(sq__hint,O_NONBLOCK);
     } 
 }
@@ -70,13 +70,13 @@ ThreadedAcceptor<Worker,SubWorker>::~ThreadedAcceptor() {
 
 template<class Worker, class SubWorker>
 void ThreadedAcceptor<Worker,SubWorker>::on_left_new_raw(int s) {
-	DIA_("ThreadedAcceptor::on_left_new: connection [%d] pushed to the queue",s);
+	_dia("ThreadedAcceptor::on_left_new: connection [%d] pushed to the queue",s);
 	push(s);
 }
 
 template<class Worker, class SubWorker>
 void ThreadedAcceptor<Worker,SubWorker>::on_right_new_raw(int s) {
-	DIA_("ThreadedAcceptor::on_right_new: connection [%d] pushed to the queue",s);
+	_dia("ThreadedAcceptor::on_right_new: connection [%d] pushed to the queue",s);
 	push(s);
 
 }
@@ -92,7 +92,7 @@ int ThreadedAcceptor<Worker,SubWorker>::create_workers(int count) {
     
     Worker::workers_total = nthreads;
 	
-	DIA_("Detected %d cores to use.", nthreads);
+	_dia("Detected %d cores to use.", nthreads);
 	
 	threads_ = new std::thread*[nthreads];
 	workers_ = new Worker*[nthreads];
@@ -103,10 +103,10 @@ int ThreadedAcceptor<Worker,SubWorker>::create_workers(int count) {
 		w->parent((baseProxy*)this);
         w->pollroot(true);
         
-        DIA_("ThreadedAcceptor::create_workers setting worker's queue hint pipe socket %d",sq__hint[0]);
+        _dia("ThreadedAcceptor::create_workers setting worker's queue hint pipe socket %d",sq__hint[0]);
         w->com()->set_hint_monitor(sq__hint[0]);
 		
-		DIA_("Created ThreadedAcceptorProxy %x",w);
+		_dia("Created ThreadedAcceptorProxy %x",w);
 		workers_[i] = w;
 		
 		// also init threads pool
@@ -126,7 +126,7 @@ int ThreadedAcceptor<Worker,SubWorker>::run(void) {
 	for( unsigned int i = 0; i < nthreads; i++) {
 		auto w = workers_[i];
 		std::thread* ptr = new std::thread(&Worker::run,w);
-		DIA_("ThreadedAcceptor::run: started new thread[%d]: ptr=%x, thread_id=%d",i,ptr,ptr->get_id())
+		_dia("ThreadedAcceptor::run: started new thread[%d]: ptr=%x, thread_id=%d",i,ptr,ptr->get_id());
 		threads_[i] = ptr;
 	}
 	
@@ -162,7 +162,7 @@ int ThreadedAcceptor<Worker,SubWorker>::pop() {
 
     char dummy_buffer[1];
     ::read(sq__hint[0],dummy_buffer,1);
-    DIA_("ThreadedAcceptor::pop: clearing sq__hint %c",dummy_buffer[0]);
+    _dia("ThreadedAcceptor::pop: clearing sq__hint %c",dummy_buffer[0]);
 
     return s;
 }
@@ -174,7 +174,7 @@ int ThreadedAcceptorProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
 	
 	auto *p = (ThreadedAcceptor<ThreadedAcceptorProxy<SubWorker>,SubWorker> *)MasterProxy::parent();
 	if(p == nullptr) {
-		FATS_("PARENT is NULL");
+		_fat("PARENT is NULL");
 	} else {
 
         if (p->state().dead()) {
@@ -184,7 +184,7 @@ int ThreadedAcceptorProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
 
         int s = p->pop();
         if (s > 0) {
-            DIA_("ThreadedAcceptorProxy::run: removed from queue: 0x%016llx (socket %d)", s, s);
+            _dia("ThreadedAcceptorProxy::run: removed from queue: 0x%016llx (socket %d)", s, s);
 
             auto cx = this->new_cx(s);
             if (!cx->read_waiting_for_peercom()) {

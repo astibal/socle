@@ -808,7 +808,7 @@ void logger::log2_w_name(loglevel l, const char* f, int li, std::string name, co
 #define  _war  if(*log.level() >= WAR) log.war
 #define  _err  if(*log.level() >= ERR) log.err
 #define  _cri  if(*log.level() >= CRI) log.cri
-
+#define  _fat  if(*log.level() >= CRI) log.fat
 
 
 class logan;

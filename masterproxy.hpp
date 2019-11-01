@@ -29,15 +29,15 @@ protected:
     
 public:
     
-    MasterProxy(baseCom* c): baseProxy(c) {}
+    explicit MasterProxy(baseCom* c): baseProxy(c) {}
     
     std::set<baseProxy*>& proxies() { return proxies_; };
 	
-    virtual int prepare_sockets(baseCom*);
-	virtual int handle_sockets_once(baseCom*);	
-	virtual void shutdown();
+    int prepare_sockets(baseCom*) override;
+	int handle_sockets_once(baseCom*) override;
+	void shutdown() override;
     
-    virtual bool run_timers (void);
+    bool run_timers() override;
 
 	std::string hr();
 };

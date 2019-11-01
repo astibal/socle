@@ -45,7 +45,7 @@ bool MasterProxy::run_timers (void)
         for(baseProxy* p: proxies()) {
 
             if(!p) {
-                INFS___("null sub-proxy!!");
+                _inf("null sub-proxy!!");
                 continue;
             }
 
@@ -68,7 +68,7 @@ bool MasterProxy::run_timers (void)
 int MasterProxy::handle_sockets_once(baseCom* xcom) {
 
     int my_handle_returned = baseProxy::handle_sockets_once(xcom);
-    EXT_("handling own sockets: returned %d", my_handle_returned);
+    _ext("handling own sockets: returned %d", my_handle_returned);
     
     int r = 0;
     int proxies_handled= 0;
@@ -97,19 +97,19 @@ int MasterProxy::handle_sockets_once(baseCom* xcom) {
         }
     }
     
-    EXT_("MasterProxy::handle_sockets_once: returning %d, sub-proxies: handled=%d, shutdown=%d, deleted=%d",r,proxies_handled,proxies_shutdown,proxies_deleted);
+    _ext("MasterProxy::handle_sockets_once: returning %d, sub-proxies: handled=%d, shutdown=%d, deleted=%d",r,proxies_handled,proxies_shutdown,proxies_deleted);
     return r;
 }
 
 
 void MasterProxy::shutdown() {
 	
-	INFS_("MasterProxy::shutdown");
+	_inf("MasterProxy::shutdown");
 	baseProxy::shutdown();
 	
 	int i = 0;
 	for(auto ii: proxies()) {
-		INF_("MasterProxy::shutdown: slave[%d]",i);
+		_inf("MasterProxy::shutdown: slave[%d]",i);
 		ii->shutdown();
 		i++;
 		delete ii;
@@ -120,27 +120,27 @@ void MasterProxy::shutdown() {
 
 std::string MasterProxy::hr() {
 
-	std::string ret;
+	std::stringstream ss;
 	
-	ret += "Masterproxy:\n";
-	ret += baseProxy::hr();
+	ss << "Masterproxy:\n";
+    ss << baseProxy::hr();
 
 	if(proxies().size() > 0) {
-		ret += "Slaves:\n";
+        ss << "Slaves:\n";
 		
 		int i = 0;
 		for(auto ii: proxies()) {
 			
-			baseProxy* p = ii; 
-			
-			ret+= "slave-" + std::to_string(i) + ":\n";
-			ret+= p->hr();
-			ret+= "\n";
+			baseProxy* p = ii;
+
+            ss << "slave-" + std::to_string(i) + ":\n";
+            ss << p->hr();
+            ss << "\n";
 		}
 	}
 	else {
-		ret += "Slaves: <empty>";
+        ss << "Slaves: <empty>";
 	}
 	
-	return ret;
+	return ss.str();
 }
