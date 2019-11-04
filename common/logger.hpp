@@ -29,6 +29,7 @@
 #include <vector>
 #include <list>
 #include <map>
+#include <set>
 #include <functional>
 #include <algorithm>
 #include <iomanip>
@@ -944,10 +945,14 @@ public:
         return area_;
     }
 
+    using sub_area_t = std::set<std::string>;
+    const sub_area_t& sub_areas() const { return sub_areas_; };
+    inline void sub_area(std::string const& str) { sub_areas_.insert(str); };
 private:
     T* ptr_ = nullptr;
 
     std::string area_;
+    sub_area_t sub_areas_;
 };
 
 class logan_tracer : public logan_lite {
@@ -1152,6 +1157,20 @@ loglevel* logan_attached<T>::level() {
     if( ! area().empty() ) {
         if(! my_area_loglevel) {
             my_area_loglevel = logan::get()[area()];
+
+            // iterate subareas
+            if(! sub_areas().empty() ) {
+                for(auto const& suba: sub_areas()) {
+                    auto sa_level = logan::get()[suba];
+
+                    // sub_area with higher verbosity
+                    if( sa_level > my_area_loglevel) {
+
+                        // override area verbosity
+                        my_area_loglevel = sa_level;
+                    }
+                }
+            }
         }
         l_area = my_area_loglevel;
     }
