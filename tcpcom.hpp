@@ -62,7 +62,7 @@ public:
     void shutdown(int __fd) override {
         int r = ::shutdown(__fd,SHUT_RDWR);
         if(r > 0)
-            DIA_("%s::shutdown[%d]: %s",name().c_str(),__fd,string_error().c_str());
+            _dia("%s::shutdown[%d]: %s",name().c_str(),__fd,string_error().c_str());
     };
     
     void cleanup() override {};
