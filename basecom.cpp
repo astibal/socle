@@ -64,11 +64,11 @@ int baseCom::unblock(int s) {
 
     if (! (client_oldFlag & O_NONBLOCK)) {
         if (fcntl(s, F_SETFL, client_oldFlag | O_NONBLOCK) < 0) {
-            ERR_("Error setting socket %d as non-blocking",s);
+            _err("Error setting socket %d as non-blocking",s);
             
             return -1;
         } else {
-            DEB_("Setting socket %d as non-blocking",s);
+            _deb("Setting socket %d as non-blocking",s);
         }
     }
     
@@ -131,7 +131,7 @@ bool baseCom::resolve_socket(bool source, int s, std::string* target_host, std::
     }
     
     if(ret < 0) {
-        DIA_("baseCom::resolve_socket: %s failed!",op);
+        _dia("baseCom::resolve_socket: %s failed!",op);
         return false;
     } 
     else {
@@ -141,7 +141,7 @@ bool baseCom::resolve_socket(bool source, int s, std::string* target_host, std::
             inet_ntop(AF_INET, &(((struct sockaddr_in*) ptr_peer_info)->sin_addr),orig_host, INET_ADDRSTRLEN);
             orig_port = ntohs(((struct sockaddr_in*) ptr_peer_info)->sin_port);
             
-            DEB_("baseCom::resolve_socket(ipv4): %s returns %s:%d",op,orig_host,orig_port);
+            _deb("baseCom::resolve_socket(ipv4): %s returns %s:%d",op,orig_host,orig_port);
             
             l3_proto(AF_INET);
         } 
@@ -149,14 +149,14 @@ bool baseCom::resolve_socket(bool source, int s, std::string* target_host, std::
             inet_ntop(AF_INET6, &(((struct sockaddr_in6*) ptr_peer_info)->sin6_addr), orig_host, INET6_ADDRSTRLEN);
             orig_port = ntohs(((struct sockaddr_in6*) ptr_peer_info)->sin6_port);
             
-            DEB_("baseCom::resolve_socket(ipv6): %s returns %s:%d",op,orig_host,orig_port);
+            _deb("baseCom::resolve_socket(ipv6): %s returns %s:%d",op,orig_host,orig_port);
 
             l3_proto(AF_INET6);
         }
 
         std::string mapped4_temp = orig_host;
         if(mapped4_temp.find("::ffff:") == 0) {
-            DEBS_("baseCom::resolve_socket: mapped IPv4 detected, removing mapping prefix");
+            _deb("baseCom::resolve_socket: mapped IPv4 detected, removing mapping prefix");
             mapped4_temp = mapped4_temp.substr(7);
             
             l3_proto(AF_INET);
@@ -192,12 +192,12 @@ bool baseCom::resolve_nonlocal_dst_socket(int sock) {
 
 int baseCom::poll() {
     
-    EXTS_("baseCom::poll: called");
+    _ext("baseCom::poll: called");
     //int r = ::select( poll_sockmax + 1, &read_socketSet, &write_socketSet, NULL, &n_tv);
     int r = poller.wait(poll_msec);
-    EXT_("baseCom::poll: poller returned %d",r);
+    _ext("baseCom::poll: poller returned %d",r);
     if (r < 0) {
-        DIA_("baseCom::poll: returned by poll: %s",string_error().c_str());
+        _dia("baseCom::poll: returned by poll: %s",string_error().c_str());
     }
     
     poll_sockmax = 0;
@@ -214,7 +214,7 @@ void baseCom::close(int __fd) {
         shutdown(__fd);
         
         int r = ::close(__fd);
-        if(r < 0) DIA_("baseCom::close[%d]: error: %s",__fd, string_error().c_str());
+        if(r < 0) _dia("baseCom::close[%d]: error: %s",__fd, string_error().c_str());
     }
 }
 

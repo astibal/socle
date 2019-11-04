@@ -86,7 +86,9 @@ public:
     int error_flags() { return error_flag_; };    
     inline void error(baseCom::err_flags e) { error_flag_ = e;}
     
-    baseCom() {}
+    baseCom() {
+        log = logan_attached<baseCom>(this, "com");
+    }
     virtual ~baseCom() {};
     virtual std::string flags_str() { return "0"; };
     virtual std::string full_flags_str();
@@ -150,8 +152,8 @@ public:
     bool forced_read_reset() { bool r = forced_read_; if (!forced_read_always_) { forced_read_ = false; } return r; }
     bool forced_write_reset() { bool r = forced_write_; if (!forced_write_always_) {forced_write_ = false; } return r; }
     
-    virtual bool com_status() { DUMS_("baseCom::com_status: returning 1"); return true; }
-    inline std::string& log() { return log_buffer_; };       
+    virtual bool com_status() { _dum("baseCom::com_status: returning 1"); return true; }
+    inline std::string& logbuf() { return log_buffer_; };
     
     baseCom* peer() { return peer_; }
     
@@ -194,7 +196,7 @@ public:
         /* do nothing */
     }
 
-    static int unblock(int s);
+    int unblock(int s);
     static inline int is_blocking(int s) { return !(::fcntl(s, F_GETFL, 0) & O_NONBLOCK);  }
     
     virtual void cleanup() = 0;
@@ -212,13 +214,13 @@ public:
     virtual bool in_idleset(int s) { return master()->poller.in_idle_set(s); };
 
     inline void set_monitor(int s) { 
-        DIA_("basecom::set_monitor: called to add %d",s);
+        _dia("basecom::set_monitor: called to add %d",s);
         if (s > 0 ) { 
             master()->poller.add(s,EPOLLIN); 
         } 
     };
     inline void unset_monitor(int s) { 
-        DIA_("basecom::unset_monitor: called to remove %d",s);
+        _dia("basecom::unset_monitor: called to remove %d",s);
         if (s > 0 ) { 
             master()->poller.del(s);
             master()->poller.cancel_rescan_in(s);
@@ -226,39 +228,39 @@ public:
         } 
     };    
     inline void set_write_monitor(int s) {
-        DIA_("basecom::set_write_monitor: called to add EPOLLOUT %d",s);
+        _dia("basecom::set_write_monitor: called to add EPOLLOUT %d",s);
         if (s > 0 ) { 
             master()->poller.modify(s,EPOLLIN|EPOLLOUT); 
         } 
     }
     inline void set_write_monitor_only(int s) {
-        DIA_("basecom::set_write_monitor: called to add EPOLLOUT %d only",s);
+        _dia("basecom::set_write_monitor: called to add EPOLLOUT %d only",s);
         if (s > 0 ) { 
             master()->poller.modify(s,EPOLLOUT); 
         } 
     }    
 
     inline void change_monitor(int s, int new_mode) { 
-        DIA_("basecom::change_monitor: change mode of %d to %d",s, new_mode);
+        _dia("basecom::change_monitor: change mode of %d to %d",s, new_mode);
         if (s > 0 ) { 
             master()->poller.modify(s, new_mode);
         } 
     };       
     
     inline void set_hint_monitor(int s) {
-        DIA_("basecom::set_hint_monitor: called: %d",s);
+        _dia("basecom::set_hint_monitor: called: %d",s);
         master()->poller.hint_socket(s); 
     }
 
     inline void set_poll_handler(int s, epoll_handler* h) {
-        DIA_("basecom::set_poll_handler: called to add %d monitored by %x",s,h);
+        _dia("basecom::set_poll_handler: called to add %d monitored by %x",s,h);
         master()->poller.set_handler(s,h);
     };
 
     inline epoll_handler* get_poll_handler(int s) {
-        DEB_("basecom::set_poll_handler: called to get handler of %d",s);
+        _deb("basecom::set_poll_handler: called to get handler of %d",s);
         epoll_handler* h =  master()->poller.get_handler(s);
-        DIA_("basecom::set_poll_handler: handler of %d is 0x%x",s,h);
+        _dia("basecom::set_poll_handler: handler of %d is 0x%x",s,h);
         return h;
     };
 
@@ -275,14 +277,14 @@ public:
 
 
     inline void rescan_read(int s) {
-        DIA_("basecom::rescan_read: called to rescan EPOLLIN %d",s);
+        _dia("basecom::rescan_read: called to rescan EPOLLIN %d",s);
         if (s > 0 ) { 
             master()->poller.rescan_in(s);
         } 
     }
 
     inline void rescan_write(int s) {
-        DIA_("basecom::rescan_read: called to rescan EPOLLOUT %d",s);
+        _dia("basecom::rescan_read: called to rescan EPOLLOUT %d",s);
         if (s > 0 ) { 
             master()->poller.rescan_out(s);
         } 
@@ -328,6 +330,9 @@ public:
     DECLARE_LOGGING(to_string);
     
     virtual const std::string shortname() const { return std::string("com"); }
+
+protected:
+    logan_attached<baseCom> log;
 };
 
 # endif
