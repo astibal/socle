@@ -109,8 +109,6 @@ public:
 
 protected:
 
-    logan_attached<baseSSLCom<L4Proto>> log;
-
 	SSL_CTX* sslcom_ctx = nullptr;
 	SSL*     sslcom_ssl = nullptr;
 	BIO*	 sslcom_sbio = nullptr;
