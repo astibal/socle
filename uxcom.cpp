@@ -30,7 +30,7 @@ int UxCom::connect(const char* host, const char* noop_port) {
 
 
     if (sfd == -1) {
-        DEB_("UxCom::connect[%s:%s]: socket[%d]: failed to create socket",host,port,sfd);
+        _deb("UxCom::connect[%s:%s]: socket[%d]: failed to create socket",host,port,sfd);
         return sfd;
     }
 
@@ -43,12 +43,12 @@ int UxCom::connect(const char* host, const char* noop_port) {
 
         if (::connect(sfd, (struct sockaddr *) &server, sizeof(struct sockaddr_un)) < 0) {
             if ( errno == EINPROGRESS ) {
-                DEB_("UxCom::connect[%s:%s]: socket[%d]: connnect errno: EINPROGRESS",host,port,sfd);
+                _deb("UxCom::connect[%s:%s]: socket[%d]: connnect errno: EINPROGRESS",host,port,sfd);
                 
             } else {
                 close(sfd);
                 sfd = 0;
-                NOT_("UxCom::connect[%s:%s]: socket[%d]: connnect errno: %s",host,port,sfd,strerror(errno));
+                _not("UxCom::connect[%s:%s]: socket[%d]: connnect errno: %s",host,port,sfd,strerror(errno));
             }
 
         }
@@ -61,9 +61,9 @@ int UxCom::connect(const char* host, const char* noop_port) {
     }
 
     if(sfd == 0) {
-        ERR_("UxCom::connect[%s:%s]: socket[%d]: connect failed",host,port,sfd);
+        _err("UxCom::connect[%s:%s]: socket[%d]: connect failed",host,port,sfd);
     } else {
-        DUM_("UxCom::connect[%s:%s]: socket[%d]: connect ok",host,port,sfd);
+        _dum("UxCom::connect[%s:%s]: socket[%d]: connect ok",host,port,sfd);
     }
 
     tcpcom_fd = sfd;
@@ -73,7 +73,7 @@ int UxCom::connect(const char* host, const char* noop_port) {
 };
 
 int UxCom::bind(short unsigned int port) {
-    ERR_("UxCom::bind(int): bind failed, cannot bind to any port number",port);
+    _err("UxCom::bind(int): bind failed, cannot bind to any port number",port);
     return -1;
 }
 
