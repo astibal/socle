@@ -50,6 +50,8 @@ public:
         bind_sock_family = AF_UNIX;
         bind_sock_type = SOCK_STREAM;
         bind_sock_protocol = 0;
+
+        log.sub_area("com.unix");
     };
     
     virtual baseCom* replicate() { return new UxCom(); };

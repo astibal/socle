@@ -96,7 +96,12 @@ public:
 
 class UDPCom : public virtual baseCom, public DatagramCom {
 public:
-    UDPCom(): baseCom() { l4_proto(SOCK_DGRAM); bind_sock_family = default_sock_family; };
+    UDPCom(): baseCom() {
+        l4_proto(SOCK_DGRAM);
+        bind_sock_family = default_sock_family;
+
+        log.sub_area("com.udp");
+    };
     
     static std::string udpcom_name_;
     

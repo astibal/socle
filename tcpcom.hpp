@@ -38,7 +38,10 @@
 
 class TCPCom : public virtual baseCom {
 public:
-    TCPCom(): baseCom() { l4_proto(SOCK_STREAM); };
+    TCPCom(): baseCom() {
+        l4_proto(SOCK_STREAM);
+        log.sub_area("com.tcp");
+    };
     
     void init(baseHostCX* owner) override;
     baseCom* replicate() override { return new TCPCom(); };
