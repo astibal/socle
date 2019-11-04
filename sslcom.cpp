@@ -8,10 +8,18 @@ void locking_function ( int mode, int n, const char * file, int line )  {
 
     if ( mode & CRYPTO_LOCK ) {
         MUTEX_LOCK ( mutex_buf[n] );
-        DUM_("SSL threading: locked mutex %u for thread %u (%s:%d)",n,id_function(),file,line);
+
+        #ifdef MORE_LOGGING
+            auto log = logan::create("com.ssl.threads");
+            _dum("SSL threading: locked mutex %u for thread %u (%s:%d)",n,id_function(),file,line);
+        #endif
     } else {
         MUTEX_UNLOCK ( mutex_buf[n] );
-        DUM_("SSL threading: unlocked mutex %u from thread %u (%s:%d)",n,id_function(),file,line);
+
+        #ifdef MORE_LOGGING
+            auto log = logan::create("com.ssl.threads");
+            _dum("SSL threading: unlocked mutex %u from thread %u (%s:%d)",n,id_function(),file,line);
+        #endif
     }
 }
 
@@ -20,7 +28,10 @@ unsigned long id_function ( void ) {
     std::hash<std::thread::id> h;
     unsigned long id = ( unsigned long ) h(std::this_thread::get_id());
 
-    DUM_("SSL threading: id_function: returning %u",id);
+    #ifdef MORE_LOGGING
+        auto log = logan::create("com.ssl.threads");
+        _dum("SSL threading: id_function: returning %u",id);
+    #endif
 
     return id;
 }
@@ -55,14 +66,15 @@ static void dyn_destroy_function(struct CRYPTO_dynlock_value *l,
 
 #pragma GCC diagnostic pop
 
-int THREAD_setup ( void ) {
+int THREAD_setup() {
+    auto log = logan::create("com.ssl.threads");
 
-#ifndef USE_OPENSSL11
+    #ifndef USE_OPENSSL11
     int i;
     mutex_buf = new MUTEX_TYPE[CRYPTO_num_locks()];
 
     if ( !mutex_buf ) {
-        FATS_("OpenSSL threading support: cannot allocate mutex buffer");
+        _fat("OpenSSL threading support: cannot allocate mutex buffer");
         return 0;
     }
     
@@ -76,24 +88,24 @@ int THREAD_setup ( void ) {
     CRYPTO_set_dynlock_lock_callback(dyn_lock_function);
     CRYPTO_set_dynlock_destroy_callback(dyn_destroy_function);
 
-    DIAS_("OpenSSL threading support: enabled");
+    _dia("OpenSSL threading support: enabled");
 
-    DIAS_("OpenSSL: loading error strings");
+    _dia("OpenSSL: loading error strings");
     SSL_load_error_strings();
 
-    DIAS_("OpenSSL: loading algorithms");
+    _dia("OpenSSL: loading algorithms");
     SSLeay_add_ssl_algorithms();
 
-#else
-    DIAS_("OpenSSL: openssl1.1.x detected, using its own locking mechanisms.");
-#endif
+    #else
+    _dia("OpenSSL: openssl1.1.x detected, using its own locking mechanisms.");
+    #endif
 
     return 1;
 }
 
-int THREAD_cleanup ( void ) {
+int THREAD_cleanup() {
 
-#ifndef USE_OPENSSL11
+    #ifndef USE_OPENSSL11
     int i;
     if ( !mutex_buf ) {
         return 0;
@@ -110,7 +122,7 @@ int THREAD_cleanup ( void ) {
     
     delete[] mutex_buf;
     mutex_buf = NULL;
-#endif
+    #endif
 
     return 1;
 }

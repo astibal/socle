@@ -146,7 +146,7 @@ std::string& baseSSLCom<L4Proto>::to_string()  {
 template <class L4Proto>
 SSL_SESSION* baseSSLCom<L4Proto>::server_get_session_callback(SSL* ssl, const unsigned char* , int, int* ) {
     SSL_SESSION* ret = nullptr;
-    auto log = logan::create("ssl.callback");
+    auto log = logan::create("com.ssl.callback.session");
 
     void* data = SSL_get_ex_data(ssl, baseSSLCom::extdata_index());
     const char *name = "unknown_cx";
@@ -163,7 +163,7 @@ SSL_SESSION* baseSSLCom<L4Proto>::server_get_session_callback(SSL* ssl, const un
 }
 template <class L4Proto>
 int baseSSLCom<L4Proto>::new_session_callback(SSL* ssl, SSL_SESSION* session) {
-    auto log = logan::create("ssl.callback");
+    auto log = logan::create("com.ssl.callback.session");
 
     void* data = SSL_get_ex_data(ssl, baseSSLCom::extdata_index());
     const char *name = "unknown_cx";
@@ -201,7 +201,7 @@ void baseSSLCom<L4Proto>::ssl_info_callback(const SSL* s, int where, int ret) {
     }
 #endif
     const char *str;
-    auto log = logan::create("ssl.callback");
+    auto log = logan::create("com.ssl.callback.info");
 
     int w = where& ~SSL_ST_MASK;
 
@@ -264,7 +264,7 @@ void baseSSLCom<L4Proto>::ssl_msg_callback(int write_p, int version, int content
 
     const char *name = "unknown_cx";
 
-    auto log = logan::create("ssl");
+    auto log = logan::create("com.ssl.callback.msg");
 
     baseSSLCom* com = static_cast<baseSSLCom*>(arg);
     if(com != nullptr) {
@@ -402,7 +402,7 @@ int baseSSLCom<L4Proto>::check_server_dh_size(SSL* ssl) {
     return 1024;
 #else
 
-    auto log = logan::create("ssl");
+    auto log = logan::create("com.ssl.callback.dh");
 
     _deb("Checking peer DH parameters:");
     if(ssl != nullptr) {
@@ -452,7 +452,7 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx) {
     int idx = SSL_get_ex_data_X509_STORE_CTX_idx();
     int ret = ok;
 
-    auto log = logan::create("ssl");
+    auto log = logan::create("com.ssl.callback.verify");
 
     _deb("SSLCom::ssl_client_vrfy_callback: data index = %d, ok = %d, depth = %d",idx,ok,depth);
 
@@ -660,7 +660,7 @@ long int baseSSLCom<L4Proto>::log_if_error2(unsigned int level, const char* pref
     do {
         if(err2 != 0) {
 
-            auto log = logan::create("ssl");
+            auto log = logan::create("com.ssl");
 
             log.log(loglevel(level,0), "%s: error code:%u:%s", prefix, err2, ERR_error_string(err2,nullptr));
             err2 = ERR_get_error();
@@ -683,7 +683,7 @@ DH* baseSSLCom<L4Proto>::ssl_dh_callback(SSL* s, int is_export, int key_length) 
         }
     }
 
-    auto log = logan::create("ssl");
+    auto log = logan::create("com.ssl.callback.dh");
 
     _dia("[%s]: SSLCom::ssl_dh_callback: %d bits requested",name,key_length);
     switch(key_length) {
@@ -720,7 +720,7 @@ EC_KEY* baseSSLCom<L4Proto>::ssl_ecdh_callback(SSL* s, int is_export, int key_le
         }
     }
 
-    auto log = logan::create("ssl");
+    auto log = logan::create("com.ssl.callback.ecdh");
     _dia("[%s]: SSLCom::ssl_ecdh_callback: %d bits requested", name, key_length);
     return nullptr;
 }
@@ -728,7 +728,7 @@ EC_KEY* baseSSLCom<L4Proto>::ssl_ecdh_callback(SSL* s, int is_export, int key_le
 template <class L4Proto>
 int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
     int is_revoked = -1;
-    auto log = logan::create("ssl");
+    auto log = logan::create("com.ssl.ocsp");
 
     if(com != nullptr) {
 
