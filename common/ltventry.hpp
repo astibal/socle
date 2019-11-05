@@ -115,7 +115,14 @@ public:
 	//FIXME: return single string (hr = human readable)
 	std::string hr(int=0);
 	
-        LTVEntry* search(const std::vector<int>&);
+    LTVEntry* search(const std::vector<int>&);
+
+    static logan_lite& get_log() {
+         static logan_lite l = logan_lite();
+         l.topic("internal.ltv");
+
+         return l;
+    }
 };
 
 #endif // LTVENTRY_HPP
