@@ -24,10 +24,10 @@
 #include <baseproxy.hpp>
 #include <lrproxy.hpp>
 
-LRProxy::LRProxy(baseCom* c) : baseProxy(c) {
+SimpleLRProxy::SimpleLRProxy(baseCom* c) : baseProxy(c) {
 }
 
-void LRProxy::on_left_bytes(baseHostCX* left) {
+void SimpleLRProxy::on_left_bytes(baseHostCX* left) {
 	_deb("LRProxy::on_left_bytes[%d]",left->socket());
 
 	
@@ -46,7 +46,7 @@ void LRProxy::on_left_bytes(baseHostCX* left) {
 	left->finish();
 };
 
-void LRProxy::on_right_bytes(baseHostCX* right) {
+void SimpleLRProxy::on_right_bytes(baseHostCX* right) {
 	_deb("LRProxy::on_right_bytes[%d]",right->socket());
 	for(auto j : left_sockets) {
 		// move from right read buffer -> left write buffer

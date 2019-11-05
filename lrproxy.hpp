@@ -25,16 +25,12 @@
 #include <buffer.hpp>
 
 
-class LRProxy: public baseProxy {
-	protected:
-		void write_left_right();
-		void write_right_left();
+class SimpleLRProxy: public baseProxy {
+	public:
+		explicit SimpleLRProxy(baseCom* c);
 		
-	public: 
-		LRProxy(baseCom* c);
-		
-		virtual void on_left_bytes(baseHostCX*);
-		virtual void on_right_bytes(baseHostCX*);
+		void on_left_bytes(baseHostCX*) override;
+		void on_right_bytes(baseHostCX*) override;
 };
 
 #endif
