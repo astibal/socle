@@ -188,13 +188,14 @@ protected:
 
     bool rescan_in_flag_ = false;
     bool rescan_out_flag_ = false;
-    
+
+    logan_lite log = logan_lite("proxy");
 public:
 
     typedef enum { INIT, ACCEPTED, CONNECTING, CONNECTED, IO, CLOSING, CLOSED } fsm_t;
 
     baseCom* com() const { return com_; }
-    inline void com(baseCom* c) { com_ = c; if(c != nullptr) {  com_->init(this); } else { DIAS_("baseHostCX:com: setting com_ to nullptr"); } };
+    inline void com(baseCom* c) { com_ = c; if(c != nullptr) {  com_->init(this); } else { _deb("baseHostCX:com: setting com_ to nullptr"); } };
 
     inline Proxy* parent_proxy() const { return parent_proxy_; };
     inline unsigned char parent_flag() const { return parent_flag_; }
