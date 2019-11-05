@@ -56,7 +56,7 @@ protected:
         bool write_right_neck_ = false;
 
         inline bool dead() const { return dead_; }
-        inline void dead(bool d) { dead_ = d; /* might be handy sometimes. if(dead_) { INF_("dead bt: %s",bt().c_str()); } */ }
+        inline void dead(bool d) { dead_ = d; /* might be handy sometimes. if(dead_) { _inf("dead bt: %s",bt().c_str()); } */ }
 
         inline bool write_left_bottleneck() const { return  write_left_neck_; }
         void write_left_bottleneck(bool n) { write_left_neck_ = n; }
