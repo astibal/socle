@@ -38,6 +38,16 @@
 
 namespace inet {
 
+    struct Factory {
+        static const logan_lite& log() {
+            static logan_lite l;
+            l.topic("inet");
+            l.level(NON);
+
+            return l;
+        }
+    };
+
     std::vector<std::string> dns_lookup(const std::string &host_name, int ipv=4); //ipv: default=4
     bool is_ipv6_address(const std::string& str);
     bool is_ipv4_address(const std::string& str);

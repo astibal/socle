@@ -7,6 +7,8 @@ namespace inet {
     {
         std::vector<std::string> output;
 
+        auto log = Factory::log();
+
         struct addrinfo hints, *res, *p;
         int status, ai_family;
         char ip_address[INET6_ADDRSTRLEN];
@@ -17,14 +19,14 @@ namespace inet {
         hints.ai_family = ai_family;
         hints.ai_socktype = SOCK_STREAM;
 
-        if ((status = getaddrinfo(host_name.c_str(), NULL, &hints, &res)) != 0) {
-            //cerr << "getaddrinfo: "<< gai_strerror(status) << endl;
+        if ((status = getaddrinfo(host_name.c_str(), nullptr, &hints, &res)) != 0) {
+            _err("inet::dns_lookup: getaddrinfo: %s", gai_strerror(status));
             return output;
         }
 
-        //std::cout << "DNS Lookup: " << host_name << " ipv:" << ipv << endl;
+        _deb("inet::dns_lookup: %s ipv: %d", host_name.c_str(), ipv);
 
-        for (p = res; p != NULL; p = p->ai_next) {
+        for (p = res; p != nullptr; p = p->ai_next) {
             void *addr;
             if (p->ai_family == AF_INET) { // IPv4
                 struct sockaddr_in *ipv4 = (struct sockaddr_in *) p->ai_addr;
@@ -36,6 +38,8 @@ namespace inet {
 
             // convert the IP to a std::string
             inet_ntop(p->ai_family, addr, ip_address, sizeof ip_address);
+            _deb("inet::dns_lookup: ->%s", ip_address);
+
             output.push_back(ip_address);
         }
 
@@ -56,7 +60,9 @@ namespace inet {
 
     int socket_connect (std::string ip_address, int port) {
 
-        DIA_("internet::connect: connecting to %s:%d", ip_address.c_str(), port);
+        auto log = Factory::log();
+
+        _dia("inet::socket_connect: connecting to %s:%d", ip_address.c_str(), port);
 
         int err = -1, sd = -1;
         struct sockaddr_in sa;
@@ -72,17 +78,18 @@ namespace inet {
         }
         if (err != -1)//success
         {
-            DEB_("internet::socket_connect: socket %d", sd);
+            _deb("inet::socket_connect: socket %d", sd);
             return sd;
         }
-        NOTS_("internet::socket_connect: error");
+        _err("inet::socket_connect: error");
         return -1;
 
     }
 
     int download (const std::string &url, buffer &buf, int timeout) {
 
-        DIA_("internet::download downloading file %s", url.c_str());
+        auto log = Factory::log();
+        _dia("inet::download: getting file %s", url.c_str());
 
         int ret = 0;
 
@@ -110,15 +117,25 @@ namespace inet {
         }
         if (url_port.length() == 0 && protocol.length() > 0) {
             url_port = protocol == "http" ? "80" : "443";
+
         }
+        _deb("inet:download: using %s on port %s", protocol.c_str(), url_port.c_str());
+
+
         if (domain.length() > 0 && !is_ipv6_address(domain)) {
             if (is_ipv4_address(domain)) {
                 ip_addresses.push_back(domain);
+
             } else //if (!is_ipv4_address(domain))
             {
                 ip_addresses = dns_lookup(domain, ipv = 4);
             }
         }
+        _deb("inet:download: domain %s", domain.c_str());
+        for(auto s: ip_addresses) {
+            _deb("inet::download: IP: %s", s.c_str());
+        }
+
         if (ip_addresses.size() > 0) {
             port = std::stoi(url_port);
 
@@ -126,14 +143,23 @@ namespace inet {
             request += "Host: " + domain + "\r\n\r\n";
 
             for (int i = 0, r = 0, ix = ip_addresses.size(); i < ix && r == 0; i++) {
+                _dia("inet::download: GETting %s at IP:%s PORT: %d, timeout %d", request.c_str(), ip_addresses[i].c_str(), port, timeout);
                 r = http_get(request, ip_addresses[i], port, buf, timeout);
+                _dia("inet::download: finished");
                 ret = r;
-                if (ret > 0)
+                if (ret > 0) {
+                    _dia("inet::download: finished, %dB transferred", buf.size());
+
+                    _dum("inet::download: dump:\n%s", hex_dump(buf, 4).c_str());
+
                     break;
+                } else {
+                    _err("inet::download: download failed");
+                }
             }
         }
 
-        DEB_("internet::download: returning %d", ret);
+        _deb("internet::download: returning %d", ret);
 
         return ret;
     }
@@ -162,6 +188,8 @@ namespace inet {
         int bytes_total = 0;
         int state = 0;
 
+        auto log = Factory::log();
+
         time_t start_time = time(nullptr);
 
         int sd = socket_connect(ip_address, port);
@@ -186,12 +214,12 @@ namespace inet {
                     bytes_received = ::recv(sd, buffer, sizeof(buffer), 0);
                     bytes_total += bytes_received;
 
-                    DEB_("internet::download(%s): received %dB, %dB total", request.c_str(), bytes_received,
+                    _deb("internet::http_get(%s): received %dB, %dB total", request.c_str(), bytes_received,
                          bytes_total);
 
                 } else {
 
-                    NOT_("internet::download(%s): timeout on socket", request.c_str());
+                    _err("internet::http_get(%s): timeout on socket", request.c_str());
 
                     if (time(nullptr) > start_time + timeout) {
                         bytes_sofar = -1;
@@ -239,6 +267,8 @@ namespace inet {
             }
 
             ::close(sd);
+        } else {
+            _err("inet::http_get: socket_connect failed: %d", sd);
         }
         return bytes_sofar;
     }
