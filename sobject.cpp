@@ -47,7 +47,6 @@ std::string sobject_info::to_string(int verbosity) {
     return r.str();
 };
 
-
 sobject::sobject() {
     std::lock_guard<std::recursive_mutex> l_(db().getlock());
 
@@ -77,6 +76,8 @@ std::string sobjectDB::str_list(const char* class_criteria, const char* delimite
     std::stringstream ret;
     std::string criteria;
 
+    auto& log = sobjectDB::get().log;
+
     std::lock_guard<std::recursive_mutex> l_(db().getlock());
     
     if(class_criteria)
@@ -89,21 +90,21 @@ std::string sobjectDB::str_list(const char* class_criteria, const char* delimite
         
         bool matched = true;
         
-        //if wehave criteria, select if it's name match, or pointer match
+        //having criteria specified, select if it's name match, or pointer match
         if(criteria.length()) {
             matched = false;
 
             if(criteria.compare(0,2,"0x") == 0) {
                 std::string str_ptr = string_format("0x%lx",ptr);
                 
-                //DIA_("comparing pointer: %s and %s",str_ptr.c_str(), criteria.c_str());
+                _deb("comparing pointer: %s and %s",str_ptr.c_str(), criteria.c_str());
                 matched = (str_ptr == criteria);
             } else if(criteria.compare(0,3,"oid") == 0) {
                 auto find_oid = criteria.substr(3);
                 matched = (std::to_string(ptr->oid()) == find_oid );
             }
             else {
-                //DIA_("comparing classname: %s and %s",ptr->class_name().c_str(), criteria.c_str());
+                _deb("comparing classname: %s and %s",ptr->class_name().c_str(), criteria.c_str());
                 matched = (ptr->class_name() == criteria || criteria == "*");
             }
         }
@@ -135,7 +136,9 @@ std::string sobjectDB::str_list(const char* class_criteria, const char* delimite
 
 
 std::string sobjectDB::str_stats(const char* criteria) {
-    
+
+    auto& log = sobjectDB::get().log;
+
     std::stringstream ret;
     std::lock_guard<std::recursive_mutex> l_(db().getlock());
 
@@ -147,7 +150,11 @@ std::string sobjectDB::str_stats(const char* criteria) {
     
     for(auto it: db().cache()) {
         sobject*       ptr = it.first;
-        
+
+        if(! ptr) {
+            continue;
+        }
+        _deb("comparing classname: %s and %s",ptr->c_class_name(), criteria);
         if( criteria == nullptr || ptr->class_name() == criteria ) {
             sobject_info*  si = it.second;
             object_counter++;

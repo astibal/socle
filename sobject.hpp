@@ -56,6 +56,9 @@ struct sobject_info {
     
     DECLARE_C_NAME("sobject_info");
     DECLARE_LOGGING(to_string);
+
+protected:
+    logan_attached<sobject_info> log = logan_attached<sobject_info>(this, "internal.sobject");
 };
 
 struct meter {
@@ -109,8 +112,11 @@ public:
 
     virtual std::string to_string(int verbosity=iINF) { return this->class_name(); };
 
-DECLARE_C_NAME("sobjectDB");
-DECLARE_LOGGING(to_string);
+    DECLARE_C_NAME("sobjectDB");
+    DECLARE_LOGGING(to_string);
+
+protected:
+    logan_attached<sobjectDB> log = logan_attached<sobjectDB>(this, "internal.sobject");
 };
 
 class sobject {
@@ -137,8 +143,11 @@ public:
     static ptr_cache<sobject*,sobject_info>& db() { return sobjectDB::db(); }
     static ptr_cache<uint64_t, sobject>& oid_db() { return sobjectDB::oid_db(); }
     
-DECLARE_C_NAME("sobject");
-DECLARE_LOGGING(to_string);
+    DECLARE_C_NAME("sobject");
+    DECLARE_LOGGING(to_string);
+
+protected:
+    logan_attached<sobject> log = logan_attached<sobject>(this, "internal.sobject");
 };
 
 
