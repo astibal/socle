@@ -828,7 +828,7 @@ int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
 
                     buffer b;
                     bool dnld_failed = false;
-                    int bytes = download(crl_url.c_str(),b,tolerated_dnld_time*3);
+                    int bytes = inet::download(crl_url.c_str(),b,tolerated_dnld_time*3);
                     if(bytes < 0) dnld_failed = true;
 
                     if(! dnld_failed ) {
