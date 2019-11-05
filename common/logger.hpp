@@ -831,6 +831,7 @@ public:
     friend class logan;
 
     logan_lite() {};
+    logan_lite(const std::string& str) : topic_(str) {};
 
     virtual std::string topic() { return topic_; }
     virtual        void topic(std::string s) { topic_ = s; }
@@ -1065,8 +1066,7 @@ public:
 
 
     static logan_lite create(std::string s) {
-        logan_lite l = logan_lite();
-        l.topic_ = s;
+        logan_lite l = logan_lite(s);
 
         return l;
     }

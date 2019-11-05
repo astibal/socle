@@ -118,8 +118,7 @@ public:
     LTVEntry* search(const std::vector<int>&);
 
     static logan_lite& get_log() {
-         static logan_lite l = logan_lite();
-         l.topic("internal.ltv");
+         static logan_lite l = logan_lite("internal.ltv");
 
          return l;
     }

@@ -40,10 +40,7 @@ namespace inet {
 
     struct Factory {
         static const logan_lite& log() {
-            static logan_lite l;
-            l.topic("inet");
-            l.level(NON);
-
+            static logan_lite l("inet");
             return l;
         }
     };
