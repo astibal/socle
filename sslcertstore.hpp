@@ -157,10 +157,10 @@ public:
     // trusted CA store
     X509_STORE* trust_store() { return trust_store_; };
 
-    inline SSL_CTX* default_tls_server_cx() const  { return def_sr_ctx; }
-    inline SSL_CTX* default_tls_client_cx() const  { return def_cl_ctx; }
-    inline SSL_CTX* default_dtls_server_cx() const  { return def_dtls_sr_ctx; }
-    inline SSL_CTX* default_dtls_client_cx() const  { return def_dtls_cl_ctx; }
+    [[nodiscard]] inline SSL_CTX* default_tls_server_cx() const  { return def_sr_ctx; }
+    [[nodiscard]] inline SSL_CTX* default_tls_client_cx() const  { return def_cl_ctx; }
+    [[nodiscard]] inline SSL_CTX* default_dtls_server_cx() const  { return def_dtls_sr_ctx; }
+    [[nodiscard]] inline SSL_CTX* default_dtls_client_cx() const  { return def_dtls_cl_ctx; }
 
     static std::string& default_client_ca_path() { return def_cl_capath; }
     static std::string& default_cert_path() { return certs_path; }
@@ -180,8 +180,8 @@ public:
 
     static std::string make_store_key(X509* cert_orig, const SpoofOptions& spo);
 
-    bool add(std::string& store_key, EVP_PKEY* cert_privkey,X509* cert,X509_REQ* req=NULL);
-    bool add(std::string& store_key, X509_PAIR* p,X509_REQ* req=NULL);
+    bool add(std::string& store_key, EVP_PKEY* cert_privkey,X509* cert,X509_REQ* req=nullptr);
+    bool add(std::string& store_key, X509_PAIR* p,X509_REQ* req=nullptr);
      
     SSLFactory::X509_PAIR*  find(std::string& subject);
     std::string find_subject_by_fqdn(std::string& fqdn);
@@ -197,10 +197,11 @@ public:
 
     void destroy();
     virtual ~SSLFactory();
-    static loglevel& log_level_ref() { return log_level; }
 
-private:
-    static loglevel log_level;
+    static logan_lite& get_log() {
+        static logan_lite l = logan_lite("pki.store");
+        return l;
+    }
 };
 
 #endif //__SSLCERTSTORE_HPP__
