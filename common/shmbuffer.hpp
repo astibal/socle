@@ -50,9 +50,16 @@ protected:
     unsigned int capacity_;
     
     bool        attached_ = false;
+
+    static logan_lite& get_log() {
+        static logan_lite l;
+        l.topic("internal.shm");
+
+        return l;
+    }
     
 public:
-    shared_buffer() {}
+    shared_buffer(): memory_size(0), memory_fd(-1), data_(nullptr), size_(0), capacity_(0) {}
 
     unsigned char* data()    { return data_; }
     unsigned int   size()    { return size_; }
@@ -61,7 +68,9 @@ public:
     bool attached() { return attached_; }
     
     bool attach(const char* mem_name, const int mem_size, const char* sem_name, bool create_on_error=true) {
-        
+
+        auto log = get_log();
+
         if(attached()) {
             return true;
         }
@@ -75,11 +84,11 @@ public:
         
         semaphore = sem_open(semaphore_name.c_str(),O_RDWR,0600);
         if(semaphore == nullptr) {
-            WAR_("Getting a handle to the semaphore failed; errno is %d\n", errno);
+            _war("Getting a handle to the semaphore failed; errno is %d", errno);
             if(create_on_error) {
                 semaphore = sem_open(semaphore_name.c_str(),O_CREAT | O_RDWR,0600);
                 if(semaphore == nullptr) {
-                    WAR_("Failed to create semaphore as a fallback; errno is %d\n", errno);
+                    _war("Failed to create semaphore as a fallback; errno is %d", errno);
                     goto fail;
                 }
             } else {
@@ -89,11 +98,11 @@ public:
         
         memory_fd = shm_open(memory_name.c_str(), O_RDWR, 0600);
         if(memory_fd  == -1) {
-            WAR_("Couldn't get a handle to the shared memory; errno is %d\n", errno);
+            _war("Couldn't get a handle to the shared memory; errno is %d", errno);
             if(create_on_error) {
                 memory_fd = shm_open(memory_name.c_str(), O_CREAT | O_RDWR, 0600);
                 if(memory_fd == -1) {
-                    WAR_("Failed to create new memory object; errno is %d\n", errno);
+                    _war("Failed to create new memory object; errno is %d", errno);
                     goto fail;
                 }
             } else {
@@ -103,7 +112,7 @@ public:
         
         shared_memory = (unsigned char*)mmap((void *)0, memory_size, PROT_READ | PROT_WRITE, MAP_SHARED, memory_fd, 0);
         if (shared_memory == MAP_FAILED) {
-            WAR_("MMapping the shared memory failed; errno is %d\n", errno);
+            _war("MMapping the shared memory failed; errno is %d", errno);
             goto fail;
         }
         
@@ -121,24 +130,26 @@ public:
     }
     
     bool dettach() {
+
+        auto log = get_log();
         bool ret = true;
         
         int rc = munmap(data_, (size_t)capacity_);
         if (rc) {
-            WAR_("Unmapping the memory failed; errno is %d\n", errno);
+            _war("Unmapping the memory failed; errno is %d", errno);
             ret = false;
         }        
         
         if(memory_fd > 0) {
             if (close(memory_fd) == -1) {
-                WAR_("Closing memory's file descriptor failed; errno is %d\n", errno);
+                _war("Closing memory's file descriptor failed; errno is %d", errno);
                 ret = false;
             }
         }
         
         rc = sem_close(semaphore);
         if (rc) {
-            WAR_("Closing the semaphore failed; errno is %d\n", errno);
+            _war("Closing the semaphore failed; errno is %d", errno);
             ret = false;
         }            
         
@@ -148,19 +159,22 @@ public:
     
     
     int release() {
+        auto log = get_log();
         int rc = sem_post(semaphore);
+
         if(rc) {
-            WAR_("Releasing the semaphore failed; errno is %d\n", errno);
+            _war("Releasing the semaphore failed; errno is %d", errno);
         }
         
         return rc;
     }
     
     int acquire() {
+        auto log = get_log();
         int rc = sem_wait(semaphore);
 
         if(rc) {
-            WAR_("Acquiring the semaphore failed; errno is %d\n", errno);
+            _war("Acquiring the semaphore failed; errno is %d", errno);
         }
         
         return rc;
