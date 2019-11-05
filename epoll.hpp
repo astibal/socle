@@ -53,7 +53,7 @@ struct epoll {
     int idle_counter = 0;
     // if round is 0, we are waiting. If 1 - we will trigger on watched sockets
     // make it 1, so on start it will flip to 0
-    bool idle_round = 1;
+    bool idle_round = true;
 
     //sockets to be added to idle_watched (to ensure defined idle timeout (and possibly slightly more)
     std::set<int> idle_watched_pre;
@@ -85,11 +85,12 @@ struct epoll {
 
     inline void clear() { memset(events,0,EPOLLER_MAX_EVENTS*sizeof(epoll_event)); in_set.clear(); out_set.clear(); idle_set.clear(); }
     bool hint_socket(int socket); // this is the socket which will be additionally monitored for EPOLLIN; each time it's readable, single byte is read from it.
-    inline int hint_socket(void) const { return hint_fd; }
+    [[nodiscard]] inline int hint_socket() const { return hint_fd; }
 
-    virtual ~epoll() {}
+    virtual ~epoll() = default;
 
     static loglevel log_level;
+    logan_lite log = logan_lite("com.epoll");
 };
 
 
@@ -138,7 +139,7 @@ struct epoller {
     virtual bool click_timer_now (); // return true if we should add them back to in_set (scan their readability again). If yes, reset timer.
     
     virtual int wait(int timeout = -1);
-    virtual bool hint_socket(int socket); // this is the socket which will be additinally monitored for EPOLLIN; each time it's readable, single byte is read from it.
+    virtual bool hint_socket(int socket); // this is the socket which will be additionally monitored for EPOLLIN; each time it's readable, single byte is read from it.
 
     // handler hints is a map of socket->handler. We will allow to grow it as needed. No purges. 
     std::unordered_map<int,handler_info_t> handler_db;
@@ -149,7 +150,9 @@ struct epoller {
     void set_idle_watch(int check);
     void clear_idle_watch(int check);
 
-    virtual ~epoller() { if(poller) delete poller; }
+    virtual ~epoller() { delete poller; }
+
+    logan_lite log = logan_lite("com.epoll");
 };
 
 class epoll_handler {
@@ -173,7 +176,7 @@ public:
         }
     }
     
-    friend class epoller;
+    friend struct epoller;
 protected:
     epoller* registrant = nullptr;
     std::set<int> registered_sockets;
@@ -209,7 +212,7 @@ struct socket_state {
     void mon_read();
     void mon_none();
 
-    inline const int state() const { return state_; };
+    [[nodiscard]] inline const int state() const { return state_; };
 };
 
 #endif //EPOLL_HPP
