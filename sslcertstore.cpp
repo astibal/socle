@@ -1305,3 +1305,10 @@ std::string SSLFactory::fingerprint(X509* cert) {
 
     return ret;
 }
+
+
+std::string SSLFactory::print_ASN1_OCTET_STRING(ASN1_OCTET_STRING* ostr) {
+
+    auto ret = hex_print(ostr->data, ostr->length);
+    return ret;
+}

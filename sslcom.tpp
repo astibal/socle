@@ -934,6 +934,8 @@ int baseSSLCom<L4Proto>::ocsp_resp_callback_explicit(baseSSLCom* com, int cur_st
 template <class L4Proto>
 int baseSSLCom<L4Proto>::ocsp_resp_callback(SSL *s, void *arg) {
 
+    auto log = logan::create("com.ssl.ocsp");
+
     void* data = SSL_get_ex_data(s, sslcom_ssl_extdata_index);
     const char *name = "unknown_cx";
 
@@ -963,15 +965,15 @@ int baseSSLCom<L4Proto>::ocsp_resp_callback(SSL *s, void *arg) {
         issuer_cert = com->sslcom_target_issuer;
 
         if (!peer_cert || !issuer_cert) {
-            DIA__("[%s]: ocsp_resp_callback: verify hasn't been yet called",name);
+            _dia("[%s]: ocsp_resp_callback: verify hasn't been yet called",name);
             com->opt_ocsp_enforce_in_verify = true;
             return baseSSLCom::ocsp_resp_callback_explicit(com,opt_ocsp_require ? 0 : 1);
         }
         
-        DEB_("ocsp_resp_callback[%s]: peer cert=%x, issuer_cert=%x",name,peer_cert,issuer_cert);
+        _deb("ocsp_resp_callback[%s]: peer cert=%x, issuer_cert=%x",name,peer_cert,issuer_cert);
        
     } else {
-        ERRS_("SSLCom::ocsp_resp_callback: argument data is not SSLCom*!");
+        _err("SSLCom::ocsp_resp_callback: argument data is not SSLCom*!");
         return 1;
     }
 
@@ -986,30 +988,30 @@ int baseSSLCom<L4Proto>::ocsp_resp_callback(SSL *s, void *arg) {
     len = SSL_get_tlsext_status_ocsp_resp(s, &p);
     if (!p) {
         if(opt_ocsp_strict)
-            WAR_("[%s]: no OCSP response received",name);
+            _dia("[%s]: no OCSP stapling status response", name);
 
         com->opt_ocsp_enforce_in_verify = true;
         return baseSSLCom::ocsp_resp_callback_explicit(com,opt_ocsp_require ? 0 : 1);
     }
-    DUM__("[%s]: OCSP Response:  \n%s",name,hex_dump((unsigned char*)p,len,2).c_str());
+    _dum("[%s]: OCSP Response:  \n%s",name,hex_dump((unsigned char*)p,len,2).c_str());
 
     rsp = d2i_OCSP_RESPONSE(NULL, &p, len);
     if (!rsp) {
-        ERR__("[%s] failed to parse OCSP response",name);
+        _err("[%s] failed to parse OCSP response",name);
         com->opt_ocsp_enforce_in_verify = true;
         return baseSSLCom::ocsp_resp_callback_explicit(com,opt_ocsp_strict ? 0 : 1);
     }
 
     status = OCSP_response_status(rsp);
     if (status != OCSP_RESPONSE_STATUS_SUCCESSFUL) {
-        ERR__("[%s] OCSP responder error %d (%s)", name, status, OCSP_response_status_str(status));
+        _err("[%s] OCSP responder error %d (%s)", name, status, OCSP_response_status_str(status));
         com->opt_ocsp_enforce_in_verify = true;
         return baseSSLCom::ocsp_resp_callback_explicit(com,opt_ocsp_strict ? 0 : 1);
     }
 
     basic = OCSP_response_get1_basic(rsp);
     if (!basic) {
-        ERR__("[%s] could not find BasicOCSPResponse",name);
+        _err("[%s] could not find BasicOCSPResponse",name);
         com->opt_ocsp_enforce_in_verify = true;
         return baseSSLCom::ocsp_resp_callback_explicit(com,opt_ocsp_strict ? 0 : 1);
     }
@@ -1020,7 +1022,7 @@ int baseSSLCom<L4Proto>::ocsp_resp_callback(SSL *s, void *arg) {
     if (status <= 0) {
 
         int err = SSL_get_error(s,status);
-        DIA__("    error: %s",ERR_error_string(err,nullptr));
+        _dia("    error: %s",ERR_error_string(err,nullptr));
 
 
         OCSP_BASICRESP_free(basic);
@@ -1029,24 +1031,24 @@ int baseSSLCom<L4Proto>::ocsp_resp_callback(SSL *s, void *arg) {
         int r = opt_ocsp_strict ? 0 : 1;
 
         if(r > 0) {
-            NOT__("[%s] OCSP stapling response failed verification",name);
+            _not("[%s] OCSP stapling response failed verification",name);
             ERR_clear_error();
         }
         else {
-            ERR__("[%s] OCSP stapling response failed verification",name);
+            _err("[%s] OCSP stapling response failed verification",name);
         }
 
         int ocsp_check =  baseSSLCom::ocsp_resp_callback_explicit(com,r);
-        DIA__("SSLCom::ocsp_resp_callback: OCSP returned %d", ocsp_check);
+        _dia("SSLCom::ocsp_resp_callback: OCSP returned %d", ocsp_check);
         
         return ocsp_check;
     }
 
-    DIA__("[%s] OCSP response verification succeeded",name);
+    _dia("[%s] OCSP response verification succeeded",name);
 
     id = OCSP_cert_to_id(NULL, com->sslcom_target_cert, com->sslcom_target_issuer);
     if (!id) {
-        ERR__("[%s] could not create OCSP certificate identifier",name);
+        _err("[%s] could not create OCSP certificate identifier",name);
         OCSP_BASICRESP_free(basic);
         OCSP_RESPONSE_free(rsp);
 
@@ -1056,14 +1058,14 @@ int baseSSLCom<L4Proto>::ocsp_resp_callback(SSL *s, void *arg) {
 
         com->opt_ocsp_enforce_in_verify = true;
         int ocsp_check = baseSSLCom::ocsp_resp_callback_explicit(com,r);
-        DIA__("SSLCom::ocsp_resp_callback: OCSP returned %d", ocsp_check);
+        _dia("SSLCom::ocsp_resp_callback: OCSP returned %d", ocsp_check);
         
         return ocsp_check;        
     }
 
 
     if (!OCSP_resp_find_status(basic, id, &status, &reason, &produced_at, &this_update, &next_update)) {
-        ERR__("[%s] could not find current server certificate from OCSP response %s", name,
+        _err("[%s] could not find current server certificate from OCSP response %s", name,
                                                        (opt_ocsp_require) ? "" : " (OCSP not required)");
         OCSP_BASICRESP_free(basic);
         OCSP_RESPONSE_free(rsp);
@@ -1074,13 +1076,13 @@ int baseSSLCom<L4Proto>::ocsp_resp_callback(SSL *s, void *arg) {
 
         com->opt_ocsp_enforce_in_verify = true;
         int ocsp_check =  baseSSLCom::ocsp_resp_callback_explicit(com,r);
-        DIA__("SSLCom::ocsp_resp_callback: OCSP returned %d", ocsp_check);
+        _dia("SSLCom::ocsp_resp_callback: OCSP returned %d", ocsp_check);
         
         return ocsp_check;
     }
 
     if (!OCSP_check_validity(this_update, next_update, 5 * 60, -1)) {
-        ERR__("[%s] OCSP status times invalid", name);
+        _err("[%s] OCSP status times invalid", name);
         OCSP_BASICRESP_free(basic);
         OCSP_RESPONSE_free(rsp);
 
@@ -1090,7 +1092,7 @@ int baseSSLCom<L4Proto>::ocsp_resp_callback(SSL *s, void *arg) {
 
         com->opt_ocsp_enforce_in_verify = true;
         int ocsp_check = baseSSLCom::ocsp_resp_callback_explicit(com,r);
-        DIA__("SSLCom::ocsp_resp_callback: OCSP returned %d", ocsp_check);
+        _dia("SSLCom::ocsp_resp_callback: OCSP returned %d", ocsp_check);
         
         return ocsp_check;        
     }
@@ -1099,42 +1101,42 @@ int baseSSLCom<L4Proto>::ocsp_resp_callback(SSL *s, void *arg) {
     OCSP_BASICRESP_free(basic);
     OCSP_RESPONSE_free(rsp);
 
-    DIA__("[%s] OCSP status for server certificate: %s", name, OCSP_cert_status_str(status));
+    _dia("[%s] OCSP status for server certificate: %s", name, OCSP_cert_status_str(status));
 
     std::string cn = SSLFactory::print_cn(com->sslcom_target_cert) + ";" + SSLFactory::fingerprint(com->sslcom_target_cert);
     
     if (status == V_OCSP_CERTSTATUS_GOOD) {
-        DIA__("[%s] OCSP status is good",name);
+        _dia("[%s] OCSP status is good",name);
         if(com != nullptr){
             com->ocsp_cert_is_revoked = 0;
-            DIA__("Connection from %s: certificate %s is valid (stapling OCSP))",name,cn.c_str());            
+            _dia("Connection from %s: certificate %s is valid (stapling OCSP))",name,cn.c_str());
             
         }
         return 1;
     } else
     if (status == V_OCSP_CERTSTATUS_REVOKED) {
-        DIA__("[%s] OCSP status is revoked",name);
+        _dia("[%s] OCSP status is revoked",name);
         if(com != nullptr){
             com->ocsp_cert_is_revoked = 1;
             com->verify_set(REVOKED);
-            WAR__("Connection from %s: certificate %s is revoked (stapling OCSP))",name,cn.c_str());
+            _war("Connection from %s: certificate %s is revoked (stapling OCSP))",name,cn.c_str());
             return com->opt_failed_certcheck_replacement;
         }
         return 0;
     } else
     if (opt_ocsp_require) {
-        ERR__("[%s] OCSP status unknown, but OCSP required, failing", name);
+        _err("[%s] OCSP status unknown, but OCSP required, failing", name);
         
         int ocsp_check = baseSSLCom::ocsp_resp_callback_explicit(com,0);
-        DIA__("SSLCom::ocsp_resp_callback: OCSP returned %d", ocsp_check);
+        _dia("SSLCom::ocsp_resp_callback: OCSP returned %d", ocsp_check);
         
         return ocsp_check;             
     }
 
-    DIA__("[%s] OCSP status unknown, but OCSP was not required, continue", name);
+    _dia("[%s] OCSP status unknown, but OCSP was not required, continue", name);
 
     int ocsp_check = baseSSLCom::ocsp_resp_callback_explicit(com,1);
-    DIA__("SSLCom::ocsp_resp_callback: OCSP returned %d", ocsp_check);
+    _dia("SSLCom::ocsp_resp_callback: OCSP returned %d", ocsp_check);
     
     return ocsp_check;         
 }

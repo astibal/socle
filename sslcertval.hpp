@@ -38,6 +38,14 @@ namespace inet {
 
     namespace ocsp {
 
+        struct OcspFactory {
+            static logan_lite& log() {
+                static logan_lite l = logan_lite("com.ssl.ocsp");
+                return l;
+            }
+        };
+
+
         std::vector<std::string> ocsp_urls (X509 *x509);
 
         int ocsp_prepare_request (OCSP_REQUEST **req, X509 *cert, const EVP_MD *cert_id_md, X509 *issuer,
@@ -50,7 +58,14 @@ namespace inet {
         ocsp_send_request (BIO *err, OCSP_REQUEST *req, char *host, char *path, char *port, int use_ssl,
                            int req_timeout);
 
-        int ocsp_parse_response (OCSP_RESPONSE *resp);
+        struct OcspResult {
+            // -1 for unknown
+            //  0 valid
+            //  1 revoked
+            int is_revoked = -1;
+            int ttl = 0;
+        };
+        OcspResult ocsp_verify_response(OCSP_RESPONSE *resp, X509* issuer);
 
         int ocsp_check_cert (X509 *x509, X509 *issuer, int req_timeout = 2);
 
@@ -148,6 +163,7 @@ namespace inet {
             int state_ = OcspQuery::ST_INIT;
             int yield_ = RET_UNKNOWN;
         };
+
     }
 
     namespace crl {

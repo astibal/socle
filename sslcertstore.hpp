@@ -178,6 +178,7 @@ public:
     static std::vector<std::string> get_sans(X509* x);
     static std::string get_sans_csv(X509* x);
     static std::string fingerprint(X509 *cert);
+    static std::string print_ASN1_OCTET_STRING(ASN1_OCTET_STRING*);
 
 
     static std::string make_store_key(X509* cert_orig, const SpoofOptions& spo);
