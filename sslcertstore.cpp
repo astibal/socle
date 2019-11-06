@@ -1283,3 +1283,25 @@ std::string SSLFactory::print_cert(X509* x, int indent) {
 SSLFactory::~SSLFactory() {
     destroy();
 }
+
+
+std::string SSLFactory::fingerprint(X509* cert) {
+
+    const EVP_MD *fprint_type = nullptr;
+    unsigned fprint_size;
+    unsigned char fprint[EVP_MAX_MD_SIZE];
+
+    fprint_type = EVP_sha1();
+
+    if (!X509_digest(cert, fprint_type, fprint, &fprint_size)) {
+        ERRS_("error creating the certificate fingerprint");
+    }
+
+    std::string ret;
+    for (unsigned int j = 0; j < fprint_size; ++j)  {
+        ret += string_format("%02x", fprint[j]);
+    }
+
+
+    return ret;
+}

@@ -594,7 +594,7 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx) {
 
     std::string cn = "unknown";
     if(xcert != nullptr) {   
-        cn = SSLFactory::print_cn(xcert) + ";"+ fingerprint(xcert);
+        cn = SSLFactory::print_cn(xcert) + ";"+ SSLFactory::fingerprint(xcert);
     }
     _dia("[%s]: SSLCom::ssl_client_vrfy_callback[%d:%s]: returning %s (pre-verify %d)",name,depth,cn.c_str(),(ret > 0 ? "ok" : "failed" ),ok);
 
@@ -748,7 +748,7 @@ int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
 
         std::string cn = "unknown";
         if(com->sslcom_target_cert != nullptr) {   
-            cn = SSLFactory::print_cn(com->sslcom_target_cert) + ";" + fingerprint(com->sslcom_target_cert);
+            cn = SSLFactory::print_cn(com->sslcom_target_cert) + ";" + SSLFactory::fingerprint(com->sslcom_target_cert);
         }
 
         const char* str_cached = "cached";
@@ -768,7 +768,7 @@ int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
                 is_revoked = cached_result->value();
                 str_status = str_cached;
             } else {
-                is_revoked = ocsp_check_cert(com->sslcom_target_cert, com->sslcom_target_issuer);
+                is_revoked = inet::ocsp::ocsp_check_cert(com->sslcom_target_cert, com->sslcom_target_issuer);
                 str_status = str_fresh;
             }
         }
@@ -801,7 +801,7 @@ int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
             
             _not("Connection from %s: certificate OCSP revocation status cannot be obtained)",name);
             
-            std::vector<std::string> crls = crl_urls(com->sslcom_target_cert);
+            std::vector<std::string> crls = inet::crl::crl_urls(com->sslcom_target_cert);
             
             SSLFactory::expiring_crl* crl_h = nullptr;
             X509_CRL* crl = nullptr;
@@ -840,7 +840,7 @@ int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
                             _war("it took long time to download CRL. You should consider to disable CRL check :(");
                         }
 
-                        crl = new_CRL(b);
+                        crl = inet::crl::crl_from_bytes(b);
                         str_status = str_fresh;
                         
 
@@ -859,7 +859,7 @@ int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
                 int is_revoked_by_crl = -1;
                 
                 if(crl != nullptr && com->sslcom_target_cert != nullptr && com->sslcom_target_issuer != nullptr) {
-                    int crl_trust = crl_verify_trust(com->sslcom_target_cert,
+                    int crl_trust = inet::crl::crl_verify_trust(com->sslcom_target_cert,
                                                      com->sslcom_target_issuer,
                                                      crl,
                                                      com->certstore()->default_client_ca_path().c_str());
@@ -875,7 +875,7 @@ int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
                             _not("CRL %s is not verified, but we are instructed to trust it.",crl_printable.c_str());
                         }
                         _dia("Checking revocation status: CRL 0x%x", crl);
-                        is_revoked_by_crl = crl_is_revoked_by(com->sslcom_target_cert,com->sslcom_target_issuer,crl);
+                        is_revoked_by_crl = inet::crl::crl_is_revoked_by(com->sslcom_target_cert,com->sslcom_target_issuer,crl);
                     }
                 }
 
@@ -1101,7 +1101,7 @@ int baseSSLCom<L4Proto>::ocsp_resp_callback(SSL *s, void *arg) {
 
     DIA__("[%s] OCSP status for server certificate: %s", name, OCSP_cert_status_str(status));
 
-    std::string cn = SSLFactory::print_cn(com->sslcom_target_cert) + ";" + fingerprint(com->sslcom_target_cert);
+    std::string cn = SSLFactory::print_cn(com->sslcom_target_cert) + ";" + SSLFactory::fingerprint(com->sslcom_target_cert);
     
     if (status == V_OCSP_CERTSTATUS_GOOD) {
         DIA__("[%s] OCSP status is good",name);
