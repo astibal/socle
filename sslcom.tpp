@@ -1016,8 +1016,10 @@ int baseSSLCom<L4Proto>::ocsp_resp_callback(SSL *s, void *arg) {
         return baseSSLCom::ocsp_resp_callback_explicit(com,opt_ocsp_strict ? 0 : 1);
     }
 
-    status = OCSP_basic_verify(basic, NULL, com->certstore()->trust_store() ,0);
-
+    STACK_OF(X509*) signers = sk_X509_new_null();
+    sk_X509_push(signers, issuer_cert);
+    status = OCSP_basic_verify(basic, signers , com->certstore()->trust_store() ,0);
+    sk_X509_free(signers);
 
     if (status <= 0) {
 
@@ -1044,7 +1046,7 @@ int baseSSLCom<L4Proto>::ocsp_resp_callback(SSL *s, void *arg) {
         return ocsp_check;
     }
 
-    _dia("[%s] OCSP response verification succeeded",name);
+    _dia("[%s] OCSP stapling response verification succeeded",name);
 
     id = OCSP_cert_to_id(NULL, com->sslcom_target_cert, com->sslcom_target_issuer);
     if (!id) {
