@@ -1294,7 +1294,8 @@ std::string SSLFactory::fingerprint(X509* cert) {
     fprint_type = EVP_sha1();
 
     if (!X509_digest(cert, fprint_type, fprint, &fprint_size)) {
-        ERRS_("error creating the certificate fingerprint");
+        auto& log = SSLFactory::get_log();
+        _err("error creating the certificate fingerprint");
     }
 
     std::string ret;

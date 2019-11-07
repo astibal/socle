@@ -391,7 +391,7 @@ namespace inet {
             return resp;
         }
 
-        OcspResult ocsp_verify_response(OCSP_RESPONSE *resp, X509* issuer) {
+        OcspResult ocsp_verify_response(OCSP_RESPONSE *resp, X509* cert, X509* issuer) {
             int is_revoked = -1;
 
             auto log = OcspFactory::log();
@@ -423,6 +423,8 @@ namespace inet {
 
             } else {
 
+                bool matching_ids = false;
+
                 int resp_count = OCSP_resp_count(br);
                 _deb("ocsp_verify_response: got %d entries in response", resp_count);
                 for (int i = 0; i < resp_count; i++) {
@@ -443,6 +445,27 @@ namespace inet {
                     // get shallow details from CERTID
                     OCSP_id_get0_info(&name_hash, &pmd, &key_hash, &serial, const_cast<OCSP_CERTID*>(id));
                     ASN1_INTEGER_get_uint64(&i_serial, serial);
+
+                    // now we can create cert ID and compare it to one from OCSP response
+
+                    const EVP_MD* md = EVP_get_digestbyobj(const_cast<const ASN1_OBJECT*>(pmd));
+                    OCSP_CERTID* my_id = OCSP_cert_to_id(md , cert , issuer);
+
+                    // match certificate ID in response with checked cert (to prevent replays of correct OCSP responses
+                    // but for different cert
+                    if (OCSP_id_cmp(const_cast<OCSP_CERTID*>(id), my_id) == 0) {
+                        _dia("ocsp_verify_response [%d]: certificate ID matching this single", i);
+                        matching_ids = true;
+                    } else {
+                        _dia("ocsp_verify_response [%d]: certificate ID NOT MATCHING this single", i);
+                    }
+                    // don't forget to free mycert CERTID
+                    OCSP_CERTID_free(my_id);
+                    my_id = nullptr;
+
+                    if(! matching_ids) {
+                        continue;
+                    }
 
                     std::string s_name_hash = SSLFactory::print_ASN1_OCTET_STRING(name_hash);
 
@@ -467,15 +490,22 @@ namespace inet {
                     int secs = 0;
                     if (ASN1_TIME_diff( &days, &secs, nullptr, nextupd) > 0) {
                         _dia("ocsp_verify_response [%d]: TTL: %d days, %d seconds", i, days, secs);
+                    } else {
+                        _war("ocsp_verify_response [%d]: negative TTL: %d days, %d seconds", i, days, secs);
+                        _err("this is possible OCSP replay attack, marked as revoked!");
+                        is_revoked = 1;
                     }
+                }
+
+                if(! matching_ids) {
+                    _err("no matching cert IDs were found in OCSP response, returning -1");
+                    is_revoked = -1;
                 }
             }
 
             OCSP_BASICRESP_free(br);
             X509_STORE_free(st);
             sk_X509_free(signers);
-
-
 #else
             OCSP_RESPBYTES *rb = resp->responseBytes;
         if (rb && OBJ_obj2nid(rb->responseType) == NID_id_pkix_OCSP_basic)
@@ -535,7 +565,7 @@ namespace inet {
 
                             //parse response
                             if (resp && responder_status == OCSP_RESPONSE_STATUS_SUCCESSFUL) {
-                                is_revoked = ocsp_verify_response(resp, issuer).is_revoked;
+                                is_revoked = ocsp_verify_response(resp, x509, issuer).is_revoked;
                             }
                             OCSP_RESPONSE_free(resp);
                         }
@@ -589,6 +619,7 @@ namespace inet {
         }
 
         void OcspQuery::parse_cert () {
+            auto& log = OcspFactory::log();
 
             STACK_OF(OPENSSL_STRING) *ocsp_list = X509_get1_ocsp(cert_check);
             for (int j = 0; j < sk_OPENSSL_STRING_num(ocsp_list); j++) {
@@ -605,6 +636,9 @@ namespace inet {
                                                                                     std::string(port),
                                                                                     std::string(path),
                                                                                     (use_ssl > 0)));
+                    _dia("OcspQuery::parse_cert: OCSP URL: %s", ESC_(ocsp_url).c_str());
+                } else {
+                    _err("OcspQuery::parse_cert: failed to parse OCSP URL: %s", ESC_(ocsp_url).c_str());
                 }
             }
 
@@ -613,12 +647,19 @@ namespace inet {
 
 
         bool OcspQuery::do_init () {
+            auto& log = OcspFactory::log();
+
             parse_cert();
 
 
             if (ocsp_targets.empty()) {
+                _war("OcspQuery::do_init: no OCSP targets");
+
                 state_ = OcspQuery::ST_FINISHED;
                 yield_ = OcspQuery::RET_NOOCSP_TARGETS;
+
+                _dia("OcspQuery::do_init: state ST_FINISHED");
+
                 return false;
             }
 
@@ -631,6 +672,8 @@ namespace inet {
         }
 
         bool OcspQuery::do_connect () {
+
+            auto& log = OcspFactory::log();
 
             bool to_continue = false;
             int skip = 0;
@@ -666,6 +709,7 @@ namespace inet {
 
                     if (conn_bio && !ocsp_ssl) {
                         state_ = OcspQuery::ST_CONNECTING;
+                        _dia("OcspQuery::do_send_request: state CONNECTING");
                         BIO_set_nbio(conn_bio, 1);
 
                         socket.socket_ = BIO_get_fd(conn_bio, nullptr);
@@ -690,6 +734,7 @@ namespace inet {
                         // reset retry
                         ocsp_target_retry = false;
                         state_ = OcspQuery::ST_CONNECTED;
+                        _dia("OcspQuery::do_send_request: state CONNECTED");
                     }
 
 
@@ -708,6 +753,7 @@ namespace inet {
 
 
         bool OcspQuery::do_send_request () {
+            auto log = OcspFactory::log();
             int rv;
 
             switch (state_) {
@@ -717,23 +763,28 @@ namespace inet {
 
                     ocsp_req_ctx = OCSP_sendreq_new(conn_bio, ocsp_path.c_str(), nullptr, -1);
                     if (!ocsp_req_ctx) {
+                        _err("OcspQuery::do_send_request: OCSP_sendreq_new failed");
                         goto err;
                     }
 
                     if (!OCSP_REQ_CTX_add1_header(ocsp_req_ctx, "Host", ocsp_host.c_str())) {
+                        _err("OcspQuery::do_send_request: OCSP_REQ_CTX_add1_header 'Host' failed");
                         goto err;
                     }
 
                     if (!OCSP_REQ_CTX_add1_header(ocsp_req_ctx, "User-Agent",
                                                   string_format("socle/%s", SOCLE_VERSION).c_str())) {
+                        _err("OcspQuery::do_send_request: OCSP_REQ_CTX_add1_header 'User-Agent' failed");
                         goto err;
                     }
 
                     if (!OCSP_REQ_CTX_set1_req(ocsp_req_ctx, ocsp_req)) {
+                        _err("OcspQuery::do_send_request: OCSP_REQ_CTX_set1_req failed");
                         goto err;
                     }
                     // transit to next state
                     state_ = OcspQuery::ST_REQ_INPROGRESS;
+                    _dia("OcspQuery::do_send_request: state REQ_INPROGRESS");
 
                 case OcspQuery::ST_REQ_INPROGRESS:
 
@@ -747,18 +798,19 @@ namespace inet {
                             socket.mon_write();
 
                         else {
-                            DIAS_("queryResponder: Unexpected retry condition");
+                            _err("queryResponder: Unexpected retry condition");
                             goto err;
                         }
 
                         // operation successful
                     } else if (rv == 1) {
                         state_ = OcspQuery::ST_RESP_RECEIVED; // waiting for response now
+                        _dia("OcspQuery::do_send_request: state RESP_RECEIVED");
                         return true;
                     }
                         // rv == 0, or undefined returned value
                     else {
-                        DIAS_("queryResponder: Timeout or error while sending request");
+                        _err("queryResponder: Timeout or error while sending request");
                     }
             }
 
@@ -769,6 +821,7 @@ namespace inet {
             // set state to connecting - try other ocsp host if available.
             // connect to next ocsp host
             state_ = OcspQuery::ST_CONNECTING;
+            _dia("OcspQuery::do_send_request: state CONNECTING");
             ocsp_target_index++;
 
             return false;
@@ -776,9 +829,12 @@ namespace inet {
 
         bool OcspQuery::do_process_response() {
 
+            auto& log = OcspFactory::log();
+
             if (ocsp_resp) {
-                yield_ = ocsp_verify_response(ocsp_resp, cert_issuer).is_revoked;
+                yield_ = ocsp_verify_response(ocsp_resp, cert_check, cert_issuer).is_revoked;
                 state_ = OcspQuery::ST_FINISHED;
+                _dia("OcspQuery::do_process_response: state FINISHED");
                 return true;
             }
 

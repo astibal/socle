@@ -628,7 +628,7 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx) {
                 
             }
         } else {
-            if(com->opt_ocsp_mode == 0 || (! com->opt_ocsp_enforce_in_verify) )
+            if(com->opt_ocsp_mode == 0)
                 _dia("[%s]: SSLCom::ssl_client_vrfy_callback[%d:%s]: ocsp not enabled",name, depth, cn.c_str());
         }
     }
@@ -727,7 +727,7 @@ EC_KEY* baseSSLCom<L4Proto>::ssl_ecdh_callback(SSL* s, int is_export, int key_le
 template <class L4Proto>
 int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
     int is_revoked = -1;
-    auto log = logan::create("com.ssl.ocsp");
+    auto& log = inet::ocsp::OcspFactory::log();
 
     if(com != nullptr) {
 
@@ -909,10 +909,12 @@ int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
 
 template <class L4Proto>
 int baseSSLCom<L4Proto>::ocsp_resp_callback_explicit(baseSSLCom* com, int cur_status) {
-    
+
+    auto& log = inet::ocsp::OcspFactory::log();
+
     if(com != nullptr) {
-        if(!com->opt_ocsp_enforce_in_verify) {
-            DIAS_("ocsp_resp_callback_explicit: still no result, running full OCSP request");
+        if(com->opt_ocsp_enforce_in_verify) {
+            _dia("ocsp_resp_callback_explicit: full OCSP request query (callback context)");
             int is_revoked = baseSSLCom::ocsp_explicit_check(com);
             
             if(is_revoked > 0) {
@@ -934,7 +936,7 @@ int baseSSLCom<L4Proto>::ocsp_resp_callback_explicit(baseSSLCom* com, int cur_st
 template <class L4Proto>
 int baseSSLCom<L4Proto>::ocsp_resp_callback(SSL *s, void *arg) {
 
-    auto log = logan::create("com.ssl.ocsp");
+    auto& log = inet::ocsp::OcspFactory::log();
 
     void* data = SSL_get_ex_data(s, sslcom_ssl_extdata_index);
     const char *name = "unknown_cx";
@@ -960,7 +962,7 @@ int baseSSLCom<L4Proto>::ocsp_resp_callback(SSL *s, void *arg) {
             }
         }
         opt_ocsp_strict = (com->opt_ocsp_stapling_mode >= 1);
-        opt_ocsp_require = (com->opt_ocsp_stapling_mode == 2);
+        opt_ocsp_require = (com->opt_ocsp_stapling_mode >= 2);
         peer_cert   = com->sslcom_target_cert;
         issuer_cert = com->sslcom_target_issuer;
 
@@ -978,24 +980,24 @@ int baseSSLCom<L4Proto>::ocsp_resp_callback(SSL *s, void *arg) {
     }
 
     
-    const unsigned char *p;
-    int len, status, reason;
+    const unsigned char *stapling_body;
+    int stapling_len, status, reason;
     OCSP_RESPONSE *rsp;
     OCSP_BASICRESP *basic;
     OCSP_CERTID *id;
     ASN1_GENERALIZEDTIME *produced_at, *this_update, *next_update;
 
-    len = SSL_get_tlsext_status_ocsp_resp(s, &p);
-    if (!p) {
+    stapling_len = SSL_get_tlsext_status_ocsp_resp(s, &stapling_body);
+    if (!stapling_body) {
         if(opt_ocsp_strict)
             _dia("[%s]: no OCSP stapling status response", name);
 
         com->opt_ocsp_enforce_in_verify = true;
         return baseSSLCom::ocsp_resp_callback_explicit(com,opt_ocsp_require ? 0 : 1);
     }
-    _dum("[%s]: OCSP Response:  \n%s",name,hex_dump((unsigned char*)p,len,2).c_str());
+    _dum("[%s]: OCSP Response:  \n%s",name,hex_dump((unsigned char*) stapling_body, stapling_len, 2).c_str());
 
-    rsp = d2i_OCSP_RESPONSE(NULL, &p, len);
+    rsp = d2i_OCSP_RESPONSE(nullptr, &stapling_body, stapling_len);
     if (!rsp) {
         _err("[%s] failed to parse OCSP response",name);
         com->opt_ocsp_enforce_in_verify = true;
@@ -1030,9 +1032,9 @@ int baseSSLCom<L4Proto>::ocsp_resp_callback(SSL *s, void *arg) {
         OCSP_BASICRESP_free(basic);
         OCSP_RESPONSE_free(rsp);
 
-        int r = opt_ocsp_strict ? 0 : 1;
+        int int_strict_ocsp = opt_ocsp_strict ? 0 : 1;
 
-        if(r > 0) {
+        if(int_strict_ocsp > 0) {
             _not("[%s] OCSP stapling response failed verification",name);
             ERR_clear_error();
         }
@@ -1040,7 +1042,7 @@ int baseSSLCom<L4Proto>::ocsp_resp_callback(SSL *s, void *arg) {
             _err("[%s] OCSP stapling response failed verification",name);
         }
 
-        int ocsp_check =  baseSSLCom::ocsp_resp_callback_explicit(com,r);
+        int ocsp_check =  baseSSLCom::ocsp_resp_callback_explicit(com, int_strict_ocsp);
         _dia("SSLCom::ocsp_resp_callback: OCSP returned %d", ocsp_check);
         
         return ocsp_check;
@@ -1048,7 +1050,7 @@ int baseSSLCom<L4Proto>::ocsp_resp_callback(SSL *s, void *arg) {
 
     _dia("[%s] OCSP stapling response verification succeeded",name);
 
-    id = OCSP_cert_to_id(NULL, com->sslcom_target_cert, com->sslcom_target_issuer);
+    id = OCSP_cert_to_id(nullptr, com->sslcom_target_cert, com->sslcom_target_issuer);
     if (!id) {
         _err("[%s] could not create OCSP certificate identifier",name);
         OCSP_BASICRESP_free(basic);
@@ -1067,7 +1069,7 @@ int baseSSLCom<L4Proto>::ocsp_resp_callback(SSL *s, void *arg) {
 
 
     if (!OCSP_resp_find_status(basic, id, &status, &reason, &produced_at, &this_update, &next_update)) {
-        _err("[%s] could not find current server certificate from OCSP response %s", name,
+        _err("[%s] could not find current server certificate from OCSP stapling response %s", name,
                                                        (opt_ocsp_require) ? "" : " (OCSP not required)");
         OCSP_BASICRESP_free(basic);
         OCSP_RESPONSE_free(rsp);
@@ -1084,7 +1086,7 @@ int baseSSLCom<L4Proto>::ocsp_resp_callback(SSL *s, void *arg) {
     }
 
     if (!OCSP_check_validity(this_update, next_update, 5 * 60, -1)) {
-        _err("[%s] OCSP status times invalid", name);
+        _err("[%s] OCSP stapling times invalid", name);
         OCSP_BASICRESP_free(basic);
         OCSP_RESPONSE_free(rsp);
 
@@ -1398,7 +1400,7 @@ void baseSSLCom<L4Proto>::init_server() {
         }
     }
 
-    SSL_set_session(sslcom_ssl, NULL);
+    SSL_set_session(sslcom_ssl, nullptr);
     
     if(opt_left_no_tickets) {
         SSL_set_options(sslcom_ssl,SSL_OP_NO_TICKET);
@@ -1430,7 +1432,7 @@ bool baseSSLCom<L4Proto>::check_cert (const char* host) {
     /*Check the common name*/
     peer=SSL_get_peer_certificate ( sslcom_ssl );
 
-    if(peer == NULL) {
+    if(! peer) {
         ERRS___("check_cert: unable to retrieve peer certificate");
 
         // cannot proceed, next checks require peer X509 data
@@ -1441,16 +1443,14 @@ bool baseSSLCom<L4Proto>::check_cert (const char* host) {
     
     X509_NAME_get_text_by_NID(x509_name,NID_commonName, peer_CN, 255);
 
-    // X509_NAME_oneline(X509_get_subject_name(peer),peer_CERT,1024);
-    // DIA___("Peer certificate:\n%s",peer_CERT);
 
-    //DIA___("peer CN: %s",ESC(str_peer));
-    if(host != NULL) {
-//     ERR_("what:\n%s",hex_dump((unsigned char*)peer_CN,256).c_str());
-	std::string str_host(host);
-	std::string str_peer(peer_CN,255);
+    if(host) {
 
-	DIA___("peer host: %s",host);
+        //     ERR_("what:\n%s",hex_dump((unsigned char*)peer_CN,256).c_str());
+        std::string str_host(host);
+        std::string str_peer(peer_CN,255);
+
+    	DIA___("peer host: %s",host);
 
         if ( str_host != str_peer ) {
             DIAS___( "Common name doesn't match host name" );
@@ -1826,7 +1826,7 @@ ret_handshake baseSSLCom<L4Proto>::handshake() {
     const char* op_descr = op_unknown;
 
     if (sslcom_ssl == nullptr and ! auto_upgrade()) {
-        WARS___("SSLCom::handshake: sslcom_ssl = NULL");
+        WARS___("SSLCom::handshake: sslcom_ssl is NULL and auto_upgrade is not set");
         return ret_handshake::ERROR;
     }
 
@@ -1990,7 +1990,7 @@ bool baseSSLCom<L4Proto>::store_session_if_needed() {
 
 #endif // USE_OPENSSL11
             } else {
-                DIAS__("certificate verification failed, not storing in the cache.");
+                DIAS__("certificate verification failed, session not stored in the cache.");
                 ret = false;
             }
             

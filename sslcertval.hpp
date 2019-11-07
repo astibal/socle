@@ -65,7 +65,7 @@ namespace inet {
             int is_revoked = -1;
             int ttl = 0;
         };
-        OcspResult ocsp_verify_response(OCSP_RESPONSE *resp, X509* issuer);
+        OcspResult ocsp_verify_response(OCSP_RESPONSE *resp, X509* cert, X509* issuer);
 
         int ocsp_check_cert (X509 *x509, X509 *issuer, int req_timeout = 2);
 
