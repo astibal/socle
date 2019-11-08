@@ -908,7 +908,7 @@ int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
 }
 
 template <class L4Proto>
-int baseSSLCom<L4Proto>::ocsp_resp_callback_explicit(baseSSLCom* com, int cur_status) {
+int baseSSLCom<L4Proto>::ocsp_resp_callback_explicit(baseSSLCom* com, int default_action) {
 
     auto& log = inet::ocsp::OcspFactory::log();
 
@@ -916,20 +916,42 @@ int baseSSLCom<L4Proto>::ocsp_resp_callback_explicit(baseSSLCom* com, int cur_st
         if(com->opt_ocsp_enforce_in_verify) {
             _dia("ocsp_resp_callback_explicit: full OCSP request query (callback context)");
             int is_revoked = baseSSLCom::ocsp_explicit_check(com);
-            
+
+            std::string cn = SSLFactory::print_cn(com->sslcom_target_cert) + ";" + SSLFactory::fingerprint(com->sslcom_target_cert);
+            const char* name = "unknown_cx";
             if(is_revoked > 0) {
+
+                baseSSLCom* pcom = dynamic_cast<baseSSLCom*>(com->peer());
+                if(pcom != nullptr) {
+                    const char* n = pcom->hr();
+                    if(n != nullptr) {
+                        name = n;
+                    }
+                } else {
+                    const char* n = com->hr();
+                    if(n != nullptr) {
+                        name = n;
+                    }
+                }
                 com->verify_set(REVOKED);
+                _war("Connection from %s: certificate %s is revoked (OCSP query), replacement=%d)", name, cn.c_str(),
+                     com->opt_failed_certcheck_replacement);
+
                 if(com->opt_failed_certcheck_replacement) {
                     ERR_clear_error();
-                    return 1;
                 }
+                return com->opt_failed_certcheck_replacement;
+
             } else
             if(is_revoked == 0) {
+                _dia("ocsp_resp_callback_explicit: GOOD: returning 1");
                 return 1;
             }
         }
     }
-    return cur_status;
+
+    _dia("ocsp_resp_callback_explicit: default action - returning %d", default_action);
+    return default_action;
 }
 
 
@@ -976,7 +998,7 @@ int baseSSLCom<L4Proto>::ocsp_resp_callback(SSL *s, void *arg) {
        
     } else {
         _err("SSLCom::ocsp_resp_callback: argument data is not SSLCom*!");
-        return 1;
+        return -1;
     }
 
     
@@ -1020,7 +1042,7 @@ int baseSSLCom<L4Proto>::ocsp_resp_callback(SSL *s, void *arg) {
 
     STACK_OF(X509*) signers = sk_X509_new_null();
     sk_X509_push(signers, issuer_cert);
-    status = OCSP_basic_verify(basic, signers , com->certstore()->trust_store() ,0);
+    status = OCSP_basic_verify(basic, signers , com->certstore()->trust_store() , 0);
     sk_X509_free(signers);
 
     if (status <= 0) {
@@ -1123,7 +1145,9 @@ int baseSSLCom<L4Proto>::ocsp_resp_callback(SSL *s, void *arg) {
         if(com != nullptr){
             com->ocsp_cert_is_revoked = 1;
             com->verify_set(REVOKED);
-            _war("Connection from %s: certificate %s is revoked (stapling OCSP))",name,cn.c_str());
+            _war("Connection from %s: certificate %s is revoked (stapling OCSP), replacement=%d)",name,cn.c_str(),
+                 com->opt_failed_certcheck_replacement);
+
             return com->opt_failed_certcheck_replacement;
         }
         return 0;

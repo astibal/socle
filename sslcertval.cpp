@@ -440,11 +440,10 @@ namespace inet {
                     ASN1_OCTET_STRING* name_hash;
                     ASN1_OCTET_STRING* key_hash;
                     ASN1_OBJECT* pmd;
-                    ASN1_INTEGER* serial; uint64_t i_serial = 0L;
+                    ASN1_INTEGER* serial;
 
                     // get shallow details from CERTID
                     OCSP_id_get0_info(&name_hash, &pmd, &key_hash, &serial, const_cast<OCSP_CERTID*>(id));
-                    ASN1_INTEGER_get_uint64(&i_serial, serial);
 
                     // now we can create cert ID and compare it to one from OCSP response
 
@@ -469,7 +468,6 @@ namespace inet {
 
                     std::string s_name_hash = SSLFactory::print_ASN1_OCTET_STRING(name_hash);
 
-                    _dia("ocsp_verify_response [%d]: response for serial: %d", i, i_serial);
                     _dia("ocsp_verify_response [%d]: response for name hash: %s", i, s_name_hash.c_str());
 
                     if (status == V_OCSP_CERTSTATUS_REVOKED) {
