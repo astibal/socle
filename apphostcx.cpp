@@ -180,76 +180,93 @@ void AppHostCX::pre_read() {
     bool __behind_read_warn = true;
     bool behind_read = false;
     
-    if ( mode() == MODE_PRE) {
+    if (mode() == MODE_PRE) {
         if(this->meter_read_bytes <= max_detect_bytes() && peek_read_counter <= this->meter_read_bytes  ) {
-            
-            if(peek_read_counter < this->meter_read_bytes) {
+
+            if (peek_read_counter < this->meter_read_bytes) {
                 behind_read = true;
 
-                if(__behind_read_warn) {
-                    _war("AppHostCX::pre_read[%s]: More data read than seen by peek: %d vs. %d",c_name(), this->meter_read_bytes, peek_read_counter);
+                if (__behind_read_warn) {
+                    _war("AppHostCX::pre_read[%s]: More data read than seen by peek: %d vs. %d", c_name(),
+                         this->meter_read_bytes, peek_read_counter);
                 } else {
-                    _deb("AppHostCX::pre_read[%s]: More data read than seen by peek: %d vs. %d",c_name(),this->meter_read_bytes, peek_read_counter);
+                    _deb("AppHostCX::pre_read[%s]: More data read than seen by peek: %d vs. %d", c_name(),
+                         this->meter_read_bytes, peek_read_counter);
                 }
-                
+                _deb("AppHostCX::pre_read[%s]: METER_READ_COUNT=%d METER_READ_BYTES=%d PEEK_READ_BYTES=%d", c_name(),
+                        meter_read_count, meter_read_bytes,peek_read_counter);
+
                 unsigned int delta = this->meter_read_bytes - peek_read_counter;
                 unsigned int w = this->readbuf()->size() - delta; // "+1" should be not there
-                _deb("AppHostCX::pre_read[%s]: Creating readbuf view at <%d,%d>",c_name(),w,delta);
-                buffer v = this->readbuf()->view(w,delta);
-                _deb("AppHostCX::pre_read[%s]:  = Readbuf: %d bytes (allocated buffer size %d): %s",c_name(),this->readbuf()->size(),this->readbuf()->capacity(),hex_dump(this->readbuf()->data(),this->readbuf()->size()).c_str());
-                _deb("AppHostCX::pre_read[%s]:  = view of %d bytes (allocated buffer size %d): %s",c_name(),v.size(),v.capacity(),hex_dump(v.data(),v.size()).c_str());
-                
-                
+                _deb("AppHostCX::pre_read[%s]: Creating readbuf view at <%d,%d>", c_name(), w, delta);
+                buffer v = this->readbuf()->view(w, delta);
+                _deb("AppHostCX::pre_read[%s]:  = readbuf: %d bytes (allocated buffer size %d): %s", c_name(),
+                     this->readbuf()->size(), this->readbuf()->capacity(),
+                     hex_dump(this->readbuf()->data(), this->readbuf()->size()).c_str());
+                _deb("AppHostCX::pre_read[%s]:  = view of %d bytes (allocated buffer size %d): %s", c_name(), v.size(),
+                     v.capacity(), hex_dump(v.data(), v.size()).c_str());
+
+
                 if(v.size() > 0) {
-                    this->flow().append('r',v);
-                    _dia("AppHostCX::pre_read[%s]: detection pre-mode: salvaged %d bytes from readbuf",c_name(),v.size());
-                    _deb("AppHostCX::pre_read[%s]: Appended from readbuf to flow %d bytes (allocated buffer size %d): %s",c_name(),v.size(),v.capacity(),hex_dump(v.data(),v.size()).c_str());
-                    
+                    this->flow().append('r', v);
+                    _dia("AppHostCX::pre_read[%s]: detection pre-mode: salvaged %d bytes from readbuf", c_name(),
+                           v.size());
+                    _deb("AppHostCX::pre_read[%s]: Appended from readbuf to flow %d bytes (allocated buffer size %d): \n%s",
+                         c_name(), v.size(), v.capacity(), hex_dump(v.data(), v.size()).c_str(), 4, '>');
+
                     updated = true;
-                    
+
                     // adapt peek_counter so we know we recovered data from readbuf
                     peek_read_counter += v.size();
-                    
-                } else {
-                    _war("AppHostCX::pre_read[%s]: FIXME: peek counter behind read counter, but readbuf is empty!",c_name());
-                    _war("AppHostCX::pre_read[%s]:   s attempt to create readbuf view at <%d,%d> ptr %p",c_name(),w,delta,readbuf()->data());
-                    
-                }
-                
-                
-            }
 
+                } else {
+                    _war("AppHostCX::pre_read[%s]: FIXME: peek counter behind read counter, but readbuf is empty!",
+                         c_name());
+                    _war("AppHostCX::pre_read[%s]:   s attempt to create readbuf view at <%d,%d> ptr %p", c_name(), w,
+                         delta, readbuf()->data());
+                }
+            }
+        }
+
+        if(meter_read_bytes < max_detect_bytes()) {
             buffer b(5000);
             b.size(0);
             int l = this->peek(b);
-            
+
             if(behind_read && __behind_read_warn) {
                 _war("AppHostCX::pre_read[%s]: peek returns %d bytes",c_name(),l);
             } else {
                 _dum("AppHostCX::pre_read[%s]: peek returns %d bytes",c_name(),l);
             }
-            
-            if(l > 0) {
+
+            if(l < 0) {
+                // if peek (it's a read without moving out data from OS buffer) returns -1
+                // simulate EAGAIN behaviour
+                next_read_limit(-1);
+                _deb("AppHostCX::pre_read[%s]: peek() returned %d", c_name(), l);
+
+            } else if(l > 0) {
                 peek_read_counter += l;
                 flow().append('r',b);
-                
+
                 _deb("AppHostCX::pre_read[%s]: Appended to flow %d bytes (allocated buffer size %d): %s",c_name(),b.size(),b.capacity(),hex_dump(b.data(),b.size()).c_str());
-                next_read_limit(l); 
-                
+                next_read_limit(l);
+
                 updated = true;
-		
+
                 if(com()->l4_proto() == SOCK_DGRAM) {
-                  // don't limit reads, packets are dropped in case of tension, so flow could be incorrect a bit (it will be fixed on read).
-                  this->next_read_limit(0);
+                    // don't limit reads, packets are dropped in case of tension, so flow could be incorrect a bit (it will be fixed on read).
+                    this->next_read_limit(0);
                 }
                 // TCP
-                else if(l >= (int)b.capacity()) {
+                if(l >= (int)b.capacity()) {
                     _dia("AppHostCX::pre_read[%s]: pre_read at max. buffer capacity %d",c_name(),b.capacity());
                 }
             }
         }
-        
-        if(updated == true) {
+
+
+        if(updated) {
             _dia("AppHostCX::pre_read[%s]: side %c, flow path: %s",c_name(), 'r', flow().hr().c_str());
 
             if (detect(starttls_sensor(),'r')) {

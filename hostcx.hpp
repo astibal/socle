@@ -155,7 +155,8 @@ class baseHostCX : public Host
 	
 	
 	ssize_t processed_bytes_; //!< number of bytes processed by last process()
-	ssize_t next_read_limit_;  // limit next read() operation to this number. Zero means no restrictions.
+	int next_read_limit_;     // limit next read() operation to this number. Zero means no restrictions.
+	                          // <0 means don't read at all
 	
 	/*! 
 	 ! If you are not attempting to do something really special, you want it to keep it as true (default). See [HostCX::auto_finish()](@ref HostCX::auto_finish) */
@@ -298,8 +299,8 @@ public:
 	inline void send(buffer& b) { writebuf_.append(b); }
 	inline int  peek(buffer& b) { int r = com()->peek(this->socket(),b.data(),b.capacity(),0); if (r > 0) { b.size(r); } return r; }
 	
-	inline ssize_t next_read_limit() { return next_read_limit_; }
-	inline void next_read_limit(ssize_t s) { next_read_limit_ = s; }
+	inline int next_read_limit() { return next_read_limit_; }
+	inline void next_read_limit(int s) { next_read_limit_ = s; }
 	
 	int read();
 	int process_() { return process(); };

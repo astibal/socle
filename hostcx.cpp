@@ -322,6 +322,11 @@ int baseHostCX::read() {
     _dum("HostCX::read[%s]: calling pre_read",c_name());
     pre_read();
 
+    if(next_read_limit_ < 0) {
+        next_read_limit_ = 0;
+        return -1;
+    }
+
     _dum("HostCX::read[%s]: readbuf_ size=%d, capacity=%d, previously processed=%d finished",c_name(),
             readbuf_.size(), readbuf_.capacity(), processed_bytes_);
 
