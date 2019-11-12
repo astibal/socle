@@ -1990,8 +1990,12 @@ bool baseSSLCom<L4Proto>::store_session_if_needed() {
         
         if(!SSL_session_reused(sslcom_ssl)) {
             DIA___("ticketing: key %s: full key exchange, connect attempt %d on socket %d",key.c_str(),prof_connect_cnt,owner_cx()->socket());
-            
-            if(verify_status == VERIFY_OK) {
+
+            // OK is 0, so test if client_cert_rq is equal means OK | CERT_RQ ...
+            if(   verify_status == VERIFY_OK
+                  ||
+                ( verify_status == ( CLIENT_CERT_RQ | VERIFY_OK ) )
+              ) {
 
                 std::lock_guard<std::recursive_mutex> l_( certstore()->session_cache.getlock() );
 
