@@ -583,9 +583,9 @@ public:
 
             if(! writer_->opened() ) {
                 if (writer_->open(writer_key_)) {
-                    DIA_("writer '%s' created",writer_key_l_.c_str());
+                    _dia("writer '%s' created",writer_key_l_.c_str());
                 } else {
-                    ERR_("write '%s' failed to open dump file!",writer_key_l_.c_str());
+                    _err("write '%s' failed to open dump file!",writer_key_l_.c_str());
                 }
             }
             
@@ -598,7 +598,7 @@ public:
                 writer_->write(writer_key_, ss.str());
 
             } else {
-                ERRS_("cannot write to stream, writer not opened.");
+                _err("cannot write to stream, writer not opened.");
             }
         }   
 	}
