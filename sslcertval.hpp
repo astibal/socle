@@ -167,6 +167,14 @@ namespace inet {
     }
 
     namespace crl {
+
+        struct CrlFactory {
+            static logan_lite& log() {
+                static logan_lite l = logan_lite("com.ssl.crl");
+                return l;
+            }
+        };
+
         std::vector<std::string> crl_urls (X509 *x509);
         X509_CRL *crl_from_bytes (const char *cert_bytes);
         X509_CRL *crl_from_bytes (buffer &b);

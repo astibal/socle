@@ -31,7 +31,7 @@ namespace inet {
 
         int crl_is_revoked_by (X509 *x509, X509 *issuer, X509_CRL *crl_file) {
 
-            auto log = Factory::log();
+            auto log = CrlFactory::log();
 
             int is_revoked = -1;
             if (issuer) {
@@ -41,7 +41,7 @@ namespace inet {
                 if (crl_file && ikey) {
                     if (X509_CRL_verify(crl_file, ikey)) {
 
-                        DEBS_("X509_CRL_verify ok");
+                        _deb("X509_CRL_verify ok");
                         is_revoked = 0;
 
 #ifdef USE_OPENSSL11
@@ -58,7 +58,7 @@ namespace inet {
                             std::string revocation_date;
                             BIO *myb = BIO_new_string(&revocation_date);
 
-                            DIA_("certificate revoked: %s", revocation_date.c_str());
+                            _dia("certificate revoked: %s", revocation_date.c_str());
 
                             ASN1_TIME_print(myb, tm);
                             BIO_free(myb);
@@ -91,28 +91,28 @@ namespace inet {
 
         int crl_verify_trust (X509 *x509, X509 *issuer, X509_CRL *crl_file, const std::string &cacerts_pem_path) {
 
-            auto log = Factory::log();
+            auto log = CrlFactory::log();
 
             STACK_OF (X509) *chain = sk_X509_new_null();
             sk_X509_push(chain, issuer);
 
             X509_STORE *store = X509_STORE_new();
             if (store == nullptr) {
-                INFS_("crl_verify_trust: X509_STORE_new failed");
+                _err("crl_verify_trust: X509_STORE_new failed");
                 return 0;
             }
 
             X509_LOOKUP *lookup = X509_STORE_add_lookup(store, X509_LOOKUP_file());
             if (lookup == nullptr) {
-                INFS_("crl_verify_trust: X509_STORE_add_lookup failed");
+                _err("crl_verify_trust: X509_STORE_add_lookup failed");
                 X509_STORE_free(store);
                 return 0;
             }
 
             // FIXME
-            //INF_("crl_verify_trust: Loading CA path %s",cacerts_pem_path.c_str());
+            //_inf("crl_verify_trust: Loading CA path %s",cacerts_pem_path.c_str());
             //int q1 = X509_LOOKUP_load_file(lookup, cacerts_pem_path.c_str(), X509_FILETYPE_PEM);
-            //if (!q1) { INFS_("crl_verify_trust: X509_LOOKUP_load_file failed"); return 0; }
+            //if (!q1) { _inf("crl_verify_trust: X509_LOOKUP_load_file failed"); return 0; }
 
             X509_STORE_CTX *csc = X509_STORE_CTX_new();
 
@@ -126,7 +126,7 @@ namespace inet {
 
                 verify_result = X509_verify_cert(csc);
                 if (verify_result != 1) {
-                    DIA_("crl_verify_trust: %s", X509_verify_cert_error_string(X509_STORE_CTX_get_error(csc)));
+                    _dia("crl_verify_trust: %s", X509_verify_cert_error_string(X509_STORE_CTX_get_error(csc)));
                 }
 
                 X509_STORE_CTX_cleanup(csc);
@@ -200,7 +200,7 @@ namespace inet {
 
         X509_CRL *crl_from_bytes(buffer &b) {
 
-            auto log = Factory::log();
+            auto log = CrlFactory::log();
             _dum("crl_from_bytes: \n%s", hex_dump(b).c_str());
 
             BIO *bio_mem = BIO_new(BIO_s_mem());
