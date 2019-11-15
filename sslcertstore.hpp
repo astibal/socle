@@ -102,8 +102,6 @@ private:
     SSL_CTX*  def_cl_ctx = nullptr;   // default client ctx
     SSL_CTX*  def_dtls_cl_ctx = nullptr;   // default client ctx for DTLS
 
-//public:
-
     // default path for CA trust-store. It's marked as CL, since CL side will use it (sx -> real server)
     static std::string def_cl_capath;
 
@@ -127,7 +125,7 @@ private:
     std::recursive_mutex mutex_cache_write_;
 
 
-    SSLFactory() {};
+    SSLFactory() = default;
 public:
     // avoid having copies of SSLFactory
     SSLFactory(SSLFactory const&) = delete;
