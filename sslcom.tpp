@@ -1376,7 +1376,7 @@ void baseSSLCom<L4Proto>::init_server() {
         SSL_set_options(sslcom_ssl, SSL_OP_COOKIE_EXCHANGE);
     }
     
-    //if(l4_proto() == SOCK_DGRAM) INF___("DTLS sslcom_ssl 0x%x",sslcom_ssl);
+    //if(l4_proto() == SOCK_DGRAM) _inf("DTLS sslcom_ssl 0x%x",sslcom_ssl);
 
     std::string my_filter = ci_def_filter;
     
@@ -1571,7 +1571,7 @@ void baseSSLCom<L4Proto>::accept_socket ( int sockfd )  {
                 int ret_con = ::connect(sslcom_fd, (sockaddr *) &rec.src, sizeof(sockaddr_storage));
                 int ret_bind = ::bind(sslcom_fd, (sockaddr *) &rec.dst, sizeof(sockaddr_storage));
                 
-                INF___("Masked socket: connect=%d, bind=%d", ret_con, ret_bind);
+                _inf("Masked socket: connect=%d, bind=%d", ret_con, ret_bind);
             } else {
                 _deb("datagram records not found");
             }
@@ -2104,7 +2104,7 @@ bool baseSSLCom<L4Proto>::waiting_peer_hello() {
                             if(s != nullptr) {
                                 opt_bypass = true;
                                 s->opt_bypass = true;
-                                INFS___("bypassing non-TLS connection");
+                                _inf("bypassing non-TLS connection");
                                 return false; //return false to return from read() or write()
                             }
                         }
