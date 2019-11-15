@@ -908,11 +908,19 @@ public:
         if(ptr_) topic(ptr->class_name());
     }
 
+    inline logan_attached override() {
+        return logan_attached(this->ptr_);
+    }
+
+    inline logan_attached override(std::string area) {
+        return logan_attached(this->ptr_, area);
+    }
+
     loglevel* my_area_loglevel = nullptr;
 
     std::string topic() override {
 
-        // somebody's overriden topic, use it.
+        // somebody's overridden topic, use it.
         if(! topic_.empty())
             return topic_;
 
