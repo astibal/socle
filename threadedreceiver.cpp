@@ -596,7 +596,7 @@ int ThreadedReceiverProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
     
     auto *p = (ThreadedReceiver<ThreadedReceiverProxy<SubWorker>,SubWorker> *)MasterProxy::parent();
     if(p == nullptr) {
-        FATS_("PARENT is NULL");
+        _fat("PARENT is NULL");
     }
     else {
         if (p->state().dead()) {
