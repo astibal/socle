@@ -1631,7 +1631,7 @@ void baseSSLCom<L4Proto>::ssl_keylog_callback(const SSL* ssl, const char* line) 
     baseSSLCom* com = static_cast<baseSSLCom*>(data);
 
     if(com && com->sslkeylog) {
-        LOGS_(loglevel(NOT,flag_add(iNOT,CRT|KEYS),&LOG_EXEXACT,LOG_FLRAW),line);
+        com->log.log(loglevel(NON,flag_add(iNOT,CRT|KEYS),&LOG_EXEXACT,LOG_FLRAW),"com.ssl.callback.keys",line);
     }
 }
 
@@ -1667,7 +1667,7 @@ void baseSSLCom<L4Proto>::dump_keys() {
 
         #endif // USE_OPENSSL11
 
-        LOGS_(loglevel(NOT,flag_add(iNOT,CRT|KEYS),&LOG_EXEXACT,LOG_FLRAW),ret.c_str());
+        log.log(loglevel(NON, flag_add(iNOT,CRT|KEYS), &LOG_EXEXACT, LOG_FLRAW),"com.ssl.keys",ret.c_str());
     }
 }
 
