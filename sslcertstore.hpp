@@ -65,7 +65,7 @@ struct session_holder {
     uint32_t cnt_loaded = {0};
 };
 
-class SpoofOptions;
+struct SpoofOptions;
 
 class SSLFactory {
 

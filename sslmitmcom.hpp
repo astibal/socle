@@ -22,7 +22,7 @@
 
 #include <sslcom.hpp>
 
-#define EXT_COUNT 4
+
 
 struct entry    {
     char *key;
@@ -30,18 +30,6 @@ struct entry    {
 };
 
 
-#pragma GCC diagnostic ignored "-Wwrite-strings"
-#pragma GCC diagnostic push
-
-static struct entry ext_ent[EXT_COUNT] = {
-    { "basicConstraints",      "CA:FALSE" },
-    { "nsComment",           "\"Mitm generated certificate\"" },
-    { "subjectKeyIdentifier",  "hash" },
-    { "authorityKeyIdentifier","keyid,issuer:always" } //, 
-    //{ "keyUsage",              "nonrepudiation,digitalSig nature,keyEncipherment" }
-};
-
-#pragma GCC diagnostic pop
 
 struct SpoofOptions {
   bool self_signed = false; // set to true if we should deliberately make a mistake
@@ -52,20 +40,21 @@ struct SpoofOptions {
 template <class SSLProto>
 class baseSSLMitmCom : public SSLProto {
 public:
-   static std::string sslmitmcom_name_;
-   static std::string sslmitmcom_insp_name_;
-    
-   virtual bool check_cert(const char*);
-   virtual bool spoof_cert(X509* cert_orig, SpoofOptions& spo);
-   virtual baseCom* replicate() { return new baseSSLMitmCom(); };
+    virtual ~baseSSLMitmCom() = default;
 
-    virtual ~baseSSLMitmCom() {};
+    virtual bool check_cert(const char*);
+    virtual bool spoof_cert(X509* cert_orig, SpoofOptions& spo);
+
+    baseCom* replicate() override { return new baseSSLMitmCom(); };
 
     DECLARE_C_NAME("baseSSLMitmCom")
-    DECLARE_DEF_TO_STRING
-    DECLARE_LOGGING(to_string)
-    
-    virtual const std::string shortname() const { return std::string("ssli"); }
+    DECLARE_DEF_TO_STRING;
+    DECLARE_LOGGING(to_string);
+
+    static logan_lite& log_mitm() {
+        static logan_lite l("com.ssl.ca");
+        return l;
+    }
 };
 
 #include <sslmitmcom.tpp>

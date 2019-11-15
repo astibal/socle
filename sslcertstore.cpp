@@ -42,6 +42,21 @@ ptr_cache<std::string,session_holder> SSLFactory::session_cache("ssl session cac
 unsigned long SSLFactory::def_cl_options = SSL_OP_NO_SSLv3+SSL_OP_NO_SSLv2;
 unsigned long SSLFactory::def_sr_options = SSL_OP_NO_SSLv3+SSL_OP_NO_SSLv2;
 
+#pragma GCC diagnostic ignored "-Wwrite-strings"
+#pragma GCC diagnostic push
+
+constexpr unsigned int EXT_COUNT = 4;
+static struct entry ext_ent[EXT_COUNT] = {
+        { "basicConstraints",      "CA:FALSE" },
+        { "nsComment",           "\"Mitm generated certificate\"" },
+        { "subjectKeyIdentifier",  "hash" },
+        { "authorityKeyIdentifier","keyid,issuer:always" } //,
+        //{ "keyUsage",              "nonrepudiation,digitalSig nature,keyEncipherment" }
+};
+
+#pragma GCC diagnostic pop
+
+
 bool SSLFactory::load() {
 
     std::lock_guard<std::recursive_mutex> l_(lock());
@@ -990,7 +1005,7 @@ SSLFactory::X509_PAIR* SSLFactory::spoof(X509* cert_orig, bool self_sign, std::v
     
     // add x509v3 extensions as specified 
     X509V3_set_ctx(&ctx, ca_cert, cert, nullptr, nullptr, 0);
-    for (int i = 0; i < EXT_COUNT; i++) {
+    for (unsigned int i = 0; i < EXT_COUNT; i++) {
 
         X509_EXTENSION * ext;
         if (!(ext = X509V3_EXT_conf(nullptr, &ctx, ext_ent[i].key, ext_ent[i].value))) {

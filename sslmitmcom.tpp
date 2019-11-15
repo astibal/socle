@@ -27,8 +27,9 @@
 
 template <class SSLProto>
 bool baseSSLMitmCom<SSLProto>::check_cert(const char* peer_name) {
+    auto log = this->log.override("com.ssl.mitm");
     
-    DEBS__("SSLMitmCom::check_cert: called");
+    _deb("SSLMitmCom::check_cert: called");
     bool r = SSLProto::check_cert(peer_name);
     X509* cert = SSL_get_peer_certificate(SSLProto::sslcom_ssl);
     
@@ -68,12 +69,12 @@ bool baseSSLMitmCom<SSLProto>::check_cert(const char* peer_name) {
             std::string validated_san;
 
             for(std::string& candidate: hostnames) {
-                DIA___("Target server SAN/CN line: %s",candidate.c_str());
+                _dia("Target server SAN/CN line: %s",candidate.c_str());
 
                 std::vector<std::string> can_dns = string_split(candidate,',');
                 for(std::string const& can_dns_item: can_dns) {
                     std::string item = string_trim(can_dns_item);
-                    DIA___("           SAN/CN entry: '%s'",item.c_str());
+                    _dia("           SAN/CN entry: '%s'",item.c_str());
 
                     if(this->sslcom_peer_hello_sni().size() > 0) {
                         if(item.size() > 4 && item.find("DNS:") == 0) {
@@ -92,7 +93,7 @@ bool baseSSLMitmCom<SSLProto>::check_cert(const char* peer_name) {
                                 }
 
                                 if(sni_wild == item) {
-                                    DIA___("Matched sni wildcard: '%s' to cert san/cn wildcard: '%s'",sni_wild.c_str(),item.c_str());
+                                    _dia("Matched sni wildcard: '%s' to cert san/cn wildcard: '%s'",sni_wild.c_str(),item.c_str());
                                     validated = true;
                                     validated_san = "DNS:" + item;
                                     break;
@@ -105,7 +106,7 @@ bool baseSSLMitmCom<SSLProto>::check_cert(const char* peer_name) {
                                 std::transform(sni.begin(), sni.end(), sni.begin(), ::tolower);
 
                                 if(this->sslcom_peer_hello_sni() == item) {
-                                    DIA___("Matched sni: '%s' to cert san/cn: '%s'",this->sslcom_peer_hello_sni().c_str(),item.c_str());
+                                    _dia("Matched sni: '%s' to cert san/cn: '%s'",this->sslcom_peer_hello_sni().c_str(),item.c_str());
                                     validated = true;
                                     validated_san = "DNS:" + item;
                                     break;
@@ -116,13 +117,13 @@ bool baseSSLMitmCom<SSLProto>::check_cert(const char* peer_name) {
                         item = item.substr(3);
 
                         if(this->owner_cx() && (this->owner_cx()->host() == item)) {
-                            DIA___("Comapring IP: '%s' to cert san/cn: '%s'",this->owner_cx()->host().c_str(),item.c_str());
+                            _dia("Comparing IP: '%s' to cert san/cn: '%s'",this->owner_cx()->host().c_str(),item.c_str());
                             validated = true;
                             validated_san = "IP:" + item;
                             break;
                         }
                     } else {
-                        DIA___("   ignoring item: %s", item.c_str());
+                        _dia("   ignoring item: %s", item.c_str());
                     }
                 }
 
@@ -133,10 +134,10 @@ bool baseSSLMitmCom<SSLProto>::check_cert(const char* peer_name) {
             }
 
             if(validated) {
-                LOG___(loglevel(iDIA,0),"SSL hostname check succeeded on %s",validated_san.c_str());
+                _dia("SSL hostname check succeeded on %s",validated_san.c_str());
             }
             else {
-                LOG___(loglevel(iWAR,0),"SSL hostname check failed (sni %s).",this->sslcom_peer_hello_sni().c_str());
+                _war("SSL hostname check failed (sni %s).",this->sslcom_peer_hello_sni().c_str());
                 this->verify_set(SSLCom::HOSTNAME_FAILED);
 
                 if(!this->opt_failed_certcheck_replacement) {
@@ -165,7 +166,7 @@ bool baseSSLMitmCom<SSLProto>::check_cert(const char* peer_name) {
         if(p->sslcom_server_) {
             
             if(! this->sslcom_peer_sni_shortcut) {
-                DIA__("SSLMitmCom::check_cert[%x]: slow-path, calling to spoof peer certificate",this);
+                _dia("SSLMitmCom::check_cert[%x]: slow-path, calling to spoof peer certificate",this);
                 r = p->spoof_cert(cert,spo);
                 if (r) {
                     // this is inefficient: many SSLComs are already initialized, this is running it once 
@@ -174,17 +175,17 @@ bool baseSSLMitmCom<SSLProto>::check_cert(const char* peer_name) {
                     if (p->sslcom_waiting) {
                         p->init_server();
                     } else {
-                        WARS__("FIXME: Trying to init SSL server while it's already running!");
+                        _war("FIXME: Trying to init SSL server while it's already running!");
                     } 
                 }
             } else {
-                DIA__("SSLMitmCom::check_cert[%x]: fast-path, spoof not necessary",this);
+                _dia("SSLMitmCom::check_cert[%x]: fast-path, spoof not necessary",this);
             }
         } else {
-            WAR__("SSLMitmCom::check_cert[%x]: cannot spoof, peer is not SSL server",this);
+            _war("SSLMitmCom::check_cert[%x]: cannot spoof, peer is not SSL server",this);
         }
     } else {
-        WARS__("SSLMitmCom::check_cert: cannot set peer's cert to spoof: peer is not SSLMitmCom type");
+        _war("SSLMitmCom::check_cert: cannot set peer's cert to spoof: peer is not SSLMitmCom type");
     }
     
     X509_free(cert);
@@ -193,7 +194,9 @@ bool baseSSLMitmCom<SSLProto>::check_cert(const char* peer_name) {
 
 template <class SSLProto>
 bool baseSSLMitmCom<SSLProto>::spoof_cert(X509* cert_orig, SpoofOptions& spo) {
-    DEB__("SSLMitmCom::spoof_cert[%x]: about to spoof certificate!",this);
+    auto log = this->log.override("com.ssl.mitm");
+
+    _deb("SSLMitmCom::spoof_cert[%x]: about to spoof certificate!",this);
     // get info from the peer certificate
     //
     // not used at this time
@@ -207,7 +210,7 @@ bool baseSSLMitmCom<SSLProto>::spoof_cert(X509* cert_orig, SpoofOptions& spo) {
 
     parek = this->certstore()->find(store_key);
     if (parek) {
-        DIA__("SSLMitmCom::spoof_cert[%x]: certstore hit for '%s'",this,store_key.c_str());
+        _dia("SSLMitmCom::spoof_cert[%x]: certstore hit for '%s'",this,store_key.c_str());
         this->sslcom_pref_cert = parek->second;
         this->sslcom_pref_key = parek->first;
         
@@ -215,11 +218,11 @@ bool baseSSLMitmCom<SSLProto>::spoof_cert(X509* cert_orig, SpoofOptions& spo) {
     } 
     else {
     
-        DIA__("SSLMitmCom::spoof_cert[%x]: NOT in my certstore '%s'",this,store_key.c_str());    
+        _dia("SSLMitmCom::spoof_cert[%x]: NOT in my certstore '%s'",this,store_key.c_str());
         
         parek = this->certstore()->spoof(cert_orig,spo.self_signed,&spo.sans);
         if(!parek) {
-            WAR__("SSLMitmCom::spoof_cert[%x]: certstore failed to spoof '%d' - default will be used",this,store_key.c_str()); 
+            _war("SSLMitmCom::spoof_cert[%x]: certstore failed to spoof '%d' - default will be used",this,store_key.c_str());
             return false;
         } 
         else {
@@ -235,7 +238,7 @@ bool baseSSLMitmCom<SSLProto>::spoof_cert(X509* cert_orig, SpoofOptions& spo) {
         }
         
         if (! this->certstore()->add(store_key,parek)) {
-            DIA__("SSLMitmCom::spoof_cert[%x]: spoof was successful, but cache add failed for %s",this,store_key.c_str());
+            _dia("SSLMitmCom::spoof_cert[%x]: spoof was successful, but cache add failed for %s",this,store_key.c_str());
             return true;
         }
     }
