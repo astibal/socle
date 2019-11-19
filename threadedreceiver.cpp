@@ -37,14 +37,18 @@ int ThreadedReceiverProxy<SubWorker>::workers_total = 2;
 template<class Worker, class SubWorker>
 ThreadedReceiver<Worker,SubWorker>::ThreadedReceiver(baseCom* c): baseProxy(c), threads_(nullptr) {
     baseProxy::new_raw(true);
-    
+
     if(version_check(get_kernel_version(),"3.4")) {
         _deb("Acceptor: kernel supports O_DIRECT");
-        pipe2(sq__hint,O_DIRECT|O_NONBLOCK);
+        if ( 0 != pipe2(sq__hint,O_DIRECT|O_NONBLOCK)) {
+            _err("ThreadedReceiver::new_raw: hint pipe not created, error[%d], %s", errno, string_error().c_str());
+        }
     } else {
         _war("Acceptor: kernel doesn't support O_DIRECT");
-        pipe2(sq__hint,O_NONBLOCK);
-    } 
+        if (0 != pipe2(sq__hint,O_NONBLOCK)) {
+            _err("ThreadedReceiver::new_raw: hint pipe not created, error[%d], %s", errno, string_error().c_str());
+        }
+    }
 }
 
 template<class Worker, class SubWorker>
@@ -535,8 +539,10 @@ template<class Worker, class SubWorker>
 int ThreadedReceiver<Worker,SubWorker>::push(int s) { 
     std::lock_guard<std::mutex> lck(sq_lock_);
     sq_.push_front(s);
-    ::write(sq__hint[1],"A",1);
-    
+    int wr = ::write(sq__hint[1],"A",1);
+    if( wr <= 0) {
+        _err("ThreadedReceiver::push: failed to write hint byte - error[%d]: %s", wr, string_error().c_str());
+    }
     return sq_.size();
 };
 
@@ -579,8 +585,12 @@ int ThreadedReceiver<Worker, SubWorker>::pop_for_worker(int id) {
         _dia("ThreadedReceiver::pop_for_worker: pop-ing %d for worker %d, queue size %d",r,id,sq_.size());
 
         char dummy_buffer[1];
-        ::read(sq__hint[0],dummy_buffer,1);
-        _dia("ThreadedReceiver::pop_for_worker: clearing sq__hint %c",dummy_buffer[0]);
+        int red = ::read(sq__hint[0],dummy_buffer,1);
+        if(red > 0) {
+            _dia("ThreadedReceiver::pop_for_worker: clearing sq__hint %c", dummy_buffer[0]);
+        } else {
+            _dia("ThreadedReceiver::pop_for_worker: hint not read, read returned %d", red);
+        }
 
         return r;
     }

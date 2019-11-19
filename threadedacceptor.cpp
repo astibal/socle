@@ -39,10 +39,14 @@ threads_(NULL) {
     baseProxy::new_raw(true);
     if(version_check(get_kernel_version(),"3.4")) {
         _deb("Acceptor: kernel supports O_DIRECT");
-        pipe2(sq__hint,O_DIRECT|O_NONBLOCK);
+        if ( 0 != pipe2(sq__hint,O_DIRECT|O_NONBLOCK)) {
+            _err("ThreadAcceptor::new_raw: hint pipe not created, error[%d], %s", errno, string_error().c_str());
+        }
     } else {
         _war("Acceptor: kernel doesn't support O_DIRECT");
-        pipe2(sq__hint,O_NONBLOCK);
+        if (0 != pipe2(sq__hint,O_NONBLOCK)) {
+            _err("ThreadAcceptor::new_raw: hint pipe not created, error[%d], %s", errno, string_error().c_str());
+        }
     } 
 }
 
@@ -144,7 +148,10 @@ template<class Worker, class SubWorker>
 int ThreadedAcceptor<Worker,SubWorker>::push(int s) { 
 	std::lock_guard<std::mutex> lck(sq_lock_);
 	sq_.push_front(s);
-    ::write(sq__hint[1],"A",1);
+    int wr = ::write(sq__hint[1],"A",1);
+    if( wr <= 0) {
+        _err("ThreadedAcceptor::push: failed to write hint byte - error[%d]: %s", wr, string_error().c_str());
+    }
 	
 	return sq_.size();
 };
@@ -161,9 +168,13 @@ int ThreadedAcceptor<Worker,SubWorker>::pop() {
     sq_.pop_back();
 
     char dummy_buffer[1];
-    ::read(sq__hint[0],dummy_buffer,1);
-    _dia("ThreadedAcceptor::pop: clearing sq__hint %c",dummy_buffer[0]);
 
+    int red = ::read(sq__hint[0],dummy_buffer,1);
+    if(red > 0) {
+        _dia("ThreadedAcceptor::pop: clearing sq__hint %c", dummy_buffer[0]);
+    } else {
+        _dia("ThreadedAcceptor::pop_for_worker: hint not read, read returned %d", red);
+    }
     return s;
 }
 

@@ -550,14 +550,14 @@ std::string string_trim(const std::string& orig) {
     return ret;
 }
 
-std::string&& string_tolower(const std::string& orig) {
-    std::string r;
+std::string string_tolower(const std::string& orig) {
+    std::stringstream r;
 
     for(char c: orig) {
-        r += tolower((int)c);
+        r << tolower((int)c);
     }
 
-    return std::move(r);
+    return r.str();
 }
 
 std::string string_csv(const std::vector<std::string>& str_list_ref, const char delim) {
@@ -569,5 +569,5 @@ std::string string_csv(const std::vector<std::string>& str_list_ref, const char 
         }
     }
 
-    return std::move(build.str());
+    return build.str();
 }

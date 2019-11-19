@@ -36,7 +36,7 @@ std::string string_format(const char* format, Args ... args);
 std::vector<std::string> 
             string_split(std::string str, char delimiter);
 std::string string_trim(const std::string& orig);
-std::string&& string_tolower(const std::string& orig);
+std::string string_tolower(const std::string& orig);
 std::string string_csv(const std::vector<std::string>& str_list_ref, const char delim = ',');
 
 std::string number_suffixed(unsigned long xn);
