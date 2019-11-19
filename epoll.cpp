@@ -103,24 +103,6 @@ int epoll::wait(int timeout) {
             
             _dia("epoll::wait: data received into socket %d",socket );
 
-//            // This is apparently wrong, old code. We are reading something receivers/acceptors should read
-//            // themselves. Because we are closing socket with descriptor 1, it could be anything!
-//            // Debug showed, it's usually "hint socket", unfortunately.
-//            // Hint socket is opened by pipe2 call, and used to indicate there is a new connection coming
-//            // from master receiver/acceptor towards slave proxies.
-
-//            // Well well well. Committing this commented-out code to document what happened, to learn out from
-//            // such a utter mistake. Despite I understand why and where it came from.
-
-//            if(socket  == 1) {
-//                int baz = 0;
-//                char t[1]; t[0] = 0;
-//                int red = ::read(socket, t, 1);
-//
-//                _inf("epoll on socket 1 read: return %d, content %c", red, t[0]);
-//                baz = 1;
-//            }
-
             // add socket to in_set
             in_set.insert(socket);
             clear_idle_watch(socket);
