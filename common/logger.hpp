@@ -812,6 +812,27 @@ void logger::log2_w_name(loglevel l, const char* f, int li, std::string name, co
 #define  _fat  if(*log.level() >= CRI) log.fat
 
 
+class baseLoganMate {
+public:
+    [[nodiscard]] virtual  std::string& class_name() const = 0;
+    [[nodiscard]] virtual std::string hr() const = 0;
+};
+
+class LoganMate : virtual public baseLoganMate {
+private:
+    // this object logging
+    loglevel  this_log_level_{NON};
+
+public:
+    // class-level logging
+    static loglevel& log_level_ref() { static loglevel class_loglevel(iNON); return class_loglevel; }
+    // this object logging
+    loglevel& this_log_level_ref() { return this_log_level_; };
+
+    [[nodiscard]] loglevel get_this_log_level() const { return this_log_level_ > log_level_ref() ? this_log_level_: log_level_ref() ; };
+    void set_this_log_level(loglevel const& nl) { this_log_level_ = nl; };
+};
+
 class logan;
 
 class logan_lite {
