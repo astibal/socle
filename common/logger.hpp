@@ -909,11 +909,14 @@ public:
     void log(loglevel lev, const std::string& topic, const char* fmt, Args ... args) {
         if( *level() >= lev) {
             std::stringstream ms;
-            ms << "[" << topic;
-            if(! prefix().empty() ) {
-                ms << "|" << prefix();
+            if( ! flag_test(lev.flags(),LOG_FLRAW)) {
+                ms << "[" << topic;
+                if (!prefix().empty()) {
+                    ms << "|" << prefix();
+                }
+                ms << "]: ";
             }
-            ms << "]: " << string_format(fmt, args...);
+            ms << string_format(fmt, args...);
 
             get_logger()->log(lev, ms.str());
         }
