@@ -31,7 +31,7 @@ bool sobject_info::enable_bt_ = true;
 bool sobject_info::enable_bt_ = false;
 #endif
 
-std::string sobject_info::to_string(int verbosity) { 
+std::string sobject_info::to_string(int verbosity) const {
     std::stringstream r;
     
     if(verbosity > INF) {

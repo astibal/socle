@@ -162,10 +162,10 @@ public:
     static unsigned int default_sock_family;
 
     DECLARE_C_NAME("UDPCom");
-    DECLARE_DEF_TO_STRING
     DECLARE_LOGGING(to_string);
-    
-    virtual const std::string shortname() const { return std::string("udp"); }
+
+    std::string to_string(int verbosity=iINF) const override { return class_name(); }
+    const std::string shortname() const override { static  std::string s("udp"); return s; }
 };
 
 #endif

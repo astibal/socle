@@ -38,7 +38,7 @@ struct sobject_info {
     static bool enable_bt_;
     std::string* bt_ = nullptr;
     
-    std::string extra_string() { if (bt_) { return string_format("creation point:\n%s",bt_->c_str()); } else { return ""; } }
+    std::string extra_string() const { if (bt_) { return string_format("creation point:\n%s",bt_->c_str()); } else { return ""; } }
     sobject_info() { init(); }
 
     void init() { 
@@ -49,9 +49,9 @@ struct sobject_info {
     }
 
     time_t created_ = 0;
-    unsigned int age() { return time(nullptr) - created_; }
+    unsigned int age() const { return time(nullptr) - created_; }
 
-    std::string to_string(int verbosity=iINF);
+    std::string to_string(int verbosity=iINF) const;
     virtual ~sobject_info() { if(bt_) delete bt_; };
     
     DECLARE_C_NAME("sobject_info");
@@ -79,10 +79,14 @@ public:
     [[nodiscard]] unsigned long get() const;
 };
 
+
+class base_sobject {
+    virtual std::string to_string(int verbosity=iINF) const = 0;
+};
 class sobject;
 
 // Singleton class - used as central sobject storage
-class sobjectDB {
+class sobjectDB : public base_sobject {
 
     ptr_cache<sobject*,sobject_info> db_;
     ptr_cache<uint64_t,sobject> oid_db_;
@@ -110,7 +114,7 @@ public:
     // ask object to destruct itself
     static int ask_destroy(void* ptr);
 
-    virtual std::string to_string(int verbosity=iINF) { return this->class_name(); };
+    std::string to_string(int verbosity=iINF) const override { return this->class_name(); };
 
     DECLARE_C_NAME("sobjectDB");
     DECLARE_LOGGING(to_string);
@@ -119,7 +123,7 @@ protected:
     logan_attached<sobjectDB> log = logan_attached<sobjectDB>(this, "internal.sobject");
 };
 
-class sobject {
+class sobject : public base_sobject {
 
 public:
     typedef uint64_t oid_type;
@@ -136,7 +140,7 @@ public:
     virtual bool ask_destroy() = 0;
 
     // return string representation of the object on single line
-    virtual std::string to_string(int verbosity=iINF) { std::stringstream ss; ss << this->class_name() << "-" << oid(); return ss.str(); };
+    std::string to_string(int verbosity=iINF) const override { std::stringstream ss; ss << this->class_name() << "-" << oid(); return ss.str(); };
 
     static meter& mtr_created() { static meter mtr_created_; return mtr_created_; } ;
     static meter& mtr_deleted() { static meter mtr_deleted_; return mtr_deleted_; } ;
@@ -160,14 +164,14 @@ class spointer {
         explicit spointer(T* ptr): pointer_(ptr) {};
         virtual ~spointer() { delete pointer_; }
 
-        unsigned int usage() { return count_; }
+        unsigned int usage() const { return count_; }
 
-        bool valid() { return (pointer_ != nullptr); }
+        bool valid() const { return (pointer_ != nullptr); }
         void invalidate() { delete pointer_; pointer_ = nullptr; count_=0; }
         
-        T* operator->() { return pointer_;  }
-        T& operator*() { return *pointer_; }
-        T* ptr() { return pointer_; }
+        T* operator->() const { return pointer_;  }
+        T& operator*() const { return *pointer_; }
+        T* ptr() const { return pointer_; }
         void ptr(T* p) { invalidate(); pointer_ = p; }
 
         spointer<T>& operator=(const spointer<T>&) = delete;

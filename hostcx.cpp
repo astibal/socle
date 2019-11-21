@@ -232,25 +232,33 @@ void baseHostCX::shutdown() {
     }
 }
 
-std::string& baseHostCX::name(bool force) {
+std::string& baseHostCX::name(bool force) const {
 
     if(name__.empty() || online_name || force) {
+
+        std::scoped_lock<std::mutex> l(name_mutex_);
+
         if (reduced()) {
             std::string com_name = "?";
             if(com() != nullptr) {
                 com_name = com()->name();
             }
 
+            std::string res_host;
+            std::string res_port;
+
             if (valid()) {
 
                 if(com() != nullptr) {
-                    com()->resolve_socket_src(fds_, &host_,&port_);
+                    com()->resolve_socket_src(fds_, &res_host, &res_port);
+                    host(res_host);
+                    port(res_port);
                 }
 
                 if(socket_in_name) {
-                    name__ = string_format("%d::%s_%s:%s",socket(), com()->shortname().c_str() , host().c_str(),port().c_str());
+                    name__ = string_format("%d::%s_%s:%s",socket(), com()->shortname().c_str() , chost().c_str(),cport().c_str());
                 } else {
-                    name__ = string_format("%s_%s:%s",com()->shortname().c_str() , host().c_str(),port().c_str());
+                    name__ = string_format("%s_%s:%s",com()->shortname().c_str() , chost().c_str(),cport().c_str());
                 }
 
                 //name__ = string_format("%d:<reduced>",socket());
@@ -262,9 +270,9 @@ std::string& baseHostCX::name(bool force) {
         } else {
 
             if(socket_in_name) {
-                name__ = string_format("%d::%s_%s:%s",socket(), com()->shortname().c_str() ,host().c_str(),port().c_str());
+                name__ = string_format("%d::%s_%s:%s",socket(), com()->shortname().c_str() ,chost().c_str(),cport().c_str());
             } else {
-                name__ = string_format("%s_%s:%s",com()->shortname().c_str() ,host().c_str(),port().c_str());
+                name__ = string_format("%s_%s:%s",com()->shortname().c_str() ,chost().c_str(),cport().c_str());
             }
         }
     }
@@ -273,7 +281,7 @@ std::string& baseHostCX::name(bool force) {
 }
 
 
-const char* baseHostCX::c_name() {
+const char* baseHostCX::c_name() const {
     name();
     return name__.c_str();
 }
@@ -630,7 +638,7 @@ void baseHostCX::on_delay_socket(int fd) {
     com()->delay_socket(fd);
 }
 
-std::string baseHostCX::to_string(int verbosity) {
+std::string baseHostCX::to_string(int verbosity) const {
 
     std::stringstream r_str;
 

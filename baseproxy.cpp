@@ -1349,7 +1349,7 @@ int baseProxy::right_connect ( const char* host, const char* port, bool blocking
 
 
 
-std::string baseProxy::to_string(int verbosity) {
+std::string baseProxy::to_string(int verbosity) const {
 
     std::string ret;
     ret.append(" ");

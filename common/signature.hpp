@@ -48,6 +48,8 @@ public:
     inline int domain() const { return domain_ ; };
     
     std::vector<std::pair<SourceType,buffer*>>& flow() { return flow_; }
+    std::vector<std::pair<SourceType,buffer*>> const& cflow() const { return flow_; }
+
     std::vector<std::pair<SourceType,buffer*>>& operator() () { return flow(); }
 
     unsigned int append(SourceType src,buffer& b) { return append(src,b.data(),b.size());};

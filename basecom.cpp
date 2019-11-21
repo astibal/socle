@@ -162,9 +162,9 @@ bool baseCom::resolve_socket(bool source, int s, std::string* target_host, std::
             l3_proto(AF_INET);
         }
         
-        if(target_host != NULL) *target_host = mapped4_temp;
-        if(target_port != NULL) *target_port = std::to_string(orig_port);
-        if(target_storage != NULL) *target_storage = peer_info_;
+        if(target_host != nullptr) *target_host = mapped4_temp;
+        if(target_port != nullptr) *target_port = std::to_string(orig_port);
+        if(target_storage != nullptr) *target_storage = peer_info_;
         return true;
     }
     
