@@ -604,7 +604,7 @@ public:
 	}
 	
 	
-    std::string to_string(int verbosity = iINF) override {
+    std::string to_string(int verbosity = iINF) const override {
         return string_format("Traflog: file=%s opened=%d",writer_key_.c_str(),writer_->opened());
     }
 	

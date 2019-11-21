@@ -93,7 +93,7 @@ public:
     void subject(std::string const& str) { subject_ = str; }
     void area(std::string const& str) { area_ = str; }
 
-    std::string to_string(int verbosity=iINF) { return string_format("level:%d topic:%d",level_,topic_); };
+    std::string to_string(int verbosity=iINF) const { return string_format("level:%d topic:%d",level_,topic_); };
 private:
     unsigned int level_ {iINF};
     unsigned int topic_ {iNON};
@@ -525,14 +525,19 @@ extern loglevel EXT;
 // takes argument of pointer to function which returns std::string, indicate object name. 
 #define DECLARE_LOGGING(get_name_func)  \
 public:                                      \
-    const char* hr() { hr_ = this->get_name_func(); return hr_.c_str(); }; \
+    std::string hr() const { hr(get_name_func()); return hr_; }; \
+    void hr(std::string const& s) const { \
+       std::mutex hr_mutex_; \
+       std::scoped_lock<std::mutex> l(hr_mutex_);  \
+       hr_ = s;   \
+    } \
     static loglevel& log_level_ref() { return log_level; } \
     loglevel& this_log_level_ref() { return this_log_level_; } \
     static loglevel log_level;                             \
     virtual loglevel get_this_log_level() const { return this_log_level_ > log_level ? this_log_level_: log_level ; }     \
     virtual void set_this_log_level(loglevel nl) { this_log_level_ = nl; }  \
 private:                                                       \
-    std::string hr_;                                           \
+    mutable std::string hr_;                                           \
     loglevel this_log_level_ = NON;
 
 // takes argument of class name. It defines static variables
@@ -546,7 +551,6 @@ template<> loglevel cls::log_level = NON; \
 #define DECLARE_C_NAME(string_name)     \
 private:                                \
     std::string name_ = string_name;   \
-    std::string class_name_ = string_name;          \
 public:                                             \
     virtual std::string const& name() const  { return this->name_; }          \
     virtual const char* c_name() const { return this->name_.c_str(); }; \
@@ -554,13 +558,13 @@ public:                                             \
     virtual void name(std::string n) { name_ = n; };        \
     \
                     \
-    virtual const std::string& class_name() { return this->class_name_; } \
-    virtual const char* c_class_name() { return this->class_name_.c_str(); } \
+    virtual const std::string& class_name() const { static const std::string c(string_name); return c; } \
+    virtual const char* c_class_name() const { return class_name().c_str(); } \
     /*virtual int size_of() { return sizeof (*this);  } */
 
     
 #define DECLARE_DEF_TO_STRING \
-    virtual std::string to_string(int verbosity=iINF) { return this->class_name(); };    
+    std::string to_string(int verbosity=iINF) const override { return this->class_name(); };
     
 
 std::string ESC_ (const std::string &s);

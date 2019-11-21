@@ -84,10 +84,10 @@ protected:
     unsigned int bind_sock_protocol = IPPROTO_TCP;
     
     DECLARE_C_NAME("TCPCom")
-    DECLARE_DEF_TO_STRING
     DECLARE_LOGGING(to_string)
     
-    const std::string shortname() const override { return std::string("tcp"); }
+    const std::string shortname() const override { static std::string s("tcp"); return s; }
+    std::string to_string(int verbosity=iINF) const override { return class_name(); };
 };
 
 #endif

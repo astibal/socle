@@ -234,7 +234,7 @@ public:
     unsigned int change_monitor_for_cx_vec(std::vector<baseHostCX*>* cx_vec, bool ifread, bool ifwrite,int pause_read, int pause_write);
     unsigned int change_side_monitoring(char side, bool ifread, bool ifwrite, int pause_read, int pause_write);
 
-    std::string to_string(int verbosity=iINF) override;
+    std::string to_string(int verbosity=iINF) const override;
 protected:
 
     struct clicker {

@@ -53,7 +53,7 @@ public:
     int     poll_sockmax = 0;
     int     poll_result = 0;
     baseHostCX* owner_cx_ = nullptr;
-    inline baseHostCX* owner_cx() { return owner_cx_; }
+    inline baseHostCX* owner_cx() const { return owner_cx_; }
     
     virtual int poll();
     inline void polltime(int msec) { poll_msec = msec; }
@@ -82,8 +82,8 @@ public:
     typedef enum { ERROR_NONE=0, ERROR_UNSPEC=1, ERROR_READ, ERROR_WRITE } err_flags;
     int  error_flag_ = ERROR_NONE;
 
-    bool error() { return error_flag_ != ERROR_NONE; }
-    int error_flags() { return error_flag_; };    
+    bool error() const { return error_flag_ != ERROR_NONE; }
+    int error_flags() const { return error_flag_; };
     inline void error(baseCom::err_flags e) { error_flag_ = e;}
     
     baseCom() {
@@ -326,10 +326,11 @@ public:
     inline void l4_proto(int p) { l4_proto_ = p; }    
 
     DECLARE_C_NAME("baseCom");
-    virtual std::string to_string(int verbosity=iINF) { return this->class_name(); };
+
     DECLARE_LOGGING(to_string);
-    
-    virtual const std::string shortname() const { return std::string("com"); }
+
+    virtual std::string to_string(int verbosity=iINF) const = 0;
+    virtual const std::string shortname() const = 0;
 
 protected:
     logan_attached<baseCom> log;

@@ -97,7 +97,7 @@ class baseSSLCom : public L4Proto, public virtual baseCom {
 public:
     baseSSLCom();
     
-    virtual std::string& to_string();
+    std::string to_string(int verbosity=iINF) const override;
     std::string get_peer_sni() { return sslcom_peer_hello_sni().c_str(); } //return copy of SNI
 
     enum class client_state_t { NONE, INIT, PEER_CLIENTHELLO_WAIT , PEER_CLIENTHELLO_RECVD, CONNECTING, CONNECTED };

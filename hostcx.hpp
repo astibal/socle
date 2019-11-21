@@ -45,9 +45,25 @@
 class Host
 {
 protected:
-	std::string host_; //!< hostname 
-	std::string port_; //!< port
+	mutable std::string host_; //!< hostname
+	mutable std::string port_; //!< port
+
+	void host(std::string const& s) const {
+        std::mutex host_port_lock;
+
+        std::scoped_lock<std::mutex> l(host_port_lock);
+	    host_ = s;
+	}
+    void port(std::string const& s) const {
+        std::mutex host_port_lock;
+
+        std::scoped_lock<std::mutex> l(host_port_lock);
+        port_ = s;
+    }
+
+
 public:
+
 	Host() {};
 	
 	//! Contructor filling hostname and the port
@@ -67,6 +83,8 @@ public:
 	
 	const std::string& chost() const { return host_; }
 	const std::string& cport() const { return port_; }
+
+    virtual std::string to_string(int verbosity=iINF) const { return string_format("%s:%s", chost().c_str(), cport().c_str()); };
 	
 };
 
@@ -128,7 +146,8 @@ class baseHostCX : public Host
     
 	/* Basic elements */
 	
-	std::string name__; //!< human friendly name
+	mutable std::string name__;      //!< human friendly name
+	mutable std::mutex name_mutex_;  // protect name__
 
 	int fds_ = 0;			//!< socket/file descriptor itself
 	int closing_fds_ = 0;   // to close com we call shutdown() which actually don't close fds_. We have to store it and close on very object destruction.
@@ -224,10 +243,11 @@ public:
     baseHostCX( baseCom* c, const char* h, const char* p );
 	baseHostCX(baseCom* c, int s);
 	virtual ~baseHostCX();
-	
-    void rename() { name(true); }
-	std::string& name(bool force=false);
-	const char* c_name();
+
+	// forcing rename or calling name with force=true is ok for const, name is mutable and protected by mutex
+    void rename() const { name(true); }
+	std::string& name(bool force=false) const;
+	const char* c_name() const;
 	
     ssize_t processed_bytes() { return processed_bytes_; };
     
@@ -254,8 +274,8 @@ public:
 	inline int unblock() { return com()->unblock(fds_);}
 
 	virtual void shutdown();
-	inline bool valid() { return ( fds_ > 0 && !error() ); };
-	inline bool error() { 
+	inline bool valid() const { return ( fds_ > 0 && !error() ); };
+	inline bool error() const {
         if(com() != nullptr) return (error_ || com()->error());
         return error_ ; 
     }
@@ -337,7 +357,7 @@ public:
     void on_delay_socket(int fd);
 	
     // return human readable details of this object
-	std::string to_string(int verbosity=iINF);
+	std::string to_string(int verbosity=iINF) const override;
     std::string full_name(unsigned char);
     
     // debug options
