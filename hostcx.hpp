@@ -269,9 +269,9 @@ public:
 	
 	// add the facility to indicate to owning object there something he should pay attention
 	// this us dummy implementation returning false
-	virtual bool new_message() { return false; }
+	virtual bool new_message() const { return false; }
 
-	inline int unblock() { return com()->unblock(fds_);}
+	inline int unblock() const { return com()->unblock(fds_); }
 
 	virtual void shutdown();
 	inline bool valid() const { return ( fds_ > 0 && !error() ); };
@@ -302,24 +302,27 @@ public:
 	 4 from 5 psychiatrists recommend this  for sake of your own sanity.
 	*/		
 	void auto_finish(bool a) { auto_finish_ = a; } 
-	bool auto_finish() { return auto_finish_; }
+	bool auto_finish() const { return auto_finish_; }
 
     [[nodiscard]] bool reduced() const { return !( host_.size() && port_.size() ); }
 	int connect();
 	bool reconnect(int delay=5);
-	inline int reconnect_delay() { return reconnect_delay_; }
-	inline int idle_delay() { return idle_delay_; };
+	inline int reconnect_delay() const { return reconnect_delay_; }
+	inline int idle_delay() const { return idle_delay_; };
         inline void idle_delay(int d) { idle_delay_ = d; };
     
 	inline bool should_reconnect_now() { time_t now = time(nullptr); return (now - last_reconnect_ > reconnect_delay() && !reduced()); }
 	
 	inline lockbuffer* readbuf() { return &readbuf_; }
-	inline lockbuffer* writebuf() { return &writebuf_; } 
+	inline lockbuffer const* readbuf() const { return &readbuf_; }
+
+	inline lockbuffer* writebuf() { return &writebuf_; }
+    inline lockbuffer const* writebuf() const { return &readbuf_; }
 	
 	inline void send(buffer& b) { writebuf_.append(b); }
 	inline int  peek(buffer& b) { int r = com()->peek(this->socket(),b.data(),b.capacity(),0); if (r > 0) { b.size(r); } return r; }
 	
-	inline int next_read_limit() { return next_read_limit_; }
+	inline int next_read_limit() const { return next_read_limit_; }
 	inline void next_read_limit(int s) { next_read_limit_ = s; }
 	
 	int read();
