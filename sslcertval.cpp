@@ -20,7 +20,7 @@
 #include <display.hpp>
 
 #include <sslcertstore.hpp>
-#include <logger.hpp>
+#include <log/logger.hpp>
 #include <buffer.hpp>
 #include <biostring.hpp>
 #include <socle.hpp>

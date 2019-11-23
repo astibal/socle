@@ -28,68 +28,17 @@
 #include <mutex>
 
 #include "display.hpp"
-#include "logger.hpp"
+#include "log/logger.hpp"
 
-#include <sys/time.h>
+#include <ctime>
 #include <sys/socket.h>
-
-loglevel NON = loglevel(0,0);
-loglevel FAT = loglevel(1,0);
-loglevel CRI = loglevel(2,0); 
-loglevel ERR = loglevel(3,0);
-loglevel WAR = loglevel(4,0); 
-loglevel NOT = loglevel(5,0); 
-loglevel INF = loglevel(6,0); 
-loglevel DIA = loglevel(7,0); 
-loglevel DEB = loglevel(8,0); 
-loglevel DUM = loglevel(9,0); 
-loglevel EXT = loglevel(10,0); 
-
-loglevelmore LOG_EXTOPIC = loglevelmore(true,false);
-loglevelmore LOG_EXEXACT = loglevelmore(true,true);
-
 
 logger* lout_ = nullptr;
 
-
-bool operator== (const loglevel& a, const loglevel& b) { return a.level() == b.level(); }
-bool operator== (const loglevel& a, const unsigned int& b) { return a.level() == b; }
-bool operator== (const unsigned int& a, const loglevel& b) { return a == b.level(); }
-
-
-bool operator<= (const loglevel& a, const loglevel& b) { return a.level() <= b.level(); }
-bool operator<= (const loglevel& a, const unsigned int& b) { return a.level() <= b; }
-bool operator<= (const unsigned int& a, const loglevel& b) { return a <= b.level(); }
-
-
-bool operator>= (const loglevel& a, const loglevel& b) { return a.level() >= b.level(); }
-bool operator>= (const loglevel& a, const unsigned int& b) { return a.level() >= b; }
-bool operator>= (const unsigned int& a, const loglevel& b) { return a >= b.level(); }
-
-
-bool operator!= (const loglevel& a, const loglevel& b) { return a.level() != b.level(); }
-bool operator!= (const loglevel& a, const unsigned int& b) { return a.level() != b; }
-bool operator!= (const unsigned int& a, const loglevel& b) { return a != b.level(); }
-
-
-bool operator> (const loglevel& a, const loglevel& b) { return a.level() > b.level(); }
-bool operator> (const loglevel& a, const unsigned int& b) { return a.level() > b; }
-bool operator> (const unsigned int& a, const loglevel& b) { return a > b.level(); }
-
-
-bool operator< (const loglevel& a, const loglevel& b) { return a.level() < b.level(); }
-bool operator< (const loglevel& a, const unsigned int& b) { return a.level() < b; }
-bool operator< (const unsigned int& a, const loglevel& b) { return a < b.level(); }
-
-loglevel operator-(const loglevel& a, const loglevel& b) { loglevel r = a; r.level(a.level() - b.level()); return r; }
-loglevel operator-(const loglevel& a, const unsigned int& b) { loglevel r = a; r.level(a.level() - b); return r; }
-loglevel operator+(const loglevel& a, const unsigned int& b) { loglevel r = a; r.level(a.level() + b); return r; }
-
-
-logger* get_logger() { 
+logger* get_logger() {
     if(lout_ == nullptr) { lout_ = create_default_logger(); }
-    return lout_; 
-}; 
+    return lout_;
+};
 
 logger* create_default_logger() {
     return new logger();
@@ -305,23 +254,3 @@ loglevel logger::adjust_level() {
 }
 
 
-loglevel* logan_lite::level() {
-    if(! my_loglevel) {
-        my_loglevel = logan::get()[topic_];
-    }
-
-    return my_loglevel;
-}
-
-void logan_lite::level(loglevel l) {
-
-    if(!my_loglevel) {
-        my_loglevel = logan::get()[topic_];
-    }
-    my_loglevel->level(l.level());
-    my_loglevel->topic(l.topic());
-    my_loglevel->more(l.more()); // shallow copy?
-    my_loglevel->flags(l.flags());
-    my_loglevel->subject(l.subject());
-    my_loglevel->area(l.area());
-}

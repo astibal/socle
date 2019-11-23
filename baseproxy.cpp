@@ -36,7 +36,7 @@
 #include <hostcx.hpp>
 
 #include <display.hpp>
-#include <logger.hpp>
+#include <log/logger.hpp>
 #include "udpcom.hpp"
 
 extern int errno;

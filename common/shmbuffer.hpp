@@ -33,7 +33,7 @@
 // logger.hpp -- this file defines WAR_ and other logging macros.
 // if you want to use this file alone, just replace WAR_ (and possibly others) with printf-like function
 // of your choice.
-#include <logger.hpp>
+#include <log/logan.hpp>
 
 #include <string>
 

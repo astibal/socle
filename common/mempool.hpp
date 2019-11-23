@@ -27,7 +27,7 @@
 #include <execinfo.h>
 
 #include <display.hpp>
-#include <logger.hpp>
+#include <log/logger.hpp>
 
 //#define MEMPOOL_DEBUG
 

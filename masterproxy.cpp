@@ -21,7 +21,7 @@
 #include "masterproxy.hpp"
 #include "baseproxy.hpp"
 #include "baseproxy.hpp"
-#include "logger.hpp"
+#include "log/logger.hpp"
 
 
 int MasterProxy::prepare_sockets(baseCom* xcom)

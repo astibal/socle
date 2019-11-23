@@ -8,46 +8,38 @@
     version 3.0 of the License, or (at your option) any later version.
     This library is  distributed  in the hope that  it will be useful,
     but WITHOUT ANY WARRANTY;  without  even  the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
-    
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
     See the GNU Lesser General Public License for more details.
-    
+
     You  should have received a copy of the GNU Lesser General Public
     License along with this library.
 */
 
-#define SOCLE_VERSION "0.7.0"
-#define SOCLE_DEVEL    1
+#include <log/logan.hpp>
+#include <log/loglevel.hpp>
+#include <mutex>
 
-#include <common/socle_common.hpp>
-#include <common/base64.hpp>
-#include <common/crc32.hpp>
+loglevel* logan_lite::level() const {
+    static std::mutex m;
+    std::scoped_lock<std::mutex> l(m);
 
-#include <common/buffer.hpp>
+    if(! my_loglevel) {
+        my_loglevel = logan::get()[topic_];
+    }
 
-#include <common/display.hpp>
-#include <common/log/logger.hpp>
-#include <common/timeops.hpp>
+    return my_loglevel;
+}
 
+void logan_lite::level(loglevel l) {
 
-#include <common/signature.hpp>
-
-
-#include <basecom.hpp>
-#include <tcpcom.hpp>
-#include <sslcom.hpp>
-#include <uxcom.hpp>
-
-#include <sslmitmcom.hpp>
-#include <sslcertstore.hpp>
-
-#include <hostcx.hpp>
-#include <apphostcx.hpp>
-
-#include <baseproxy.hpp>
-#include <lrproxy.hpp>
-#include <masterproxy.hpp>
-#include <threadedacceptor.hpp>
-
-#include <traflog.hpp>
-
+    if(!my_loglevel) {
+        my_loglevel = logan::get()[topic_];
+    }
+    my_loglevel->level(l.level());
+    my_loglevel->topic(l.topic());
+    my_loglevel->more(l.more()); // shallow copy?
+    my_loglevel->flags(l.flags());
+    my_loglevel->subject(l.subject());
+    my_loglevel->area(l.area());
+}

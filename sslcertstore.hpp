@@ -29,7 +29,7 @@
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 
-#include <logger.hpp>
+#include <log/logger.hpp>
 #include <ptr_cache.hpp>
 
 #include <thread>

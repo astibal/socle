@@ -33,7 +33,7 @@
 #include <unistd.h>
 
 #include <buffer.hpp>
-#include <logger.hpp>
+#include <log/logger.hpp>
 #include <basecom.hpp>
 #include <baseproxy.hpp>
 

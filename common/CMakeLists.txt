@@ -1,6 +1,30 @@
 include_directories ("${PROJECT_SOURCE_DIR}")
 
-add_library(socle_common_lib timeops.hpp timeops.cpp logger.hpp logger.cpp display.hpp display.cpp buffer.hpp crc32.hpp crc32.cpp ranges.cpp ltventry.cpp buffer.cpp ptr_cache.hpp internet.cpp lockable.hpp lockbuffer.hpp biostring.cpp mempool.cpp stringformat.hpp)
+add_library(
+		socle_common_lib
+		timeops.hpp
+		timeops.cpp
+		display.hpp
+		display.cpp
+		buffer.hpp
+		crc32.hpp
+		crc32.cpp
+		ranges.cpp
+		ltventry.cpp
+		buffer.cpp
+		ptr_cache.hpp
+		internet.cpp
+		lockable.hpp
+		lockbuffer.hpp
+		biostring.cpp
+		mempool.cpp
+		stringformat.hpp
+		log/logger.hpp
+		log/logger.cpp
+		log/loggermac.hpp
+		log/loglevel.hpp
+		log/loglevel.cpp
+		log/logan.hpp log/logan.cpp)
 
 if(UNIX)
 	IF(NOT CMAKE_BUILD_TYPE)

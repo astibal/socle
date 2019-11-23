@@ -38,7 +38,7 @@
 #include <udpcom.hpp>
 #include <sslcertstore.hpp>
 #include <sslcertval.hpp>
-#include <logger.hpp>
+#include <log/logger.hpp>
 
 // Threading support
 

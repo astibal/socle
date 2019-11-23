@@ -31,7 +31,7 @@
 
 
 #include <basecom.hpp>
-#include <logger.hpp>
+#include <log/logger.hpp>
 #include <lockbuffer.hpp>
 #include <display.hpp>
 

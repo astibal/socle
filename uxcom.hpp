@@ -33,7 +33,7 @@
 #include <time.h>
 #include <unistd.h>
 
-#include <logger.hpp>
+#include <log/logger.hpp>
 #include <basecom.hpp>
 #include <display.hpp>
 #include <tcpcom.hpp>

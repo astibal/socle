@@ -23,9 +23,12 @@
 #include <regex>
 #include <vector>
 #include <tuple>
+
 #include <buffer.hpp>
 #include <display.hpp>
-#include <logger.hpp>
+
+#include <log/logger.hpp>
+#include <log/logan.hpp>
 #include <ranges.hpp>
 
 

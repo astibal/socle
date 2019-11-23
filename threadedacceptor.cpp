@@ -28,7 +28,7 @@
 
 #include <display.hpp>
 #include <threadedacceptor.hpp>
-#include <logger.hpp>
+#include <log/logger.hpp>
 
 template<class SubWorker>
 int ThreadedAcceptorProxy<SubWorker>::workers_total = 2;

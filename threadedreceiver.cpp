@@ -25,7 +25,7 @@
 
 #include <internet.hpp>
 #include <display.hpp>
-#include <logger.hpp>
+#include <log/logger.hpp>
 #include <threadedreceiver.hpp>
 
 #include <linux/in6.h>

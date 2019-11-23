@@ -30,7 +30,8 @@
 
 #include <socle_common.hpp>
 #include <string.h>
-#include <logger.hpp>
+#include <log/logger.hpp>
+#include <log/logan.hpp>
 
 template <class T>
 struct expiring {

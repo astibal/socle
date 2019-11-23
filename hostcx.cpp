@@ -17,7 +17,7 @@
 */
 
 #include "hostcx.hpp"
-#include "logger.hpp"
+#include "log/logger.hpp"
 #include "display.hpp"
 #include "crc32.hpp"
 #include "iproxy.hpp"

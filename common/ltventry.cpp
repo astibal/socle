@@ -22,7 +22,7 @@
 
 #include "ltventry.hpp"
 #include "display.hpp"
-#include "logger.hpp"
+#include "log/logger.hpp"
 #include "buffer.hpp"
 
 LTVEntry::LTVEntry() {

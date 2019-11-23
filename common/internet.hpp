@@ -19,9 +19,9 @@
 #ifndef __INTERNET_HPP__
 #define __INTERNET_HPP__
 
-#include <stdio.h>
+#include <cstdio>
 #include <memory.h>
-#include <errno.h>
+#include <cerrno>
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <netinet/in.h>
@@ -33,8 +33,9 @@
 #include <sstream>
 #include <vector>
 #include <iostream>
+
 #include <buffer.hpp>
- 
+#include <log/logan.hpp>
 
 namespace inet {
 

@@ -35,7 +35,7 @@
 
 #include <sslcom.hpp>
 #include <sslcom_dh.hpp>
-#include <logger.hpp>
+#include <log/logger.hpp>
 #include <display.hpp>
 #include <timeops.hpp>
 
