@@ -23,8 +23,13 @@
 #include <log/loglevel.hpp>
 #include <log/logger.hpp>
 
+#ifdef BUILD_RELEASE
+#define  xext(x)  //
+#define  xdum(x)  //
+#else
 #define  xext(x)  if(*(x).level() >= EXT) (x).ext
 #define  xdum(x)  if(*(x).level() >= DUM) (x).dum
+#endif
 #define  xdeb(x)  if(*(x).level() >= DEB) (x).deb
 #define  xdia(x)  if(*(x).level() >= DIA) (x).dia
 #define  xinf(x)  if(*(x).level() >= INF) (x).inf
@@ -34,9 +39,13 @@
 #define  xcri(x)  if(*(x).level() >= CRI) (x).cri
 #define  xfat(x)  if(*(x).level() >= FAT) (x).fat
 
-
+#ifdef BUILD_RELEASE
+#define  _ext  //
+#define  _dum  //
+#else
 #define  _ext  if(*log.level() >= EXT) log.ext
 #define  _dum  if(*log.level() >= DUM) log.dum
+#endif
 #define  _deb  if(*log.level() >= DEB) log.deb
 #define  _dia  if(*log.level() >= DIA) log.dia
 #define  _inf  if(*log.level() >= INF) log.inf
