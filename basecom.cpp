@@ -59,7 +59,7 @@ int baseCom::nonlocal_bind (unsigned short port) {
 	return r;
 }
 
-int baseCom::unblock(int s) {
+int baseCom::unblock(int s) const {
     int client_oldFlag = fcntl(s, F_GETFL, 0);
 
     if (! (client_oldFlag & O_NONBLOCK)) {
