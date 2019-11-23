@@ -527,7 +527,7 @@ extern loglevel EXT;
 public:                                      \
     std::string hr() const { hr(get_name_func()); return hr_; }; \
     void hr(std::string const& s) const { \
-       std::mutex hr_mutex_; \
+       static std::mutex hr_mutex_; \
        std::scoped_lock<std::mutex> l(hr_mutex_);  \
        hr_ = s;   \
     } \

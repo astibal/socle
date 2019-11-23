@@ -160,7 +160,7 @@ public:
     int fence__ = HANDLER_FENCE;
     virtual void handle_event(baseCom*) = 0;
     virtual ~epoll_handler() {
-        std::recursive_mutex m;
+        static std::recursive_mutex m;
         std::lock_guard<std::recursive_mutex> guard(m);
 
         if(registrant != nullptr) {

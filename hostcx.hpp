@@ -49,13 +49,13 @@ protected:
 	mutable std::string port_; //!< port
 
 	void host(std::string const& s) const {
-        std::mutex host_port_lock;
+        static std::mutex host_port_lock;
 
         std::scoped_lock<std::mutex> l(host_port_lock);
 	    host_ = s;
 	}
     void port(std::string const& s) const {
-        std::mutex host_port_lock;
+        static std::mutex host_port_lock;
 
         std::scoped_lock<std::mutex> l(host_port_lock);
         port_ = s;
@@ -66,9 +66,9 @@ public:
 
 	Host() {};
 	
-	//! Contructor filling hostname and the port
+	//! Constructor filling hostname and the port
 	/*!
-	 *  Create host strusture
+	 *  Create host structure
 	 *  \param h - hostname string
 	 *  \param p - port number (as the string
 	 */
