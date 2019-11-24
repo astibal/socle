@@ -27,9 +27,11 @@
 #include <unordered_map>
 
 #include <ctime>
+#include <cstring>
+
+#include <mpstd.hpp>
 
 #include <socle_common.hpp>
-#include <string.h>
 #include <log/logger.hpp>
 #include <log/logan.hpp>
 
@@ -115,8 +117,8 @@ public:
         items_.clear();
     }
 
-    std::unordered_map<K,T*>& cache() { return cache_; }
-    std::deque<K> const& items() { return items_; };
+    mp::unordered_map<K,T*>& cache() { return cache_; }
+    mp::deque<K> const& items() { return items_; };
 
     bool auto_delete() const { return auto_delete_; }
     void auto_delete(bool b) { auto_delete_ = b; }
@@ -231,10 +233,10 @@ private:
     unsigned int max_size_ = 0;
     unsigned int opportunistic_removal_ = 0;
 
-    std::deque<K> items_;
+    mp::deque<K> items_;
     
     T* default_value_ = nullptr;
-    std::unordered_map<K,T*> cache_;
+    mp::unordered_map<K,T*> cache_;
     mutable std::recursive_mutex lock_;
     
     bool (*fn_expired_check)(T*) = nullptr;
