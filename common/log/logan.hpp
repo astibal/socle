@@ -24,8 +24,8 @@
 #include <log/logger.hpp>
 
 #ifdef BUILD_RELEASE
-#define  xext(x)  //
-#define  xdum(x)  //
+#define  xext(x)  if(false) (x).ext
+#define  xdum(x)  if(false) (x).dum
 #else
 #define  xext(x)  if(*(x).level() >= EXT) (x).ext
 #define  xdum(x)  if(*(x).level() >= DUM) (x).dum
@@ -40,8 +40,8 @@
 #define  xfat(x)  if(*(x).level() >= FAT) (x).fat
 
 #ifdef BUILD_RELEASE
-#define  _ext  //
-#define  _dum  //
+#define  _ext  if(false) log.ext
+#define  _dum  if(false) log.dum
 #else
 #define  _ext  if(*log.level() >= EXT) log.ext
 #define  _dum  if(*log.level() >= DUM) log.dum
@@ -82,7 +82,7 @@ class logan;
 class logan_lite {
 
 protected:
-
+    mutable std::mutex lock_;
     mutable loglevel* my_loglevel = nullptr;
 
     // loging name in catalogue
@@ -95,8 +95,18 @@ public:
 
     friend class logan;
 
-    logan_lite() {};
+    logan_lite() = default;
     logan_lite(const std::string& str) : topic_(str) {};
+    logan_lite(logan_lite const& r) {
+        topic_  = r.topic_;
+        prefix_ = r.prefix_;
+        my_loglevel = r.my_loglevel;
+    };
+    void operator=(logan_lite const& r) {
+        topic_  = r.topic_;
+        prefix_ = r.prefix_;
+        my_loglevel = r.my_loglevel;
+    }
 
     virtual std::string topic() const { return topic_; }
     virtual        void topic(std::string s) { topic_ = s; }
@@ -171,8 +181,8 @@ template <class T>
 class logan_attached : public logan_lite {
 public:
     logan_attached() = default;
-    logan_attached(T* ptr) : logan_lite(), ptr_(ptr) {}
-    logan_attached(T* ptr, std::string area) : logan_lite(), ptr_(ptr), area_(area) {
+    explicit logan_attached(T* ptr) : logan_lite(), ptr_(ptr) {}
+    logan_attached(T* ptr, std::string  area) : logan_lite(), ptr_(ptr), area_(std::move(area)) {
         if(ptr_) topic(ptr->class_name());
     }
 
@@ -431,8 +441,7 @@ loglevel* logan_attached<T>::level() const {
     }
 
     if( ! area().empty() ) {
-        static std::mutex m;
-        std::scoped_lock<std::mutex> l(m);
+        std::scoped_lock<std::mutex> l(lock_);
 
         if(! my_area_loglevel) {
             my_area_loglevel = logan::get()[area()];

@@ -21,8 +21,7 @@
 #include <mutex>
 
 loglevel* logan_lite::level() const {
-    static std::mutex m;
-    std::scoped_lock<std::mutex> l(m);
+    std::scoped_lock<std::mutex> l(lock_);
 
     if(! my_loglevel) {
         my_loglevel = logan::get()[topic_];
