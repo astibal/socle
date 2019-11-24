@@ -26,7 +26,8 @@ add_library(
 		log/logan.hpp
 		log/logan.cpp
 		mempool/mempool.cpp
-		log/logan.hpp log/logan.cpp)
+		mempool/mpallocator.hpp
+		mpstd.hpp)
 
 if(UNIX)
 	IF(NOT CMAKE_BUILD_TYPE)
