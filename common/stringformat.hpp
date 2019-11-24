@@ -22,7 +22,7 @@
 #include <string>
 #include <cstring>
 
-#include <mempool.hpp>
+#include <mempool/mempool.hpp>
 
 void* mempool_realloc(void*, size_t);
 void mempool_free(void*);

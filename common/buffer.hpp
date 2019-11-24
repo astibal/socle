@@ -22,7 +22,7 @@
 
 #include <socle_common.hpp>
 #include <display.hpp>
-#include <mempool.hpp>
+#include <mempool/mempool.hpp>
 
 #ifdef SOCLE_MEM_PROFILE
 #include <unordered_map>

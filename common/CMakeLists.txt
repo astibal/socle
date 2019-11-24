@@ -17,13 +17,13 @@ add_library(
 		lockable.hpp
 		lockbuffer.hpp
 		biostring.cpp
-		mempool.cpp
 		stringformat.hpp
 		log/logger.hpp
 		log/logger.cpp
 		log/loggermac.hpp
 		log/loglevel.hpp
 		log/loglevel.cpp
+		mempool/mempool.cpp
 		log/logan.hpp log/logan.cpp)
 
 if(UNIX)
