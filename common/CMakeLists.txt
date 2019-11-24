@@ -23,6 +23,8 @@ add_library(
 		log/loggermac.hpp
 		log/loglevel.hpp
 		log/loglevel.cpp
+		log/logan.hpp
+		log/logan.cpp
 		mempool/mempool.cpp
 		log/logan.hpp log/logan.cpp)
 

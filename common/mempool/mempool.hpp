@@ -176,8 +176,19 @@ public:
 
 // hashmap of pointer sizes (for mempool_* functions)
 //
-extern std::unordered_map<void*, mem_chunk> mempool_ptr_map;
-extern std::mutex mempool_ptr_map_lock;
+
+struct mpdata {
+
+    static std::unordered_map<void *, mem_chunk>& map() {
+        static std::unordered_map<void *, mem_chunk> m;
+        return m;
+    }
+
+    static std::mutex& lock() {
+        static std::mutex m;
+        return m;
+    };
+};
 
 void* mempool_alloc(size_t);
 void* mempool_realloc(void*, size_t);

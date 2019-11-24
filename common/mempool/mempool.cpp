@@ -33,8 +33,6 @@ unsigned long long stat_mempool_alloc_size = 0;
 unsigned long long stat_mempool_realloc_size = 0;
 unsigned long long stat_mempool_free_size = 0;
 
-std::unordered_map<void*, mem_chunk> mempool_ptr_map;
-std::mutex mempool_ptr_map_lock;
 
 #ifdef MEMPOOL_DEBUG
 const bool mem_chunk_t::trace_enabled = true;
@@ -183,12 +181,13 @@ void* mempool_alloc(size_t s) {
     if(mem_chunk::trace_enabled)
             mch.set_trace();
 
-    std::lock_guard<std::mutex> l(mempool_ptr_map_lock);
+    {
+        std::lock_guard<std::mutex> l(mpdata::lock());
+        mpdata::map()[mch.ptr] = mch;
 
-    mempool_ptr_map[mch.ptr] = mch;
-
-    stat_mempool_alloc++;
-    stat_mempool_alloc_size += s;
+        stat_mempool_alloc++;
+        stat_mempool_alloc_size += s;
+    }
 
     return mch.ptr;
 }
@@ -201,10 +200,10 @@ void* mempool_realloc(void* optr, size_t nsz) {
     size_t ptr_size = 0;
     if(optr) {
 
-        std::lock_guard<std::mutex> l(mempool_ptr_map_lock);
+        std::lock_guard<std::mutex> l(mpdata::lock());
 
-        auto i = mempool_ptr_map.find(optr);
-        if (i != mempool_ptr_map.end()) {
+        auto i = mpdata::map().find(optr);
+        if (i != mpdata::map().end()) {
             ptr_size = (*i).second.capacity;
         } else {
             stat_mempool_realloc_miss++;
@@ -224,11 +223,11 @@ void* mempool_realloc(void* optr, size_t nsz) {
     if(!new_m.ptr) {
 
         memPool::pool().release(old_m);
-        std::lock_guard<std::mutex> l(mempool_ptr_map_lock);
+        std::lock_guard<std::mutex> l(mpdata::lock());
 
-        auto i = mempool_ptr_map.find(optr);
-        if (i != mempool_ptr_map.end()) {
-            mempool_ptr_map.erase(i);
+        auto i = mpdata::map().find(optr);
+        if (i != mpdata::map().end()) {
+            mpdata::map().erase(i);
         } else {
             stat_mempool_realloc_miss++;
         }
@@ -242,12 +241,12 @@ void* mempool_realloc(void* optr, size_t nsz) {
         memPool::pool().release(old_m);
 
         {
-            std::lock_guard<std::mutex> l(mempool_ptr_map_lock);
+            std::lock_guard<std::mutex> l(mpdata::lock());
 
             if(mem_chunk::trace_enabled)
                 new_m.set_trace();
 
-            mempool_ptr_map[new_m.ptr] = new_m;
+            mpdata::map()[new_m.ptr] = new_m;
         }
 
         stat_mempool_realloc++;
@@ -260,14 +259,14 @@ void* mempool_realloc(void* optr, size_t nsz) {
 
 void mempool_free(void* optr) {
 
-    std::lock_guard<std::mutex> l(mempool_ptr_map_lock);
+    std::lock_guard<std::mutex> l(mpdata::lock());
 
     size_t ptr_size = 0;
-    auto i = mempool_ptr_map.find(optr);
-    if (i != mempool_ptr_map.end()) {
+    auto i = mpdata::map().find(optr);
+    if (i != mpdata::map().end()) {
 
         ptr_size = (*i).second.capacity;
-        mempool_ptr_map.erase(i);
+        mpdata::map().erase(i);
     } else {
         stat_mempool_free_miss++;
     }
