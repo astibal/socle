@@ -90,6 +90,8 @@ struct epoll {
 
     static loglevel log_level;
     logan_lite log = logan_lite("com.epoll");
+
+    mutable std::mutex lock_;
 };
 
 
@@ -152,6 +154,7 @@ struct epoller {
     virtual ~epoller() { delete poller; }
 
     logan_lite log = logan_lite("com.epoll");
+    mutable std::mutex lock_;
 };
 
 class epoll_handler {
@@ -159,10 +162,9 @@ public:
     int fence__ = HANDLER_FENCE;
     virtual void handle_event(baseCom*) = 0;
     virtual ~epoll_handler() {
-        static std::recursive_mutex m;
-        std::lock_guard<std::recursive_mutex> guard(m);
-
         if(registrant != nullptr) {
+            std::scoped_lock<std::mutex> l(lock_);
+
             for(auto s: registered_sockets) {
 
                 epoll_handler* owner = registrant->get_handler(s);
@@ -179,7 +181,7 @@ public:
 protected:
     epoller* registrant = nullptr;
     std::set<int> registered_sockets;
-    
+    std::mutex lock_;
 };
 
 struct socket_state {
