@@ -91,7 +91,7 @@ public:
     static std::map<uint64_t,Datagram> datagrams_received;
   
     // set with all virtal sockets which have data to read
-    static std::set<int> in_virt_set;    
+    static epoll::set_type in_virt_set;
 };
 
 class UDPCom : public virtual baseCom, public DatagramCom {

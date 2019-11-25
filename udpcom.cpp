@@ -33,7 +33,7 @@ std::recursive_mutex DatagramCom::lock;
 std::map<std::string,std::pair<int,int>> UDPCom::connect_fd_cache;
 std::recursive_mutex UDPCom::connect_fd_cache_lock;
 
-std::set<int> DatagramCom::in_virt_set;
+epoll::set_type DatagramCom::in_virt_set;
 
 int UDPCom::translate_socket(int vsock) {
     

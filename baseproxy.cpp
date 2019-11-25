@@ -1107,7 +1107,7 @@ int baseProxy::run() {
             std::vector<int> back_in_set;
             
             // std::set<int>& sets[] = { com()->poller.poller->in_set, com()->poller.poller->out_set };
-            std::vector<std::set<int>*> sets;
+            std::vector<epoll::set_type*> sets;
             sets.push_back(&com()->poller.poller->in_set);
             sets.push_back(&com()->poller.poller->out_set);
             sets.push_back(&com()->poller.poller->idle_set);
@@ -1116,7 +1116,7 @@ int baseProxy::run() {
             int name_iter = 0;
 
             bool virt_global_hack = false;
-            std::set<int> udp_in_set;
+            epoll::set_type udp_in_set;
             
             auto* uc = dynamic_cast<UDPCom*>(com()->master());
             if(uc) {
@@ -1131,7 +1131,7 @@ int baseProxy::run() {
                 setname.emplace_back("inset_virt");
             }
             
-            for (std::set<int>* current_set: sets) {
+            for (epoll::set_type * current_set: sets) {
                  
                 for (auto s: *current_set) {
                     //FIXME

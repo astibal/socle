@@ -18,6 +18,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 
+#include <mpstd.hpp>
 #include <log/logan.hpp>
 
 #define EPOLLER_MAX_EVENTS 50
@@ -27,18 +28,21 @@
 class baseCom;
 
 struct epoll {
+
+    using set_type = mp::set<int>;
+
     struct epoll_event events[EPOLLER_MAX_EVENTS];
     int fd = 0;
     int hint_fd = 0;
     bool auto_epollout_remove = true;
-    std::set<int> in_set;
-    std::set<int> out_set;
+    set_type in_set;
+    set_type out_set;
 
     // this set is used for sockets where ARE already some data, but we wait for more.
     // because of this, socket will be REMOVED from in_set (so avoiding CPU spikes when there are still not enough of data)
     // but those sockets will be added latest after time set in @rescan_timeout microseconds.
-    std::set<int> rescan_set_in;
-    std::set<int> rescan_set_out;
+    set_type rescan_set_in;
+    set_type rescan_set_out;
     struct timeb rescan_timer;
 
     bool in_read_set(int check);
@@ -55,13 +59,13 @@ struct epoll {
     bool idle_round = true;
 
     //sockets to be added to idle_watched (to ensure defined idle timeout (and possibly slightly more)
-    std::set<int> idle_watched_pre;
+    set_type idle_watched_pre;
     //idle socket timer - sockets in this list will be added to idle_set.
     // However, if we receive *any* socket activity (depends on monitoring), socket is
-    std::set<int> idle_watched;
+    set_type idle_watched;
 
     // set with sockets in idle state. Idle list is erased on each poll.
-    std::set<int> idle_set;
+    set_type idle_set;
     bool in_idle_set(int check);
     bool in_idle_watched_set(int check);
 
@@ -180,7 +184,7 @@ public:
     friend struct epoller;
 protected:
     epoller* registrant = nullptr;
-    std::set<int> registered_sockets;
+    epoll::set_type registered_sockets;
     std::mutex lock_;
 };
 
