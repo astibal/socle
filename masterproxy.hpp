@@ -24,14 +24,18 @@
 
 class MasterProxy : public baseProxy {
 
-protected:
-	std::set<baseProxy*> proxies_;
-    
 public:
-    
+    template<class T>
+    using vector_type = mp::vector<T>;
+    template<class T>
+    using set_type = mp::set<T>;
+
+protected:
+    set_type <baseProxy*> proxies_;
+
+public:
     explicit MasterProxy(baseCom* c): baseProxy(c) {}
-    
-    std::set<baseProxy*>& proxies() { return proxies_; };
+    set_type <baseProxy*>& proxies() { return proxies_; };
 	
     int prepare_sockets(baseCom*) override;
 	int handle_sockets_once(baseCom*) override;

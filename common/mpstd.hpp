@@ -28,6 +28,18 @@
 
 namespace mp {
 
+    struct mp_guard {
+        explicit mp_guard(void* ptr) : ptr_(ptr) {};
+        void operator=(mp_guard const&) = delete;
+        mp_guard(mp_guard const&) = delete;
+
+        ~mp_guard() {
+            mempool_free(ptr_);
+        };
+    private:
+        void* ptr_;
+    };
+
     typedef std::basic_stringstream<char, std::char_traits<char>,
             mp_allocator<char> > mp_stringstream;
     typedef std::basic_ostringstream<char, std::char_traits<char>,
@@ -64,6 +76,19 @@ namespace mp {
     >
     class set : public std::set<Key, Compare, Allocator> {
     };
+
+    template<
+            class Key,
+            class T,
+            class Compare = std::less<Key>,
+            class Allocator = mp_allocator<std::pair<const Key, T> >
+    > class map : public std::map<Key, T, Compare, Allocator> {};
+
+
+    template<
+            class T,
+            class Allocator = mp_allocator<T>
+    > class vector: public std::vector<T> {};
 }
 
 #endif //SMITHPROXY_MPSTD_HPP

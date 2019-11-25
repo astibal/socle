@@ -29,6 +29,7 @@
 
 #include <log/logger.hpp>
 #include <hostcx.hpp>
+#include <mpstd.hpp>
 
 /*
 TCPProxy: proxy left<->right socket bytes
@@ -42,6 +43,9 @@ Typical use will consists of one left and one right socket.
 
 class baseProxy : public epoll_handler, public Proxy
 {
+public:
+    template<class T>
+    using vector_type = mp::vector<T>;
 protected:
 
 
@@ -71,23 +75,23 @@ protected:
     baseProxy* parent_ = nullptr;
 
 
-    std::vector<baseHostCX*> left_sockets;
-    std::vector<baseHostCX*> right_sockets;
+    vector_type<baseHostCX*> left_sockets;
+    vector_type<baseHostCX*> right_sockets;
 
-    std::vector<baseHostCX*> left_bind_sockets;
-    std::vector<baseHostCX*> right_bind_sockets;
+    vector_type<baseHostCX*> left_bind_sockets;
+    vector_type<baseHostCX*> right_bind_sockets;
     
     // permantenty maintained connections (if the socket is closed, it will be reconnected) PC => Permanent Connection
-    std::vector<baseHostCX*> left_pc_cx;
-    std::vector<baseHostCX*> right_pc_cx;
+    vector_type<baseHostCX*> left_pc_cx;
+    vector_type<baseHostCX*> right_pc_cx;
 
     // NEW feature: don't accept those sockets fully, just on "carrier" level to avoid e.g. SSL handshake prior target SSL socket 
     // is really opened and SSL is fully established
     //     >>> enabled when HostCX is *waiting_for_peercom* in the time being accepted <<<
     //  -- this is important for some features like SSL MiTM, and it also preserves resources 
     //        => it's useful for session *original* direction side (usually and by convention it's the left side)
-    std::vector<baseHostCX*> left_delayed_accepts;
-    std::vector<baseHostCX*> right_delayed_accepts;
+    vector_type<baseHostCX*> left_delayed_accepts;
+    vector_type<baseHostCX*> right_delayed_accepts;
 
     
     unsigned int sleep_time_; // microseconds
@@ -146,7 +150,7 @@ public:
     
     int lsize();
     int rsize();
-    
+
 
     std::vector<baseHostCX*>& ls() { return left_sockets; }
     std::vector<baseHostCX*>& rs() { return right_sockets; }
