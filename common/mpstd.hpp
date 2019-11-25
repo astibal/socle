@@ -56,6 +56,14 @@ namespace mp {
     >
     class unordered_map : public std::unordered_map<Key, T, Hash, KeyEqual, Allocator> {
     };
+
+    template<
+            class Key,
+            class Compare = std::less<Key>,
+            class Allocator = mp_allocator<Key>
+    >
+    class set : public std::set<Key, Compare, Allocator> {
+    };
 }
 
 #endif //SMITHPROXY_MPSTD_HPP

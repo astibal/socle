@@ -64,6 +64,12 @@ public:
 
     template <class U>
     mp_allocator& operator=(const mp_allocator<U>&) { return *this; }
+
+    bool operator!=(mp_allocator const& ref) {
+        // there is currently only one mempool, therefore there can't be any other
+        // mp_allocator out there.
+        return false;
+    }
 };
 
 #endif //MPALLOCATOR_HPP
