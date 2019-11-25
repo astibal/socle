@@ -258,11 +258,8 @@ private:
 public:    
     
     ~flowMatch() {
-        for( typename std::vector<std::pair<SourceType,baseMatch*>>::iterator i = signature_.begin(); i != signature_.end(); i++ ) {
-            auto match = (*i).second;
-
-            _deb("flowmatch::destructor: deleting signature %p",match);
-//             delete match;
+        for( auto& match: signature_) {
+            _deb("flowmatch::destructor: deleting signature %p", match.second);
         }
     }
     

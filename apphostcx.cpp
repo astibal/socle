@@ -72,15 +72,13 @@ bool AppHostCX::detect(sensorType& cur_sensor,char side) {
         _dia("AppHostCX::detect[%s]: Sensor %x is empty!",c_name(), &sensor());
     }
     
-    for (sensorType::iterator i = cur_sensor.begin(); i != cur_sensor.end(); ++i ) {
+    for (auto& sig: cur_sensor) {
         
-        std::pair<flowMatchState,duplexFlowMatch*>& sig = (*i);
-
         // get zipped results with signature pointers
         duplexFlowMatch* sig_sig = std::get<1>(sig);
         flowMatchState& sig_res = std::get<0>(sig);
         
-        if (sig_res.hit() == false) {
+        if (! sig_res.hit()) {
             _dia("AppHostCX::detect[%s]: Sensor %x, signature name %s",c_name(), &sensor(), sig_sig->name().c_str());
             
             bool r = sig_res.update(this->flowptr(),sig_sig);
