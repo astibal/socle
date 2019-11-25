@@ -22,6 +22,7 @@
 #include <string>
 #include <log/loglevel.hpp>
 #include <log/logger.hpp>
+#include <mpstd.hpp>
 
 #ifdef BUILD_RELEASE
 #define  xext(x)  if(false) (x).ext
@@ -232,7 +233,7 @@ public:
         return area_;
     }
 
-    using sub_area_t = std::set<std::string>;
+    using sub_area_t = mp::set<std::string>;
     const sub_area_t& sub_areas() const { return sub_areas_; };
     inline void sub_area(std::string const& str) { sub_areas_.insert(str); };
 private:
