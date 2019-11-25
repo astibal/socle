@@ -31,6 +31,7 @@
 
 #include <log/logger.hpp>
 #include <ptr_cache.hpp>
+#include <mpstd.hpp>
 
 #include <thread>
 #include <string>
@@ -70,9 +71,13 @@ struct SpoofOptions;
 class SSLFactory {
 
 public:
+
+    template<class K, class V>
+    using map_type = mp::map<K, V>;
+
     typedef std::pair<EVP_PKEY*,X509*> X509_PAIR;
-    typedef std::map<std::string,X509_PAIR*> X509_CACHE;
-    typedef std::map<std::string,std::string> FQDN_CACHE;
+    using X509_CACHE = map_type<std::string, X509_PAIR*>;
+    using FQDN_CACHE = map_type<std::string, std::string>;
 
     typedef expiring_int expiring_ocsp_result;
     typedef expiring_ptr<crl_holder> expiring_crl;
