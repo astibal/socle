@@ -31,9 +31,9 @@
 #include "display.hpp"
 #include "buffer.hpp"
 
-#include "stdarg.h"
-#include "stdio.h"
-#include "errno.h"
+#include <cstdarg>
+#include <cstdio>
+#include <cerrno>
 
 class buffer;
 
@@ -103,14 +103,14 @@ std::string hex_dump(unsigned char *data, int size,unsigned int ltrim, unsigned 
     char hexstr[ 16*3 + 5] = {0};
     char charstr[16*1 + 5] = {0};
 	
-	std::string ret = std::string();
+	std::stringstream ret;
 
 	int tr = 0;
 	if (ltrim > 0) {
 		tr = ltrim + 4;
 	}
 
-	std::string pref = std::string();
+	std::string pref;
 	
 	if (prefix != 0) {
 		if (tr > 1) tr--;
@@ -148,7 +148,7 @@ std::string hex_dump(unsigned char *data, int size,unsigned int ltrim, unsigned 
 
         if(n%16 == 0) { 
             /* line completed */
-            ret += pref + string_format("[%4.4s]   %-50.50s  %s\n", addrstr, hexstr, charstr);
+            ret << pref << string_format("[%4.4s]   %-50.50s  %s\n", addrstr, hexstr, charstr);
             hexstr[0] = 0;
             charstr[0] = 0;
         } else if(n%8 == 0) {
@@ -161,10 +161,10 @@ std::string hex_dump(unsigned char *data, int size,unsigned int ltrim, unsigned 
 
     if (strlen(hexstr) > 0) {
         /* print rest of buffer if not empty */
-        ret += pref + string_format("[%4.4s]   %-50.50s  %s\n", addrstr, hexstr, charstr);
+        ret << pref << string_format("[%4.4s]   %-50.50s  %s\n", addrstr, hexstr, charstr);
     }
     
-    return ret;
+    return ret.str();
 }
 
 std::string string_error() {
