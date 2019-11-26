@@ -33,6 +33,7 @@
 #include <ptr_cache.hpp>
 #include <mpstd.hpp>
 
+#include <regex>
 #include <thread>
 #include <string>
 
@@ -123,12 +124,13 @@ private:
     bool load_ca_cert();
     bool load_def_cl_cert();
     bool load_def_sr_cert();
-    
+
+    std::regex re_hostname = std::regex("^[a-zA-Z0-9-]+\\.");
+
     X509_CACHE cache_;
     X509_STORE* trust_store_ = nullptr;
 
-    std::recursive_mutex mutex_cache_write_;
-
+    mutable std::recursive_mutex mutex_cache_write_;
 
     SSLFactory() = default;
 public:
@@ -152,13 +154,15 @@ public:
     bool load();
 
     //always use locking when using this class!
-    std::recursive_mutex& lock() { return mutex_cache_write_; };
+    std::recursive_mutex& lock() const { return mutex_cache_write_; };
 
 
     // get spoofed certificate cache, based on cert's subject
     X509_CACHE& cache() { return cache_; };
+    X509_CACHE const& cache() const { return cache_; };
     // trusted CA store
     X509_STORE* trust_store() { return trust_store_; };
+    X509_STORE const* trust_store() const { return trust_store_; };
 
     [[nodiscard]] inline SSL_CTX* default_tls_server_cx() const  { return def_sr_ctx; }
     [[nodiscard]] inline SSL_CTX* default_tls_client_cx() const  { return def_cl_ctx; }
@@ -170,6 +174,7 @@ public:
     static std::string& default_cert_password() { return certs_password; }
 
     // our killer feature here
+    [[nodiscard]] // discarding result will leak memory
     SSLFactory::X509_PAIR* spoof(X509* cert_orig, bool self_sign=false, std::vector<std::string>* additional_sans=nullptr);
      
     static int convert_ASN1TIME(ASN1_TIME*, char*, size_t);
@@ -188,9 +193,9 @@ public:
 
     bool add(std::string& store_key, EVP_PKEY* cert_privkey,X509* cert,X509_REQ* req=nullptr);
     bool add(std::string& store_key, X509_PAIR* p,X509_REQ* req=nullptr);
-     
-    SSLFactory::X509_PAIR*  find(std::string& subject);
-    std::string find_subject_by_fqdn(std::string& fqdn);
+
+    std::optional<SSLFactory::X509_PAIR*> find(std::string const& subject) const;
+    std::optional<std::string> find_subject_by_fqdn(std::string const& fqdn) const;
     void erase(std::string& subject);
      
 
@@ -208,6 +213,8 @@ public:
         static logan_lite l = logan_lite("pki.store");
         return l;
     }
+
+    class CertParseException : public std::exception {};
 };
 
 #endif //__SSLCERTSTORE_HPP__

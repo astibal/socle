@@ -551,7 +551,7 @@ std::string SSLFactory::make_store_key(X509* cert_orig, const SpoofOptions& spo)
 
 #endif
 
-SSLFactory::X509_PAIR* SSLFactory::find(std::string& subject) {
+std::optional<SSLFactory::X509_PAIR*> SSLFactory::find(std::string const& subject) const {
 
     std::lock_guard<std::recursive_mutex> l_(lock());
     auto log = get_log();
@@ -562,13 +562,13 @@ SSLFactory::X509_PAIR* SSLFactory::find(std::string& subject) {
     } else {
         _deb("SSLFactory::find[%x]: found cached '%s'",this,subject.c_str());
         
-        return (*entry).second;  //first is the map key (cert subject in our case)
+        return std::optional((*entry).second);  //first is the map key (cert subject in our case)
     }    
     
-    return nullptr;
+    return std::nullopt;
 }
 
-std::string SSLFactory::find_subject_by_fqdn(std::string& fqdn) {
+std::optional<std::string> SSLFactory::find_subject_by_fqdn(std::string const& fqdn) const {
 
     {
         std::lock_guard<std::recursive_mutex> l_(lock());
@@ -579,13 +579,13 @@ std::string SSLFactory::find_subject_by_fqdn(std::string& fqdn) {
             _deb("SSLFactory::find_subject_by_fqdn[%x]: NOT cached '%s'", this, fqdn.c_str());
         } else {
             _deb("SSLFactory::find_subject_by_fqdn[%x]: found cached '%s'", this, fqdn.c_str());
-            return (*entry).first;
+            return std::optional((*entry).first);
         }
     }
 
     // do this outside locked section
-    std::regex hostname_re("^[a-zA-Z0-9-]+\\.");
-    std::string wildcard_fqdn = std::regex_replace(fqdn,hostname_re,"*.");
+    mp::string re_wildcard("*.");
+    std::string wildcard_fqdn = std::regex_replace(fqdn, re_hostname, re_wildcard);
 
     {
         std::lock_guard<std::recursive_mutex> l_(lock());
@@ -596,11 +596,11 @@ std::string SSLFactory::find_subject_by_fqdn(std::string& fqdn) {
             _deb("SSLFactory::find_subject_by_fqdn[%x]: wildcard NOT cached '%s'", this, wildcard_fqdn.c_str());
         } else {
             _deb("SSLFactory::find_subject_by_fqdn[%x]: found cached wildcard '%s'", this, fqdn.c_str());
-            return (*entry).first;
+            return std::optional((*entry).first);;
         }
     }
 
-    return "";
+    return std::nullopt;
 }
 
 //don't call erase for now, it can delete cert/key while being used by different threads!!!
@@ -614,7 +614,7 @@ void SSLFactory::erase(std::string& subject) {
     try {
         std::lock_guard<std::recursive_mutex> l_(lock());
         
-        X509_PAIR* p = find(subject);
+        X509_PAIR* p = find(subject).value_or(nullptr);
         if(p) {
             EVP_PKEY_free(p->first);
             X509_free(p->second);

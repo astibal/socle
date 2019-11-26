@@ -2106,10 +2106,10 @@ bool baseSSLCom<L4Proto>::waiting_peer_hello() {
 
                         std::lock_guard<std::recursive_mutex> l_(certstore()->lock());
 
-                        std::string subj = certstore()->find_subject_by_fqdn(sslcom_peer_hello_sni_);
-                        if(subj.size() > 0) {
-                            _dia("SSLCom::waiting_peer_hello: peer's SNI found in subject cache: '%s'",subj.c_str());
-                            if(! enforce_peer_cert_from_cache(subj)) {
+                        auto res_subj = certstore()->find_subject_by_fqdn(sslcom_peer_hello_sni_);
+                        if(res_subj.has_value()) {
+                            _dia("SSLCom::waiting_peer_hello: peer's SNI found in subject cache: '%s'", res_subj.value().c_str());
+                            if(! enforce_peer_cert_from_cache(res_subj.value() )) {
                                 _dia("SSLCom::waiting_peer_hello: fallback to slow-path");
                             }
                         } else {
@@ -2151,7 +2151,7 @@ bool baseSSLCom<L4Proto>::enforce_peer_cert_from_cache(std::string & subj) {
 
             std::lock_guard<std::recursive_mutex> l_(certstore()->lock());
 
-            auto* parek = certstore()->find(subj);
+            auto* parek = certstore()->find(subj).value_or(nullptr);
             if (parek != nullptr) {
                 _dia("Found cached certificate %s based on fqdn search.",subj.c_str());
                 baseSSLCom* p = dynamic_cast<baseSSLCom*>(peer());

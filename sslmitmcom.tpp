@@ -19,6 +19,7 @@
 #ifndef __SSLMITMCOM_TPP__
 #define __SSLMITMCOM_TPP__
 
+#include <cassert>
 
 #include <sslmitmcom.hpp>
 #include <hostcx.hpp>
@@ -206,11 +207,10 @@ bool baseSSLMitmCom<SSLProto>::spoof_cert(X509* cert_orig, SpoofOptions& spo) {
     std::scoped_lock<std::recursive_mutex> l_(this->certstore()->lock());
 
     std::string store_key = SSLFactory::make_store_key(cert_orig, spo);
-    SSLFactory::X509_PAIR* parek = nullptr;
 
-    parek = this->certstore()->find(store_key);
+    auto* parek = this->certstore()->find(store_key).value_or(nullptr);
     if (parek) {
-        _dia("SSLMitmCom::spoof_cert[%x]: certstore hit for '%s'",this,store_key.c_str());
+        _dia("SSLMitmCom::spoof_cert[%x]: certstore hit for '%s'", this, store_key.c_str());
         this->sslcom_pref_cert = parek->second;
         this->sslcom_pref_key = parek->first;
         
@@ -220,7 +220,7 @@ bool baseSSLMitmCom<SSLProto>::spoof_cert(X509* cert_orig, SpoofOptions& spo) {
     
         _dia("SSLMitmCom::spoof_cert[%x]: NOT in my certstore '%s'",this,store_key.c_str());
         
-        parek = this->certstore()->spoof(cert_orig,spo.self_signed,&spo.sans);
+        auto* parek = this->certstore()->spoof(cert_orig,spo.self_signed,&spo.sans);
         if(!parek) {
             _war("SSLMitmCom::spoof_cert[%x]: certstore failed to spoof '%d' - default will be used",this,store_key.c_str());
             return false;
