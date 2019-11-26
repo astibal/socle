@@ -25,6 +25,12 @@ template <class T>
 class mp_allocator
 {
 public:
+
+    static const mp_allocator& self() {
+        static const mp_allocator<T> r;
+        return r;
+    }
+
     typedef size_t    size_type;
     typedef ptrdiff_t difference_type;
     typedef T*        pointer;
@@ -70,6 +76,8 @@ public:
         // mp_allocator out there.
         return false;
     }
+
+    constexpr bool propagate_on_container_move_assignment() const { return true; };
 };
 
 #endif //MPALLOCATOR_HPP
