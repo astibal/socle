@@ -29,6 +29,8 @@
 #include <thread>
 #include <mutex>
 
+#include <mpstd.hpp>
+
 template<class Worker, class SubWorker>
 class ThreadedAcceptor : public baseProxy {
 public:
@@ -48,7 +50,7 @@ public:
     inline int worker_count_preference(void) { return worker_count_preference_; };    
 protected:
 	mutable std::mutex sq_lock_;
-	std::deque<int> sq_;
+	mp::deque<int> sq_;
     
     // pipe created to be monitored by Workers with poll. If pipe is filled with *some* data
     // there is something in the queue to pick-up.

@@ -76,6 +76,10 @@ public:
         // mp_allocator out there.
         return false;
     }
+    bool operator==(mp_allocator const& ref) {
+        // see reasons for operator !=
+        return true;
+    }
 
     constexpr bool propagate_on_container_move_assignment() const { return true; };
 };
