@@ -31,11 +31,11 @@ public:
     using set_type = mp::set<T>;
 
 protected:
-    set_type <baseProxy*> proxies_;
+    vector_type <baseProxy*> proxies_;
 
 public:
     explicit MasterProxy(baseCom* c): baseProxy(c) {}
-    set_type <baseProxy*>& proxies() { return proxies_; };
+    vector_type <baseProxy*>& proxies() { return proxies_; };
 	
     int prepare_sockets(baseCom*) override;
 	int handle_sockets_once(baseCom*) override;

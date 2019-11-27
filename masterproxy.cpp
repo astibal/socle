@@ -42,7 +42,9 @@ bool MasterProxy::run_timers (void)
 {
     if(baseProxy::run_timers()) {
 
-        for(baseProxy* p: proxies()) {
+        for(auto i = proxies().cbegin(); i != proxies().end(); ) {
+
+            auto p = *i;
 
             if(!p) {
                 _inf("null sub-proxy!!");
@@ -51,10 +53,13 @@ bool MasterProxy::run_timers (void)
 
             if(p->state().dead()) {
                 delete p;
-                proxies().erase(p);
+                i = proxies().erase(i);
+                continue;
             } else {
                 p->run_timers();
             }
+
+            ++i;
         }
 
         return true;
@@ -86,15 +91,19 @@ int MasterProxy::handle_sockets_once(baseCom* xcom) {
         }
     }
     
-    for(auto p: proxies()) {
-        
+    for(auto i = proxies().cbegin(); i != proxies().end(); ) {
+
+        auto p = *i;
         if (p->state().dead()) {
             delete(p);
-            proxies().erase(p); 
+
+            i = proxies().erase(i);
                         
             proxies_deleted++;
-            break;
+            continue;
         }
+
+        ++i;
     }
     
     _ext("MasterProxy::handle_sockets_once: returning %d, sub-proxies: handled=%d, shutdown=%d, deleted=%d",r,proxies_handled,proxies_shutdown,proxies_deleted);
