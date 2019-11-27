@@ -35,7 +35,7 @@ template<class SubWorker>
 int ThreadedReceiverProxy<SubWorker>::workers_total = 2;
 
 template<class Worker, class SubWorker>
-ThreadedReceiver<Worker,SubWorker>::ThreadedReceiver(baseCom* c): baseProxy(c), threads_(nullptr) {
+ThreadedReceiver<Worker,SubWorker>::ThreadedReceiver(baseCom* c): baseProxy(c) {
     baseProxy::new_raw(true);
 
     if(version_check(get_kernel_version(),"3.4")) {
@@ -52,21 +52,19 @@ ThreadedReceiver<Worker,SubWorker>::ThreadedReceiver(baseCom* c): baseProxy(c), 
 }
 
 template<class Worker, class SubWorker>
-ThreadedReceiver<Worker,SubWorker>::~ThreadedReceiver() { 
-    if(threads_)  {
+ThreadedReceiver<Worker,SubWorker>::~ThreadedReceiver() {
+    if(! tasks_.empty())  {
 
-        for(unsigned int i = 0; i <= nthreads; i++) {
-            Worker* ptr =  workers_[i];
-            ptr->state().dead(true);
+        for(auto& thread_worker: tasks_) {
+            thread_worker.second->state().dead(true);
         }
-        
-        for(unsigned int i = 0; i <= nthreads; i++) {
-            std::thread* ptr =  threads_[i];
-            ptr->join();
-            delete ptr;
-            threads_[i] = NULL;
+
+        for(unsigned int i = 0; i <= tasks_.size(); i++) {
+            auto& t_w =  tasks_[i];
+            t_w.first->join();
+            delete t_w.first;
+            t_w.first = nullptr;
         }
-        delete[] threads_; 
     }
     ::close(sq__hint[0]);
     ::close(sq__hint[1]);    
@@ -481,31 +479,34 @@ void ThreadedReceiver<Worker,SubWorker>::on_right_new_raw(int s) {
 
 template<class Worker, class SubWorker>
 int ThreadedReceiver<Worker,SubWorker>::create_workers(int count) {  
-    nthreads = std::thread::hardware_concurrency();
+
+    auto nthreads = std::thread::hardware_concurrency();
+    _dia("Detected %d cores to use.", nthreads);
+
     if(count > 0) {
         nthreads = count;
+        _dia("Threads poolsize overridden: %d", nthreads);
+
+    } else if (count < 0) {
+        Worker::workers_total = count;
+        return count;
     }
     
     Worker::workers_total = nthreads;
-    
-    _dia("Detected %d cores to use.", nthreads);
-    
-    threads_ = new std::thread*[nthreads];
-    workers_ = new Worker*[nthreads];
-    
+
     for( unsigned int i = 0; i < nthreads; i++) {
+
         Worker *w = new Worker(this->com()->replicate(),i);
         w->com()->nonlocal_dst(this->com()->nonlocal_dst());
-        w->parent((baseProxy*)this);
+        w->parent(this);
         w->pollroot(true);
+
         _dia("ThreadedReceiver::create_workers setting worker's queue hint pipe socket %d",sq__hint[0]);
         w->com()->set_hint_monitor(sq__hint[0]);        
         
-        _dia("Created ThreadedWorkerProxy %x",w);
-        workers_[i] = w;
-        
-        // also init threads pool
-        threads_[i] = NULL;
+        _dia("Created ThreadedWorkerProxy 0x%x", w);
+
+        tasks_.push_back( {nullptr, w} );
     }
     
     return nthreads;
@@ -517,17 +518,17 @@ int ThreadedReceiver<Worker,SubWorker>::run() {
     
     pollroot(true);
     create_workers(worker_count_preference());
-    
-    for( unsigned int i = 0; i < nthreads; i++) {
-        auto w = workers_[i];
-        std::thread* ptr = new std::thread(&Worker::run,w);
+
+    for( unsigned int i = 0; i < tasks_.size() ; i++) {
+        auto& thread_worker = tasks_[i];
+        std::thread* ptr = new std::thread(&Worker::run, thread_worker.second);
         _dia("ThreadedReceiver::run: started new thread[%d]: ptr=%x, thread_id=%d",i,ptr,ptr->get_id());
-        threads_[i] = ptr;
+        thread_worker.first = ptr;
     }
     
     baseProxy::run();
     
-    return nthreads;
+    return tasks_.size();
 }
 
 template<class Worker, class SubWorker>

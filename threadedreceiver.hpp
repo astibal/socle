@@ -60,7 +60,7 @@ public:
     inline mp::vector<int>* get_quick_list() const { return quick_list_;};
     
     
-protected:
+private:
     mutable std::mutex sq_lock_;
     mp::deque<int> sq_;
     mp::vector<int>* quick_list_ = nullptr;
@@ -68,11 +68,8 @@ protected:
     // pipe created to be monitored by Workers with poll. If pipe is filled with *some* data
     // there is something in the queue to pick-up.
     int sq__hint[2];
-    
-    size_t nthreads;
-    std::thread **threads_;
-    Worker **workers_;
 
+    mp::vector<std::pair< std::thread*, Worker*>> tasks_;
     int worker_count_preference_=0;
     int create_workers(int count=0);
 };
