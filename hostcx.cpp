@@ -49,7 +49,7 @@ baseHostCX::baseHostCX(baseCom* c, const char* h, const char* p): Host(h, p) {
 
     permanent_ = false;
     last_reconnect_ = 0;
-    reconnect_delay_ = 30;
+    reconnect_delay_ = 7;
     fds_ = 0;
     error_ = false;
 
@@ -77,7 +77,7 @@ baseHostCX::baseHostCX(baseCom* c, int s) {
 
     permanent_ = false;
     last_reconnect_ = 0;
-    reconnect_delay_ = 30;
+    reconnect_delay_ = 7;
     fds_ = s;
     error_ = false;
 
@@ -494,7 +494,7 @@ int baseHostCX::write() {
     }
 
     if (tx_size <= 0) {
-        _deb("baseHostCX::write[%s]: writebuf_ %d bytes pending",c_name(),tx_size);
+        _deb("baseHostCX::write[%s]: writebuf_ %d bytes pending %s", c_name(), tx_size, opening() ? "(opening)" : "");
         // return 0; // changed @ 20.9.2014 by astib.
         // Let com() decide what to do if we want to send 0 (or less :) bytes
         // keep it here for studying purposes.

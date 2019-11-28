@@ -158,7 +158,7 @@ class baseHostCX : public Host
 	
 	bool permanent_; 	      //!< indice if we want to reconnect, if socket fails (unless HostCX is reduced)
 	time_t last_reconnect_;   //!< last time of an attempt to reconnect
-	unsigned short reconnect_delay_ = 30; //!< how often we will reconnect the socket (in seconds)
+	unsigned short reconnect_delay_ = 7; //!< how often we will reconnect the socket (in seconds)
 	unsigned short idle_delay_ = 3600;     // when connection is idle for this time, it will timeout
 
 	time_t t_connected{0}; 	  //!< connection timeout facility, useful when socket is opened non-blocking

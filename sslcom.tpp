@@ -1842,6 +1842,10 @@ ret_handshake baseSSLCom<L4Proto>::handshake() {
 
         if(! handshake_peer_client() ) {
             _dia("SSLCom::handshake: %s on socket %d: waiting for the peer...", op_descr, sslcom_fd);
+
+            _dia("SSLCom::handshake: %s on socket %d: scanning IN only", op_descr, sslcom_fd);
+            change_monitor(sslcom_fd, EPOLLIN);
+
             return ret_handshake::AGAIN;
         }
 
@@ -2058,12 +2062,12 @@ bool baseSSLCom<L4Proto>::waiting_peer_hello() {
 
     _dum("SSLCom::waiting_peer_hello: called");
     if(peer()) {
-        baseSSLCom *p = dynamic_cast<baseSSLCom*>(peer());
-        if(p != nullptr) {
-            if(p->sslcom_fd > 0) {
-                _dum("SSLCom::waiting_peer_hello: peek max %d bytes from peer socket %d",sslcom_peer_hello_buffer.capacity(),p->sslcom_fd);
+        baseSSLCom *peer_scom = dynamic_cast<baseSSLCom*>(peer());
+        if(peer_scom != nullptr) {
+            if(peer_scom->sslcom_fd > 0) {
+                _dum("SSLCom::waiting_peer_hello: peek max %d bytes from peer socket %d",sslcom_peer_hello_buffer.capacity(),peer_scom->sslcom_fd);
 
-                int red = ::recv(p->sslcom_fd,sslcom_peer_hello_buffer.data(),sslcom_peer_hello_buffer.capacity(),MSG_PEEK);
+                int red = ::recv(peer_scom->sslcom_fd,sslcom_peer_hello_buffer.data(),sslcom_peer_hello_buffer.capacity(),MSG_PEEK);
                 if (red > 0) {
                     sslcom_peer_hello_buffer.size(red);
 
@@ -2118,15 +2122,26 @@ bool baseSSLCom<L4Proto>::waiting_peer_hello() {
                     }
 
                 } else {
-                    _dum("SSLCom::waiting_peer_hello: peek returns %d, readbuf=%d",red,owner_cx()->readbuf()->size());
-                    _dum("SSLCom::waiting_peer_hello: peek errno: %s",string_error().c_str());
+                    _deb("SSLCom::waiting_peer_hello: peek returns %d, readbuf=%d",red,owner_cx()->readbuf()->size());
+
+                    // hopefully complete list of error codes allowing us to further peek peer's socket
+                    if(red == 0 && errno != 0
+                                 && errno != EINPROGRESS
+                                 && errno != EWOULDBLOCK
+                                 && errno != EAGAIN) {
+                        _err("SSLCom::waiting_peer_hello: unrecoverable peek errno: %s",string_error().c_str());
+                        peer_scom->error(ERROR_READ);
+                        error(ERROR_UNSPEC);
+                    } else {
+                        _deb("SSLCom::waiting_peer_hello: peek errno: %s",string_error().c_str());
+                    }
                 }
 
             } else {
-                _dia("SSLCom::waiting_peer_hello: SSLCom peer doesn't have sslcom_fd set, socket %d",p->sslcom_fd);
+                _dia("SSLCom::waiting_peer_hello: SSLCom peer doesn't have sslcom_fd set, socket %d",peer_scom->sslcom_fd);
                
                 // FIXME: definitely not correct
-                if(p->l4_proto() == SOCK_DGRAM) {
+                if(peer_scom->l4_proto() == SOCK_DGRAM) {
                     // atm don't wait for hello
                     sslcom_peer_hello_received(true);
                 }
