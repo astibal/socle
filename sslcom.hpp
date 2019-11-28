@@ -278,7 +278,7 @@ public:
     static void ssl_info_callback(const SSL *s, int where, int ret);
     static DH* ssl_dh_callback(SSL* s, int is_export, int key_length);
     static EC_KEY* ssl_ecdh_callback(SSL* s, int is_export, int key_length);
-    static int ocsp_resp_callback(SSL *s, void *arg);
+    static int status_resp_callback(SSL *s, void *arg);
     static int ssl_client_cert_callback(SSL *ssl, X509 **x509, EVP_PKEY **pkey);
     static int ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx);
     static int check_server_dh_size(SSL* ssl);
@@ -387,7 +387,22 @@ public:
 
     int ocsp_cert_is_revoked = -1;
     static int ocsp_explicit_check(baseSSLCom* com);
-    static int ocsp_resp_callback_explicit(baseSSLCom* com, int required);
+    static int check_revocation_oob(baseSSLCom* com, int required);
+
+    enum class staple_code {
+            NOT_PROCESSED,
+            MISSING_BODY,
+            PARSING_FAILED,
+            STATUS_NOK,
+            GET_BASIC_FAILED,
+            BASIC_VERIFY_FAILED,
+            CERT_TO_ID_FAILED,
+            NO_FIND_STATUS,
+            INVALID_TIME,
+            SUCCESS
+        };
+
+    static std::pair<typename baseSSLCom<L4Proto>::staple_code, int> check_revocation_stapling(std::string const& name, baseSSLCom*, SSL* ssl);
     
     // unknown issuers
     bool opt_allow_unknown_issuer = false;
@@ -409,7 +424,7 @@ public:
                                                         // 2 - bypass next connection
     
     // verify status. Added also verify pseudo-status for client cert request.
-    typedef enum {  VERIFY_OK=0x0, 
+    typedef enum {  VERIFY_OK=0x0,
                     UNKNOWN_ISSUER=0x1, 
                     SELF_SIGNED=0x2, 
                     INVALID=0x4, 
@@ -420,8 +435,8 @@ public:
                                                         } verify_status_t;
                                 
     unsigned int verify_status = VERIFY_OK;
-    inline void verify_set(unsigned int s) { verify_status |= (verify_status_t)s; }
-    inline bool verify_check(unsigned int s) const { return (verify_status & s); }
+    inline void verify_set(unsigned int s) { flag_set(&verify_status, s); }
+    inline bool verify_check(unsigned int s) const { return (flag_test(verify_status, s)); }
     inline int verify_get() const { return (int) verify_status; }
 
     DECLARE_C_NAME("SSLCom");

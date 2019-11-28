@@ -434,17 +434,17 @@ int baseSSLCom<L4Proto>::check_server_dh_size(SSL* ssl) {
 }
 
 template <class L4Proto>
-int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx) {
+int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int lib_preverify, X509_STORE_CTX *ctx) {
 
     X509 * err_cert = X509_STORE_CTX_get_current_cert(ctx);
     int err =   X509_STORE_CTX_get_error(ctx);
     int depth = X509_STORE_CTX_get_error_depth(ctx);
     int idx = SSL_get_ex_data_X509_STORE_CTX_idx();
-    int ret = ok;
+    int callback_return = lib_preverify;
 
     auto log = logan::create("com.ssl.callback.verify");
 
-    _deb("SSLCom::ssl_client_vrfy_callback: data index = %d, ok = %d, depth = %d",idx,ok,depth);
+    _deb("SSLCom::ssl_client_vrfy_callback: data index = %d, lib_preverify = %d, depth = %d", idx, lib_preverify, depth);
 
     SSL* ssl = static_cast<SSL*>(X509_STORE_CTX_get_ex_data(ctx, SSL_get_ex_data_X509_STORE_CTX_idx()));
     void* data = SSL_get_ex_data(ssl, sslcom_ssl_extdata_index);
@@ -462,36 +462,47 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx) {
         }
     }
 
+    if(!com){
+        _err("SSLCom::ssl_client_vrfy_callback: cannot get associated com object, failing validation!");
+        return 0;
+    }
+    if(!ssl){
+        _err("SSLCom::ssl_client_vrfy_callback: cannot get associated ssl object, failing validation!");
+        return 0;
+    }
+    // now we don't need check com and ssl anymore
+
     X509* xcert = X509_STORE_CTX_get_current_cert(ctx);
 
-    if(com != nullptr) {
-        if (depth == 0) {
-            if(com->sslcom_target_cert) {
-                _err("already having peer cert");
-                X509_free(com->sslcom_target_cert);
-            }
 
-            com->sslcom_target_cert = X509_dup(xcert);
+    if (depth == 0) {
+        if(com->sslcom_target_cert) {
+            _err("already having peer cert");
+            X509_free(com->sslcom_target_cert);
         }
-        else if (depth == 1) {
-            if(com->sslcom_target_issuer) {
-                _err("already having peer issuer");
-                X509_free(com->sslcom_target_issuer);
-            }
 
-            com->sslcom_target_issuer = X509_dup(xcert);
+        com->sslcom_target_cert = X509_dup(xcert);
+    }
+    else if (depth == 1) {
+        if(com->sslcom_target_issuer) {
+            _err("already having peer issuer");
+            X509_free(com->sslcom_target_issuer);
         }
-        else if (depth == 2) {
-            if(com->sslcom_target_issuer_issuer)  {
-                _err("already having peer issuer_issuer");
-                X509_free(com->sslcom_target_issuer_issuer);
-            }
 
-            com->sslcom_target_issuer_issuer = X509_dup(xcert);
+        com->sslcom_target_issuer = X509_dup(xcert);
+    }
+    else if (depth == 2) {
+        if(com->sslcom_target_issuer_issuer)  {
+            _err("already having peer issuer_issuer");
+            X509_free(com->sslcom_target_issuer_issuer);
         }
+
+        com->sslcom_target_issuer_issuer = X509_dup(xcert);
     }
 
-    if (!ok) {
+    if (!lib_preverify) {
+        _deb("[%s]: SSLCom::ssl_client_vrfy_callback: %d:%s",name.c_str(), err, X509_verify_cert_error_string(err));
+
         if (err_cert) {
             _dia("[%s]: SSLCom::ssl_client_vrfy_callback: '%s' issued by '%s'", name.c_str(),
                     SSLFactory::print_cn(err_cert).c_str(),
@@ -500,7 +511,6 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx) {
         else {
             _dia("[%s]: SSLCom::ssl_client_vrfy_callback: no server certificate", name.c_str());
         }
-        _dia("[%s]: SSLCom::ssl_client_vrfy_callback: %d:%s",name.c_str(), err, X509_verify_cert_error_string(err));
     }
 
     switch (err)  {
@@ -510,45 +520,34 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx) {
 
             _dia("[%s]: SSLCom::ssl_client_vrfy_callback: unknown issuer: %d", name.c_str(), err);
 
-            if(com != nullptr) {
-                com->verify_set(UNKNOWN_ISSUER);
-                if(com->opt_allow_unknown_issuer) {
-                    ret = 1;
-                } 
-                if(com->opt_failed_certcheck_replacement) {
-                    ret = 1;
-                }            
+            com->verify_set(UNKNOWN_ISSUER);
+            if(com->opt_allow_unknown_issuer || com->opt_failed_certcheck_replacement) {
+                callback_return = 1;
             }
+
+            break;
+
         case X509_V_ERR_SELF_SIGNED_CERT_IN_CHAIN:
         case X509_V_ERR_CERT_UNTRUSTED:
 
             _dia("[%s]: SSLCom::ssl_client_vrfy_callback: self-signed cert in the chain: %d", name.c_str(), err);
 
-            if(com != nullptr) {
-                com->verify_set(SELF_SIGNED_CHAIN);
-                if(com->opt_allow_self_signed_chain) {
-                    ret = 1;
-                }
-                if(com->opt_failed_certcheck_replacement) {
-                    ret = 1;
-                }
+            com->verify_set(SELF_SIGNED_CHAIN);
+            if(com->opt_allow_self_signed_chain || com->opt_failed_certcheck_replacement) {
+                callback_return = 1;
             }
 
             break;
+
         case X509_V_ERR_DEPTH_ZERO_SELF_SIGNED_CERT:
 
             _dia("[%s]: SSLCom::ssl_client_vrfy_callback: end-entity cert is self-signed: %d", name.c_str(), err);
 
-            if(com != nullptr) {
-                com->verify_set(SELF_SIGNED);
-                if(com->opt_allow_self_signed_cert) {
-                    ret = 1;
-                }
-                if(com->opt_failed_certcheck_replacement) {
-                    ret = 1;
-                }
+            com->verify_set(SELF_SIGNED);
+            if(com->opt_allow_self_signed_cert || com->opt_failed_certcheck_replacement) {
+                callback_return = 1;
             }
-                
+
             break;
 
         case X509_V_ERR_CERT_NOT_YET_VALID:
@@ -556,30 +555,21 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx) {
             _dia("[%s]: SSLCom::ssl_client_vrfy_callback: not before: %s", name.c_str(),
                     SSLFactory::print_not_before(err_cert).c_str());
 
-            if(com != nullptr) {
-                com->verify_set(INVALID);
-                if(com->opt_allow_not_valid_cert) {
-                    ret = 1;
-                }
-                if(com->opt_failed_certcheck_replacement) {
-                    ret = 1;
-                }
+            com->verify_set(INVALID);
+            if(com->opt_allow_not_valid_cert || com->opt_failed_certcheck_replacement) {
+                callback_return = 1;
             }
 
             break;
+
         case X509_V_ERR_CERT_HAS_EXPIRED:
         case X509_V_ERR_ERROR_IN_CERT_NOT_AFTER_FIELD:
             _dia("[%s]: SSLCom::ssl_client_vrfy_callback: not after: %s",name.c_str(),
                     SSLFactory::print_not_after(err_cert).c_str());
 
-            if(com != nullptr) {
-                com->verify_set(INVALID);
-                if(com->opt_allow_not_valid_cert) {
-                    ret = 1;
-                }
-                if(com->opt_failed_certcheck_replacement) {
-                    ret = 1;
-                }
+            com->verify_set(INVALID);
+            if(com->opt_allow_not_valid_cert || com->opt_failed_certcheck_replacement) {
+                callback_return = 1;
             }
 
             break;
@@ -590,7 +580,7 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx) {
     }
     
     
-    if (err == X509_V_OK && ok == 2) {
+    if (err == X509_V_OK && lib_preverify == 2) {
         _dia("[%s]: SSLCom::ssl_client_vrfy_callback: explicit policy", name.c_str());
     }
 
@@ -599,46 +589,18 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx) {
         cn = SSLFactory::print_cn(xcert) + ";"+ SSLFactory::fingerprint(xcert);
     }
     _dia("[%s]: SSLCom::ssl_client_vrfy_callback[%d:%s]: returning %s (pre-verify %d)", name.c_str(), depth,cn.c_str(),
-                     (ret > 0 ? "ok" : "failed" ), ok);
+                     (callback_return > 0 ? "ok" : "failed" ), lib_preverify);
 
-    if(ret <= 0) {
+    if(callback_return <= 0) {
         _not("[%s]: target server ssl certificate check failed:%d: %s", name.c_str(), err,
                 X509_verify_cert_error_string(err));
     }
-    
-    
-    if(depth == 0 && com != nullptr) {
-        if(com->opt_ocsp_mode > 0 &&  com->sslcom_target_cert && com->sslcom_target_issuer
-            && com->ocsp_cert_is_revoked == -1 && com->opt_ocsp_enforce_in_verify) {
-         
-            int is_revoked = baseSSLCom::ocsp_explicit_check(com);
 
-            _deb("[%s]: SSLCom::ssl_client_vrfy_callback[%d:%s]: explicit check returned %d", name.c_str(),
-                    depth, cn.c_str(), is_revoked);
 
-            if(is_revoked  == 0) { 
-                ret = 1;
-            }
-            else if(is_revoked > 0)  {
-                _dia("[%s]: SSLCom::ssl_client_vrfy_callback[%d:%s]: revoked",name.c_str(), depth, cn.c_str());
+    // Note: OCSP checks were removed from here. Only place to do OCSP is *status callback*
+    //
 
-                com->verify_set(REVOKED);
-                ret = 0;
-                
-                if(com->opt_failed_certcheck_replacement) {
-                    _dia("[%s]: SSLCom::ssl_client_vrfy_callback[%d:%s]: revoked, but replacement is enabled",
-                            name.c_str(), depth, cn.c_str());
-                    ret = 1;
-                }
-                
-            }
-        } else {
-            if(com->opt_ocsp_mode == 0)
-                _dia("[%s]: SSLCom::ssl_client_vrfy_callback[%d:%s]: ocsp not enabled",name.c_str(), depth, cn.c_str());
-        }
-    }
-
-    return ret;
+    return callback_return;
 }
 
 
@@ -902,13 +864,13 @@ int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
 }
 
 template <class L4Proto>
-int baseSSLCom<L4Proto>::ocsp_resp_callback_explicit(baseSSLCom* com, int default_action) {
+int baseSSLCom<L4Proto>::check_revocation_oob(baseSSLCom* com, int default_action) {
 
     auto& log = inet::ocsp::OcspFactory::log();
 
     if(com != nullptr) {
         if(com->opt_ocsp_enforce_in_verify) {
-            _dia("ocsp_resp_callback_explicit: full OCSP request query (callback context)");
+            _dia("check_revocation_oob: full OCSP request query (callback context)");
             int is_revoked = baseSSLCom::ocsp_explicit_check(com);
 
             std::string cn = SSLFactory::print_cn(com->sslcom_target_cert) + ";" + SSLFactory::fingerprint(com->sslcom_target_cert);
@@ -938,107 +900,89 @@ int baseSSLCom<L4Proto>::ocsp_resp_callback_explicit(baseSSLCom* com, int defaul
         }
     }
 
-    _dia("ocsp_resp_callback_explicit: default action - returning %d", default_action);
+    _dia("check_revocation_oob: default action - returning %d", default_action);
     return default_action;
 }
 
 
 template <class L4Proto>
-int baseSSLCom<L4Proto>::ocsp_resp_callback(SSL *s, void *arg) {
+std::pair<typename baseSSLCom<L4Proto>::staple_code, int> baseSSLCom<L4Proto>::check_revocation_stapling(std::string const& name, baseSSLCom* com, SSL* ssl) {
 
-    auto& log = inet::ocsp::OcspFactory::log();
+    auto log = logan::create("com.ssl.ocsp");
 
-    void* data = SSL_get_ex_data(s, sslcom_ssl_extdata_index);
-    std::string name = "unknown_cx";
+    const unsigned char *stapling_body = nullptr;
+    int stapling_len = 0;
 
-    baseSSLCom* com = static_cast<baseSSLCom*>(data);
+    auto proc_status = staple_code::NOT_PROCESSED;
+    int  ocsp_status = -1;
+    int  ocsp_reason = -1;
 
-    bool opt_ocsp_strict = false;
-    bool opt_ocsp_require = false;
-    X509* peer_cert = nullptr;
-    X509* issuer_cert = nullptr;
+    STACK_OF(X509*) signers = nullptr;
+    OCSP_RESPONSE *ocsp_response = nullptr;
+    OCSP_BASICRESP *basic_response = nullptr;
+    OCSP_CERTID *cert_id = nullptr;
 
-    if(com != nullptr) {
-        baseSSLCom* pcom = dynamic_cast<baseSSLCom*>(com->peer());
-        if(pcom != nullptr) {
-            name = pcom->hr();
-        } else {
-            name = com->hr();
-        }
-        opt_ocsp_strict = (com->opt_ocsp_stapling_mode >= 1);
-        opt_ocsp_require = (com->opt_ocsp_stapling_mode >= 2);
-        peer_cert   = com->sslcom_target_cert;
-        issuer_cert = com->sslcom_target_issuer;
+    ASN1_GENERALIZEDTIME* produced_at = nullptr;
+    ASN1_GENERALIZEDTIME* this_update = nullptr;
+    ASN1_GENERALIZEDTIME* next_update = nullptr;
 
-        if (!peer_cert || !issuer_cert) {
-            _dia("[%s]: ocsp_resp_callback: verify hasn't been yet called",name.c_str());
-            com->opt_ocsp_enforce_in_verify = true;
-            return baseSSLCom::ocsp_resp_callback_explicit(com,opt_ocsp_require ? 0 : 1);
-        }
-        
-        _deb("ocsp_resp_callback[%s]: peer cert=%x, issuer_cert=%x",name.c_str(),peer_cert,issuer_cert);
-       
-    } else {
-        _err("SSLCom::ocsp_resp_callback: argument data is not SSLCom*!");
-        return -1;
-    }
+    bool opt_ocsp_strict = (com->opt_ocsp_stapling_mode >= 1);
+    bool opt_ocsp_require = (com->opt_ocsp_stapling_mode >= 2);
 
-    
-    const unsigned char *stapling_body;
-    int stapling_len, status, reason;
-    OCSP_RESPONSE *rsp;
-    OCSP_BASICRESP *basic;
-    OCSP_CERTID *id;
-    ASN1_GENERALIZEDTIME *produced_at, *this_update, *next_update;
-
-    stapling_len = SSL_get_tlsext_status_ocsp_resp(s, &stapling_body);
+    stapling_len = SSL_get_tlsext_status_ocsp_resp(ssl, &stapling_body);
     if (!stapling_body) {
         if(opt_ocsp_strict)
             _dia("[%s]: no OCSP stapling status response", name.c_str());
 
         com->opt_ocsp_enforce_in_verify = true;
-        return baseSSLCom::ocsp_resp_callback_explicit(com,opt_ocsp_require ? 0 : 1);
+
+        proc_status = staple_code::MISSING_BODY;
+        goto the_end;
     }
+
     _dum("[%s]: OCSP Response:  \n%s",name.c_str(),hex_dump((unsigned char*) stapling_body, stapling_len, 2).c_str());
 
-    rsp = d2i_OCSP_RESPONSE(nullptr, &stapling_body, stapling_len);
-    if (!rsp) {
+    ocsp_response = d2i_OCSP_RESPONSE(nullptr, &stapling_body, stapling_len);
+    if (!ocsp_response) {
         _err("[%s] failed to parse OCSP response",name.c_str());
+
         com->opt_ocsp_enforce_in_verify = true;
-        return baseSSLCom::ocsp_resp_callback_explicit(com,opt_ocsp_strict ? 0 : 1);
+
+        proc_status = staple_code::PARSING_FAILED;
+        goto the_end;
     }
 
-    status = OCSP_response_status(rsp);
-    if (status != OCSP_RESPONSE_STATUS_SUCCESSFUL) {
-        _err("[%s] OCSP responder error %d (%s)", name.c_str(), status, OCSP_response_status_str(status));
+    ocsp_status = OCSP_response_status(ocsp_response);
+    if (ocsp_status != OCSP_RESPONSE_STATUS_SUCCESSFUL) {
+        _err("[%s] OCSP responder error %d (%s)", name.c_str(), ocsp_status, OCSP_response_status_str(ocsp_status));
+
         com->opt_ocsp_enforce_in_verify = true;
-        return baseSSLCom::ocsp_resp_callback_explicit(com,opt_ocsp_strict ? 0 : 1);
+
+        proc_status = staple_code::STATUS_NOK;
+        goto the_end;
     }
 
-    basic = OCSP_response_get1_basic(rsp);
-    if (!basic) {
+    basic_response = OCSP_response_get1_basic(ocsp_response);
+    if (!basic_response) {
         _err("[%s] could not find BasicOCSPResponse",name.c_str());
+
         com->opt_ocsp_enforce_in_verify = true;
-        return baseSSLCom::ocsp_resp_callback_explicit(com,opt_ocsp_strict ? 0 : 1);
+
+        proc_status = staple_code::GET_BASIC_FAILED;
+        goto the_end;
     }
 
-    STACK_OF(X509*) signers = sk_X509_new_null();
-    sk_X509_push(signers, issuer_cert);
-    status = OCSP_basic_verify(basic, signers , com->certstore()->trust_store() , 0);
-    sk_X509_free(signers);
+    signers = sk_X509_new_null();
+    sk_X509_push(signers, com->sslcom_target_issuer);
+    ocsp_status = OCSP_basic_verify(basic_response, signers , com->certstore()->trust_store() , 0);
 
-    if (status <= 0) {
+    if (ocsp_status <= 0) {
 
-        int err = SSL_get_error(s,status);
+        int err = SSL_get_error(ssl, ocsp_status);
         _dia("    error: %s",ERR_error_string(err,nullptr));
 
 
-        OCSP_BASICRESP_free(basic);
-        OCSP_RESPONSE_free(rsp);
-
-        int int_strict_ocsp = opt_ocsp_strict ? 0 : 1;
-
-        if(int_strict_ocsp > 0) {
+        if(!opt_ocsp_strict) {
             _not("[%s] OCSP stapling response failed verification",name.c_str());
             ERR_clear_error();
         }
@@ -1046,98 +990,158 @@ int baseSSLCom<L4Proto>::ocsp_resp_callback(SSL *s, void *arg) {
             _err("[%s] OCSP stapling response failed verification",name.c_str());
         }
 
-        int ocsp_check =  baseSSLCom::ocsp_resp_callback_explicit(com, int_strict_ocsp);
-        _dia("SSLCom::ocsp_resp_callback: OCSP returned %d", ocsp_check);
-        
-        return ocsp_check;
+        proc_status = staple_code::BASIC_VERIFY_FAILED;
+        goto the_end;
     }
 
     _dia("[%s] OCSP stapling response verification succeeded",name.c_str());
 
-    id = OCSP_cert_to_id(nullptr, com->sslcom_target_cert, com->sslcom_target_issuer);
-    if (!id) {
+    cert_id = OCSP_cert_to_id(nullptr, com->sslcom_target_cert, com->sslcom_target_issuer);
+    if (!cert_id) {
         _err("[%s] could not create OCSP certificate identifier",name.c_str());
-        OCSP_BASICRESP_free(basic);
-        OCSP_RESPONSE_free(rsp);
 
-        int r = opt_ocsp_strict ? 0 : 1;
-        if(r > 0)
+        if(!opt_ocsp_strict)
             ERR_clear_error();
 
         com->opt_ocsp_enforce_in_verify = true;
-        int ocsp_check = baseSSLCom::ocsp_resp_callback_explicit(com,r);
-        _dia("SSLCom::ocsp_resp_callback: OCSP returned %d", ocsp_check);
-        
-        return ocsp_check;        
+
+        proc_status = staple_code::CERT_TO_ID_FAILED;
+        goto the_end;
     }
 
 
-    if (!OCSP_resp_find_status(basic, id, &status, &reason, &produced_at, &this_update, &next_update)) {
+    if (!OCSP_resp_find_status(basic_response, cert_id, & ocsp_status, &ocsp_reason, &produced_at, &this_update, &next_update)) {
         _err("[%s] could not find current server certificate from OCSP stapling response %s", name.c_str(),
-                                                       (opt_ocsp_require) ? "" : " (OCSP not required)");
-        OCSP_BASICRESP_free(basic);
-        OCSP_RESPONSE_free(rsp);
+             (opt_ocsp_require) ? "" : " (OCSP not required)");
 
-        int r = opt_ocsp_require ? 0 : 1;
-        if(r > 0)
+        if(!opt_ocsp_require)
             ERR_clear_error();
 
         com->opt_ocsp_enforce_in_verify = true;
-        int ocsp_check =  baseSSLCom::ocsp_resp_callback_explicit(com,r);
-        _dia("SSLCom::ocsp_resp_callback: OCSP returned %d", ocsp_check);
-        
-        return ocsp_check;
+
+        proc_status = staple_code::NO_FIND_STATUS;
+        goto the_end;
     }
 
     if (!OCSP_check_validity(this_update, next_update, 5 * 60, -1)) {
         _err("[%s] OCSP stapling times invalid", name.c_str());
-        OCSP_BASICRESP_free(basic);
-        OCSP_RESPONSE_free(rsp);
 
-        int r = opt_ocsp_strict ? 0 : 1;
-        if(r > 0)
+        if(!opt_ocsp_strict)
             ERR_clear_error();
 
         com->opt_ocsp_enforce_in_verify = true;
-        int ocsp_check = baseSSLCom::ocsp_resp_callback_explicit(com,r);
-        _dia("SSLCom::ocsp_resp_callback: OCSP returned %d", ocsp_check);
-        
-        return ocsp_check;        
+
+        proc_status = staple_code::INVALID_TIME;
     }
 
-    OCSP_CERTID_free(id);
-    OCSP_BASICRESP_free(basic);
-    OCSP_RESPONSE_free(rsp);
+    the_end:
 
-    _dia("[%s] OCSP status for server certificate: %s", name.c_str(), OCSP_cert_status_str(status));
+    if(cert_id)
+        OCSP_CERTID_free(cert_id);
 
-    std::string cn = SSLFactory::print_cn(com->sslcom_target_cert) + ";" + SSLFactory::fingerprint(com->sslcom_target_cert);
-    
-    if (status == V_OCSP_CERTSTATUS_GOOD) {
-        _dia("[%s] OCSP status is good",name.c_str());
-        if(com != nullptr){
-            com->ocsp_cert_is_revoked = 0;
-            _dia("Connection from %s: certificate %s is valid (stapling OCSP))",name.c_str(),cn.c_str());
-            
+    if(basic_response)
+        OCSP_BASICRESP_free(basic_response);
+
+    if(ocsp_response)
+        OCSP_RESPONSE_free(ocsp_response);
+
+    if(signers) sk_X509_free(signers);
+
+    if(proc_status == staple_code::NOT_PROCESSED) {
+        proc_status = staple_code::SUCCESS;
+    }
+
+    _dia("[%s] OCSP status for server certificate: %s", name.c_str(), OCSP_cert_status_str(ocsp_status));
+
+    return std::make_pair(proc_status, ocsp_status);
+}
+
+
+template <class L4Proto>
+int baseSSLCom<L4Proto>::status_resp_callback(SSL* ssl, void* arg) {
+
+    auto& log = inet::ocsp::OcspFactory::log();
+
+    void* data = SSL_get_ex_data(ssl, sslcom_ssl_extdata_index);
+    std::string name = "unknown_cx";
+
+    baseSSLCom* com = static_cast<baseSSLCom*>(data);
+
+    bool opt_ocsp_require = false; // refuse to continue if OCSP is not responded
+
+    X509* peer_cert = nullptr;
+    X509* issuer_cert = nullptr;
+
+    if(com != nullptr) {
+
+        // it's not necessary to run any further checks, certificate is not OK
+        // status callback comes usually earlier then certificate verify callback, but this can't be guaranteed.
+        // keeping it here.
+
+        baseSSLCom* pcom = dynamic_cast<baseSSLCom*>(com->peer());
+        if(pcom != nullptr) {
+            name = pcom->hr();
+        } else {
+            name = com->hr();
         }
-        return 1;
-    } else
-    if (status == V_OCSP_CERTSTATUS_REVOKED) {
-        _dia("[%s] OCSP status is revoked",name.c_str());
-        if(com != nullptr){
-            com->ocsp_cert_is_revoked = 1;
-            com->verify_set(REVOKED);
-            _war("Connection from %s: certificate %s is revoked (stapling OCSP), replacement=%d)",name.c_str(),cn.c_str(),
-                 com->opt_failed_certcheck_replacement);
+        opt_ocsp_require = (com->opt_ocsp_stapling_mode >= 2);
+        peer_cert   = com->sslcom_target_cert;
+        issuer_cert = com->sslcom_target_issuer;
+
+        if(com->verify_get() != VERIFY_OK && ! com->verify_check(CLIENT_CERT_RQ)) {
+            _dia("status_resp_callback[%s]: certificate verification failed already (%d), no need to check stapling",
+                    name.c_str(),
+                    com->verify_get());
 
             return com->opt_failed_certcheck_replacement;
         }
-        return 0;
+
+        if (!peer_cert || !issuer_cert) {
+            _dia("status_resp_callback[%s]: status_resp_callback: verify hasn't been yet called", name.c_str());
+            com->opt_ocsp_enforce_in_verify = true;
+            return baseSSLCom::check_revocation_oob(com, opt_ocsp_require ? 0 : 1);
+        }
+        
+        _deb("status_resp_callback[%s]: peer cert=%x, issuer_cert=%x", name.c_str(), peer_cert, issuer_cert);
+       
+    } else {
+        _err("status_resp_callback[%s]: argument data is not SSLCom*!", name.c_str());
+        return -1;
+    }
+
+
+    std::string cn = SSLFactory::print_cn(com->sslcom_target_cert) + ";" + SSLFactory::fingerprint(com->sslcom_target_cert);
+
+    auto stap_result = check_revocation_stapling(name, com, ssl);
+
+    if(stap_result.first == staple_code::SUCCESS) {
+        if (stap_result.second == V_OCSP_CERTSTATUS_GOOD) {
+            _dia("[%s] OCSP status is good",name.c_str());
+            if(com != nullptr){
+                com->ocsp_cert_is_revoked = 0;
+                _dia("Connection from %s: certificate %s is valid (stapling OCSP))",name.c_str(),cn.c_str());
+
+            }
+            return 1;
+        } else
+        if (stap_result.second == V_OCSP_CERTSTATUS_REVOKED) {
+            _dia("[%s] OCSP status is revoked", name.c_str());
+            if (com != nullptr) {
+                com->ocsp_cert_is_revoked = 1;
+                com->verify_set(REVOKED);
+                _war("Connection from %s: certificate %s is revoked (stapling OCSP), replacement=%d)", name.c_str(),
+                     cn.c_str(),
+                     com->opt_failed_certcheck_replacement);
+
+                return com->opt_failed_certcheck_replacement;
+            }
+            return 0;
+        }
     } else
     if (opt_ocsp_require) {
         _err("[%s] OCSP status unknown, but OCSP required, failing", name.c_str());
         
-        int ocsp_check = baseSSLCom::ocsp_resp_callback_explicit(com,0);
+        int ocsp_check = baseSSLCom::check_revocation_oob(com,0);
         _dia("SSLCom::ocsp_resp_callback: OCSP returned %d", ocsp_check);
         
         return ocsp_check;             
@@ -1145,7 +1149,7 @@ int baseSSLCom<L4Proto>::ocsp_resp_callback(SSL *s, void *arg) {
 
     _dia("[%s] OCSP status unknown, but OCSP was not required, continue", name.c_str());
 
-    int ocsp_check = baseSSLCom::ocsp_resp_callback_explicit(com,1);
+    int ocsp_check = baseSSLCom::check_revocation_oob(com,1);
     _dia("SSLCom::ocsp_resp_callback: OCSP returned %d", ocsp_check);
     
     return ocsp_check;         
@@ -1243,7 +1247,7 @@ void baseSSLCom<L4Proto>::init_ssl_callbacks() {
 
                 _dia("[%s]: OCSP stapling enabled, mode %d", hr().c_str(), opt_ocsp_stapling_mode);
                 SSL_set_tlsext_status_type(sslcom_ssl, TLSEXT_STATUSTYPE_ocsp);
-                SSL_CTX_set_tlsext_status_cb(sslcom_ctx, ocsp_resp_callback);
+                SSL_CTX_set_tlsext_status_cb(sslcom_ctx, status_resp_callback);
                 SSL_CTX_set_tlsext_status_arg(sslcom_ctx, this);
             }
             else {
