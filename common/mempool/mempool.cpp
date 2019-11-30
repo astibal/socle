@@ -78,22 +78,22 @@ void memPool::extend(std::size_t n_sz256, std::size_t n_sz1k, std::size_t n_sz5k
     sz20k += n_sz20k;
 
     for(unsigned int i = 0; i < sz256 ; i++) {
-        for (int j = 0; j < 10 ; j++) available_32.emplace_back( mem_chunk(32) );
-        available_64.emplace_back( mem_chunk(64) );
-        available_128.emplace_back( mem_chunk(128) );
-        available_256.emplace_back( mem_chunk(256) );
+        for (int j = 0; j < 10 ; j++) available_32.emplace_back(32);
+        available_64.emplace_back( 64);
+        available_128.emplace_back( 128);
+        available_256.emplace_back(256);
     }
     for(unsigned int i = 0; i < sz1k ; i++) {
-        available_1k.emplace_back( mem_chunk(1*1024) );
+        available_1k.emplace_back(1*1024);
     }
     for(unsigned int i = 0; i < sz5k ; i++) {
-        available_5k.emplace_back( mem_chunk(5*1024) );
+        available_5k.emplace_back(5*1024);
     }
     for(unsigned int i = 0; i < sz10k ; i++) {
-        available_10k.emplace_back( mem_chunk(10*1024) );
+        available_10k.emplace_back(10*1024);
     }
     for(unsigned int i = 0; i < sz20k ; i++) {
-        available_20k.emplace_back( mem_chunk(20*1024) );
+        available_20k.emplace_back(20*1024);
     }
 }
 
@@ -115,7 +115,7 @@ mem_chunk_t memPool::acquire(std::size_t sz) {
         new_entry.in_pool = false;
         return new_entry;
     } else {
-        mem_chunk_t free_entry = mem_pool->back();
+        mem_chunk_t& free_entry = mem_pool->back();
         mem_pool->pop_back();
 
         free_entry.in_pool = false;
