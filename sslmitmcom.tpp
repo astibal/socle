@@ -218,11 +218,11 @@ bool baseSSLMitmCom<SSLProto>::spoof_cert(X509* cert_orig, SpoofOptions& spo) {
     } 
     else {
     
-        _dia("SSLMitmCom::spoof_cert[%x]: NOT in my certstore '%s'",this,store_key.c_str());
+        _dia("SSLMitmCom::spoof_cert[%x]: NOT in my certstore '%s'", this, store_key.c_str());
         
-        auto* parek = this->certstore()->spoof(cert_orig,spo.self_signed,&spo.sans);
+        auto* parek = this->certstore()->spoof(cert_orig, spo.self_signed, &spo.sans);
         if(!parek) {
-            _war("SSLMitmCom::spoof_cert[%x]: certstore failed to spoof '%d' - default will be used",this,store_key.c_str());
+            _war("SSLMitmCom::spoof_cert[%x]: certstore failed to spoof '%d' - default will be used", this, store_key.c_str());
             return false;
         } 
         else {
@@ -237,8 +237,8 @@ bool baseSSLMitmCom<SSLProto>::spoof_cert(X509* cert_orig, SpoofOptions& spo) {
 #endif //USE_OPENSSL11
         }
         
-        if (! this->certstore()->add(store_key,parek)) {
-            _dia("SSLMitmCom::spoof_cert[%x]: spoof was successful, but cache add failed for %s",this,store_key.c_str());
+        if (! this->certstore()->add(store_key, parek)) {
+            _dia("SSLMitmCom::spoof_cert[%x]: spoof was successful, but cache add failed for %s", this, store_key.c_str());
             return true;
         }
     }

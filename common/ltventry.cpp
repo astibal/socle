@@ -359,9 +359,24 @@ int LTVEntry::pack(::buffer* buf) {
 		if (buflen() > 0) {
 			b->append(buffer(),buflen());
 			_deb("LTVEntry::pack: scalar 0x%x packed in %d bytes", this, buflen());
+
+            // coverity: 1407983  - this case didn't covered case when buffer is null, so we created new here
+            //                      it's probably rare not having container on the top of data tree,
+            //                      but anyway this is fixing the case.
+            if(this_is_owner) {
+                data_ = b->data();
+                b->detach();
+                owner(true);
+                delete b;
+            }
+
 			return buflen();
 		} else {
 			_war("LTVEntry::pack: warning - uninitialized LTVEntry at 0x%x", this);
+
+			if(this_is_owner) {
+			    delete b;   // coverity: 1407983  - this is tricky one. Delete 'b' iff is new allocation from this func.
+			}
 			return 0;
 		} 
 	}

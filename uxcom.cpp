@@ -82,15 +82,21 @@ int UxCom::bind(const char* name) {
 
     struct sockaddr_un server;
     server.sun_family = bind_sock_family;
-    strcpy(server.sun_path,name);    
+    strcpy(server.sun_path, name);
 
     if ((s = socket(bind_sock_family, bind_sock_type, bind_sock_protocol)) == -1) return -129;
-    
+
     int optval = 1;
     setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof optval);
-    
-    if (::bind(s, (sockaddr *)&server, sizeof(server)) == -1) return -130;
-    if (listen(s, 10) == -1)  return -131;
+
+    if (::bind(s, (sockaddr *) &server, sizeof(server)) == -1) {
+        ::close(s);
+        return -130;
+    }
+    if (listen(s, 10) == -1) {
+        ::close(s);
+        return -131;
+    }
     
     return s;
 };  

@@ -38,6 +38,7 @@ typedef struct mem_chunk
     mem_chunk(): ptr(nullptr), capacity(0) {};
     mem_chunk(std::size_t s): capacity(s) { ptr = new unsigned char[s]; };
     mem_chunk(unsigned char* p, std::size_t c): ptr(p), capacity(c) {};
+    ~mem_chunk () { delete ptr; };   // coverity: 1407975
 
     unsigned char* ptr;
     std::size_t  capacity;

@@ -76,7 +76,7 @@ int baseCom::unblock(int s) const {
 }
 
 int baseCom::namesocket(int sockfd, std::string& addr, unsigned short port, sa_family_t family) {
-    sockaddr_storage sa;
+    sockaddr_storage sa {0};  // coverity: 1407997
     
     sa.ss_family = family;
     

@@ -654,44 +654,44 @@ std::string baseHostCX::to_string(int verbosity) const {
 }
 
 std::string baseHostCX::full_name(unsigned char side) {
-    const char* t = host().c_str();
-    const char* t_p = port().c_str();
-    int t_s = socket();
-    std::string  t_ss;
-    if(socket_in_name) t_ss  = string_format("::%d:",t_s);
-    std::string t_c;
-    if (com() != nullptr)  t_c = com()->shortname();
+    std::string self = host();
+    std::string self_p = port();
+    int self_s = socket();
 
-    const char* p = "?";
-    const char*  p_p = "?";
-    int          p_s = 0;
-    const char*  p_c = "?";
-    std::string  p_ss;
+    std::string  self_ss;
+    if(socket_in_name) self_ss  = string_format("::%d:", self_s);
 
-    if (peer() != nullptr) {
-        p =  peer()->host().c_str();
-        p_p =  peer()->port().c_str();
-        p_s = peer()->socket();
-        if(socket_in_name) p_ss  = string_format("::%d:",p_s);
+    std::string self_c;
+    if (com())  self_c = com()->shortname();
 
-        if (peer()->com() != nullptr) {
-            if(peer()->com() != nullptr) {
-                p_c = peer()->com()->shortname().c_str();
-            }
+    std::string  peeer = "?";
+    std::string  peeer_p = "?";
+    int          peeer_s = 0;
+    std::string  peeer_c = "?";
+    std::string  peeer_ss;
+
+    if (peer()) {
+        peeer =  peer()->host();
+        peeer_p =  peer()->port();
+        peeer_s = peer()->socket();
+        if(socket_in_name) peeer_ss  = string_format("::%d:", peeer_s);
+
+        if (peer()->com()) {
+            peeer_c = peer()->com()->shortname();
         }
-//         p =  "peerip";
-//         p_p =  "pport";
 
     } else {
-        return string_format("%s_%s%s:%s",t_c.c_str(),t_ss.c_str(),t,t_p);
+        return string_format("%s_%s%s:%s", self_c.c_str(), self_ss.c_str(), self.c_str(), self_p.c_str());
     }
 
     if ( (side == 'l') || ( side == 'L') ) {
-        return string_format("%s_%s%s:%s to %s_%s%s:%s",t_c.c_str(),t_ss.c_str(),t,t_p,p_c,p_ss.c_str(),p,p_p);
+        return string_format("%s_%s%s:%s to %s_%s%s:%s", self_c.c_str(), self_ss.c_str(), self.c_str(), self_p.c_str(),
+                             peeer_c.c_str(), peeer_ss.c_str(), peeer.c_str(), peeer_p.c_str());
     }
 
     //else
-    return string_format("%s_%s%s:%s to %s_%s%s:%s",p_c,p_ss.c_str(),p,p_p,t_c.c_str(),t_ss.c_str(),t,t_p);
+    return string_format("%s_%s%s:%s to %s_%s%s:%s", peeer_c.c_str(), peeer_ss.c_str(), peeer.c_str(), peeer_p.c_str(),
+                                                        self_c.c_str(), self_ss.c_str(), self, self_p.c_str());
 
 }
 

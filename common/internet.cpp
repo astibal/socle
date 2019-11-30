@@ -82,6 +82,8 @@ namespace inet {
             return sd;
         }
         _err("inet::socket_connect: error");
+
+        ::close(sd); // coverity: 1407966
         return -1;
 
     }

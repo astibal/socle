@@ -429,12 +429,15 @@ void SSLFactory::destroy() {
     }
 }
 
-bool SSLFactory::add(std::string& store_key,EVP_PKEY* cert_privkey, X509* cert, X509_REQ* req) {
+bool SSLFactory::add(std::string& store_key, EVP_PKEY* cert_privkey, X509* cert, X509_REQ* req) {
     auto log = get_log();
     auto* parek = new X509_PAIR(cert_privkey,cert);
     
     if ( cert_privkey == nullptr || cert == nullptr || parek == nullptr ) {
-        _dia("SSLFactory::add[%x]: one of about to be stored components is nullptr",this);
+        _dia("SSLFactory::add[%x]: one of about to be stored components is nullptr", this);
+
+        delete parek;  // coverity: 1407987
+
         return false;
     }
     

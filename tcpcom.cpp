@@ -112,6 +112,7 @@ int TCPCom::connect(const char* host, const char* port) {
     
     if (rp == nullptr) {
         _err("TCPCom::connect[%s:%s]: socket[%d]: connect failed",host,port,sfd);
+        freeaddrinfo(gai_result);  //coverity: 1408023
         return -2;
     }
 
@@ -150,7 +151,10 @@ int TCPCom::bind(unsigned short port) {
         setsockopt(s, SOL_IP, IP_TRANSPARENT, &optval, sizeof(optval));     
     }
     
-    if (::bind(s, (sockaddr *)&sa, sizeof(sa)) == -1) return -130;
+    if (::bind(s, (sockaddr *)&sa, sizeof(sa)) == -1) {
+        ::close(s);   // coverity: 1407959
+        return -130;
+    }
     if (listen(s, 10) == -1)  return -131;
     
     return s;

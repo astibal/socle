@@ -116,7 +116,9 @@ uint32_t ThreadedReceiver<Worker,SubWorker>::create_session_key4(sockaddr_storag
 template<class Worker, class SubWorker>
 uint32_t ThreadedReceiver<Worker,SubWorker>::create_session_key6(sockaddr_storage* from, sockaddr_storage* orig) {
 
-    uint32_t s = ((uint32_t*)&inet::to_sockaddr_in6(from)->sin6_addr)[4] | ((uint32_t*)&inet::to_sockaddr_in6(orig)->sin6_addr)[4];
+    uint32_t s = ((uint32_t*)&inet::to_sockaddr_in6(from)->sin6_addr)[3]
+                    | ((uint32_t*)&inet::to_sockaddr_in6(orig)->sin6_addr)[3];   // coverity: 1407956
+
     uint16_t sp = ntohs(inet::to_sockaddr_in6(from)->sin6_port) | ntohs(inet::to_sockaddr_in6(orig)->sin6_port);
     s += sp;
     

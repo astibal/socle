@@ -43,7 +43,7 @@ const bool mem_chunk_t::trace_enabled = false;
 
 
 memPool::memPool(std::size_t sz256, std::size_t sz1k, std::size_t sz5k, std::size_t sz10k, std::size_t sz20k):
-        sz256(0), sz1k(0), sz5k(0), sz10k(0), sz20k(0)
+        sz32(0), sz64(0), sz128(0), sz256(0), sz1k(0), sz5k(0), sz10k(0), sz20k(0)
 {
     stat_acq = 0;
     stat_acq_size = 0;
@@ -53,6 +53,9 @@ memPool::memPool(std::size_t sz256, std::size_t sz1k, std::size_t sz5k, std::siz
 
     stat_alloc = 0;
     stat_alloc_size = 0;
+
+    stat_free = 0;
+    stat_free_size = 0;
 
     stat_out_free = 0;
     stat_out_free_size = 0;

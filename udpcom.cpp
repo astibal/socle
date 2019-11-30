@@ -75,7 +75,7 @@ int UDPCom::accept(int sockfd, sockaddr* addr, socklen_t* addrlen_) {
 
 int UDPCom::bind(short unsigned int port) {
     int s;
-    sockaddr_storage sa;
+    sockaddr_storage sa {0};
 
     sa.ss_family = bind_sock_family;
     //sa.ss_family = AF_INET;
@@ -90,7 +90,8 @@ int UDPCom::bind(short unsigned int port) {
         inet::to_sockaddr_in6(&sa)->sin6_addr = in6addr_any;
     }
 
-    if ((s = socket(sa.ss_family, bind_sock_type, bind_sock_protocol)) == -1) return -129;
+    if ((s = socket(sa.ss_family, bind_sock_type, bind_sock_protocol)) == -1)
+        return -129;
     
     int optval = 1;
     setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof optval);
@@ -108,15 +109,24 @@ int UDPCom::bind(short unsigned int port) {
 
     optval = 1;
 //     setsockopt(s, IPPROTO_IP,IP_RECVORIGDSTADDR, &optval, sizeof optval);
-    if (setsockopt(s, SOL_IP,IP_RECVORIGDSTADDR, &optval, sizeof optval) != 0) return -131;
+    if (setsockopt(s, SOL_IP,IP_RECVORIGDSTADDR, &optval, sizeof optval) != 0) {
+        ::close(s);  // coverity: 1408014
+        return -131;
+    }
     if(sa.ss_family == AF_INET6) {
-        if (setsockopt(s, SOL_IPV6,IPV6_RECVORIGDSTADDR, &optval, sizeof optval) != 0) return -132;
+        if (setsockopt(s, SOL_IPV6,IPV6_RECVORIGDSTADDR, &optval, sizeof optval) != 0) {
+            ::close(s); // coverity: 1408014
+            return -132;
+        }
     }
     
-    if (::bind(s, (sockaddr *)&sa, sizeof(sa)) == -1) return -130;
+    if (::bind(s, (sockaddr *)&sa, sizeof(sa)) == -1) {
+        ::close(s);  // coverity: 1408014
+        return -130;
+    }
 
     
-    _dia("UDPCom::bind[%d]: successfull",s);
+    _dia("UDPCom::bind[%d]: successfull", s);
     return s;    
 }
 
@@ -125,7 +135,7 @@ bool UDPCom::com_status() {
 }
 
 int UDPCom::connect(const char* host, const char* port) {
-    struct addrinfo hints;
+    struct addrinfo hints {0};
     struct addrinfo *gai_result, *rp;
     int sfd = -1;
     int gai;
@@ -149,7 +159,7 @@ int UDPCom::connect(const char* host, const char* port) {
     If socket(2) (or connect(2)) fails, we (close the socket
     and) try the next address. */
 
-    for (rp = gai_result; rp != NULL; rp = rp->ai_next) {
+    for (rp = gai_result; rp != nullptr; rp = rp->ai_next) {
         sfd = socket(rp->ai_family, rp->ai_socktype,
                     rp->ai_protocol);
         
@@ -166,13 +176,13 @@ int UDPCom::connect(const char* host, const char* port) {
         int optval = 1;
         
         if(l3_proto() == AF_INET)
-        if(setsockopt(sfd, SOL_IP, IP_TRANSPARENT, &optval, sizeof(optval)) != 0) {
-            _war("UDPCom::connect[%d]: cannot set IPv4 transparency sockopt: %s",sfd,string_error().c_str());
-        }
+            if(setsockopt(sfd, SOL_IP, IP_TRANSPARENT, &optval, sizeof(optval)) != 0) {
+                _war("UDPCom::connect[%d]: cannot set IPv4 transparency sockopt: %s",sfd,string_error().c_str());
+            }
         if(l3_proto() == AF_INET6)
-        if(setsockopt(sfd, SOL_IPV6, IPV6_TRANSPARENT, &optval, sizeof(optval)) != 0) {
-            _war("UDPCom::connect[%d]: cannot set IPv6 transparency sockopt: %s",sfd,string_error().c_str());
-        }        
+            if(setsockopt(sfd, SOL_IPV6, IPV6_TRANSPARENT, &optval, sizeof(optval)) != 0) {
+                _war("UDPCom::connect[%d]: cannot set IPv6 transparency sockopt: %s",sfd,string_error().c_str());
+            }
         
         if(nonlocal_src()) {
             
@@ -226,7 +236,9 @@ int UDPCom::connect(const char* host, const char* port) {
         _ext("UDPCom::connect: sizeof sockaddr_storage = %d",sizeof(sockaddr_storage));
 
         if(*log.level() >= DEB) {
-            std::string rps; unsigned short port;
+            std::string rps;
+            unsigned short port;
+
             int fa = inet_ss_address_unpack(((sockaddr_storage*)&udpcom_addr),&rps,&port);
             _deb("connect[%d]: rp contains: %s/%s:%d", sfd, inet_family_str(fa).c_str(),rps.c_str(),port );
         }
@@ -251,7 +263,7 @@ int UDPCom::connect(const char* host, const char* port) {
         _err("UDPCom::connect failed");
     }
     
-    if (rp == NULL) {
+    if (rp == nullptr) {
         _err("UDPCom::Could not connect");
         return -2;
     }
