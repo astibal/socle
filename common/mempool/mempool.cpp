@@ -115,7 +115,7 @@ mem_chunk_t memPool::acquire(std::size_t sz) {
         new_entry.in_pool = false;
         return new_entry;
     } else {
-        mem_chunk_t& free_entry = mem_pool->back();
+        mem_chunk_t free_entry = mem_pool->back();
         mem_pool->pop_back();
 
         free_entry.in_pool = false;
