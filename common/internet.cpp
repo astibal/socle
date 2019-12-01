@@ -64,7 +64,9 @@ namespace inet {
 
         _dia("inet::socket_connect: connecting to %s:%d", ip_address.c_str(), port);
 
-        int err = -1, sd = -1;
+        int sd = -1;
+        int connect_err = -1;
+
         struct sockaddr_in sa;
 
         memset(&sa, '\0', sizeof(sa));
@@ -74,17 +76,22 @@ namespace inet {
 
         sd = ::socket(AF_INET, SOCK_STREAM, 0);
         if (sd > 0) {
-            err = ::connect(sd, (struct sockaddr *) &sa, sizeof(sa));
-        }
-        if (err != -1)//success
-        {
-            _deb("inet::socket_connect: socket %d", sd);
-            return sd;
-        }
-        _err("inet::socket_connect: error");
+            connect_err = ::connect(sd, (struct sockaddr *) &sa, sizeof(sa));
 
-        ::close(sd); // coverity: 1407966
-        return -1;
+            if (connect_err == 0) {
+                // success - connected
+                _dia("inet::socket_connect: socket[%d] OK", sd );
+                return sd;
+            } else {
+                _err("inet::socket_connect: socket[%d] failed to connect: %s", sd, string_error().c_str());
+                ::close(sd); // coverity: 1407966
+            }
+        } else {
+            _err("inet::socket_connect: invalid socket %d", sd);
+            return -1;
+        }
+
+        return -2;
 
     }
 
