@@ -142,8 +142,8 @@ protected:
     unsigned int bind_sock_type = SOCK_DGRAM;
     unsigned int bind_sock_protocol = IPPROTO_UDP;
     
-    sockaddr_storage udpcom_addr;
-    socklen_t udpcom_addrlen;
+    sockaddr_storage udpcom_addr {0};
+    socklen_t udpcom_addrlen {0};
     
     // Connection socket pool
     //
