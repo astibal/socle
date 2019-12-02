@@ -195,15 +195,20 @@ int ThreadedAcceptorProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
         if (s > 0) {
             _dia("ThreadedAcceptorProxy::run: removed from queue: 0x%016llx (socket %d)", s, s);
 
-            auto cx = this->new_cx(s);
-            if (!cx->read_waiting_for_peercom()) {
-                cx->on_accept_socket(s);
-            } else {
-                cx->on_delay_socket(s);
+            try {
+                auto cx = this->new_cx(s);
+                if (!cx->read_waiting_for_peercom()) {
+                    cx->on_accept_socket(s);
+                } else {
+                    cx->on_delay_socket(s);
+                }
+                cx->com()->nonlocal_dst(this->com()->nonlocal_dst());
+                cx->com()->resolve_nonlocal_dst_socket(s);
+                this->on_left_new(cx);
+
+            } catch (socle::com_is_null const& e) {
+                _err("cannot handover cx to proxy");
             }
-            cx->com()->nonlocal_dst(this->com()->nonlocal_dst());
-            cx->com()->resolve_nonlocal_dst_socket(s);
-            this->on_left_new(cx);
 
         }
     }

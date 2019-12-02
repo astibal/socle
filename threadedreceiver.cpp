@@ -651,30 +651,35 @@ int ThreadedReceiverProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
 
                         int socket = s;
 
-                        auto cx = this->new_cx(socket);
-                        record.cx = cx;
+                        try {
+                            auto cx = this->new_cx(socket);
+                            record.cx = cx;
 
-                        if (!cx->read_waiting_for_peercom()) {
-                            cx->on_accept_socket(socket);
-                        }
-                        cx->idle_delay(120);
-                        auto cx_dcom = dynamic_cast<DatagramCom *>(cx->com());
-                        auto cx_bcom = dynamic_cast<baseCom *>(cx->com());
+                            if (!cx->read_waiting_for_peercom()) {
+                                cx->on_accept_socket(socket);
+                            }
+                            cx->idle_delay(120);
+                            auto cx_dcom = dynamic_cast<DatagramCom *>(cx->com());
+                            auto cx_bcom = dynamic_cast<baseCom *>(cx->com());
 
 
-                        if (cx_bcom == nullptr || cx_dcom == nullptr) {
-                            _war("ThreadedReceiverProxy::handle_sockets_once[%d]: new object's Com is not DatagramCom and baseCom",
-                                 s);
-                            delete cx;
+                            if (cx_bcom == nullptr || cx_dcom == nullptr) {
+                                _war("ThreadedReceiverProxy::handle_sockets_once[%d]: new object's Com is not DatagramCom and baseCom",
+                                     s);
+                                delete cx;
 
-                        } else {
-                            cx_bcom->nonlocal_dst(this->com()->nonlocal_dst());
-                            cx_bcom->resolve_nonlocal_dst_socket(s);
+                            } else {
+                                cx_bcom->nonlocal_dst(this->com()->nonlocal_dst());
+                                cx_bcom->resolve_nonlocal_dst_socket(s);
 
-                            _dia("ThreadedReceiverProxy::handle_sockets_once[%d]: CX created, bound socket %d ,nonlocal: %s:%u",
-                                 s, record.socket, cx->com()->nonlocal_dst_host().c_str(),
-                                 cx->com()->nonlocal_dst_port());
-                            this->on_left_new(cx);
+                                _dia("ThreadedReceiverProxy::handle_sockets_once[%d]: CX created, bound socket %d ,nonlocal: %s:%u",
+                                     s, record.socket, cx->com()->nonlocal_dst_host().c_str(),
+                                     cx->com()->nonlocal_dst_port());
+                                this->on_left_new(cx);
+                            }
+
+                        } catch (socle::com_is_null const& e) {
+                                _err("cannot handover cx to proxy");
                         }
 
 

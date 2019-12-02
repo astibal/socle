@@ -69,6 +69,13 @@ baseHostCX::baseHostCX(baseCom* c, const char* h, const char* p): Host(h, p) {
     meter_read_bytes = 0;
     meter_write_bytes = 0;
 
+    //whenever we initialize object with socket, we will be already opening!
+    opening(true);
+
+    if(!c) {
+        throw socle::com_is_null();
+    }
+
     com_ = c;
     com()->init(this);
 }
@@ -99,6 +106,10 @@ baseHostCX::baseHostCX(baseCom* c, int s) {
 
     //whenever we initialize object with socket, we will be already opening!
     opening(true);
+
+    if(!c) {
+        throw socle::com_is_null();
+    }
 
     com_ = c;
     com()->init(this);

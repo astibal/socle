@@ -141,6 +141,16 @@ bool operator==(const Host& h, const Host& hh);
 
 class Proxy;
 
+
+namespace socle {
+    class com_is_null : public std::exception {
+    public:
+        const char* what () const noexcept override  {
+            return "Com object is nullptr";
+        }
+    };
+}
+
 class baseHostCX : public Host
 {
     
@@ -242,6 +252,11 @@ public:
 	
     baseHostCX( baseCom* c, const char* h, const char* p );
 	baseHostCX(baseCom* c, int s);
+
+	baseHostCX() = delete;
+	baseHostCX(const baseHostCX&) = delete;
+	baseHostCX& operator=(const baseHostCX&) = delete;
+
 	virtual ~baseHostCX();
 
 	// forcing rename or calling name with force=true is ok for const, name is mutable and protected by mutex
