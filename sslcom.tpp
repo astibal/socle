@@ -2080,7 +2080,14 @@ bool baseSSLCom<L4Proto>::waiting_peer_hello() {
                     _dia("SSLCom::waiting_peer_hello: %d bytes in buffer for hello analysis",red);
                     _dum("SSLCom::waiting_peer_hello: ClientHello data:\n%s",hex_dump(sslcom_peer_hello_buffer.data(),sslcom_peer_hello_buffer.size()).c_str());
 
-                    int parse_hello_result = parse_peer_hello();
+                    int parse_hello_result = 0;
+                    try {
+                        parse_hello_result = parse_peer_hello();
+                    }
+                    catch(socle::ex::SSL_clienthello_malformed const& e) {
+                        _dia("SSLCom::waiting_peer_hello: %d bytes of malformed ClientHello data",red);
+                    }
+
                     if(parse_hello_result == 0) {
                         _dia("SSLCom::waiting_peer_hello: analysis failed");
                         _dia("SSLCom::waiting_peer_hello: failed ClientHello data:\n%s",hex_dump(sslcom_peer_hello_buffer.data(),sslcom_peer_hello_buffer.size()).c_str());
@@ -2274,9 +2281,17 @@ int baseSSLCom<L4Proto>::parse_peer_hello() {
 
                 unsigned short ciphers_length = ntohs(b.get_at<unsigned short>(curpos));
                 curpos+=sizeof(unsigned short);
+                if(curpos + ciphers_length >= b.size())
+                    throw socle::ex::SSL_clienthello_malformed();
+
+
                 curpos += ciphers_length; //skip ciphers
                 unsigned char compression_length = b.get_at<unsigned char>(curpos);
                 curpos+=sizeof(unsigned char);
+                if(curpos + compression_length >= b.size())
+                    throw socle::ex::SSL_clienthello_malformed();
+
+
                 curpos += compression_length; // skip compression methods
 
                 _deb("SSLCom::parse_peer_hello: ciphers length %d, compression length %d",ciphers_length,compression_length);
@@ -2284,6 +2299,10 @@ int baseSSLCom<L4Proto>::parse_peer_hello() {
                 /* extension section */
                 unsigned short extensions_length = ntohs(b.get_at<unsigned short>(curpos));
                 curpos+=sizeof(unsigned short);
+                if(curpos + extensions_length >= b.size())
+                    throw socle::ex::SSL_clienthello_malformed();
+
+
                 _deb("SSLCom::parse_peer_hello: extensions payload length %d",extensions_length);
 
                 if(extensions_length > 0) {

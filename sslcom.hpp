@@ -91,6 +91,19 @@ extern int SSLCOM_WRITE_TIMEOUT;
 
 enum class ret_handshake { ERROR=-1, AGAIN=0, SUCCESS=1, BYPASS=2 };
 
+namespace socle {
+    namespace ex {
+        class SSL_clienthello_malformed : public std::exception {
+        public:
+
+            [[nodiscard]]
+            const char *what () const noexcept override {
+                return "malformed ClientHello in peer communication";
+            }
+        };
+    }
+}
+
 template <class L4Proto>
 class baseSSLCom : public L4Proto, public virtual baseCom {
 
