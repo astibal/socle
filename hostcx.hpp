@@ -143,7 +143,15 @@ class Proxy;
 
 
 namespace socle {
-    class com_is_null : public std::exception {
+
+    class com_error : public std::exception {
+    public:
+        const char* what () const noexcept override  {
+            return "Com object error";
+        }
+    };
+
+    class com_is_null : public socle::com_error {
     public:
         const char* what () const noexcept override  {
             return "Com object is nullptr";
