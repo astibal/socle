@@ -355,7 +355,7 @@ void baseSSLCom<L4Proto>::ssl_msg_callback(int write_p, int version, int content
     }
     else if(content_type ==20) {
         if(write_p == 0) {
-            if(!com->is_server()) {
+            if(com && !com->is_server()) {
 
 #ifndef USE_OPENSSL11
                 int bits = check_server_dh_size(ssl);
