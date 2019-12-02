@@ -248,18 +248,19 @@ public:
     std::string& name() { return name_; }
 
     const std::vector<std::pair<SourceType,baseMatch*>>& sig_chain() const { return signature_; }
-protected:    
-    std::string name_;                                                         
-    std::vector<std::pair<SourceType,baseMatch*>>  signature_;                // series of L/R/X matches to be satisfied
 
 private:
+    std::string name_;                                                         
+    std::vector<std::pair<SourceType,baseMatch*>>  signature_;                // series of L/R/X matches to be satisfied
     logan_lite log;
 
 public:    
     
-    ~flowMatch() {
+    virtual ~flowMatch() {
         for( auto& match: signature_) {
             _deb("flowmatch::destructor: deleting signature %p", match.second);
+            delete match.second;
+            signature_.clear();
         }
     }
     
