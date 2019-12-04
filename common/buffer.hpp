@@ -70,6 +70,18 @@ public:
   buffer (const buffer&);
   buffer& operator= (const buffer&);
   buffer& operator= (const buffer&& ref) {
+
+      if (free_ and data_ != nullptr ) {
+          if(use_pool) {
+
+              memPool::pool().release( { data_, capacity_} );
+          }
+          else {
+              delete[] data_;  // we HAD ownership
+              counter_free(capacity_);
+          }
+      }
+
       this->data_ = ref.data_;
       this->capacity_ = ref.capacity_;
       this->size_ = ref.size_;
