@@ -2281,14 +2281,14 @@ int baseSSLCom<L4Proto>::parse_peer_hello() {
 
                 unsigned short ciphers_length = ntohs(b.get_at<unsigned short>(curpos));
                 curpos+=sizeof(unsigned short);
-                if(curpos + ciphers_length >= b.size())
+                if(curpos + ciphers_length > b.size())
                     throw socle::ex::SSL_clienthello_malformed();
 
 
                 curpos += ciphers_length; //skip ciphers
                 unsigned char compression_length = b.get_at<unsigned char>(curpos);
                 curpos+=sizeof(unsigned char);
-                if(curpos + compression_length >= b.size())
+                if(curpos + compression_length > b.size())
                     throw socle::ex::SSL_clienthello_malformed();
 
 
@@ -2299,7 +2299,7 @@ int baseSSLCom<L4Proto>::parse_peer_hello() {
                 /* extension section */
                 unsigned short extensions_length = ntohs(b.get_at<unsigned short>(curpos));
                 curpos+=sizeof(unsigned short);
-                if(curpos + extensions_length >= b.size())
+                if(curpos + extensions_length > b.size())
                     throw socle::ex::SSL_clienthello_malformed();
 
 
