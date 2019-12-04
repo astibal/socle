@@ -69,6 +69,15 @@ public:
 
   buffer (const buffer&);
   buffer& operator= (const buffer&);
+  buffer& operator= (const buffer&& ref) {
+      this->data_ = ref.data_;
+      this->capacity_ = ref.capacity_;
+      this->size_ = ref.size_;
+
+      this->free_ = ref.free_;
+
+      return *this;
+  };
   
   void swap (buffer&);
   unsigned char* detach ();
