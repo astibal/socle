@@ -45,7 +45,7 @@ std::string hex_dump(unsigned char *data, int size, unsigned int=0,unsigned char
 std::string hex_dump(buffer&, unsigned int=0,unsigned char=0);
 std::string hex_dump(buffer*, unsigned int=0,unsigned char=0);
 std::string string_error();
-std::string bt();
+std::string bt(bool add_r=false);
 
 std::string escape(std::string orig, bool to_print = false);
 inline std::string printable(std::string orig) {
