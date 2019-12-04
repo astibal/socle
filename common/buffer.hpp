@@ -29,6 +29,7 @@
 #include <mutex>
 #endif
 
+#include <log/logan.hpp>
 
 class buffer
 {
@@ -71,12 +72,20 @@ public:
   buffer& operator= (const buffer&);
 
 
-  buffer(const buffer&& ref) noexcept {
-      this->data_ = ref.data_;
-      this->capacity_ = ref.capacity_;
-      this->size_ = ref.size_;
+  buffer(buffer&& ref) noexcept : data_(nullptr), size_(0), capacity_(0), free_(true) {
 
-      this->free_ = ref.free_;
+      if(&ref != this) {
+          data_ = ref.data_;
+          capacity_ = ref.capacity_;
+          size_ = ref.size_;
+
+          free_ = ref.free_;
+
+          auto log = logan::create("buffer");
+          _inf("buffer trace:\n %s", bt(true).c_str());
+
+          ref.free_ = false; // make the almost-invalid reference not free our memory
+      }
   }
 
   buffer& operator= (buffer&& ref) noexcept {
@@ -92,11 +101,13 @@ public:
           }
       }
 
-      this->data_ = ref.data_;
-      this->capacity_ = ref.capacity_;
-      this->size_ = ref.size_;
+      data_ = ref.data_;
+      capacity_ = ref.capacity_;
+      size_ = ref.size_;
 
-      this->free_ = ref.free_;
+      free_ = ref.free_;
+
+      ref.free_ = false; // make the almost-invalid reference not free our memory
 
       return *this;
   };
@@ -729,7 +740,10 @@ inline buffer buffer::view(unsigned int pos, buffer::size_type len) {
     }
     else {
         // start out of buffer margins!
-        return buffer();
+
+
+        // return buffer();
+        throw std::out_of_range("view out of bounds");
     }
 }
 
