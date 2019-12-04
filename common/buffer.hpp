@@ -69,7 +69,17 @@ public:
 
   buffer (const buffer&);
   buffer& operator= (const buffer&);
-  buffer& operator= (const buffer&& ref) {
+
+
+  buffer(const buffer&& ref) noexcept {
+      this->data_ = ref.data_;
+      this->capacity_ = ref.capacity_;
+      this->size_ = ref.size_;
+
+      this->free_ = ref.free_;
+  }
+
+  buffer& operator= (buffer&& ref) noexcept {
 
       if (free_ and data_ != nullptr ) {
           if(use_pool) {
