@@ -2222,7 +2222,7 @@ int baseSSLCom<L4Proto>::parse_peer_hello() {
         buffer& b = sslcom_peer_hello_buffer;
         if(b.size() >= 34) {
 
-            buffer session_id = buffer();
+            buffer session_id;
             unsigned int curpos = 0;
 
             unsigned char message_type = b.get_at<unsigned char>(curpos);

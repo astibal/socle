@@ -530,26 +530,26 @@ int UDPCom::write_to_pool(int __fd, const void* __buf, size_t __n, int __flags) 
 
         int d = 0; // socket will be created later
         
-        msghdr m;
-        struct iovec io;
+        msghdr message_header {0};
+        struct iovec io {0};
         char cmbuf[128];
         memset(cmbuf,0,sizeof(cmbuf));
         
         io.iov_base = (void*)__buf;
         io.iov_len = __n;
-        
-        m.msg_iov = &io;
-        m.msg_iovlen = 1;
-        m.msg_name = (void*)&record.src;
-        m.msg_namelen = sizeof(struct sockaddr_storage);
-        m.msg_control = cmbuf;
-        m.msg_controllen = sizeof(cmbuf);            
+
+        message_header.msg_iov = &io;
+        message_header.msg_iovlen = 1;
+        message_header.msg_name = (void*)&record.src;
+        message_header.msg_namelen = sizeof(struct sockaddr_storage);
+        message_header.msg_control = cmbuf;
+        message_header.msg_controllen = sizeof(cmbuf);
         
         struct cmsghdr *cmsg;
         struct in_pktinfo *pktinfo;
         struct in6_pktinfo *pktinfo6;
         
-        cmsg = CMSG_FIRSTHDR(&m);
+        cmsg = CMSG_FIRSTHDR(&message_header);
         cmsg->cmsg_type = IP_PKTINFO;
         
         //IPV4
@@ -565,7 +565,7 @@ int UDPCom::write_to_pool(int __fd, const void* __buf, size_t __n, int __flags) 
                     record_src_4fix.ss_family = AF_INET;
                     inet_pton(AF_INET,ip_src.c_str(), &((sockaddr_in*)&record_src_4fix)->sin_addr);
                     ((sockaddr_in*)&record_src_4fix)->sin_port = record.src_port6();
-                    m.msg_name = (void*)&record_src_4fix;
+                    message_header.msg_name = (void*)&record_src_4fix;
                 }
                 
                 cmsg->cmsg_level = IPPROTO_IP;
@@ -573,7 +573,7 @@ int UDPCom::write_to_pool(int __fd, const void* __buf, size_t __n, int __flags) 
                 pktinfo = (struct in_pktinfo*) CMSG_DATA(cmsg);
                 pktinfo->ipi_spec_dst = record.dst_in_addr4();
                 pktinfo->ipi_ifindex = 0;
-                m.msg_controllen = CMSG_SPACE(sizeof(struct in_pktinfo));
+                message_header.msg_controllen = CMSG_SPACE(sizeof(struct in_pktinfo));
                 
                 d = socket (record.dst_family(), SOCK_DGRAM, 0);
             }
@@ -591,7 +591,7 @@ int UDPCom::write_to_pool(int __fd, const void* __buf, size_t __n, int __flags) 
                 pktinfo6 = (struct in6_pktinfo*) CMSG_DATA(cmsg);
                 pktinfo6->ipi6_addr = record.dst_in_addr6();
                 pktinfo6->ipi6_ifindex = 0;
-                m.msg_controllen = CMSG_SPACE(sizeof(struct in6_pktinfo));
+                message_header.msg_controllen = CMSG_SPACE(sizeof(struct in6_pktinfo));
                 d = socket (record.dst_family(), SOCK_DGRAM, 0);
             }
         }
@@ -604,7 +604,8 @@ int UDPCom::write_to_pool(int __fd, const void* __buf, size_t __n, int __flags) 
         int l = 0;
         int ret_bind = 0;
 
-        sockaddr_storage ss_s, ss_d;
+        sockaddr_storage ss_s {0};
+        sockaddr_storage ss_d {0};
         inet_ss_address_remap(&record.dst, &ss_d);
         inet_ss_address_remap(&record.src, &ss_s);
         
@@ -666,7 +667,7 @@ int UDPCom::write_to_pool(int __fd, const void* __buf, size_t __n, int __flags) 
                     _err("UDPCom::write_to_pool[%d]: socket: %d: connect error: %s",__fd,d,string_error().c_str());
                 }
                 
-                l = ::sendmsg(d,&m,0);
+                l = ::sendmsg(d,&message_header,0);
             }
             
             if(l < 0) {
