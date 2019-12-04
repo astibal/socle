@@ -87,7 +87,9 @@ int UxCom::bind(const char* name) {
     if ((s = socket(bind_sock_family, bind_sock_type, bind_sock_protocol)) == -1) return -129;
 
     int optval = 1;
-    setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof optval);
+    if(0 != setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof optval)) {
+        _err("cannot set SO_REUSEADDR");
+    }
 
     if (::bind(s, (sockaddr *) &server, sizeof(server)) == -1) {
         ::close(s);

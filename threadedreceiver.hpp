@@ -67,7 +67,7 @@ private:
 
     // pipe created to be monitored by Workers with poll. If pipe is filled with *some* data
     // there is something in the queue to pick-up.
-    int sq__hint[2];
+    int sq__hint[2] = {-1, -1};
 
     mp::vector<std::pair< std::thread*, Worker*>> tasks_;
     int worker_count_preference_=0;

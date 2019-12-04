@@ -160,7 +160,7 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
         
     
         uint32_t session_key = 0;
-        struct sockaddr_storage orig;
+        struct sockaddr_storage orig{0};
         
         // use virtual socket for plaintext protocols which don't require special treatment (DNS)
         // virtual sockets can't be used for DTLS, for example
@@ -259,14 +259,34 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
                     if(dst_family == AF_INET) {
 
                         int n = 1;
-                        ::setsockopt(d.socket, SOL_SOCKET, SO_REUSEADDR, &n, sizeof(int)); n = 1;
-                        ::setsockopt(d.socket, SOL_IP,IP_RECVORIGDSTADDR, &n, sizeof(int)); n = 1;
-                        ::setsockopt(d.socket, SOL_IP, SO_BROADCAST, &n, sizeof(int)); n = 1;
-                        ::setsockopt(d.socket, SOL_IP, IP_TRANSPARENT, &n, sizeof(int)); n = 1;
-                        ::setsockopt(d.socket, SOL_IPV6, IPV6_TRANSPARENT, &n, sizeof(int)); n = 1;
+                        if(0 != ::setsockopt(d.socket, SOL_SOCKET, SO_REUSEADDR, &n, sizeof(int))) {
+                            _err("cannot set socket %d option SO_REUSEADDR", d.socket);
+                        }
+                        n = 1;
+
+                        if(0 != ::setsockopt(d.socket, SOL_IP,IP_RECVORIGDSTADDR, &n, sizeof(int))) {
+                            _err("cannot set socket %d option IP_RECVORIGDSTADDR", d.socket);
+                        }
+                        n = 1;
+
+                        if(0 != ::setsockopt(d.socket, SOL_IP, SO_BROADCAST, &n, sizeof(int))) {
+                            _err("cannot set socket %d option SO_BROADCAST", d.socket);
+                        }
+                        n = 1;
+
+                        if(0 != ::setsockopt(d.socket, SOL_IP, IP_TRANSPARENT, &n, sizeof(int))) {
+                            _err("cannot set socket %d option IP_TRANSPARENT", d.socket);
+                        }
+                        n = 1;
+
+                        if(0 != ::setsockopt(d.socket, SOL_IPV6, IPV6_TRANSPARENT, &n, sizeof(int))) {
+                            _err("cannot set socket %d option IPV6_TRANSPARENT", d.socket);
+                        }
+                        n = 1;
                         
-                        struct sockaddr_in ss_src;
-                        struct sockaddr_in ss_dst; 
+                        sockaddr_in ss_src{0};
+                        sockaddr_in ss_dst{0};
+
                         memset(&ss_src,0,sizeof(struct sockaddr_in));
                         memset(&ss_dst,0,sizeof(struct sockaddr_in));
                         
