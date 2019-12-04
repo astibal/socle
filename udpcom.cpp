@@ -620,8 +620,12 @@ int UDPCom::write_to_pool(int __fd, const void* __buf, size_t __n, int __flags) 
             if(ss_d.ss_family == AF_INET6) {  setsockopt(d, SOL_IPV6, IPV6_TRANSPARENT, &n, sizeof(n)); n = 1; }
             if(ss_d.ss_family == AF_INET ) {  setsockopt(d, SOL_IP, IP_TRANSPARENT, &n, sizeof(n)); n = 1; }
             
-            setsockopt(d, SOL_SOCKET, SO_REUSEADDR, &n, sizeof(n));
-            setsockopt(d, SOL_SOCKET, SO_BROADCAST, &n, sizeof(n));   
+            if(0 != setsockopt(d, SOL_SOCKET, SO_REUSEADDR, &n, sizeof(n))) {
+                _err("cannot set socket %d option SO_REUSEADDR", d);
+            }
+            if(0 != setsockopt(d, SOL_SOCKET, SO_BROADCAST, &n, sizeof(n))) {
+                _err("cannot set socket %d option SO_BROADCAST", d);
+            }
             
             _dia("UDPCom::write_to_pool[%d]: background embryonic socket %s-%s",__fd, inet_ss_str(&ss_s).c_str(), inet_ss_str(&ss_d).c_str());
             
