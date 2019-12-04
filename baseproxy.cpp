@@ -39,8 +39,6 @@
 #include <log/logger.hpp>
 #include "udpcom.hpp"
 
-extern int errno;
-
 DEFINE_LOGGING(baseProxy);
 
 baseProxy::baseProxy(baseCom* c) :
