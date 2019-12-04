@@ -466,13 +466,13 @@ loglevel* logan_attached<T>::level() const {
 
     l_name = logan_lite::level();
 
-    if( *l_area > *l_this)
+    if( l_area && *l_area > *l_this)
         return l_area;
 
-    if( *l_name > *l_this )
+    if( l_name && *l_name > *l_this )
         return l_name;
 
-    if( *l_this > NON)
+    if( l_this && *l_this > NON)
         return l_this;
 
     // return damn default
