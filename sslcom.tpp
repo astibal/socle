@@ -288,6 +288,7 @@ void baseSSLCom<L4Proto>::ssl_msg_callback(int write_p, int version, int content
 #endif
 
         default:
+
             msg_version_unknown = string_format("Unknown-%d", version);
             msg_version = msg_version_unknown.c_str();
     }
@@ -317,6 +318,7 @@ void baseSSLCom<L4Proto>::ssl_msg_callback(int write_p, int version, int content
 #endif
 
         default:
+
             msg_content_unknown = string_format("Unknown-%d", content_type);
             msg_content_type = msg_content_unknown.c_str();
     }

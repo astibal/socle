@@ -83,6 +83,7 @@ int TCPCom::connect(const char* host, const char* port) {
 
             if (::connect(sfd, rp->ai_addr, rp->ai_addrlen) < 0) {
                 if ( errno == EINPROGRESS ) {
+
                     _deb("TCPCom::connect[%s:%s]: socket[%d]: connnect errno: EINPROGRESS",host,port,sfd);
                     break;
                     
@@ -90,6 +91,7 @@ int TCPCom::connect(const char* host, const char* port) {
                 } else {
                     close(sfd);
                     sfd = 0;
+
                     _not("TCPCom::connect[%s:%s]: socket[%d]: connnect errno: %s",host,port,sfd,strerror(errno));
                 }
 
