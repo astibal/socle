@@ -24,39 +24,39 @@
 #include <baseproxy.hpp>
 #include <lrproxy.hpp>
 
-LRProxy::LRProxy(baseCom* c) : baseProxy(c) {
+SimpleLRProxy::SimpleLRProxy(baseCom* c) : baseProxy(c) {
 }
 
-void LRProxy::on_left_bytes(baseHostCX* left) {
-	DEB_("LRProxy::on_left_bytes[%d]",left->socket());
+void SimpleLRProxy::on_left_bytes(baseHostCX* left) {
+	_deb("LRProxy::on_left_bytes[%d]",left->socket());
 
 	
-	for(std::vector<baseHostCX*>::iterator j = right_sockets.begin(); j != right_sockets.end(); ++j) {
+	for(auto j: right_sockets) {
 		//move from left read buffer -> right write buffer
-		DEB_("LRProxy::on_left_bytes[%d]: copying into socket %d, size %d",left->socket(),(*j)->socket(),left->readbuf()->size());
-		(*j)->to_write(left->to_read());
+		_deb("LRProxy::on_left_bytes[%d]: copying into socket %d, size %d", left->socket(), j->socket(), left->readbuf()->size());
+		j->to_write(left->to_read());
 	}
-	for(std::vector<baseHostCX*>::iterator j = right_pc_cx.begin(); j != right_pc_cx.end(); ++j) {
-		DEB_("LRProxy::on_left_bytes[%d]: copying into pc socket %d, size %d",left->socket(),(*j)->socket(),left->readbuf()->size());
+	for(auto j : right_pc_cx) {
+		_deb("LRProxy::on_left_bytes[%d]: copying into pc socket %d, size %d", left->socket(), j->socket(), left->readbuf()->size());
 		//move from left read buffer -> right write buffer
-		(*j)->to_write(left->to_read());
+		j->to_write(left->to_read());
 	}	
 	
 	// move away copied data from left read buffer -> they were processed and now even copied to another side
 	left->finish();
 };
 
-void LRProxy::on_right_bytes(baseHostCX* right) {
-	DEB_("LRProxy::on_right_bytes[%d]",right->socket());
-	for(std::vector<baseHostCX*>::iterator j = left_sockets.begin(); j != left_sockets.end(); ++j) {
+void SimpleLRProxy::on_right_bytes(baseHostCX* right) {
+	_deb("LRProxy::on_right_bytes[%d]",right->socket());
+	for(auto j : left_sockets) {
 		// move from right read buffer -> left write buffer
-		DEB_("LRProxy::on_right_bytes[%d]: copying into socket %d, size %d",right->socket(),(*j)->socket(),right->readbuf()->size());
-		(*j)->to_write(right->to_read());
+		_deb("LRProxy::on_right_bytes[%d]: copying into socket %d, size %d", right->socket(), j->socket(), right->readbuf()->size());
+		j->to_write(right->to_read());
 	}
-	for(std::vector<baseHostCX*>::iterator j = left_pc_cx.begin(); j != left_pc_cx.end(); ++j) {
+	for(auto j : left_pc_cx) {
 		// move from right read buffer -> left write buffer
-		DEB_("LRProxy::on_right_bytes[%d]: copying into pc socket %d, size %d",right->socket(),(*j)->socket(),right->readbuf()->size());
-		(*j)->to_write(right->to_read());
+		_deb("LRProxy::on_right_bytes[%d]: copying into pc socket %d, size %d", right->socket(), j->socket(), right->readbuf()->size());
+		j->to_write(right->to_read());
 	}
 	
 	// move away copied data from left read buffer -> they were processed and now even copied to another side

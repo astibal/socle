@@ -104,3 +104,36 @@ std::string uptime_string(unsigned int uptime) {
 
     return o.str();
 }
+
+
+// generic counter function:
+// increment counter @counter according to time @last_time value.
+// If @last_time difference from now is higher than @seconds from now,
+// threshold is reached and new @last_time is set to now.
+unsigned long time_update_counter_sec(time_t* last_time, unsigned long* prev_counter, unsigned long* curr_counter, int seconds, int increment) {
+    time_t now = time(nullptr);
+
+    if( now - *last_time > seconds  ) {
+        // threshold is reached => counter contains all bytes in previous second
+        *last_time = now;
+        *prev_counter  = *curr_counter;
+
+        *curr_counter = increment;
+
+    } else {
+        (*curr_counter)+=increment;
+    }
+
+    return *prev_counter;
+}
+
+
+unsigned long time_get_counter_sec(time_t const* last_time, unsigned long const* counter, int seconds) {
+    time_t now = time(nullptr);
+
+    if( now - *last_time > seconds  ) {
+        return 0;
+    }
+
+    return *counter;
+}

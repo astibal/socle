@@ -16,22 +16,11 @@
     License along with this library.
 */
 
-#include <mempool.hpp>
+#include <mempool/mempool.hpp>
 
 #include <unordered_map>
 #include "buffer.hpp"
 
-unsigned long long memPool::stat_acq = 0;
-unsigned long long memPool::stat_acq_size = 0;
-
-unsigned long long memPool::stat_ret = 0;
-unsigned long long memPool::stat_ret_size = 0;
-
-unsigned long long memPool::stat_alloc = 0;
-unsigned long long memPool::stat_alloc_size = 0;
-
-unsigned long long memPool::stat_out_free = 0;
-unsigned long long memPool::stat_out_free_size = 0;
 
 unsigned long long stat_mempool_alloc = 0;
 unsigned long long stat_mempool_realloc = 0;
@@ -44,8 +33,6 @@ unsigned long long stat_mempool_alloc_size = 0;
 unsigned long long stat_mempool_realloc_size = 0;
 unsigned long long stat_mempool_free_size = 0;
 
-std::unordered_map<void*, mem_chunk> mempool_ptr_map;
-std::mutex mempool_ptr_map_lock;
 
 #ifdef MEMPOOL_DEBUG
 const bool mem_chunk_t::trace_enabled = true;
@@ -54,26 +41,59 @@ const bool mem_chunk_t::trace_enabled = false;
 #endif
 
 
+
 memPool::memPool(std::size_t sz256, std::size_t sz1k, std::size_t sz5k, std::size_t sz10k, std::size_t sz20k):
-sz256(sz256), sz1k(sz1k), sz5k(sz5k), sz10k(sz10k), sz20k(sz20k) {
+        sz32(0), sz64(0), sz128(0), sz256(0), sz1k(0), sz5k(0), sz10k(0), sz20k(0)
+{
+    stat_acq = 0;
+    stat_acq_size = 0;
+
+    stat_ret = 0;
+    stat_ret_size = 0;
+
+    stat_alloc = 0;
+    stat_alloc_size = 0;
+
+    stat_free = 0;
+    stat_free_size = 0;
+
+    stat_out_free = 0;
+    stat_out_free_size = 0;
+
+    extend(sz256, sz1k, sz5k, sz10k, sz20k);
+}
+
+void memPool::extend(std::size_t n_sz256, std::size_t n_sz1k, std::size_t n_sz5k,
+                     std::size_t n_sz10k, std::size_t n_sz20k) {
+
+    std::lock_guard<std::mutex> l_(lock);
+
+    sz32  += n_sz256*10;
+    sz64  += n_sz256;
+    sz128 += n_sz256;
+    sz256 += n_sz256;
+    sz1k  += n_sz1k;
+    sz5k  += n_sz5k;
+    sz10k += n_sz10k;
+    sz20k += n_sz20k;
 
     for(unsigned int i = 0; i < sz256 ; i++) {
-        for (int j = 0; j < 10 ; j++) available_32.emplace_back( mem_chunk(32) );
-        available_64.emplace_back( mem_chunk(64) );
-        available_128.emplace_back( mem_chunk(128) );
-        available_256.emplace_back( mem_chunk(256) );
+        for (int j = 0; j < 10 ; j++) available_32.emplace_back(32);
+        available_64.emplace_back( 64);
+        available_128.emplace_back( 128);
+        available_256.emplace_back(256);
     }
     for(unsigned int i = 0; i < sz1k ; i++) {
-        available_1k.emplace_back( mem_chunk(1*1024) );
+        available_1k.emplace_back(1*1024);
     }
     for(unsigned int i = 0; i < sz5k ; i++) {
-        available_5k.emplace_back( mem_chunk(5*1024) );
+        available_5k.emplace_back(5*1024);
     }
     for(unsigned int i = 0; i < sz10k ; i++) {
-        available_10k.emplace_back( mem_chunk(10*1024) );
+        available_10k.emplace_back(10*1024);
     }
     for(unsigned int i = 0; i < sz20k ; i++) {
-        available_20k.emplace_back( mem_chunk(20*1024) );
+        available_20k.emplace_back(20*1024);
     }
 }
 
@@ -159,17 +179,18 @@ void* mempool_alloc(size_t s) {
     if(!buffer::use_pool)
         return malloc(s);
 
-    mem_chunk_t mch = buffer::pool.acquire(s);
+    mem_chunk_t mch = memPool::pool().acquire(s);
 
     if(mem_chunk::trace_enabled)
             mch.set_trace();
 
-    std::lock_guard<std::mutex> l(mempool_ptr_map_lock);
+    {
+        std::lock_guard<std::mutex> l(mpdata::lock());
+        mpdata::map()[mch.ptr] = mch;
 
-    mempool_ptr_map[mch.ptr] = mch;
-
-    stat_mempool_alloc++;
-    stat_mempool_alloc_size += s;
+        stat_mempool_alloc++;
+        stat_mempool_alloc_size += s;
+    }
 
     return mch.ptr;
 }
@@ -182,10 +203,10 @@ void* mempool_realloc(void* optr, size_t nsz) {
     size_t ptr_size = 0;
     if(optr) {
 
-        std::lock_guard<std::mutex> l(mempool_ptr_map_lock);
+        std::lock_guard<std::mutex> l(mpdata::lock());
 
-        auto i = mempool_ptr_map.find(optr);
-        if (i != mempool_ptr_map.end()) {
+        auto i = mpdata::map().find(optr);
+        if (i != mpdata::map().end()) {
             ptr_size = (*i).second.capacity;
         } else {
             stat_mempool_realloc_miss++;
@@ -200,16 +221,16 @@ void* mempool_realloc(void* optr, size_t nsz) {
         return optr;
     }
 
-    mem_chunk_t new_m = buffer::pool.acquire(nsz);
+    mem_chunk_t new_m = memPool::pool().acquire(nsz);
 
     if(!new_m.ptr) {
 
-        buffer::pool.release(old_m);
-        std::lock_guard<std::mutex> l(mempool_ptr_map_lock);
+        memPool::pool().release(old_m);
+        std::lock_guard<std::mutex> l(mpdata::lock());
 
-        auto i = mempool_ptr_map.find(optr);
-        if (i != mempool_ptr_map.end()) {
-            mempool_ptr_map.erase(i);
+        auto i = mpdata::map().find(optr);
+        if (i != mpdata::map().end()) {
+            mpdata::map().erase(i);
         } else {
             stat_mempool_realloc_miss++;
         }
@@ -220,15 +241,15 @@ void* mempool_realloc(void* optr, size_t nsz) {
         if(ptr_size)
             memcpy(new_m.ptr,optr, nsz <= ptr_size ? nsz : ptr_size);
 
-        buffer::pool.release(old_m);
+        memPool::pool().release(old_m);
 
         {
-            std::lock_guard<std::mutex> l(mempool_ptr_map_lock);
+            std::lock_guard<std::mutex> l(mpdata::lock());
 
             if(mem_chunk::trace_enabled)
                 new_m.set_trace();
 
-            mempool_ptr_map[new_m.ptr] = new_m;
+            mpdata::map()[new_m.ptr] = new_m;
         }
 
         stat_mempool_realloc++;
@@ -241,14 +262,14 @@ void* mempool_realloc(void* optr, size_t nsz) {
 
 void mempool_free(void* optr) {
 
-    std::lock_guard<std::mutex> l(mempool_ptr_map_lock);
+    std::lock_guard<std::mutex> l(mpdata::lock());
 
     size_t ptr_size = 0;
-    auto i = mempool_ptr_map.find(optr);
-    if (i != mempool_ptr_map.end()) {
+    auto i = mpdata::map().find(optr);
+    if (i != mpdata::map().end()) {
 
         ptr_size = (*i).second.capacity;
-        mempool_ptr_map.erase(i);
+        mpdata::map().erase(i);
     } else {
         stat_mempool_free_miss++;
     }
@@ -256,7 +277,7 @@ void mempool_free(void* optr) {
     stat_mempool_free++;
     stat_mempool_free_size += ptr_size;
 
-    buffer::pool.release( mem_chunk(static_cast<unsigned char*>(optr), ptr_size) );
+    memPool::pool().release( mem_chunk(static_cast<unsigned char*>(optr), ptr_size) );
 }
 
 

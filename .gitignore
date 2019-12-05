@@ -1,7 +1,9 @@
 .kdev4/*
-**/build/**
+**/build*/**
+**/cmake-build*/**
 .idea/**
 .vscode/**
 socle.kdev4
 **/*.pyc
 **/*.deb
+socle_version.h

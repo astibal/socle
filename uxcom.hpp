@@ -33,7 +33,7 @@
 #include <time.h>
 #include <unistd.h>
 
-#include <logger.hpp>
+#include <log/logger.hpp>
 #include <basecom.hpp>
 #include <display.hpp>
 #include <tcpcom.hpp>
@@ -50,12 +50,14 @@ public:
         bind_sock_family = AF_UNIX;
         bind_sock_type = SOCK_STREAM;
         bind_sock_protocol = 0;
+
+        log.sub_area("com.unix");
     };
     
     virtual baseCom* replicate() { return new UxCom(); };
     
-    virtual int connect(const char* host, const char* port, bool blocking = false);
-    virtual int bind(unsigned short port);  //this bind is deprecated, returning always -1. Use bind(const char*).
+    int connect(const char* host, const char* port) override;
+    int bind(unsigned short port) final;  //this bind is deprecated, returning always -1. Use bind(const char*).
     virtual int bind(const char* name);
     
     DECLARE_C_NAME("UxCom")

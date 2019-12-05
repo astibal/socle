@@ -6,9 +6,9 @@ loglevel epoll::log_level = INF;
 int epoll::init() {
     // size in epoll_create is ignored since 2.6.8, but has to be greater than 0
     fd = epoll_create(1);
-    DIA_("epoll::init: epoll socket created: %d",fd);
+    _dia("epoll::init: epoll socket created: %d",fd);
     if (fd == -1) {
-        ERR_("epoll::init:%x: epoll_create failed! errno %d",this,errno);
+        _err("epoll::init:%x: epoll_create failed! errno %d",this,errno);
     }
     ftime(&rescan_timer);
     
@@ -16,24 +16,24 @@ int epoll::init() {
 }
 
 int epoll::wait(int timeout) {
-    DUM_("epoll::wait: == begin, timeout %dms", timeout);
+    _dum("epoll::wait: == begin, timeout %dms", timeout);
     
     clear();
     
-    // Prepopulate epoll from rescan lists 
+    // Pre-populate epoll from rescan lists
     
     if(click_timer_now()) {
 
         // Setting up rescans!
 
         for (auto isock: rescan_set_in) {
-            DEB_("epoll::wait rescanning EPOLLIN socket %d",isock);
+            _deb("epoll::wait rescanning EPOLLIN socket %d",isock);
             add(isock,EPOLLIN);
         }
         rescan_set_in.clear();
         
         for (auto osock: rescan_set_out) {
-            DEB_("epoll::wait rescanning EPOLLIN|OUT socket %d",osock);
+            _deb("epoll::wait rescanning EPOLLIN|OUT socket %d",osock);
             add(osock, EPOLLIN|EPOLLOUT);
         }
         rescan_set_out.clear();
@@ -48,7 +48,7 @@ int epoll::wait(int timeout) {
             if(idle_round == 0) {
                 // moving _pre to idle_watched
                 if(idle_watched_pre.size())
-                    DEB_("epoll::wait: idle round %d, moving %d sockets to idle watch", idle_round, idle_watched_pre.size());
+                    _deb("epoll::wait: idle round %d, moving %d sockets to idle watch", idle_round, idle_watched_pre.size());
 
                 for (auto s: idle_watched_pre) {
                     idle_watched.insert(s);
@@ -58,10 +58,10 @@ int epoll::wait(int timeout) {
             } else {
                 // finally idle sockets
                 if(idle_watched.size())
-                    DIA_("epoll::wait: idle round %d, %d sockets marked idle", idle_round, idle_watched.size());
+                    _dia("epoll::wait: idle round %d, %d sockets marked idle", idle_round, idle_watched.size());
 
                 for (auto s: idle_watched) {
-                    DEB_("epoll::wait: idle socket %d", s);
+                    _dia("epoll::wait: idle socket %d", s);
 
                     idle_set.insert(s);
                 }
@@ -75,11 +75,11 @@ int epoll::wait(int timeout) {
     int nfds = epoll_wait(fd, events, EPOLLER_MAX_EVENTS, timeout);
     
     if(nfds > 0) {
-        EXT_("epoll::wait: %d socket events",nfds);
+        _ext("epoll::wait: %d socket events",nfds);
     }
     
     
-    if((LEV_(DEB) || epoll::log_level >= DEB) && nfds > 0) {
+    if(( *log.level() >= DEB) && nfds > 0) {
         std::string ports;
         for(int xi = 0; xi < nfds; ++xi) {
             ports += std::to_string(events[xi].data.fd);
@@ -89,7 +89,7 @@ int epoll::wait(int timeout) {
             ports += " ";
             
         }
-        DEB_("ports: %s",ports.c_str());
+        _deb("ports: %s",ports.c_str());
     }
     
     for(int i = 0; i < nfds; ++i) {
@@ -98,20 +98,17 @@ int epoll::wait(int timeout) {
 
         if(eventset & EPOLLIN) {
             if (socket == hint_socket()) {
-                DIA_("epoll::wait: hint triggered %d",socket );
+                _dia("epoll::wait: hint triggered %d",socket );
             }
             
-            DIA_("epoll::wait: data received into socket %d",socket );
-            if(socket  == 1) {
-                char t[1]; ::read(socket, t, 1);
-            }
+            _dia("epoll::wait: data received into socket %d",socket );
 
             // add socket to in_set
             in_set.insert(socket);
             clear_idle_watch(socket);
         }
         else if(eventset & EPOLLOUT) {
-            DIA_("epoll::wait: socket %d writable (auto_epollout_remove=%d)",socket,auto_epollout_remove);
+            _dia("epoll::wait: socket %d writable (auto_epollout_remove=%d)",socket,auto_epollout_remove);
             
             out_set.insert(socket);
             clear_idle_watch(socket);
@@ -121,11 +118,11 @@ int epoll::wait(int timeout) {
             }
 
         } else {
-            DIA_("epoll::wait: uncaught event value %d",eventset);
+            _dia("epoll::wait: uncaught event value %d",eventset);
         }
     }
    
-   DUMS_("epoll::wait: == end");
+   _dum("epoll::wait: == end");
     return nfds;
 }
 
@@ -136,18 +133,18 @@ bool epoll::add(int socket, int mask) {
     ev.events = mask;
     ev.data.fd = socket;
     
-    DEB_("epoll:add:%x: epoll_ctl(%d): called to add socket %d ",this, fd, socket);
+    _deb("epoll:add:%x: epoll_ctl(%d): called to add socket %d ",this, fd, socket);
     
     if (::epoll_ctl(fd, EPOLL_CTL_ADD, socket, &ev) == -1) {
         if(errno == EEXIST) {
-            EXT_("epoll:add:%x: epoll_ctl(%d): socket %d already added",this, fd, socket);
+            _ext("epoll:add:%x: epoll_ctl(%d): socket %d already added",this, fd, socket);
         }
         else {
-            ERR_("epoll:add:%x: epoll_ctl(%d): cannot add socket %d: %s",this, fd, socket, string_error().c_str());
+            _err("epoll:add:%x: epoll_ctl(%d): cannot add socket %d: %s",this, fd, socket, string_error().c_str());
             return false;
         } 
     } else {
-        DIA_("epoll:add:%x: epoll_ctl(%d): socket added %d",this, fd, socket);
+        _dia("epoll:add:%x: epoll_ctl(%d): socket added %d",this, fd, socket);
     }
     
     return true;
@@ -158,20 +155,20 @@ bool epoll::modify(int socket, int mask) {
     ev.events = mask;
     ev.data.fd = socket;
     
-    DEB_("epoll:modify:%x: epoll_ctl(%d): called to modify socket %d, epollin=%d,epollout=%d ",this, fd, socket,flag_check<int>(mask,EPOLLIN),flag_check<int>(mask,EPOLLOUT));
+    _deb("epoll:modify:%x: epoll_ctl(%d): called to modify socket %d, epollin=%d,epollout=%d ",this, fd, socket,flag_check<int>(mask,EPOLLIN),flag_check<int>(mask,EPOLLOUT));
     
     if (::epoll_ctl(fd, EPOLL_CTL_MOD, socket, &ev) == -1) {
         if(errno == ENOENT) {
-            DIA_("epoll:modify:%x: epoll_ctl(%d): socket %d not monitored, fixing...",this, fd, socket);
+            _dia("epoll:modify:%x: epoll_ctl(%d): socket %d not monitored, fixing...",this, fd, socket);
             add(socket,mask);
             return false;
         }
         else {
-            ERR_("epoll:modify:%x: epoll_ctl(%d): cannot modify socket %d: %s",this, fd, socket, string_error().c_str());
+            _err("epoll:modify:%x: epoll_ctl(%d): cannot modify socket %d: %s",this, fd, socket, string_error().c_str());
             return false;
         } 
     } else {
-        DIA_("epoll:modify:%x: epoll_ctl(%d): socket added %d",this, fd, socket);
+        _dia("epoll:modify:%x: epoll_ctl(%d): socket added %d",this, fd, socket);
     }
     
     return true;
@@ -184,17 +181,17 @@ bool epoll::del(int socket) {
     ev.events = 0;
     ev.data.fd = socket;
     
-    DEB_("epoll:del:%x: epoll_ctl(%d): called to delete socket %d ",this, fd, socket);
+    _deb("epoll:del:%x: epoll_ctl(%d): called to delete socket %d ",this, fd, socket);
     
     if (::epoll_ctl(fd, EPOLL_CTL_DEL, socket, &ev) == -1) {
 
-        //ERR_("epoll:del:%x: epoll_ctl(%d): cannot delete socket %d: %s",this, fd, socket, string_error().c_str());        
+        //_err("epoll:del:%x: epoll_ctl(%d): cannot delete socket %d: %s",this, fd, socket, string_error().c_str());
         //std::string str_bt = bt();
-        //ERRS_(str_bt.c_str());
+        //_err(str_bt.c_str());
         
         return false;
     } else {
-        DIA_("epoll:del:%x: epoll_ctl(%d): socket deleted %d",this, fd, socket);
+        _dia("epoll:del:%x: epoll_ctl(%d): socket deleted %d",this, fd, socket);
     }
     
     return true;
@@ -230,15 +227,15 @@ bool epoll::hint_socket(int socket) {
         rem_ev.events = EPOLLIN;
         rem_ev.data.fd = hint_socket();
         
-        DIA_("epoll:hint_socket:%x: epoll_ctl(%d): removing old hint socket %d",this, fd,hint_socket());
+        _dia("epoll:hint_socket:%x: epoll_ctl(%d): removing old hint socket %d",this, fd,hint_socket());
         ::epoll_ctl(fd,EPOLL_CTL_DEL,hint_fd,&rem_ev);
     }
     
     if(add(socket,EPOLLIN)) {
-        DIA_("epoll:hint_socket:%x: epoll_ctl(%d): setting hint socket %d",this, fd, socket);
+        _dia("epoll:hint_socket:%x: epoll_ctl(%d): setting hint socket %d",this, fd, socket);
         hint_fd = socket;
     } else {
-        DIA_("epoll:hint_socket:%x: epoll_ctl(%d): setting hint socket %d FAILED.",this, fd, socket);
+        _dia("epoll:hint_socket:%x: epoll_ctl(%d): setting hint socket %d FAILED.",this, fd, socket);
         return false;
     }
     return true;
@@ -314,11 +311,11 @@ bool epoll::click_timer_now () {
     int ms_diff = (int) (1000.0 * (now.time - rescan_timer.time) + (now.millitm - rescan_timer.millitm));
     if(ms_diff > baseCom::rescan_poll_multiplier*baseCom::poll_msec) {
         ftime(&rescan_timer);
-        EXT_("epoll::click_timer_now: diff = %d",ms_diff);
+        _ext("epoll::click_timer_now: diff = %d",ms_diff);
 
         idle_counter += ms_diff;
         if(idle_counter > idle_timeout_ms) {
-            EXT_("epoll::click_timer_now: idle counter = %d",idle_counter);
+            _ext("epoll::click_timer_now: idle counter = %d",idle_counter);
         }
         return true;
     }
@@ -339,7 +336,7 @@ unsigned long epoll::clear_idle_watch(int check) {
         iw = idle_watched.erase(check);
     }
     if (iw > 0 || ip > 0) {
-        DEB_("epoll::clear_handler %d -> clearing idle watchlist [pre: %ld list: %ld]", check, ip, iw);
+        _deb("epoll::clear_handler %d -> clearing idle watchlist [pre: %ld list: %ld]", check, ip, iw);
     }
 
     ret = iw + ip;
@@ -355,7 +352,7 @@ void epoller::init_if_null()
         poller = new epoll(); 
         if (poller->init() < 0) {
             poller = nullptr;
-            FATS_("cannot create poller instance!!!");
+            _fat("cannot create poller instance!!!");
             exit(-1);
         }
     }
@@ -524,7 +521,9 @@ epoll_handler* epoller::get_handler(int check) {
     return nullptr;
 }
 void epoller::clear_handler(int check) {
-    DEB_("epoller::clear_handler %d -> 0x%x -> nullptr",check,get_handler(check));
+    std::scoped_lock<std::mutex> l(lock_);
+
+    _deb("epoller::clear_handler %d -> 0x%x -> nullptr", check, get_handler(check));
     handler_info_t& href = handler_db[check];
     href.clear();
 ;
@@ -532,7 +531,7 @@ void epoller::clear_handler(int check) {
     if(poller) {
         unsigned long r = poller->rescan_set_in.erase(check);
         unsigned long w = poller->rescan_set_out.erase(check);
-        DEB_("epoller::clear_handler %d -> clearing rescans [r: %ld w: %ld]",check, r, w);
+        _deb("epoller::clear_handler %d -> clearing rescans [r: %ld w: %ld]",check, r, w);
 
         poller->clear_idle_watch(check);
     }
@@ -543,15 +542,15 @@ void epoller::set_handler(int check, epoll_handler* h) {
 
     handler_info_t& href = handler_db[check];
     href.handler = h;
-    DEB_("epoller::set_handler %d -> 0x%x",check,h);
+    _deb("epoller::set_handler %d -> 0x%x",check,h);
     
     if(h != nullptr) {
         if(h->registrant && h->registrant != this) {
-            ERRS_("epoller::set_handler: setting handler over already existing, different handler. This should not happen!");
+            _err("epoller::set_handler: setting handler over already existing, different handler. This should not happen!");
             // since registrant will be modified, we need to clear old registrant handlers.
             
             for(auto cur_socket: h->registered_sockets) {
-                ERR_("epoller::set_handler:  moving old socket %d handler to new one", cur_socket);
+                _err("epoller::set_handler:  moving old socket %d handler to new one", cur_socket);
 
                 // new is created if it doesn't exist yet
                 handler_info_t& curhref  = handler_db[cur_socket];

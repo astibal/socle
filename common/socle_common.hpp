@@ -21,3 +21,15 @@
 // Warning: it's resource intesive.
 
 //#define SOCLE_MEM_PROFILE
+
+// you can enforce/supress new API with removing formula
+
+#include <openssl/opensslv.h>
+
+#if (OPENSSL_VERSION_NUMBER >= 0x10100000L)
+#   define USE_OPENSSL11
+#endif
+
+#if (OPENSSL_VERSION_NUMBER >= 0x10101000L)
+#   define USE_OPENSSL111
+#endif

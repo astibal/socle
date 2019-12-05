@@ -16,7 +16,7 @@
     License along with this library.
 */
 
-#define SOCLE_VERSION "0.6.3"
+#define SOCLE_VERSION "0.7.0"
 #define SOCLE_DEVEL    1
 
 #include <common/socle_common.hpp>
@@ -26,7 +26,7 @@
 #include <common/buffer.hpp>
 
 #include <common/display.hpp>
-#include <common/logger.hpp>
+#include <common/log/logger.hpp>
 #include <common/timeops.hpp>
 
 

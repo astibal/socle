@@ -21,7 +21,7 @@
 #include "masterproxy.hpp"
 #include "baseproxy.hpp"
 #include "baseproxy.hpp"
-#include "logger.hpp"
+#include "log/logger.hpp"
 
 
 int MasterProxy::prepare_sockets(baseCom* xcom)
@@ -30,7 +30,7 @@ int MasterProxy::prepare_sockets(baseCom* xcom)
     
     r += baseProxy::prepare_sockets(xcom);
     for(auto p: proxies()) {
-        if(p && !p->dead()) {
+        if(p && !p->state().dead()) {
             r += p->prepare_sockets(xcom); // fill my fd_sets!
         }
     }    
@@ -42,19 +42,24 @@ bool MasterProxy::run_timers (void)
 {
     if(baseProxy::run_timers()) {
 
-        for(baseProxy* p: proxies()) {
+        for(auto i = proxies().cbegin(); i != proxies().end(); ) {
+
+            auto p = *i;
 
             if(!p) {
-                INFS___("null sub-proxy!!");
+                _inf("null sub-proxy!!");
                 continue;
             }
 
-            if(p->dead()) {
+            if(p->state().dead()) {
                 delete p;
-                proxies().erase(p);
+                i = proxies().erase(i);
+                continue;
             } else {
                 p->run_timers();
             }
+
+            ++i;
         }
 
         return true;
@@ -68,7 +73,7 @@ bool MasterProxy::run_timers (void)
 int MasterProxy::handle_sockets_once(baseCom* xcom) {
 
     int my_handle_returned = baseProxy::handle_sockets_once(xcom);
-    EXT_("handling own sockets: returned %d", my_handle_returned);
+    _ext("handling own sockets: returned %d", my_handle_returned);
     
     int r = 0;
     int proxies_handled= 0;
@@ -77,7 +82,7 @@ int MasterProxy::handle_sockets_once(baseCom* xcom) {
     
     for(auto p: proxies()) {
                 
-        if (p->dead()) { 
+        if (p->state().dead()) {
             p->shutdown();
             proxies_shutdown++;
         } else {
@@ -86,30 +91,34 @@ int MasterProxy::handle_sockets_once(baseCom* xcom) {
         }
     }
     
-    for(auto p: proxies()) {
-        
-        if (p->dead()) { 
+    for(auto i = proxies().cbegin(); i != proxies().end(); ) {
+
+        auto p = *i;
+        if (p->state().dead()) {
             delete(p);
-            proxies().erase(p); 
+
+            i = proxies().erase(i);
                         
             proxies_deleted++;
-            break;
+            continue;
         }
+
+        ++i;
     }
     
-    EXT_("MasterProxy::handle_sockets_once: returning %d, sub-proxies: handled=%d, shutdown=%d, deleted=%d",r,proxies_handled,proxies_shutdown,proxies_deleted);
+    _ext("MasterProxy::handle_sockets_once: returning %d, sub-proxies: handled=%d, shutdown=%d, deleted=%d",r,proxies_handled,proxies_shutdown,proxies_deleted);
     return r;
 }
 
 
 void MasterProxy::shutdown() {
 	
-	INFS_("MasterProxy::shutdown");
+	_inf("MasterProxy::shutdown");
 	baseProxy::shutdown();
 	
 	int i = 0;
 	for(auto ii: proxies()) {
-		INF_("MasterProxy::shutdown: slave[%d]",i);
+		_inf("MasterProxy::shutdown: slave[%d]",i);
 		ii->shutdown();
 		i++;
 		delete ii;
@@ -120,27 +129,27 @@ void MasterProxy::shutdown() {
 
 std::string MasterProxy::hr() {
 
-	std::string ret;
+	std::stringstream ss;
 	
-	ret += "Masterproxy:\n";
-	ret += baseProxy::hr();
+	ss << "Masterproxy:\n";
+    ss << baseProxy::hr();
 
 	if(proxies().size() > 0) {
-		ret += "Slaves:\n";
+        ss << "Slaves:\n";
 		
 		int i = 0;
 		for(auto ii: proxies()) {
 			
-			baseProxy* p = ii; 
-			
-			ret+= "slave-" + std::to_string(i) + ":\n";
-			ret+= p->hr();
-			ret+= "\n";
+			baseProxy* p = ii;
+
+            ss << "slave-" + std::to_string(i) + ":\n";
+            ss << p->hr();
+            ss << "\n";
 		}
 	}
 	else {
-		ret += "Slaves: <empty>";
+        ss << "Slaves: <empty>";
 	}
 	
-	return ret;
+	return ss.str();
 }

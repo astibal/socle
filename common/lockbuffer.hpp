@@ -47,7 +47,7 @@ inline lockbuffer& lockbuffer::operator= (const lockbuffer& x)
             if (free_ and data_ != nullptr ) {
                 if(use_pool) {
 
-                    pool.release( { data_, capacity_} );
+                    memPool::pool().release( { data_, capacity_} );
                 }
                 else {
                     delete[] data_;  // we HAD ownership
@@ -60,7 +60,7 @@ inline lockbuffer& lockbuffer::operator= (const lockbuffer& x)
             if(x.free_) {
 
                 if(use_pool) {
-                    mem_chunk_t mch = pool.acquire(x.capacity_);
+                    mem_chunk_t mch = memPool::pool().acquire(x.capacity_);
                     data_ = mch.ptr;
                     capacity_  = mch.capacity;
                 }

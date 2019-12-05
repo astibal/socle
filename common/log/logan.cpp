@@ -8,42 +8,37 @@
     version 3.0 of the License, or (at your option) any later version.
     This library is  distributed  in the hope that  it will be useful,
     but WITHOUT ANY WARRANTY;  without  even  the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
-    
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
     See the GNU Lesser General Public License for more details.
-    
+
     You  should have received a copy of the GNU Lesser General Public
     License along with this library.
 */
 
+#include <log/logan.hpp>
+#include <log/loglevel.hpp>
+#include <mutex>
 
-#ifndef MASTERPROXY_H
-#define MASTERPROXY_H
+loglevel* logan_lite::level() const {
+    std::scoped_lock<std::mutex> l(lock_);
 
-#include <baseproxy.hpp>
+    if(! my_loglevel) {
+        my_loglevel = logan::get()[topic_];
+    }
 
-class MasterProxy : public baseProxy {
+    return my_loglevel;
+}
 
-public:
-    template<class T>
-    using vector_type = mp::vector<T>;
-    template<class T>
-    using set_type = mp::set<T>;
+void logan_lite::level(loglevel l) {
 
-protected:
-    vector_type <baseProxy*> proxies_;
-
-public:
-    explicit MasterProxy(baseCom* c): baseProxy(c) {}
-    vector_type <baseProxy*>& proxies() { return proxies_; };
-	
-    int prepare_sockets(baseCom*) override;
-	int handle_sockets_once(baseCom*) override;
-	void shutdown() override;
-    
-    bool run_timers() override;
-
-	std::string hr();
-};
-
-#endif // MASTERPROXY_H
+    if(!my_loglevel) {
+        my_loglevel = logan::get()[topic_];
+    }
+    my_loglevel->level(l.level());
+    my_loglevel->topic(l.topic());
+    my_loglevel->more(l.more()); // shallow copy?
+    my_loglevel->flags(l.flags());
+    my_loglevel->subject(l.subject());
+    my_loglevel->area(l.area());
+}

@@ -36,42 +36,40 @@ template<class Worker, class SubWorker>
 class ThreadedReceiver : public baseProxy {
 public:
     ThreadedReceiver(baseCom* c);
-    virtual ~ThreadedReceiver(); 
+    ~ThreadedReceiver() override;
     
     bool     is_quick_port(int sock, short unsigned int dport);
     uint32_t create_session_key4(sockaddr_storage *from, sockaddr_storage* orig);
     uint32_t create_session_key6(sockaddr_storage *from, sockaddr_storage* orig);
     
-    virtual void on_left_new_raw(int);
-    virtual void on_right_new_raw(int);
+    void on_left_new_raw(int) override;
+    void on_right_new_raw(int) override;
     
-    virtual int run(void);
+    int run() override;
+    void on_run_round() override;
     
     int push(int);
     int pop();
     int pop_for_worker(int id);
 
     inline void worker_count_preference(int c) { worker_count_preference_ = c; };
-    inline int worker_count_preference(void) { return worker_count_preference_; };    
+    inline int worker_count_preference() { return worker_count_preference_; };
     
     
-    void set_quick_list(std::vector<int>* quick_list) { quick_list_ = quick_list; };
-    inline std::vector<int>* get_quick_list() const { return quick_list_;};
+    void set_quick_list(mp::vector<int>* quick_list) { quick_list_ = quick_list; };
+    inline mp::vector<int>* get_quick_list() const { return quick_list_;};
     
     
-protected:
+private:
     mutable std::mutex sq_lock_;
-    std::deque<int> sq_;
-    std::vector<int>* quick_list_ = nullptr;    
+    mp::deque<int> sq_;
+    mp::vector<int>* quick_list_ = nullptr;
 
     // pipe created to be monitored by Workers with poll. If pipe is filled with *some* data
     // there is something in the queue to pick-up.
-    int sq__hint[2];
-    
-    size_t nthreads;
-    std::thread **threads_;
-    Worker **workers_;
+    int sq__hint[2] = {-1, -1};
 
+    mp::vector<std::pair< std::thread*, Worker*>> tasks_;
     int worker_count_preference_=0;
     int create_workers(int count=0);
 };
@@ -82,7 +80,9 @@ template<class SubWorker>
 class ThreadedReceiverProxy : public MasterProxy {
 public:
     ThreadedReceiverProxy(baseCom* c, int worker_id): MasterProxy(c), worker_id_(worker_id) {}
-    virtual int handle_sockets_once(baseCom*);  
+
+    int handle_sockets_once(baseCom*) override;
+    void on_run_round() override;
 
     static int workers_total;   
     

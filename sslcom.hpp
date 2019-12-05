@@ -38,18 +38,11 @@
 #include <udpcom.hpp>
 #include <sslcertstore.hpp>
 #include <sslcertval.hpp>
-#include <logger.hpp>
+#include <log/logger.hpp>
 
 // Threading support
 
-#if defined(WIN32)
-    #define MUTEX_TYPE HANDLE
-    #define MUTEX_SETUP(x) (x) = CreateMutex(NULL, FALSE, NULL)
-    #define MUTEX_CLEANUP(x) CloseHandle(x)
-    #define MUTEX_LOCK(x) WaitForSingleObject((x), INFINITE)
-    #define MUTEX_UNLOCK(x) ReleaseMutex(x)
-    #define THREAD_ID GetCurrentThreadId( )
-#elif defined (_POSIX_THREADS)
+#if defined (_POSIX_THREADS)
     /* _POSIX_THREADS is normally defined in unistd.h if pthreads are available
        on your platform. */
 //     #define MUTEX_TYPE pthread_mutex_t
@@ -77,14 +70,14 @@
 /* This array will store all of the mutexes available to OpenSSL. */
 static MUTEX_TYPE* mutex_buf = nullptr;
 void locking_function ( int mode, int n, const char * file, int line );
-unsigned long id_function ( void );
+unsigned long id_function ();
 
 
 #pragma GCC diagnostic pop 
 #pragma GCC diagnostic pop 
 
-int THREAD_setup ( void );
-int THREAD_cleanup ( void );
+int THREAD_setup ();
+int THREAD_cleanup ();
 
 struct CRYPTO_dynlock_value
 {
@@ -96,26 +89,49 @@ extern int SSLCOM_CLIENTHELLO_TIMEOUT;
 extern int SSLCOM_READ_TIMEOUT;
 extern int SSLCOM_WRITE_TIMEOUT;
 
+enum class ret_handshake { ERROR=-1, AGAIN=0, SUCCESS=1, BYPASS=2 };
+
+namespace socle {
+    namespace ex {
+        class SSL_clienthello_malformed : public std::exception {
+        public:
+
+            [[nodiscard]]
+            const char *what () const noexcept override {
+                return "malformed ClientHello in peer communication";
+            }
+        };
+    }
+}
+
 template <class L4Proto>
 class baseSSLCom : public L4Proto, public virtual baseCom {
 
 public:
     baseSSLCom();
     
-    virtual std::string& to_string();
+    std::string to_string(int verbosity=iINF) const override;
     std::string get_peer_sni() { return sslcom_peer_hello_sni().c_str(); } //return copy of SNI
-    
+
+    enum class client_state_t { NONE, INIT, PEER_CLIENTHELLO_WAIT , PEER_CLIENTHELLO_RECVD, CONNECTING, CONNECTED };
+    client_state_t client_state_ = client_state_t::NONE;
+
+    static int extdata_index() { return sslcom_ssl_extdata_index; };
+    static SSL_SESSION* server_get_session_callback(SSL* ssl, const unsigned char* , int, int* );
+    static int new_session_callback(SSL* ssl, SSL_SESSION* session);
+
 protected:
-	SSL_CTX* sslcom_ctx = NULL;
-	SSL*     sslcom_ssl = NULL;
-	BIO*	 sslcom_sbio = NULL;
+
+	SSL_CTX* sslcom_ctx = nullptr;
+	SSL*     sslcom_ssl = nullptr;
+	BIO*	 sslcom_sbio = nullptr;
     
     //SSL external data offset, used by openssl callbacks
     static int sslcom_ssl_extdata_index;
     
     //preferred key/cert pair to be loaded, instead of default one
-    X509*     sslcom_pref_cert = NULL;
-    EVP_PKEY* sslcom_pref_key  = NULL;
+    X509*     sslcom_pref_cert = nullptr;
+    EVP_PKEY* sslcom_pref_key  = nullptr;
 	
     //ECDH parameters
     EC_KEY *sslcom_ecdh = nullptr;
@@ -126,12 +142,12 @@ protected:
     X509* sslcom_target_issuer_issuer = nullptr;
     
 	// states of read/writes
-	int sslcom_read_blocked_on_write=0;
+	int sslcom_read_blocked_on_write = 0;
 	
         int sslcom_write_blocked_on_read=0;
         int sslcom_write_blocked_on_write=0;
         
-	int sslcom_read_blocked=0;
+	int sslcom_read_blocked = 0;
 	
     //handshake pending flag
 	bool sslcom_waiting=true;
@@ -140,10 +156,15 @@ protected:
 	bool sslcom_server_=false;
     
 	int sslcom_fd=0;
-    
-    //handhake handler called from read/write - you will not want to use it directly
-	int waiting();
-        
+
+
+
+    bool handshake_peer_client(); // check if peer received already ClientHello
+    ret_handshake handshake();
+        void handshake_dia_error2(int op_code, int err, unsigned int err2);
+        int handshake_client();
+        int handshake_server();
+
     // SNI
     struct timeval timer_start;
     
@@ -154,7 +175,7 @@ protected:
     //if we are actively waiting for something, it doesn't make sense to process peer events (which creates unnecessary load)
     inline bool unmonitor_peer() { 
         if(peer()) { 
-            baseSSLCom* p = dynamic_cast<baseSSLCom*>(peer()); 
+            auto* p = dynamic_cast<baseSSLCom*>(peer());
             if(p != nullptr) {
                 unset_monitor(p->sslcom_fd); 
                 return true; 
@@ -164,7 +185,7 @@ protected:
     }
     inline bool monitor_peer() { 
         if(peer()) { 
-            baseSSLCom* p = dynamic_cast<baseSSLCom*>(peer());   
+            auto* p = dynamic_cast<baseSSLCom*>(peer());
             if(p != nullptr) {
                 set_monitor(p->sslcom_fd); 
                 return true; 
@@ -173,13 +194,13 @@ protected:
         return false; 
     } 
 
-    //if enabled, upgreade_client_socket or upgreade_server_socket are called automatically
+    //if enabled, upgrade_client_socket or upgrade_server_socket are called automatically
     //during waiting().
     bool auto_upgrade_ = true;
     bool auto_upgraded_ = false;
     
     //it's waiting for it's usage or removal
-	char* ssl_waiting_host = NULL;
+	char* ssl_waiting_host = nullptr;
 	
     // return true if peer already received client hello. For server side only (currently). 
     inline bool sslcom_peer_hello_received() { return sslcom_peer_hello_received_; }
@@ -190,7 +211,7 @@ protected:
     //peeks peer socket for client_hello. For server side only (currently).
     bool waiting_peer_hello();
     
-    //parses peer hello and stores interesing data (e.g. SNI information). For server side only (currently).
+    //parses peer hello and stores interesting data (e.g. SNI information). For server side only (currently).
     int parse_peer_hello();
     unsigned short parse_peer_hello_extensions(buffer& b, unsigned int curpos);
     
@@ -214,7 +235,7 @@ protected:
     inline bool sslcom_status() { return sslcom_status_; }
     inline void sslcom_status(bool b) { sslcom_status_ = b; }
 
-    virtual std::string flags_str();
+    std::string flags_str() override;
 private:
     typedef enum { HSK_REUSED = 0x4 } sslcom_flags;
     unsigned long flags_ = 0;
@@ -229,31 +250,21 @@ public:
     static std::once_flag openssl_thread_setup_done;
     
     // certificate store common across all SSCom instances
-    static SSLCertStore* sslcom_certstore_;
+    static SSLFactory* sslcom_certstore_;
     // init certstore and default CTX
-    static void certstore_setup(void);
+    static void certstore_setup();
     static std::once_flag certstore_setup_done;    
-    //static SSL_CTX* client_ctx_setup();
-    static SSL_CTX* client_ctx_setup(EVP_PKEY* priv = nullptr, X509* cert = nullptr, const char* ciphers = nullptr);
-    static SSL_CTX* server_ctx_setup(EVP_PKEY* priv = nullptr, X509* cert = nullptr, const char* ciphers = nullptr);
-    static SSL_CTX* client_dtls_ctx_setup(EVP_PKEY* priv = nullptr, X509* cert = nullptr, const char* ciphers = nullptr);
-    static SSL_CTX* server_dtls_ctx_setup(EVP_PKEY* priv = nullptr, X509* cert = nullptr, const char* ciphers = nullptr);
 
-    
-    static SSLCertStore* certstore() { return sslcom_certstore_; };
-    static void certstore(SSLCertStore* c) { if (sslcom_certstore_ != NULL) { delete sslcom_certstore_; }  sslcom_certstore_ = c; };
+    static SSLFactory* certstore() { return sslcom_certstore_; };
+    static void certstore(SSLFactory* c) { delete sslcom_certstore_; sslcom_certstore_ = c; };
 	
     //called just once
-	virtual void static_init();
+	void static_init() override;
     
     //com has to be init() before used
-	virtual void init(baseHostCX* owner);
-    virtual baseCom* replicate() { return new baseSSLCom(); } ;
-    // virtual const char* name() { return "ssl"; };
-    // virtual const char* hr();
-    // std::string hr_;
-    
-    
+	void init(baseHostCX* owner) override;
+    baseCom* replicate() override { return new baseSSLCom(); } ;
+
     //initialize callbacks. Basically it sets external data for SSL object.
     void init_ssl_callbacks();
 
@@ -264,8 +275,11 @@ public:
     
     virtual void init_server();
     int upgrade_server_socket(int s);
-    
+
     bool sslkeylog = false;
+    // openssl API >= 1.1.1
+    static void ssl_keylog_callback(const SSL* ssl, const char* line);
+    // openssl API <=1.1.0
     void dump_keys();
 
     bool is_server() { return sslcom_server_; }
@@ -277,7 +291,7 @@ public:
     static void ssl_info_callback(const SSL *s, int where, int ret);
     static DH* ssl_dh_callback(SSL* s, int is_export, int key_length);
     static EC_KEY* ssl_ecdh_callback(SSL* s, int is_export, int key_length);
-    static int ocsp_resp_callback(SSL *s, void *arg);
+    static int status_resp_callback(SSL *s, void *arg);
     static int ssl_client_cert_callback(SSL *ssl, X509 **x509, EVP_PKEY **pkey);
     static int ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx);
     static int check_server_dh_size(SSL* ssl);
@@ -289,36 +303,41 @@ public:
     virtual bool store_session_if_needed();
     virtual bool load_session_if_needed();
 	
-	virtual bool readable (int s);
-	virtual bool writable (int s);
+	bool readable (int s) override;
+	bool writable (int s) override;
 	
-	virtual void accept_socket ( int sockfd	);
-    virtual void delay_socket ( int sockfd );
+	void accept_socket (int sockfd) override;
+    void delay_socket (int sockfd) override;
     
     bool auto_upgrade() { return auto_upgrade_; }
     void auto_upgrade(bool b) { auto_upgrade_ = b; }
     bool upgraded() { return auto_upgraded_; }
-    void upgraded(bool b) { if(upgraded() && b == true) { NOTS___("double upgrade detected"); } auto_upgraded_ = b; }
+    void upgraded(bool b) { if(upgraded() && b) { _not("double upgrade detected"); } auto_upgraded_ = b; }
     
     // set if waiting() should wait for peer hello.
     bool should_wait_for_peer_hello() { return should_wait_for_peer_hello_; }
     void should_wait_for_peer_hello(bool b) { should_wait_for_peer_hello_ = b; }
     socle::sref_vector_string& sni_filter_to_bypass() { return sni_filter_to_bypass_; }
     
-    virtual int connect ( const char* host, const char* port, bool blocking = false );
-	virtual int read ( int __fd, void* __buf, size_t __n, int __flags );
-	virtual int write ( int __fd, const void* __buf, size_t __n, int __flags );
+    int connect( const char* host, const char* port) override;
+	int read ( int __fd, void* __buf, size_t __n, int __flags ) override;
+	int write ( int __fd, const void* __buf, size_t __n, int __flags ) override;
 	
-	virtual void cleanup();
+	void cleanup() override;
 
-    virtual bool com_status();
+    bool com_status() override;
     
     
-    virtual void shutdown(int __fd);    
-    virtual ~baseSSLCom() {
+    void shutdown(int __fd) override;
+    ~baseSSLCom() override {
         if(sslcom_refcount_incremented__) {
+#ifdef USE_OPENSSL11
+            EVP_PKEY_free(sslcom_pref_key);
+            X509_free(sslcom_pref_cert);
+#else
             CRYPTO_add(&sslcom_pref_key->references,-1,CRYPTO_LOCK_EVP_PKEY);
             CRYPTO_add(&sslcom_pref_cert->references,-1,CRYPTO_LOCK_X509);
+#endif
         }        
         
         if(sslcom_ssl != nullptr) {
@@ -327,15 +346,10 @@ public:
         }
         
         if(sslcom_ecdh != nullptr) {
-            EC_KEY_free(sslcom_ecdh);;
+            EC_KEY_free(sslcom_ecdh);
             sslcom_ecdh = nullptr;
         }
-        
-        if(ocsp_trust_store) {
-            X509_STORE_free(ocsp_trust_store);
-            ocsp_trust_store = nullptr;
-        }
-        
+
         if(sslcom_target_cert != nullptr) X509_free(sslcom_target_cert);
         if(sslcom_target_issuer != nullptr) X509_free(sslcom_target_issuer);
         if(sslcom_target_issuer_issuer != nullptr) X509_free(sslcom_target_issuer_issuer);
@@ -361,7 +375,7 @@ public:
     bool opt_bypass = false;
     bool bypass_me_and_peer();
     
-    static std::string ci_def_filter;;
+    static std::string ci_def_filter;
     
     bool opt_left_kex_dh = true;       // enable/disable pfs (DHE and ECDHE suites)
     bool opt_left_kex_rsa = true;      // enable also kRSA
@@ -378,19 +392,30 @@ public:
     bool opt_right_allow_rc4 = false;
     bool opt_right_allow_aes128 = true;
     bool opt_right_no_tickets = false;
-    
+
     bool opt_ocsp_stapling_enabled = false; // should we insist on OCSP response?
     int  opt_ocsp_stapling_mode = 0;        // 0 - allow all, log unverified. 1 - allow all, but don't allow unverified. 2 - as 1. but require all connections to have stapling reponse
     bool opt_ocsp_enforce_in_verify = false;     // stapling was not able to get status, we need use OCSP at the end of verify
-    #define SOCLE_OCSP_STAP_MODE_LOOSE   0
-    #define SOCLE_OCSP_STAP_MODE_STRICT  1
-    #define SOCLE_OCSP_STAP_MODE_REQUIRE 2 
-    X509_STORE* ocsp_trust_store = nullptr;
+    int  opt_ocsp_mode = 0;
+
     int ocsp_cert_is_revoked = -1;
-    
-    int opt_ocsp_mode = 0;
     static int ocsp_explicit_check(baseSSLCom* com);
-    static int ocsp_resp_callback_explicit(baseSSLCom* com, int required);
+    static int check_revocation_oob(baseSSLCom* com, int required);
+
+    enum class staple_code {
+            NOT_PROCESSED,
+            MISSING_BODY,
+            PARSING_FAILED,
+            STATUS_NOK,
+            GET_BASIC_FAILED,
+            BASIC_VERIFY_FAILED,
+            CERT_TO_ID_FAILED,
+            NO_FIND_STATUS,
+            INVALID_TIME,
+            SUCCESS
+        };
+
+    static std::pair<typename baseSSLCom<L4Proto>::staple_code, int> check_revocation_stapling(std::string const& name, baseSSLCom*, SSL* ssl);
     
     // unknown issuers
     bool opt_allow_unknown_issuer = false;
@@ -411,8 +436,8 @@ public:
                                                         // 1 - pass, don't provide any certificate to server
                                                         // 2 - bypass next connection
     
-    // verify status. Added also verify pseudostatus for client cert request.
-    typedef enum {  VERIFY_OK=0x0, 
+    // verify status. Added also verify pseudo-status for client cert request.
+    typedef enum {  VERIFY_OK=0x0,
                     UNKNOWN_ISSUER=0x1, 
                     SELF_SIGNED=0x2, 
                     INVALID=0x4, 
@@ -422,9 +447,9 @@ public:
                                 HOSTNAME_FAILED=0x40
                                                         } verify_status_t;
                                 
-    int verify_status = VERIFY_OK;
-    inline void verify_set(int s) { verify_status |= (verify_status_t)s; }
-    inline bool verify_check(int s) const { return (verify_status & s); }
+    unsigned int verify_status = VERIFY_OK;
+    inline void verify_set(unsigned int s) { flag_set(&verify_status, s); }
+    inline bool verify_check(unsigned int s) const { return (flag_test(verify_status, s)); }
     inline int verify_get() const { return (int) verify_status; }
 
     DECLARE_C_NAME("SSLCom");
@@ -434,6 +459,11 @@ public:
 
 typedef baseSSLCom<TCPCom> SSLCom;
 typedef baseSSLCom<UDPCom> DTLSCom;
+
+
+
+#ifdef USE_OPENSSL11
+#else
 
 /* 
  * this has been stolen from sources, since there is no ssl_locl.h header around! 
@@ -514,7 +544,10 @@ typedef struct sess_cert_st
 
   
 #endif 
-  
+
+#endif //USE_OPENSSL11
+
+#endif //SSLCOM_HPP
 
 #include <sslcom.tpp>
-#endif
+

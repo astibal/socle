@@ -29,34 +29,35 @@
 #include <thread>
 #include <mutex>
 
+#include <mpstd.hpp>
+
 template<class Worker, class SubWorker>
 class ThreadedAcceptor : public baseProxy {
 public:
-	ThreadedAcceptor(baseCom* c);
-	virtual ~ThreadedAcceptor(); 
+	explicit ThreadedAcceptor(baseCom* c);
+	~ThreadedAcceptor() override;
 	
-	virtual void on_left_new_raw(int);
-	virtual void on_right_new_raw(int);
+	void on_left_new_raw(int) override;
+	void on_right_new_raw(int) override;
 	
-	virtual int run(void);
+	int run() override;
+	void on_run_round() override;
 	
 	int push(int);
 	int pop();
 
     inline void worker_count_preference(int c) { worker_count_preference_ = c; };
-    inline int worker_count_preference(void) { return worker_count_preference_; };    
-protected:
+    inline int worker_count_preference() { return worker_count_preference_; };
+
+private:
 	mutable std::mutex sq_lock_;
-	std::deque<int> sq_;
+	mp::deque<int> sq_;
     
     // pipe created to be monitored by Workers with poll. If pipe is filled with *some* data
     // there is something in the queue to pick-up.
-    int sq__hint[2];
+    int sq__hint[2] = {-1, -1};
 	
-	size_t nthreads;
-	std::thread **threads_;
-	Worker **workers_;
-
+	mp::vector<std::pair< std::thread*, Worker*>> tasks_;
 
     int worker_count_preference_=0;
 	int create_workers(int count=0);
@@ -66,10 +67,11 @@ template<class SubWorker>
 class ThreadedAcceptorProxy : public MasterProxy {
 public:
 	ThreadedAcceptorProxy(baseCom* c, int worker_id): MasterProxy(c), worker_id_(worker_id) {}
-	virtual int handle_sockets_once(baseCom*);	
+	int handle_sockets_once(baseCom*) override;
+    void on_run_round() override;
     
     static int workers_total;
-protected:
+private:
     int worker_id_ = 0;
 
 };

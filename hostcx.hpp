@@ -31,12 +31,12 @@
 
 
 #include <basecom.hpp>
-#include <logger.hpp>
+#include <log/logger.hpp>
 #include <lockbuffer.hpp>
 #include <display.hpp>
 
-#define HOSTCX_BUFFSIZE 20480
-#define HOSTCX_BUFFMAXSIZE (100*HOSTCX_BUFFSIZE)
+#define HOSTCX_BUFFSIZE 1024
+#define HOSTCX_BUFFMAXSIZE (1024*HOSTCX_BUFFSIZE)
 
 //! Basic Host structure class
 /*! 
@@ -45,14 +45,30 @@
 class Host
 {
 protected:
-	std::string host_; //!< hostname 
-	std::string port_; //!< port
+	mutable std::string host_; //!< hostname
+	mutable std::string port_; //!< port
+
+	void host(std::string const& s) const {
+        static std::mutex host_port_lock;
+
+        std::scoped_lock<std::mutex> l(host_port_lock);
+	    host_ = s;
+	}
+    void port(std::string const& s) const {
+        static std::mutex host_port_lock;
+
+        std::scoped_lock<std::mutex> l(host_port_lock);
+        port_ = s;
+    }
+
+
 public:
+
 	Host() {};
 	
-	//! Contructor filling hostname and the port
+	//! Constructor filling hostname and the port
 	/*!
-	 *  Create host strusture
+	 *  Create host structure
 	 *  \param h - hostname string
 	 *  \param p - port number (as the string
 	 */
@@ -67,6 +83,8 @@ public:
 	
 	const std::string& chost() const { return host_; }
 	const std::string& cport() const { return port_; }
+
+    virtual std::string to_string(int verbosity=iINF) const { return string_format("%s:%s", chost().c_str(), cport().c_str()); };
 	
 };
 
@@ -121,12 +139,33 @@ bool operator==(const Host& h, const Host& hh);
  * 
  */
 
+class Proxy;
+
+
+namespace socle {
+
+    class com_error : public std::exception {
+    public:
+        const char* what () const noexcept override  {
+            return "Com object error";
+        }
+    };
+
+    class com_is_null : public socle::com_error {
+    public:
+        const char* what () const noexcept override  {
+            return "Com object is nullptr";
+        }
+    };
+}
+
 class baseHostCX : public Host
 {
     
 	/* Basic elements */
 	
-	std::string name__; //!< human friendly name
+	mutable std::string name__;      //!< human friendly name
+	mutable std::mutex name_mutex_;  // protect name__
 
 	int fds_ = 0;			//!< socket/file descriptor itself
 	int closing_fds_ = 0;   // to close com we call shutdown() which actually don't close fds_. We have to store it and close on very object destruction.
@@ -137,13 +176,13 @@ class baseHostCX : public Host
 	
 	bool permanent_; 	      //!< indice if we want to reconnect, if socket fails (unless HostCX is reduced)
 	time_t last_reconnect_;   //!< last time of an attempt to reconnect
-	int reconnect_delay_ = 30; //!< how often we will reconnect the socket (in seconds)
-	int idle_delay_ = 3600;     // when connection is idle for this time, it will timeout
+	unsigned short reconnect_delay_ = 7; //!< how often we will reconnect the socket (in seconds)
+	unsigned short idle_delay_ = 3600;     // when connection is idle for this time, it will timeout
 
-	time_t t_connected; 	  //!< connection timeout facility, useful when socket is opened non-blocking
+	time_t t_connected{0}; 	  //!< connection timeout facility, useful when socket is opened non-blocking
 	
-	time_t w_activity;
-    time_t r_activity;
+	time_t w_activity{0};
+    time_t r_activity{0};
 	
 	
 	/* socket I/O facility */
@@ -153,7 +192,8 @@ class baseHostCX : public Host
 	
 	
 	ssize_t processed_bytes_; //!< number of bytes processed by last process()
-	ssize_t next_read_limit_;  // limit next read() operation to this number. Zero means no restrictions.
+	int next_read_limit_;     // limit next read() operation to this number. Zero means no restrictions.
+	                          // <0 means don't read at all
 	
 	/*! 
 	 ! If you are not attempting to do something really special, you want it to keep it as true (default). See [HostCX::auto_finish()](@ref HostCX::auto_finish) */
@@ -174,18 +214,30 @@ class baseHostCX : public Host
 
     // after writing all data into the socket we should shutdown the socket
     bool close_after_write_ = false;
+
+    // larval connection facility
+    bool opening_ = false;
     
 protected:
     
-    baseCom* com_;
+    baseCom* com_ = nullptr;
+    Proxy* parent_proxy_ = nullptr;
+    unsigned char parent_flag_ = '0';
+
     bool rescan_in_flag_ = false;
     bool rescan_out_flag_ = false;
-    
-public:
-    
-    baseCom* com() const { return com_; }
-    inline void com(baseCom* c) { com_ = c; if(c != nullptr) {  com_->init(this); } else { DIAS_("baseHostCX:com: setting com_ to nullptr"); } };
 
+    logan_lite log = logan_lite("proxy");
+public:
+
+    typedef enum { INIT, ACCEPTED, CONNECTING, CONNECTED, IO, CLOSING, CLOSED } fsm_t;
+
+    baseCom* com() const { return com_; }
+    inline void com(baseCom* c) { com_ = c; if(c != nullptr) {  com_->init(this); } else { _deb("baseHostCX:com: setting com_ to nullptr"); } };
+
+    inline Proxy* parent_proxy() const { return parent_proxy_; };
+    inline unsigned char parent_flag() const { return parent_flag_; }
+    inline void parent_proxy(Proxy* p, unsigned char flag) { parent_proxy_ = p; parent_flag_ = flag; };
     
     bool readable() const { return com()->readable(socket()); };
     bool writable() const { return com()->writable(socket()); };
@@ -196,28 +248,33 @@ public:
     void peer(baseHostCX* p) { peer_ = p; com()->peer_ = peer()->com(); }
     baseCom* peercom() const { if(peer()) { return peer()->com(); } return nullptr; }
     
-    inline std::string& log() { return com()->log_buffer_; };
+    inline std::string& comlog() { return com()->log_buffer_; };
 public:
 	/* meters */
-	unsigned int meter_read_count;
-	unsigned int meter_write_count;
-	unsigned int meter_read_bytes;
-	unsigned int meter_write_bytes;
+	unsigned int  meter_read_count;
+    unsigned int  meter_write_count;
+    buffer::size_type  meter_read_bytes;
+    buffer::size_type  meter_write_bytes;
 	
 public:
 	
     baseHostCX( baseCom* c, const char* h, const char* p );
-	baseHostCX(baseCom* c, unsigned int s);
+	baseHostCX(baseCom* c, int s);
+
+	baseHostCX() = delete;
+	baseHostCX(const baseHostCX&) = delete;
+	baseHostCX& operator=(const baseHostCX&) = delete;
+
 	virtual ~baseHostCX();
-	
-    void rename() { name(true); }
-	std::string& name(bool force=false);
-	const char* c_name();
+
+	// forcing rename or calling name with force=true is ok for const, name is mutable and protected by mutex
+    void rename() const { name(true); }
+	std::string& name(bool force=false) const;
+	const char* c_name() const;
 	
     ssize_t processed_bytes() { return processed_bytes_; };
     
-	// larval connection facility
-	bool opening_ = false;
+
 	inline bool opening() { return opening_; }
 	inline void opening(bool b) { opening_ = b; if (b) { time(&t_connected); time(&w_activity); time(&r_activity); } }
 	// if we are trying to open socket too long - effective for non-blocking sockets only
@@ -228,18 +285,20 @@ public:
     bool write_waiting_for_peercom ();
 	inline void read_waiting_for_peercom (bool p) { read_waiting_for_peercom_ = p; }
 	inline void write_waiting_for_peercom (bool p) { write_waiting_for_peercom_ = p; }
-	inline void waiting_for_peercom (bool p) { read_waiting_for_peercom(p);
-        write_waiting_for_peercom(p); }
+	inline void waiting_for_peercom (bool p) {
+	    read_waiting_for_peercom(p);
+        write_waiting_for_peercom(p);
+	}
 	
 	// add the facility to indicate to owning object there something he should pay attention
 	// this us dummy implementation returning false
-	virtual bool new_message() { return false; }
+	virtual bool new_message() const { return false; }
 
-	inline int unblock() { return com()->unblock(fds_);}
-	
-	void shutdown();
-	inline bool valid() { return ( fds_ > 0 && !error() ); };
-	inline bool error() { 
+	inline int unblock() const { return com()->unblock(fds_); }
+
+	virtual void shutdown();
+	inline bool valid() const { return ( fds_ > 0 && !error() ); };
+	inline bool error() const {
         if(com() != nullptr) return (error_ || com()->error());
         return error_ ; 
     }
@@ -250,15 +309,15 @@ public:
 		}
 	};
     inline void remove_socket() { fds_ = 0; closing_fds_ = 0; };
-    
-	int socket() const { return fds_; };
-	int real_socket() const { if(com_) { return com_->translate_socket(fds_); } return socket(); }
 
-    bool is_connected();
-    int closed_socket() const { return closing_fds_; };
-	
-	void permanent(bool p) { permanent_=p; }
-	bool permanent(void) const { return permanent_; }
+    [[nodiscard]] int socket() const { return fds_; };
+    [[nodiscard]] int real_socket() const { if(com_) { return com_->translate_socket(fds_); } return socket(); }
+
+    [[nodiscard]] bool is_connected();
+    [[nodiscard]] int closed_socket() const { return closing_fds_; };
+
+    void permanent(bool p) { permanent_=p; }
+    [[nodiscard]] bool permanent() const { return permanent_; }
 
 	/*!
 	 Before the next *process()* is invoked, 
@@ -266,25 +325,28 @@ public:
 	 4 from 5 psychiatrists recommend this  for sake of your own sanity.
 	*/		
 	void auto_finish(bool a) { auto_finish_ = a; } 
-	bool auto_finish() { return auto_finish_; }
+	bool auto_finish() const { return auto_finish_; }
 
-	bool reduced() const { return !( host_.size() && port_.size() ); } 
-	int connect(bool blocking=false);
+    [[nodiscard]] bool reduced() const { return !( host_.size() && port_.size() ); }
+	int connect();
 	bool reconnect(int delay=5);
-	inline int reconnect_delay() { return reconnect_delay_; }
-	inline int idle_delay() { return idle_delay_; };
+	inline int reconnect_delay() const { return reconnect_delay_; }
+	inline int idle_delay() const { return idle_delay_; };
         inline void idle_delay(int d) { idle_delay_ = d; };
     
-	inline bool should_reconnect_now() { time_t now = time(NULL); return (now - last_reconnect_ > reconnect_delay() && !reduced()); }
+	inline bool should_reconnect_now() { time_t now = time(nullptr); return (now - last_reconnect_ > reconnect_delay() && !reduced()); }
 	
 	inline lockbuffer* readbuf() { return &readbuf_; }
-	inline lockbuffer* writebuf() { return &writebuf_; } 
+	inline lockbuffer const* readbuf() const { return &readbuf_; }
+
+	inline lockbuffer* writebuf() { return &writebuf_; }
+    inline lockbuffer const* writebuf() const { return &readbuf_; }
 	
 	inline void send(buffer& b) { writebuf_.append(b); }
 	inline int  peek(buffer& b) { int r = com()->peek(this->socket(),b.data(),b.capacity(),0); if (r > 0) { b.size(r); } return r; }
 	
-	inline ssize_t next_read_limit() { return next_read_limit_; }
-	inline void next_read_limit(ssize_t s) { next_read_limit_ = s; }
+	inline int next_read_limit() const { return next_read_limit_; }
+	inline void next_read_limit(int s) { next_read_limit_ = s; }
 	
 	int read();
 	int process_() { return process(); };
@@ -296,6 +358,7 @@ public:
 	virtual int process();
 	
 	virtual void to_write(buffer b);
+    virtual void to_write(const std::string&);
 	virtual void to_write(unsigned char* c, unsigned int l); 
 	inline bool close_after_write() { return close_after_write_; };
 	inline void close_after_write(bool b) { close_after_write_ = b; };
@@ -320,7 +383,7 @@ public:
     void on_delay_socket(int fd);
 	
     // return human readable details of this object
-	std::string to_string(int verbosity=iINF);
+	std::string to_string(int verbosity=iINF) const override;
     std::string full_name(unsigned char);
     
     // debug options

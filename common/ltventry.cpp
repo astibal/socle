@@ -22,14 +22,14 @@
 
 #include "ltventry.hpp"
 #include "display.hpp"
-#include "logger.hpp"
+#include "log/logger.hpp"
 #include "buffer.hpp"
 
 LTVEntry::LTVEntry() {
 	len_ = 0;
 	id_ = 0;
 	type_ = 0;
-	data_ = NULL;
+	data_ = nullptr;
 	
 	owner_ = true;
 }
@@ -44,40 +44,43 @@ LTVEntry::LTVEntry(unsigned char id, unsigned char type, unsigned long l) {
 
 
 LTVEntry::~LTVEntry() {
-	if (data_ != NULL and owner() ) {
+	if (data_ != nullptr and owner() ) {
 		delete[] data_;
 	}
 	
-	for (std::vector<LTVEntry*>::iterator i = contains().begin(); i != contains().end(); i++) {
-		delete (*i);
+	for (auto ltve: contains()) {
+		delete ltve;
 	};
 	
 	contains().clear();
-	data_ = NULL;
+	data_ = nullptr;
 }
 
 // unpack packet structure and return number of bytes really "red". The rest should stay in the buffer 
 // as the beginning of not yet received rest of the new package
 
 int LTVEntry::unpack(uint8_t* buffer, unsigned int buflen) {
-	DEB_("LTVEntry::unpack:  --- process buffer %x[%u], buffer owner=%d",buffer,(long) buflen,owner());
+
+    auto log = get_log();
+
+	_deb("LTVEntry::unpack:  --- process buffer 0x%x[%u], buffer owner=%d", buffer, (long) buflen,owner());
 	
 	
 	// to read at least the size of the package
 	if (buflen < 4) {
 		return -1;
 	}
-	DUMS_("stage1: can read length field");
+	_ext("stage1: can read length field");
 	
 	len_ = ltv_get_length(buffer);
 	
-	DUMS_("stage2: len detected: %d ", len_);
-	DUMS_(hex_dump(buffer,4));
-	DUMS_(hex_dump(buffer+4,4));
+	_ext("stage2: len detected: %d ", len_);
+	_dum(hex_dump(buffer,4).c_str());
+	_dum(hex_dump(buffer+4,4).c_str());
 		
 	//return underflow if we should expect more data
 	if (buflen < len_) {
-		DEB_("LTVEntry::unpack: buffer %x too short: %u, want to read %u bytes",buffer,buflen,len());
+		_deb("LTVEntry::unpack: buffer %x too short: %u, want to read %u bytes", buffer, buflen, len());
 		return 0;
 	}
 
@@ -86,11 +89,11 @@ int LTVEntry::unpack(uint8_t* buffer, unsigned int buflen) {
 		id_ = ltv_get_id(buffer);
 		type_ = ltv_get_type(buffer);
 		
-		DUM_("stage3: buffer of size %d could be fully read",len_);
+		_ext("stage3: buffer of size %d could be fully read",len_);
 		
 		// if we are owning the buffer, fine, we will allocate.
 		if ( owner () ) {
-			DEB_("LTVEntry::unpack: Allocating: buffer[%u] for new package data", len_);
+			_ext("LTVEntry::unpack: Allocating: buffer[%u] for new package data", len_);
 			
 			// allocate memory for the whole content of the packet (there could be more data, but we are dealing now only with first package)
 			data_ = new uint8_t[len_];
@@ -99,15 +102,15 @@ int LTVEntry::unpack(uint8_t* buffer, unsigned int buflen) {
 			//data = new uint8_t[buflen-__fsso_header_size()];
 			
 			
-			DUM_(">> LTVEntry::unpack: orig.  buffer: %x       | len,type,id: %u,%u,%u",(long)buffer,(unsigned int)len_,(unsigned int)type_,(unsigned int)id_);		
-			DUM_(">> LTVEntry::unpack: target buffer:       %x | len %uB",(unsigned long)data_,len_);
-			DEB_(">> LTVEntry::unpack: copy   buffer: %x -> %x | len %uB",(unsigned long)buffer,(unsigned long)data_,len_);
+			_ext(">> LTVEntry::unpack: orig.  buffer: 0x%x         | len,type,id: %u,%u,%u", (long)buffer, (unsigned int)len_, (unsigned int)type_, (unsigned int)id_);
+			_ext(">> LTVEntry::unpack: target buffer:         0x%x | len %uB", (unsigned long)data_,len_);
+			_ext(">> LTVEntry::unpack: copy   buffer: 0x%x -> 0x%x | len %uB", (unsigned long)buffer, (unsigned long)data_,len_);
 			::memcpy(data_,buffer,len_);
-			DUMS_("LTVEntry::unpack: memcpy: done");
+			_ext("LTVEntry::unpack: memcpy: done");
 		} else {
 			
 			// we are not owner of the buffer, so we can use pointer and create .
-			DEB_("LTVEntry::unpack: Allocating: shadow buffer[%u] in %x",len_, buffer);
+			_ext("LTVEntry::unpack: Allocating: shadow buffer[%u] in %x", len_, buffer);
 			data_ = buffer;
 		}
 		
@@ -129,19 +132,19 @@ int LTVEntry::unpack(uint8_t* buffer, unsigned int buflen) {
 				unsigned int sub_red = l->unpack(new_data,payload_len);
 				if (sub_red > 0) {
 					contains().push_back(l);
-					DEB_("LTVEntry::unpack:   sub-entry[%u] at %x[%u] | len %u",subentries,data(),(long)data_index,sub_red);
+					_deb("LTVEntry::unpack:   sub-entry[%u] at 0x%x[%u] | len %u", subentries,data(), (long)data_index,sub_red);
 					
 					data_index += sub_red;
 					subentries++;
 				} else {
-					WAR_("LTVEntry::unpack:   sub-entry[%u] ERROR at %x[%u] | len %u",subentries,data(),(long)data_index,sub_red);
+					_war("LTVEntry::unpack:   sub-entry[%u] ERROR at 0x%x[%u] | len %u", subentries, data(), (long)data_index,sub_red);
 					delete l;
 					break;
 				}
 				
 				// this is correct place to finish the loop!
 				if (data_index >= payload_len) {
-					DEB_("LTVEntry::unpack: last sub-entry[%u] finished at %x[%u] | len %u",subentries,data(),(long)data_index,(long) payload_len);
+					_deb("LTVEntry::unpack: last sub-entry[%u] finished at 0x%x[%u] | len %u", subentries, data(), (long)data_index, (long)payload_len);
 					break;
 				}
 				
@@ -149,7 +152,7 @@ int LTVEntry::unpack(uint8_t* buffer, unsigned int buflen) {
 		}
 	}
 
-	DEB_("LTVEntry::unpack: finished buffer @%x[%u]",buffer,(long) buflen);
+	_dia("LTVEntry::unpack: finished buffer 0x%x[%u]", buffer, (long)buflen);
 	return len_;
 }
 
@@ -163,40 +166,40 @@ std::string LTVEntry::hr(int ltrim) {
 	std::string p = std::string();
 	for (int i=0; i<tr; i++) { p += ' ';}
 	
-	std::string r;
-	if (tr == 0) r += p + "LTVEntry::hr: packet human readable form:\n\n";
-	r += p + "Package length : " + std::to_string((unsigned int)len_) +'\n';
-	r += p + "Package id     : " + std::to_string((unsigned int)id_) + '\n' ;
-	r += p + "Package type   : " + std::to_string((unsigned int)type_) + '\n';
-	r += p + "Data (" + std::to_string((unsigned int)len_-ltv_header_size()) + "B):\n";
+	std::stringstream r;
+	if (tr == 0) r << p + "LTVEntry::hr: packet human readable form:\n\n";
+	r << p << "Package length : " << std::to_string((unsigned int)len_) <<'\n';
+	r << p << "Package id     : " << std::to_string((unsigned int)id_) << '\n' ;
+	r << p << "Package type   : " << std::to_string((unsigned int)type_) << '\n';
+	r << p << "Data (" << std::to_string((unsigned int)len_-ltv_header_size()) + "B):\n";
 	
 	if (type_ == typ::num || type_ == typ::ip) {
 		in_addr dd_addr = *(in_addr*)data();
 		uint32_t dd_int = ntohl(*(uint32_t*)data());
 		const char *ip = ::inet_ntoa((in_addr)dd_addr);
 		
-		r += p + "Value (number) : " + std::to_string(dd_int) + " / " + ip + '\n' ;
+		r << + "Value (number) : " << std::to_string(dd_int) << " / " << ip << '\n' ;
 
 	} else
 	if (type_ == typ::str) {
 		std::string s = std::string((char*)data(),(unsigned int)len_-ltv_header_size());
-		r += p + "Value (string) : " + s + '\n' ;
+		r << p + "Value (string) : " << s << '\n' ;
 	} else 
 	if (type_ == typ::cont) {
-		r += p + "... " + std::to_string(contains().size()) + " element(s):\n";
+		r << p + "... " << std::to_string(contains().size()) << " element(s):\n";
 	} else
 	{
-		r += hex_dump(data(),datalen(),ltrim);
+		r << hex_dump(data(),datalen(),ltrim);
 	};
 	
-	if (tr != 0) r+="\n";
+	if (tr != 0) r << "\n";
 	
 	
-	for (std::vector<LTVEntry*>::iterator i = contains().begin(); i != contains().end(); i++ ) {
-		r+=(*i)->hr(tr+4);
+	for (auto* ltve: contains()) {
+		r << ltve->hr(tr+4);
 	}
 	
-	return r;
+	return r.str();
 }
 
 std::string LTVEntry::data_str() {
@@ -211,7 +214,7 @@ std::string LTVEntry::data_str_ip() {
 
 
 void LTVEntry::clear() {
-	if (data_ != NULL && owner()) {
+	if (data_ != nullptr && owner()) {
 		free(data_);
 	}
 	len(0);
@@ -305,14 +308,15 @@ void LTVEntry::container(unsigned char i) {
 
 
 int LTVEntry::pack(::buffer* buf) {
-	 
+
+    auto log = get_log();
 	::buffer *b;
 	
 	// we need to know position where to store length of packed container!
 	int length_pos = 0;
 	bool this_is_owner = false;
 	
-	if (buf != NULL) { 
+	if (buf != nullptr) {
 		b = buf; 
 		length_pos = b->size();
 
@@ -334,8 +338,8 @@ int LTVEntry::pack(::buffer* buf) {
 			b->append(buffer(),buflen());
 		}
 		
-		for (std::vector<LTVEntry*>::iterator i = contains().begin(); i != contains().end(); i++ ) {
-			sub_bytes += (*i)->pack(b);
+		for (auto* ltve: contains()) {
+			sub_bytes += ltve->pack(b);
 		}
 
 		len(len() + sub_bytes);
@@ -354,10 +358,25 @@ int LTVEntry::pack(::buffer* buf) {
 		// this is not the container: return already allocated space
 		if (buflen() > 0) {
 			b->append(buffer(),buflen());
-			DEB_("LTVEntry::pack: scalar %x packed in %d bytes",this,buflen());
+			_deb("LTVEntry::pack: scalar 0x%x packed in %d bytes", this, buflen());
+
+            // coverity: 1407983  - this case didn't covered case when buffer is null, so we created new here
+            //                      it's probably rare not having container on the top of data tree,
+            //                      but anyway this is fixing the case.
+            if(this_is_owner) {
+                data_ = b->data();
+                b->detach();
+                owner(true);
+                delete b;
+            }
+
 			return buflen();
 		} else {
-			WAR_("LTVEntry::pack: warning - uninitialized LTVEntry at %x",this);
+			_war("LTVEntry::pack: warning - uninitialized LTVEntry at 0x%x", this);
+
+			if(this_is_owner) {
+			    delete b;   // coverity: 1407983  - this is tricky one. Delete 'b' iff is new allocation from this func.
+			}
 			return 0;
 		} 
 	}
@@ -365,33 +384,34 @@ int LTVEntry::pack(::buffer* buf) {
 
 
 LTVEntry* LTVEntry::search(const std::vector<int>& path) {
-        
-        DEBS_("LTVEntry::search:");
-        
-        LTVEntry* current = this;
-        
-        
-        for (int t: path) {
 
-                DEB_("LTVEntry::search: token %d",t);
-                
-                bool found = false;
-                
-                for(std::vector<LTVEntry*>::iterator j = current->contains().begin(); j != current->contains().end(); j++ ) {
-                        if ((*j)->id() == t) {
-                                current = (*j);
-                                DEB_("LTVEntry::search: hit at %x",(*j));
-                                found = true;
-                                break;
-                        }
-                }
-                
-                if (! found) {
-                        DEBS_("LTVEntry::search: failed");
-                        return NULL;
-                } 
+    auto log = get_log();
+    _deb("LTVEntry::search:");
+
+    LTVEntry* current = this;
+
+
+    for (int path_element: path) {
+
+        _deb("LTVEntry::search: token %d", path_element);
+
+        bool found = false;
+
+        for(auto* ltve: contains()) {
+            if (ltve->id() == path_element) {
+                current = ltve;
+                _deb("LTVEntry::search: hit at 0x%x", ltve);
+                found = true;
+                break;
+            }
         }
-        
-        DEB_("LTVEntry::search: found match at %x",current);    
-        return current;
+
+        if (! found) {
+            _deb("LTVEntry::search: failed");
+            return nullptr;
+        }
+    }
+
+    _deb("LTVEntry::search: found match at 0x%x", current);
+    return current;
 }

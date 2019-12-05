@@ -22,13 +22,14 @@
 
 #include <socle_common.hpp>
 #include <display.hpp>
-#include <mempool.hpp>
+#include <mempool/mempool.hpp>
 
 #ifdef SOCLE_MEM_PROFILE
 #include <unordered_map>
 #include <mutex>
 #endif
 
+#include <log/logan.hpp>
 
 class buffer
 {
@@ -45,7 +46,6 @@ public:
   static bool use_pool;
 
 
-  static memPool pool;
 #ifdef SOCLE_MEM_PROFILE  
   static std::unordered_map<std::string,int> alloc_map;
   static std::mutex alloc_map_lock_;
@@ -70,6 +70,47 @@ public:
 
   buffer (const buffer&);
   buffer& operator= (const buffer&);
+
+
+  buffer(buffer&& ref) noexcept : data_(nullptr), size_(0), capacity_(0), free_(true) {
+
+      if(&ref != this) {
+          data_ = ref.data_;
+          capacity_ = ref.capacity_;
+          size_ = ref.size_;
+
+          free_ = ref.free_;
+
+          auto log = logan::create("buffer");
+          _inf("buffer trace:\n %s", bt(true).c_str());
+
+          ref.free_ = false; // make the almost-invalid reference not free our memory
+      }
+  }
+
+  buffer& operator= (buffer&& ref) noexcept {
+
+      if (free_ and data_ != nullptr ) {
+          if(use_pool) {
+
+              memPool::pool().release( { data_, capacity_} );
+          }
+          else {
+              delete[] data_;  // we HAD ownership
+              counter_free(capacity_);
+          }
+      }
+
+      data_ = ref.data_;
+      capacity_ = ref.capacity_;
+      size_ = ref.size_;
+
+      free_ = ref.free_;
+
+      ref.free_ = false; // make the almost-invalid reference not free our memory
+
+      return *this;
+  };
   
   void swap (buffer&);
   unsigned char* detach ();
@@ -97,7 +138,7 @@ public:
   unsigned char& at (size_type);
   unsigned char at (size_type) const;
   
-  template <typename T> T get_at(int idx) const;
+  template <typename T> T get_at(unsigned int idx) const;
   template <typename T> static T get_at_ptr(unsigned char* data);
 
   size_type find (unsigned char, size_type pos = 0) const;
@@ -181,7 +222,7 @@ inline buffer::~buffer () {
     if (free_ && capacity_ > 0) {
 
         if(use_pool) {
-            pool.release( {data_, capacity_ } );
+            memPool::pool().release( {data_, capacity_ } );
         }
         else {
             delete[] data_;
@@ -194,7 +235,7 @@ inline buffer::buffer (size_type s)
     : free_ (true) {
 
     if (use_pool) {
-        mem_chunk_t mch = pool.acquire(s);
+        mem_chunk_t mch = memPool::pool().acquire(s);
         data_ = mch.ptr;
         capacity_ = mch.capacity;
     } else {
@@ -214,7 +255,7 @@ inline buffer::buffer (size_type s, size_type c)
         throw std::invalid_argument ("size greater than capacity");
 
     if (use_pool) {
-        mem_chunk_t mch = pool.acquire(c);
+        mem_chunk_t mch = memPool::pool().acquire(c);
         data_ = mch.ptr;
         capacity_ = mch.capacity;
     }
@@ -232,7 +273,7 @@ inline buffer::buffer (const void* d, size_type s)
     if (s != 0) {
 
         if(use_pool) {
-            mem_chunk_t mch = pool.acquire(s);
+            mem_chunk_t mch = memPool::pool().acquire(s);
             data_ = mch.ptr;
             capacity_ = mch.capacity;
         }
@@ -263,7 +304,7 @@ inline buffer::buffer (const void* d, size_type s, size_type xc)
   if (c != 0)
   {
       if(use_pool) {
-          mem_chunk_t mch = pool.acquire(c);
+          mem_chunk_t mch = memPool::pool().acquire(c);
           data_ = mch.ptr;
           c = mch.capacity;
       }
@@ -299,7 +340,7 @@ inline buffer::buffer (const buffer& x)
     if(x.free_) {
 
         if(use_pool) {
-            mem_chunk_t mch = pool.acquire(x.capacity_);
+            mem_chunk_t mch = memPool::pool().acquire(x.capacity_);
             data_ = mch.ptr;
             capacity_ = mch.capacity;
         }
@@ -336,7 +377,7 @@ inline buffer& buffer::operator= (const buffer& x)
       if (free_ and data_ != nullptr ) {
           if(use_pool) {
 
-              pool.release( { data_, capacity_} );
+              memPool::pool().release( { data_, capacity_} );
           }
           else {
               delete[] data_;  // we HAD ownership
@@ -349,7 +390,7 @@ inline buffer& buffer::operator= (const buffer& x)
       if(x.free_) {
 
           if(use_pool) {
-              mem_chunk_t mch = pool.acquire(x.capacity_);
+              mem_chunk_t mch = memPool::pool().acquire(x.capacity_);
               data_ = mch.ptr;
               capacity_  = mch.capacity;
           }
@@ -408,7 +449,7 @@ inline void buffer::assign (const void* d, size_type s)
   {
     if (free_ && data_ != nullptr) {
         if(use_pool) {
-            pool.release( { data_, capacity_ } );
+            memPool::pool().release( { data_, capacity_ } );
         } else {
             delete[] data_;
             counter_free(capacity_);
@@ -416,7 +457,7 @@ inline void buffer::assign (const void* d, size_type s)
     }
 
     if(use_pool) {
-        mem_chunk_t mch = pool.acquire(s);
+        mem_chunk_t mch = memPool::pool().acquire(s);
 
         data_ = mch.ptr;
         capacity_ = mch.capacity;
@@ -441,7 +482,7 @@ inline void buffer::assign (void* d, size_type s, size_type c, bool own)
   if (free_ && data_ != nullptr) {
 
       if(use_pool) {
-          pool.release( { data_, capacity_ } );
+          memPool::pool().release( { data_, capacity_ } );
       }
       else {
           delete[] data_;
@@ -522,7 +563,7 @@ inline bool buffer::capacity (size_type c)
 
   if(use_pool) {
 
-      mem_chunk_t mch = pool.acquire(c);
+      mem_chunk_t mch = memPool::pool().acquire(c);
       d = mch.ptr;
       cd = mch.capacity;
   }
@@ -541,7 +582,7 @@ inline bool buffer::capacity (size_type c)
 
   if (free_ && data_ != nullptr)  {
       if(use_pool) {
-          pool.release( { data_, capacity_ } );
+          memPool::pool().release( { data_, capacity_ } );
       }
       else {
           delete[] data_;
@@ -609,7 +650,7 @@ inline unsigned char buffer::at (size_type i) const
 }
 
 template <typename T>
-T buffer::get_at(int idx) const
+T buffer::get_at(unsigned int idx) const
 {
     if(idx + sizeof(T) - 1 >= size_)
         throw std::out_of_range ("buffer: index out of range: " + std::to_string((int)idx) + " of " + std::to_string(size_));
@@ -699,7 +740,10 @@ inline buffer buffer::view(unsigned int pos, buffer::size_type len) {
     }
     else {
         // start out of buffer margins!
-        return buffer();
+
+
+        // return buffer();
+        throw std::out_of_range("view out of bounds");
     }
 }
 

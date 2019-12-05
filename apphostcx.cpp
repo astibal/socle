@@ -16,47 +16,51 @@
     License along with this library.
 */
 
-
-
 #include <apphostcx.hpp>
 
+DEFINE_LOGGING(AppHostCX);
+
 AppHostCX::AppHostCX(baseCom* c, const char* h, const char* p) :baseHostCX(c,h,p) {
-    
-    if(c && c->l4_proto() != 0) {
+
+    log = logan::attach(this, "inspect");
+
+    if(c->l4_proto() != 0) {
         flow().domain(c->l4_proto());
     }
 }
 AppHostCX::AppHostCX(baseCom* c, unsigned int s) :baseHostCX(c,s) {
-    if(c&& c->l4_proto() != 0) {
+
+    log = logan::attach(this, "inspect");
+
+    if(c->l4_proto() != 0) {
         flow().domain(c->l4_proto());
     }
 }
 
-int AppHostCX::zip_signatures(sensorType& s, std::vector<duplexFlowMatch*>& v) {
-    s.clear();
+int AppHostCX::make_sig_states(sensorType& sig_states, std::vector<duplexFlowMatch*>& source_signatures) {
+    sig_states.clear();
     int r = 0;
     
-    DEBS_("AppHostCX::zip_signatures: zipper start");
-    for( std::vector<duplexFlowMatch*>::iterator i = v.begin(); i < v.end(); ++i ) {
+    _deb("AppHostCX::zip_signatures: zipper start");
+    for( auto* ptr: source_signatures ) {
         
-        if((*i) == nullptr ) {
-            DEBS_("AppHostCX::zip_signatures: attempt to zip nullptr signature");
+        if(! ptr ) {
+            _deb("AppHostCX::zip_signatures: attempt to zip nullptr signature");
             continue;
         }
-        
-        duplexFlowMatch* ptr = (*i);
-        DEB_("AppHostCX::zip_signatures: sensor %x, zipping %s",&s, ptr->name().c_str());
+
+        _deb("AppHostCX::zip_signatures: sensor 0x%x, adding %s at 0x%x",&sig_states, ptr->name().c_str(), ptr);
         
         std::pair<flowMatchState,duplexFlowMatch*> a;
-
         a.first = flowMatchState();
-        a.second =(*i);
+        a.second = ptr;
 
-        s.push_back(a);
+
+        sig_states.push_back(a);
         ++r;
     }
-    
-    DEB_("AppHostCX::zip_signatures: loaded %d of %d",r,v.size());
+
+    _deb("AppHostCX::zip_signatures: loaded %d of %d",r, source_signatures.size());
     return r;
 };
 
@@ -65,19 +69,17 @@ bool AppHostCX::detect(sensorType& cur_sensor,char side) {
     bool matched = false;
     
     if(cur_sensor.size() <= 0) {
-        DIA_("AppHostCX::detect[%s]: Sensor %x is empty!",c_name(), &sensor());
+        _dia("AppHostCX::detect[%s]: Sensor %x is empty!",c_name(), &sensor());
     }
     
-    for (sensorType::iterator i = cur_sensor.begin(); i != cur_sensor.end(); ++i ) {
+    for (auto& sig: cur_sensor) {
         
-        std::pair<flowMatchState,duplexFlowMatch*>& sig = (*i);
-
         // get zipped results with signature pointers
         duplexFlowMatch* sig_sig = std::get<1>(sig);
         flowMatchState& sig_res = std::get<0>(sig);
         
-        if (sig_res.hit() == false) {
-            DEB_("AppHostCX::detect[%s]: Sensor %x, signature name %s",c_name(), &sensor(), sig_sig->name().c_str());
+        if (! sig_res.hit()) {
+            _dia("AppHostCX::detect[%s]: Sensor %x, signature name %s",c_name(), &sensor(), sig_sig->name().c_str());
             
             bool r = sig_res.update(this->flowptr(),sig_sig);
             
@@ -89,14 +91,14 @@ bool AppHostCX::detect(sensorType& cur_sensor,char side) {
                 
                 matched = true;
                 // log only in debug - it's up to library user to log it his way
-                DEB_("AppHostCX::detect[%s]: Signature matched: %s",c_name(), vrangetos(ret).c_str());
+                _deb("AppHostCX::detect[%s]: Signature matched: %s",c_name(), vrangetos(ret).c_str());
                 continue;
                 
             } else {
-                EXT_("AppHostCX::detect[%s]: Signature didn't match: %s",c_name(), vrangetos(ret).c_str());
+                _ext("AppHostCX::detect[%s]: Signature didn't match: %s",c_name(), vrangetos(ret).c_str());
             } 
         } else {
-            DEB_("AppHostCX::detect[%s]: Signature %s already matched",c_name(), sig_sig->name().c_str());
+            _deb("AppHostCX::detect[%s]: Signature %s already matched",c_name(), sig_sig->name().c_str());
         }
     }
     
@@ -108,12 +110,12 @@ bool AppHostCX::detect(sensorType& cur_sensor,char side) {
 void AppHostCX::post_read() {
     
     if ( mode() == MODE_POST) {
-        if(this->meter_read_bytes <= DETECT_MAX_BYTES) {
+        if(this->meter_read_bytes <= max_detect_bytes()) {
             auto b = this->to_read();
             this->flow().append('r',b);
         }
         
-        DIA_("AppHostCX::post_read[%s]: side %c, flow path: %s",c_name(), 'r', flow().hr().c_str());
+        _dia("AppHostCX::post_read[%s]: side %c, flow path: %s",c_name(), 'r', flow().hr().c_str());
 
         // we can't detect starttls in POST mode
         detect(sensor(),'r');
@@ -129,28 +131,28 @@ void AppHostCX::post_write() {
     
     if ( mode() == MODE_POST ) {
         
-        if(this->meter_write_bytes <= DETECT_MAX_BYTES) {
+        if(this->meter_write_bytes <= max_detect_bytes()) {
             auto b = this->writebuf();
             
             int f_s = flow().flow().size();
-            int f_last_data_size = flow().flow().back().second->size();            
+            int f_last_data_size = flow().flow().back().second->size();
 
-            DEB_("AppHostCX::post_write[%s]: peek_counter %d, written to socket %d, write buffer size %d, flow size %d, flow data size %d",c_name(),peek_write_counter,meter_write_bytes,b->size(), f_s,f_last_data_size);
+            _deb("AppHostCX::post_write[%s]: peek_counter %d, written to socket %d, write buffer size %d, flow size %d, flow data size %d",c_name(),peek_write_counter,meter_write_bytes,b->size(), f_s,f_last_data_size);
 
             // how many data I am missing?
             int delta  = (meter_write_bytes + b->size()) - peek_write_counter;
             buffer delta_b = b->view(b->size()-delta,b->size());
             
             if(delta > 0) {
-                DIA_("AppHostCX::post_write[%s]: flow append new %d bytes",c_name(),delta_b.size());
+                _dia("AppHostCX::post_write[%s]: flow append new %d bytes",c_name(),delta_b.size());
                 this->flow().append('w',delta_b);
                 peek_write_counter += delta_b.size();
             } else {
-                DIA_("AppHostCX::post_write:[%s]: data are already copied in the flow",c_name());
+                _dia("AppHostCX::post_write:[%s]: data are already copied in the flow",c_name());
             }
         }
         // we can't detect starttls in POST mode
-        DIA_("AppHostCX::post_write[%s]: side %c, flow path: %s",c_name(), 'w', flow().hr().c_str());
+        _dia("AppHostCX::post_write[%s]: side %c, flow path: %s",c_name(), 'w', flow().hr().c_str());
         detect(sensor(),'w');
         inspect('w');
     }
@@ -168,84 +170,102 @@ void AppHostCX::post_write() {
 }
 
 void AppHostCX::pre_read() {
-    
-    DUM_("AppHostCX::pre_read[%s]: === start",c_name());
+
+    _dum("AppHostCX::pre_read[%s]: === start",c_name());
     
     bool updated = false;
     
     bool __behind_read_warn = true;
     bool behind_read = false;
     
-    if ( mode() == MODE_PRE) {
-        if(this->meter_read_bytes <= DETECT_MAX_BYTES && peek_read_counter <= this->meter_read_bytes  ) {
-            
-            if(peek_read_counter < this->meter_read_bytes) {
+    if (mode() == MODE_PRE) {
+        if(this->meter_read_bytes <= max_detect_bytes() && peek_read_counter <= this->meter_read_bytes  ) {
+
+            if (peek_read_counter < this->meter_read_bytes) {
                 behind_read = true;
 
-                if(__behind_read_warn) {
-                    WAR_("AppHostCX::pre_read[%s]: More data read than seen by peek: %d vs. %d",c_name(), this->meter_read_bytes, peek_read_counter);
+                if (__behind_read_warn) {
+                    _war("AppHostCX::pre_read[%s]: More data read than seen by peek: %d vs. %d", c_name(),
+                         this->meter_read_bytes, peek_read_counter);
                 } else {
-                    DEB_("AppHostCX::pre_read[%s]: More data read than seen by peek: %d vs. %d",c_name(),this->meter_read_bytes, peek_read_counter);
+                    _deb("AppHostCX::pre_read[%s]: More data read than seen by peek: %d vs. %d", c_name(),
+                         this->meter_read_bytes, peek_read_counter);
                 }
-                
+                _deb("AppHostCX::pre_read[%s]: METER_READ_COUNT=%d METER_READ_BYTES=%d PEEK_READ_BYTES=%d", c_name(),
+                        meter_read_count, meter_read_bytes,peek_read_counter);
+
                 unsigned int delta = this->meter_read_bytes - peek_read_counter;
                 unsigned int w = this->readbuf()->size() - delta; // "+1" should be not there
-                DEB_("AppHostCX::pre_read[%s]: Creating readbuf view at <%d,%d>",c_name(),w,delta);
-                buffer v = this->readbuf()->view(w,delta);
-                DEB_("AppHostCX::pre_read[%s]:  = Readbuf: %d bytes (allocated buffer size %d): %s",c_name(),this->readbuf()->size(),this->readbuf()->capacity(),hex_dump(this->readbuf()->data(),this->readbuf()->size()).c_str());
-                DEB_("AppHostCX::pre_read[%s]:  = view of %d bytes (allocated buffer size %d): %s",c_name(),v.size(),v.capacity(),hex_dump(v.data(),v.size()).c_str());
-                
-                
+                _deb("AppHostCX::pre_read[%s]: Creating readbuf view at <%d,%d>", c_name(), w, delta);
+                buffer v = this->readbuf()->view(w, delta);
+                _deb("AppHostCX::pre_read[%s]:  = readbuf: %d bytes (allocated buffer size %d): %s", c_name(),
+                     this->readbuf()->size(), this->readbuf()->capacity(),
+                     hex_dump(this->readbuf()->data(), this->readbuf()->size()).c_str());
+                _deb("AppHostCX::pre_read[%s]:  = view of %d bytes (allocated buffer size %d): %s", c_name(), v.size(),
+                     v.capacity(), hex_dump(v.data(), v.size()).c_str());
+
+
                 if(v.size() > 0) {
-                    this->flow().append('r',v);
-                    DIA_("AppHostCX::pre_read[%s]: detection pre-mode: salvaged %d bytes from readbuf",c_name(),v.size());
-                    DEB_("AppHostCX::pre_read[%s]: Appended from readbuf to flow %d bytes (allocated buffer size %d): %s",c_name(),v.size(),v.capacity(),hex_dump(v.data(),v.size()).c_str());
-                    
+                    this->flow().append('r', v);
+                    _dia("AppHostCX::pre_read[%s]: detection pre-mode: salvaged %d bytes from readbuf", c_name(),
+                           v.size());
+                    _deb("AppHostCX::pre_read[%s]: Appended from readbuf to flow %d bytes (allocated buffer size %d): \n%s",
+                         c_name(), v.size(), v.capacity(), hex_dump(v.data(), v.size()).c_str(), 4, '>');
+
                     updated = true;
-                    
+
                     // adapt peek_counter so we know we recovered data from readbuf
                     peek_read_counter += v.size();
-                    
-                } else {
-                    WAR_("AppHostCX::pre_read[%s]: FIXME: peek counter behind read counter, but readbuf is empty!",c_name());
-                    WAR_("AppHostCX::pre_read[%s]:   s attempt to create readbuf view at <%d,%d> ptr %p",c_name(),w,delta,readbuf()->data());
-                    
-                }
-                
-                
-            }
 
-            buffer b(5000);
-            b.size(0);
-            int l = this->peek(b);
-            
-            if(behind_read && __behind_read_warn) {
-                WAR_("AppHostCX::pre_read[%s]: peek returns %d bytes",c_name(),l);
-            } else {
-                LOG_(((unsigned int)l > 0) ? DEB : EXT, "AppHostCX::pre_read[%s]: peek returns %d bytes",c_name(),l);
-            }
-            
-            if(l > 0) {
-                peek_read_counter += l;
-                this->flow().append('r',b);
-                DEB_("AppHostCX::pre_read[%s]: Appended to flow %d bytes (allocated buffer size %d): %s",c_name(),b.size(),b.capacity(),hex_dump(b.data(),b.size()).c_str());
-                this->next_read_limit(l); 
-                
-                updated = true;
-		
-                if(com()->l4_proto() == SOCK_DGRAM) {
-                  // don't limit reads, packets are dropped in case of tension, so flow could be incorrect a bit (it will be fixed on read).
-                  this->next_read_limit(0);
-                }
-                // TCP
-                else if(l >= (int)b.capacity()) {
-                    DIA_("AppHostCX::pre_read[%s]: pre_read at max. buffer capacity %d",c_name(),b.capacity());
+                } else {
+                    _war("AppHostCX::pre_read[%s]: FIXME: peek counter behind read counter, but readbuf is empty!",
+                         c_name());
+                    _war("AppHostCX::pre_read[%s]:   s attempt to create readbuf view at <%d,%d> ptr %p", c_name(), w,
+                         delta, readbuf()->data());
                 }
             }
         }
-        
-        if(updated == true) {
-            DIA_("AppHostCX::pre_read[%s]: side %c, flow path: %s",c_name(), 'r', flow().hr().c_str());
+
+        if(meter_read_bytes < max_detect_bytes()) {
+            buffer b(5000);
+            b.size(0);
+            int l = this->peek(b);
+
+            if(behind_read && __behind_read_warn) {
+                _war("AppHostCX::pre_read[%s]: peek returns %d bytes",c_name(),l);
+            } else {
+                _dum("AppHostCX::pre_read[%s]: peek returns %d bytes",c_name(),l);
+            }
+
+            if(l < 0) {
+                // if peek (it's a read without moving out data from OS buffer) returns -1
+                // simulate EAGAIN behaviour
+                next_read_limit(-1);
+                _deb("AppHostCX::pre_read[%s]: peek() returned %d", c_name(), l);
+
+            } else if(l > 0) {
+                peek_read_counter += l;
+                flow().append('r',b);
+
+                _deb("AppHostCX::pre_read[%s]: Appended to flow %d bytes (allocated buffer size %d): %s",c_name(),b.size(),b.capacity(),hex_dump(b.data(),b.size()).c_str());
+                next_read_limit(l);
+
+                updated = true;
+
+                if(com()->l4_proto() == SOCK_DGRAM) {
+                    // don't limit reads, packets are dropped in case of tension, so flow could be incorrect a bit (it will be fixed on read).
+                    this->next_read_limit(0);
+                }
+                // TCP
+                if(l >= (int)b.capacity()) {
+                    _dia("AppHostCX::pre_read[%s]: pre_read at max. buffer capacity %d",c_name(),b.capacity());
+                }
+            }
+        }
+
+
+        if(updated) {
+            _dia("AppHostCX::pre_read[%s]: side %c, flow path: %s",c_name(), 'r', flow().hr().c_str());
 
             if (detect(starttls_sensor(),'r')) {
                 upgrade_starttls = true;
@@ -254,7 +274,7 @@ void AppHostCX::pre_read() {
             inspect('r');
         }
     }
-    DUM_("AppHostCX::pre_read[%s]: === end",c_name());
+    _dum("AppHostCX::pre_read[%s]: === end",c_name());
 }
 
 void AppHostCX::pre_write() {
@@ -262,7 +282,7 @@ void AppHostCX::pre_write() {
     if ( mode() == MODE_PRE ) {
         buffer* b = this->writebuf();
         
-        if(this->meter_write_bytes <= DETECT_MAX_BYTES && b->size() > 0) {
+        if(this->meter_write_bytes <= max_detect_bytes() && b->size() > 0) {
             
             int  f_s = flow().flow().size();
             int  f_last_data_size = 0;
@@ -272,29 +292,33 @@ void AppHostCX::pre_write() {
                 f_last_data_size = flow().flow().back().second->size();
             }
             
-            DIA_("AppHostCX::pre_write[%s]: peek_counter %d, written already %d, write buffer size %d, whole flow size %d, flow data side '%c' size %d",c_name(),peek_write_counter,meter_write_bytes,b->size(), f_s,f_last_data_side,f_last_data_size);
+            _dia("AppHostCX::pre_write[%s]: peek_counter %d, written already %d, "
+                 "                          write buffer size %d, whole flow size %d, flow data side '%c' size %d",
+                                            c_name(), peek_write_counter,
+                                            meter_write_bytes,b->size(), f_s,f_last_data_side,f_last_data_size);
 
             // how many data I am missing?
-            int delta  = (meter_write_bytes + b->size()) - peek_write_counter;
+            buffer::size_type delta  = (meter_write_bytes + b->size()) - peek_write_counter;
             
             if(delta > 0) {
                 buffer delta_b = b->view(b->size()-delta,b->size());
                 
-                DIA_("AppHostCX::pre_write[%s]: flow append new %d bytes",c_name(),delta_b.size());
-                this->flow().append('w',delta_b);
+                _dia("AppHostCX::pre_write[%s]: flow append new %d bytes",c_name(),delta_b.size());
+                flow().append('w',delta_b);
                 peek_write_counter += delta_b.size();
-                
-                buffer* b = flow().flow().back().second;
-                DUM_("AppHostCX::pre_write:[%s]: Last flow entry is now: \n%s",c_name(),hex_dump((unsigned char*)b->data(),b->size()).c_str());
-                DIA_("AppHostCX::pre_write:[%s]: ...",c_name());
-                DIA_("AppHostCX::pre_write:[%s]: peek_counter is now %d",c_name(),peek_write_counter);
+
+                buffer* last_flow = flow().flow().back().second;
+                _dum("AppHostCX::pre_write:[%s]: Last flow entry is now: \n%s", c_name(),
+                                                 hex_dump((unsigned char*)last_flow->data(),last_flow->size()).c_str());
+                _dia("AppHostCX::pre_write:[%s]: ...",c_name());
+                _dia("AppHostCX::pre_write:[%s]: peek_counter is now %d",c_name(),peek_write_counter);
             } else {
-                DIA_("AppHostCX::pre_write:[%s]: data are already copied in the flow",c_name());
+                _dia("AppHostCX::pre_write:[%s]: data are already copied in the flow",c_name());
             }
             
-            DEB_("AppHostCX::pre_write[%s]: write buffer size %d",c_name(),b->size());
+            _deb("AppHostCX::pre_write[%s]: write buffer size %d",c_name(),b->size());
 
-            DIA_("AppHostCX::pre_write[%s]: side %c, flow path: %s",c_name(), 'w', flow().hr().c_str());
+            _dia("AppHostCX::pre_write[%s]: side %c, flow path: %s",c_name(), 'w', flow().hr().c_str());
 
             if(detect(starttls_sensor(),'w')) {
                 upgrade_starttls = true;

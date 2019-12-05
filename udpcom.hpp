@@ -33,7 +33,7 @@
 #include <unistd.h>
 
 #include <buffer.hpp>
-#include <logger.hpp>
+#include <log/logger.hpp>
 #include <basecom.hpp>
 #include <baseproxy.hpp>
 
@@ -91,19 +91,24 @@ public:
     static std::map<uint64_t,Datagram> datagrams_received;
   
     // set with all virtal sockets which have data to read
-    static std::set<int> in_virt_set;    
+    static epoll::set_type in_virt_set;
 };
 
 class UDPCom : public virtual baseCom, public DatagramCom {
 public:
-    UDPCom(): baseCom() { l4_proto(SOCK_DGRAM); bind_sock_family = default_sock_family; };
+    UDPCom(): baseCom() {
+        l4_proto(SOCK_DGRAM);
+        bind_sock_family = default_sock_family;
+
+        log.sub_area("com.udp");
+    };
     
     static std::string udpcom_name_;
     
     virtual void init(baseHostCX* owner);
     virtual baseCom* replicate() { return new UDPCom(); };
     
-    virtual int connect(const char* host, const char* port, bool blocking = false);
+    int connect(const char* host, const char* port) override;
     virtual int bind(unsigned short port);
     virtual int bind(const char* path) { return -1; };  
     virtual int accept ( int sockfd, sockaddr* addr, socklen_t* addrlen_ );
@@ -137,8 +142,8 @@ protected:
     unsigned int bind_sock_type = SOCK_DGRAM;
     unsigned int bind_sock_protocol = IPPROTO_UDP;
     
-    sockaddr_storage udpcom_addr;
-    socklen_t udpcom_addrlen;
+    sockaddr_storage udpcom_addr {0};
+    socklen_t udpcom_addrlen {0};
     
     // Connection socket pool
     //
@@ -157,10 +162,10 @@ public:
     static unsigned int default_sock_family;
 
     DECLARE_C_NAME("UDPCom");
-    DECLARE_DEF_TO_STRING
     DECLARE_LOGGING(to_string);
-    
-    virtual const std::string shortname() const { return std::string("udp"); }
+
+    std::string to_string(int verbosity=iINF) const override { return class_name(); }
+    const std::string shortname() const override { static  std::string s("udp"); return s; }
 };
 
 #endif

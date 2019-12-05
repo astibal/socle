@@ -17,9 +17,10 @@
 */
 
 #include "hostcx.hpp"
-#include "logger.hpp"
+#include "log/logger.hpp"
 #include "display.hpp"
 #include "crc32.hpp"
+#include "iproxy.hpp"
 
 bool baseHostCX::socket_in_name = false;
 bool baseHostCX::online_name = false;
@@ -39,7 +40,7 @@ namespace std
 bool operator==(const Host& h, const Host& hh) {
     std::string s = h.chost() + ":" + h.cport();
     std::string ss = hh.chost() + ":" + hh.cport();
-    
+
     return s == ss;
 }
 
@@ -48,7 +49,7 @@ baseHostCX::baseHostCX(baseCom* c, const char* h, const char* p): Host(h, p) {
 
     permanent_ = false;
     last_reconnect_ = 0;
-    reconnect_delay_ = 30;
+    reconnect_delay_ = 7;
     fds_ = 0;
     error_ = false;
 
@@ -68,15 +69,22 @@ baseHostCX::baseHostCX(baseCom* c, const char* h, const char* p): Host(h, p) {
     meter_read_bytes = 0;
     meter_write_bytes = 0;
 
+    //whenever we initialize object with socket, we will be already opening!
+    opening(true);
+
+    if(!c) {
+        throw socle::com_is_null();
+    }
+
     com_ = c;
     com()->init(this);
 }
 
-baseHostCX::baseHostCX(baseCom* c, unsigned int s) {
+baseHostCX::baseHostCX(baseCom* c, int s) {
 
     permanent_ = false;
     last_reconnect_ = 0;
-    reconnect_delay_ = 30;
+    reconnect_delay_ = 7;
     fds_ = s;
     error_ = false;
 
@@ -99,6 +107,10 @@ baseHostCX::baseHostCX(baseCom* c, unsigned int s) {
     //whenever we initialize object with socket, we will be already opening!
     opening(true);
 
+    if(!c) {
+        throw socle::com_is_null();
+    }
+
     com_ = c;
     com()->init(this);
 }
@@ -119,20 +131,24 @@ baseHostCX::~baseHostCX() {
 }
 
 
-int baseHostCX::connect(bool blocking) {
+int baseHostCX::connect() {
+
+    if(! com()) {
+        return -1;
+    }
 
     opening(true);
 
-    DEB_("HostCX::connect[%s]: blocking=%d",c_name(),blocking);
-    fds_ = com()->connect(host_.c_str(),port_.c_str(),blocking);
+    _deb("HostCX::connect[%s]: blocking=%d",c_name(), com()->GLOBAL_IO_BLOCKING());
+    fds_ = com()->connect(host_.c_str(),port_.c_str());
     error_ = false;
 
-    if (fds_ > 0 && blocking) {
-        DEB_("HostCX::connect[%s]: blocking, connected successfully, socket %d",c_name(),fds_);
+    if (fds_ > 0 && com()->GLOBAL_IO_BLOCKING()) {
+        _deb("HostCX::connect[%s]: blocking, connected successfully, socket %d",c_name(),fds_);
         opening(false);
     }
-    else if (blocking) {
-        DEB_("HostCX::connect[%s]: blocking, failed!",c_name());
+    else if (com()->GLOBAL_IO_BLOCKING()) {
+        _deb("HostCX::connect[%s]: blocking, failed!",c_name());
         opening(false);
     }
 
@@ -143,12 +159,12 @@ int baseHostCX::connect(bool blocking) {
 bool baseHostCX::opening_timeout() {
 
     if (!opening()) {
-        DUMS_("already opened")
+        _dum("baseHostCX::opening_timeout: already opened");
         return false;
     } else {
-        time_t now = time(NULL);
+        time_t now = time(nullptr);
         if (now - t_connected > reconnect_delay()) {
-            DIAS_("opening timeout");
+            _dia("opening_timeout: timeout!");
             return true;
         }
     }
@@ -158,9 +174,9 @@ bool baseHostCX::opening_timeout() {
 
 
 bool baseHostCX::idle_timeout() {
-    time_t now = time(NULL);
+    time_t now = time(nullptr);
     if (now - w_activity > idle_delay() && now - w_activity) {
-        DIAS_("idle timeout");
+        _dia("baseHostCX::idle_timeout: timeout");
         return true;
     }
 
@@ -172,13 +188,13 @@ bool baseHostCX::read_waiting_for_peercom () {
 
     if(read_waiting_for_peercom_ && peercom()) {
         if(peercom()->com_status()) {
-            DIAS_("Peer's Com status is OK, unpausing");
+            _dia("baseHostCX::read_waiting_for_peercom: peer's com status is OK, un-pausing");
             read_waiting_for_peercom(false);
         }
     }
     else if(read_waiting_for_peercom_) {
         // peer() == NULL !
-        DUMS_("baseHostCX::paused: waiting_for_peercom, but no peer set => no peer to wait for => manual mode");
+        _dum("baseHostCX::read_waiting_for_peercom: no peer set => no peer to wait for => manual mode");
     }
 
     return read_waiting_for_peercom_;
@@ -188,13 +204,13 @@ bool baseHostCX::write_waiting_for_peercom () {
 
     if(write_waiting_for_peercom_ && peercom()) {
         if(peercom()->com_status()) {
-            DIA_("baseHostCX::write_waiting_for_peercom[%s]: peer's com status ok, unpausing write",c_name());
+            _dia("baseHostCX::write_waiting_for_peercom[%s]: peer's com status ok, un-pausing write", c_name());
             write_waiting_for_peercom(false);
         }
     }
     else if(write_waiting_for_peercom_) {
         // peer() == NULL !
-        DUMS_("baseHostCX::paused: waiting_for_peercom, but no peer set => no peer to wait for => manual mode");
+        _dum("baseHostCX::write_waiting_for_peercom: no peer set => no peer to wait for => manual mode");
     }
 
     return write_waiting_for_peercom_;
@@ -204,46 +220,56 @@ bool baseHostCX::write_waiting_for_peercom () {
 
 bool baseHostCX::is_connected() {
     bool status = com()->is_connected(socket());
-    DIA_("com()->is_connected[%s]: getsockopt(%d,SOL_SOCKET,SO_ERROR,..,..) reply %d",c_name(),socket(),status);
+    _dia("baseHostCX::is_connected[%s]: getsockopt(%d,SOL_SOCKET,SO_ERROR,..,..) reply %d", c_name(), socket(), status);
 
     return status;
 }
 
 void baseHostCX::shutdown() {
 
+    parent_proxy(nullptr, '-');
+
     if(fds_ != 0) {
         com()->shutdown(fds_);
-        DEB_("HostCX::shutdown[%s]: socket shutdown",c_name());
+        _deb("baseHostCX::shutdown[%s]: socket shutdown",c_name());
         closing_fds_ = fds_;
         fds_ = 0;
-        
+
         if(com()) {
             com()->master()->unset_monitor(com()->translate_socket(closing_fds_));
         }
     } else {
-        DEB_("HostCX::shutdown[%s]: no-op, cannot be shutdown",c_name());
+        _deb("baseHostCX::shutdown[%s]: no-op, cannot be shutdown",c_name());
     }
 }
 
-std::string& baseHostCX::name(bool force) {
+std::string& baseHostCX::name(bool force) const {
 
-    if(name__.size() == 0 || online_name || force) {
+    if(name__.empty() || online_name || force) {
+
+        std::scoped_lock<std::mutex> l(name_mutex_);
+
         if (reduced()) {
             std::string com_name = "?";
             if(com() != nullptr) {
                 com_name = com()->name();
             }
 
+            std::string res_host;
+            std::string res_port;
+
             if (valid()) {
 
                 if(com() != nullptr) {
-                    com()->resolve_socket_src(fds_, &host_,&port_);
+                    com()->resolve_socket_src(fds_, &res_host, &res_port);
+                    host(res_host);
+                    port(res_port);
                 }
 
                 if(socket_in_name) {
-                    name__ = string_format("%d::%s_%s:%s",socket(), com()->shortname().c_str() , host().c_str(),port().c_str());
+                    name__ = string_format("%d::%s_%s:%s",socket(), com()->shortname().c_str() , chost().c_str(),cport().c_str());
                 } else {
-                    name__ = string_format("%s_%s:%s",com()->shortname().c_str() , host().c_str(),port().c_str());
+                    name__ = string_format("%s_%s:%s",com()->shortname().c_str() , chost().c_str(),cport().c_str());
                 }
 
                 //name__ = string_format("%d:<reduced>",socket());
@@ -255,9 +281,9 @@ std::string& baseHostCX::name(bool force) {
         } else {
 
             if(socket_in_name) {
-                name__ = string_format("%d::%s_%s:%s",socket(), com()->shortname().c_str() ,host().c_str(),port().c_str());
+                name__ = string_format("%d::%s_%s:%s",socket(), com()->shortname().c_str() ,chost().c_str(),cport().c_str());
             } else {
-                name__ = string_format("%s_%s:%s",com()->shortname().c_str() ,host().c_str(),port().c_str());
+                name__ = string_format("%s_%s:%s",com()->shortname().c_str() ,chost().c_str(),cport().c_str());
             }
         }
     }
@@ -266,7 +292,7 @@ std::string& baseHostCX::name(bool force) {
 }
 
 
-const char* baseHostCX::c_name() {
+const char* baseHostCX::c_name() const {
     name();
     return name__.c_str();
 }
@@ -277,18 +303,18 @@ bool baseHostCX::reconnect(int delay) {
         shutdown();
         connect();
 
-        DEB_("HostCX::reconnect[%s]: reconnect attempt (previous at %u)",c_name(),last_reconnect_);
-        last_reconnect_ = time(NULL);
+        _deb("baseHostCX::reconnect[%s]: reconnect attempt (previous at %u)",c_name(),last_reconnect_);
+        last_reconnect_ = time(nullptr);
 
         return true;
     }
     else if (!permanent()) {
-        NOT_("Attempted to reconnect non-permanent CX: %s",c_name());
+        _not("baseHostCX::reconnect: attempt to reconnect non-permanent CX: %s",c_name());
         return false;
     }
     else if (reduced() ) {
-        ERR_("HostCX::reconnect[%s]: reconnecting reduced CX is not possible",c_name());
-        last_reconnect_ = time(NULL);
+        _err("baseHostCX::reconnect[%s]: reconnecting reduced CX is not possible",c_name());
+        last_reconnect_ = time(nullptr);
         return false;
     }
 
@@ -299,23 +325,29 @@ bool baseHostCX::reconnect(int delay) {
 int baseHostCX::read() {
 
     if(read_waiting_for_peercom()) {
-        DUM_("HostCX::read[%s]: read operation is waiting_for_peercom, returning -1",c_name());
+        _dum("baseHostCX::read[%s]: read operation is waiting_for_peercom, returning -1",c_name());
         return -1;
     }
-    
+
     if(peer() && peer()->writebuf()->size() > 200000) {
-        DEB_("baseHostCX::read[%d]: deferring read operation",socket());
+        _deb("baseHostCX::read[%d]: deferring read operation",socket());
         com()->rescan_read(socket());
         return -1;
     }
-    
-    buffer_guard bg(readbuf());
-    
 
-    DUM_("HostCX::read[%s]: calling pre_read",c_name());
+    buffer_guard bg(readbuf());
+
+
+    _dum("HostCX::read[%s]: calling pre_read",c_name());
     pre_read();
 
-    DUM_("HostCX::read[%s]: readbuf_ size=%d, capacity=%d, previously processed=%d finished",c_name(),readbuf_.size(),readbuf_.capacity(),processed_bytes_);
+    if(next_read_limit_ < 0) {
+        next_read_limit_ = 0;
+        return -1;
+    }
+
+    _dum("HostCX::read[%s]: readbuf_ size=%d, capacity=%d, previously processed=%d finished",c_name(),
+            readbuf_.size(), readbuf_.capacity(), processed_bytes_);
 
     if (auto_finish()) {
         finish();
@@ -323,7 +355,7 @@ int baseHostCX::read() {
 
     ssize_t l = 0;
 
-    while(1) {
+    while(true) {
 
         // append-like behavior: append to the end of the buffer, don't exceed max. capacity!
         void *cur_read_ptr = &(readbuf_.data()[readbuf_.size()]);
@@ -332,11 +364,12 @@ int baseHostCX::read() {
         ssize_t cur_read_max = readbuf_.capacity()-readbuf_.size();
 
         if (cur_read_max + l > next_read_limit() && next_read_limit() > 0) {
-            DUM_("HostCX::read[%s]: read buffer limiter: %d",c_name(), next_read_limit() - l);
+            _deb("HostCX::read[%s]: read buffer limiter: %d",c_name(), next_read_limit() - l);
             cur_read_max = next_read_limit() - l;
         }
 
-        DUM_("HostCX::read[%s]: readbuf_ base=%x, wr at=%x, maximum to write=%d",c_name(),readbuf_.data(),cur_read_ptr,cur_read_max);
+        _ext("HostCX::read[%s]: readbuf_ base=%x, wr at=%x, maximum to write=%d", c_name(),
+                readbuf_.data(), cur_read_ptr,cur_read_max);
 
 
         //read on last position in buffer
@@ -352,7 +385,7 @@ int baseHostCX::read() {
             break;
         }
         else if(cur_l == 0) {
-            DIA_("HostCX::read[%s]: error while reading. %d bytes read.",c_name(),l);
+            _dia("baseHostCX::read[%s]: error while reading. %d bytes read.", c_name(), l);
             error(true);
 
             break;
@@ -366,7 +399,7 @@ int baseHostCX::read() {
         l += cur_l;
 
         if(next_read_limit_ > 0 &&  l >= next_read_limit_) {
-            DIA_("HostCX::read[%s]: read limiter hit on %d bytes.",c_name(),l);
+            _dia("baseHostCX::read[%s]: read limiter hit on %d bytes.", c_name(), l);
             break;
         }
 
@@ -377,26 +410,24 @@ int baseHostCX::read() {
         // if buffer is full, let's reallocate it and try read again (to save system resources)
 
         // testing break
-        break;
+        // break;
 
         if(readbuf_.size() >= readbuf_.capacity()) {
-            DIA_("HostCX::read[%s]: read buffer reached it's current capacity %d/%d bytes",c_name(),readbuf_.size(),readbuf_.capacity());
-            if(readbuf_.capacity() + HOSTCX_BUFFSIZE <= HOSTCX_BUFFMAXSIZE) {
+            _dia("baseHostCX::read[%s]: read buffer reached it's current capacity %d/%d bytes", c_name(),
+                    readbuf_.size(), readbuf_.capacity());
 
-                if (readbuf_.capacity(readbuf_.capacity() + HOSTCX_BUFFSIZE)) {
-                    DIA_("HostCX::read[%s]: read buffer resized capacity %d/%d bytes",c_name(),readbuf_.size(),readbuf_.capacity());
-                    continue;
+            if(readbuf_.capacity() * 2  <= HOSTCX_BUFFMAXSIZE) {
+
+                if (readbuf_.capacity(readbuf_.capacity() * 2)) {
+                    _dia("baseHostCX::read[%s]: read buffer resized capacity %d/%d bytes", c_name(),
+                            readbuf_.size(), readbuf_.capacity());
 
                 } else {
-                    NOT_("HostCX::read[%s]: memory tension: read buffer cannot be resized!",c_name());
-                    // we left potentially some bytes in system buffer
-                    com()->forced_read(true);
+                    _not("baseHostCX::read[%s]: memory tension: read buffer cannot be resized!", c_name());
                 }
             }
             else {
-                DIA_("HostCX::read[%s]: buffer already reached it's maximum capacity.",c_name());
-                // we left potentially some bytes in system buffer
-                com()->forced_read(true);
+                _dia("baseHostCX::read[%s]: buffer already reached it's maximum capacity.", c_name());
             }
         }
 
@@ -404,10 +435,6 @@ int baseHostCX::read() {
         break;
 
     }
-
-    //int l = com()->read(socket(), ptr, max_len, 0);
-    //int l = recv(socket(), ptr, max_len, MSG_PEEK);
-
 
     if (l > 0) {
 
@@ -417,28 +444,30 @@ int baseHostCX::read() {
 
         // claim opening socket already opened
         if (opening()) {
-            DIA_("HostCX::read[%s]: connection established",c_name());
+            _dia("baseHostCX::read[%s]: connection established", c_name());
             opening(false);
         }
 
 
 
-        // DEB_("HostCX::read[%s]: readbuf_ read %d bytes",c_name(),l);
+        _ext("baseHostCX::read[%s]: readbuf_ read %d bytes", c_name(), l);
 
         processed_bytes_ = process_();
-        DEB_("HostCX::read[%s]: readbuf_ read %d bytes, process()-ed %d bytes, incomplete readbuf_ %d bytes",c_name(),l, processed_bytes_,l-processed_bytes_);
+        _deb("baseHostCX::read[%s]: readbuf_ read %d bytes, process()-ed %d bytes, incomplete readbuf_ %d bytes",
+                c_name(), l, processed_bytes_, l - processed_bytes_);
 
 
         // data are already processed
-        DEB_("HostCX::read[%s]: calling post_read",c_name());
+        _deb("baseHostCX::read[%s]: calling post_read",c_name());
         post_read();
 
         if(com()->debug_log_data_crc) {
-            DEB_("HostCX::read[%s]: after: buffer crc = %X",c_name(), socle_crc32(0,readbuf()->data(),readbuf()->size()));
+            _deb("baseHostCX::read[%s]: after: buffer crc = %X", c_name(),
+                     socle_crc32(0, readbuf()->data(), readbuf()->size()));
         }
 
     } else if (l == 0) {
-        DIA_("HostCX::read[%s]: error while reading",c_name());
+        _dia("baseHostCX::read[%s]: error while reading", c_name());
         error(true);
     } else {
         processed_bytes_ = 0;
@@ -459,10 +488,10 @@ void baseHostCX::post_read() {
 int baseHostCX::write() {
 
     if(write_waiting_for_peercom()) {
-        DEB_("HostCX::write[%s]: write operation is waiting_for_peercom, returning 0",c_name());
+        _deb("baseHostCX::write[%s]: write operation is waiting_for_peercom, returning 0", c_name());
         return 0;
     }
-    
+
     buffer_guard bg(writebuf());
 
 
@@ -472,18 +501,18 @@ int baseHostCX::write() {
     int tx_size = writebuf_.size();
 
     if (tx_size != tx_size_orig) {
-        DEB_("HostCX::write[%s]: calling pre_write modified data, size %d -> %d",c_name(),tx_size_orig,tx_size);
+        _deb("baseHostCX::write[%s]: calling pre_write modified data, size %d -> %d",c_name(),tx_size_orig,tx_size);
     }
 
     if (tx_size <= 0) {
-        DUM_("HostCX::write[%s]: writebuf_ %d bytes pending",c_name(),tx_size);
+        _deb("baseHostCX::write[%s]: writebuf_ %d bytes pending %s", c_name(), tx_size, opening() ? "(opening)" : "");
         // return 0; // changed @ 20.9.2014 by astib.
         // Let com() decide what to do if we want to send 0 (or less :) bytes
         // keep it here for studying purposes.
         // For example, if we stop here, no SSL_connect won't happen!
     }
     else {
-        DEB_("HostCX::write[%s]: writebuf_ %d bytes pending",c_name(),tx_size);
+        _deb("baseHostCX::write[%s]: writebuf_ %d bytes pending",c_name(),tx_size);
     }
 
     ssize_t l = com()->write(socket(), writebuf_.data(), tx_size, MSG_NOSIGNAL);
@@ -494,31 +523,32 @@ int baseHostCX::write() {
         time(&w_activity);
 
         if (opening()) {
-            DEB_("HostCX::write[%s]: connection established",c_name());
+            _deb("baseHostCX::write[%s]: connection established", c_name());
             opening(false);
         }
-        DEB_("HostCX::write[%s]: %d from %d bytes sent from tx buffer at %x",c_name(),l,tx_size,writebuf_.data());
+        _deb("baseHostCX::write[%s]: %d from %d bytes sent from tx buffer at %x", c_name(), l, tx_size, writebuf_.data());
         if (l < tx_size) {
             // rather log this: not a big deal, but we couldn't have sent all data!
-            DIA_("HostCX::write[%s]: only %d from %d bytes sent from tx buffer!",c_name(),l,tx_size);
+            _dia("baseHostCX::write[%s]: only %d from %d bytes sent from tx buffer!", c_name(), l, tx_size);
         }
 
-        DUM_("HostCX::write[%s]: calling post_write",c_name());
+        _dum("baseHostCX::write[%s]: calling post_write", c_name());
         post_write();
 
         if(l < static_cast<ssize_t>(writebuf_.size())) {
-            DIA_("HostCX::write[%s]: %d bytes written out of %d -> setting socket write monitor",c_name(),l,writebuf_.size());
+            _dia("baseHostCX::write[%s]: %d bytes written out of %d -> setting socket write monitor",
+                    c_name(), l, writebuf_.size());
             // we need to check once more when socket is fully writable
-            
+
             com()->set_write_monitor(socket());
             //com()->rescan_write(socket());
             rescan_out_flag_ = true;
-            
+
         } else {
             // write buffer is empty
             if(rescan_out_flag_) {
                 rescan_out_flag_ = false;
-                
+
                 // stop monitoring write which results in loop an unnecesary write() calls
                 com()->change_monitor(socket(), EPOLLIN);
             }
@@ -526,23 +556,27 @@ int baseHostCX::write() {
 
         writebuf_.flush(l);
 
-        if(com()->debug_log_data_crc) DEB_("HostCX::write[%s]: after: buffer crc = %X",c_name(), socle_crc32(0,writebuf()->data(),writebuf()->size()));
+        if(com()->debug_log_data_crc) {
+            _deb("baseHostCX::write[%s]: after: buffer crc = %X", c_name(),
+                    socle_crc32(0, writebuf()->data(), writebuf()->size()));
+        }
 
         if(close_after_write() && writebuf()->size() == 0) {
             shutdown();
         }
     }
     else if(l == 0 && writebuf()->size() > 0) {
-        // write unsuccessful, we have to try immediatelly socket is writable!
-        DIA_("HostCX::write[%s]: %d bytes written out of %d -> setting socket write monitor",c_name(),l,writebuf_.size());
+        // write unsuccessful, we have to try immediately socket is writable!
+        _dia("baseHostCX::write[%s]: %d bytes written out of %d -> setting socket write monitor",
+                c_name(), l, writebuf_.size());
         //com()->set_write_monitor(socket());
 
-        // write was not successfull, wait a while
+        // write was not successful, wait a while
         com()->rescan_write(socket());
         rescan_out_flag_ = true;
     }
     else if(l < 0) {
-        DIA_("write failed: %s. Unrecoverable.", string_error().c_str());
+        _dia("baseHostCX::write[%s] write failed: %s, unrecoverable.", c_name(), string_error().c_str());
     }
 
     return l;
@@ -563,15 +597,15 @@ int baseHostCX::process() {
 
 ssize_t baseHostCX::finish() {
     if( readbuf()->size() >= (unsigned int)processed_bytes_ && processed_bytes_ > 0) {
-        DEB_("HostCX::finish[%s]: flushing %d bytes in readbuf_ size %d",c_name(),processed_bytes_,readbuf()->size());
+        _deb("baseHostCX::finish[%s]: flushing %d bytes in readbuf_ size %d", c_name(), processed_bytes_, readbuf()->size());
         readbuf()->flush(processed_bytes_);
         return processed_bytes_;
-    } else if (readbuf()->size() == 0) {
-        DUM_("HostCX::finish[%s]: already flushed",c_name());
+    } else if (readbuf()->empty()) {
+        _dum("baseHostCX::finish[%s]: already flushed",c_name());
         return 0;
     } else {
-        WAR_("HostCX::finish[%s]: attempt to flush more data than in buffer",c_name());
-        WAR_("HostCX::finish[%s]: best-effort recovery: flushing all",c_name());
+        _war("baseHostCX::finish[%s]: attempt to flush more data than in buffer", c_name());
+        _war("baseHostCX::finish[%s]: best-effort recovery: flushing all", c_name());
         auto s = readbuf()->size();
         readbuf()->flush(s);
         return s;
@@ -579,22 +613,28 @@ ssize_t baseHostCX::finish() {
 }
 
 buffer baseHostCX::to_read() {
-    DEB_("HostCX::to_read[%s]: returning buffer::view for %d bytes",c_name(),processed_bytes_);
+    _deb("baseHostCX::to_read[%s]: returning buffer::view for %d bytes", c_name(), processed_bytes_);
     return readbuf()->view(0,processed_bytes_);
 }
 
 void baseHostCX::to_write(buffer b) {
-    DEB_("HostCX::to_write[%s]: appending to write %d bytes, from buffer struct",c_name(),b.size());
     writebuf_.append(b);
     com()->set_write_monitor(socket());
-    DEB_("HostCX::to_write[%s]: write buffer size %d bytes",c_name(),writebuf_.size());
+    _deb("baseHostCX::to_write(buf)[%s]: appending %d bytes, buffer size now %d bytes", c_name(), b.size(), writebuf_.size());
+}
+
+void baseHostCX::to_write(const std::string& s) {
+
+    writebuf_.append((unsigned char*)s.data(), s.size());
+    com()->set_write_monitor(socket());
+    _deb("baseHostCX::to_write(ptr)[%s]: appending %d bytes, buffer size now %d bytes", c_name(), s.size(), writebuf_.size());
+
 }
 
 void baseHostCX::to_write(unsigned char* c, unsigned int l) {
-    DEB_("HostCX::to_write[%s]: appending to write %d bytes from pointer",c_name(),l);
     writebuf_.append(c,l);
     com()->set_write_monitor(socket());
-    DEB_("HostCX::to_write[%s]: write buffer size %d bytes",c_name(),writebuf_.size());
+    _deb("baseHostCX::to_write(ptr)[%s]: appending %d bytes, buffer size now %d bytes", c_name(), l, writebuf_.size());
 }
 
 void baseHostCX::on_accept_socket(int fd) {
@@ -609,52 +649,60 @@ void baseHostCX::on_delay_socket(int fd) {
     com()->delay_socket(fd);
 }
 
-std::string baseHostCX::to_string(int verbosity) {
-    std::string r;
-    r+= this->name() + ( verbosity > INF ? string_format(" | fd=%d | rx_cnt=%d rx_b=%d / tx_cnt=%d tx_b=%d", com() ? com()->translate_socket(socket()) : socket(), meter_read_count,meter_read_bytes,
-                         meter_write_count,meter_write_bytes) : "");
-    return r;
+std::string baseHostCX::to_string(int verbosity) const {
+
+    std::stringstream r_str;
+
+    r_str << name();
+
+    if(verbosity > INF) {
+        r_str << string_format(" | fd=%d | rx_cnt=%d rx_b=%d / tx_cnt=%d tx_b=%d",
+                               com() ? com()->translate_socket(socket()) : socket(),
+                               meter_read_count, meter_read_bytes,
+                               meter_write_count, meter_write_bytes);
+    }
+    return r_str.str();
 }
 
 std::string baseHostCX::full_name(unsigned char side) {
-    const char* t = host().c_str();
-    const char* t_p = port().c_str();
-    int t_s = socket();
-    std::string  t_ss;
-    if(socket_in_name) t_ss  = string_format("::%d:",t_s);
-    std::string t_c = "";
-    if (com() != nullptr)  t_c = com()->shortname();
+    std::string self = host();
+    std::string self_p = port();
+    int self_s = socket();
 
-    const char* p = "?";
-    const char*  p_p = "?";
-    int          p_s = 0;
-    const char*  p_c = "?";
-    std::string  p_ss;
+    std::string  self_ss;
+    if(socket_in_name) self_ss  = string_format("::%d:", self_s);
 
-    if (peer() != nullptr) {
-        p =  peer()->host().c_str();
-        p_p =  peer()->port().c_str();
-        p_s = peer()->socket();
-        if(socket_in_name) p_ss  = string_format("::%d:",p_s);
+    std::string self_c;
+    if (com())  self_c = com()->shortname();
 
-        if (peer()->com() != nullptr) {
-            if(peer()->com() != nullptr) {
-                p_c = peer()->com()->shortname().c_str();
-            }
+    std::string  peeer = "?";
+    std::string  peeer_p = "?";
+    int          peeer_s = 0;
+    std::string  peeer_c = "?";
+    std::string  peeer_ss;
+
+    if (peer()) {
+        peeer =  peer()->host();
+        peeer_p =  peer()->port();
+        peeer_s = peer()->socket();
+        if(socket_in_name) peeer_ss  = string_format("::%d:", peeer_s);
+
+        if (peer()->com()) {
+            peeer_c = peer()->com()->shortname();
         }
-//         p =  "peerip";
-//         p_p =  "pport";
 
     } else {
-        return string_format("%s_%s%s:%s",t_c.c_str(),t_ss.c_str(),t,t_p);
+        return string_format("%s_%s%s:%s", self_c.c_str(), self_ss.c_str(), self.c_str(), self_p.c_str());
     }
 
     if ( (side == 'l') || ( side == 'L') ) {
-        return string_format("%s_%s%s:%s to %s_%s%s:%s",t_c.c_str(),t_ss.c_str(),t,t_p,p_c,p_ss.c_str(),p,p_p);
+        return string_format("%s_%s%s:%s to %s_%s%s:%s", self_c.c_str(), self_ss.c_str(), self.c_str(), self_p.c_str(),
+                             peeer_c.c_str(), peeer_ss.c_str(), peeer.c_str(), peeer_p.c_str());
     }
 
     //else
-    return string_format("%s_%s%s:%s to %s_%s%s:%s",p_c,p_ss.c_str(),p,p_p,t_c.c_str(),t_ss.c_str(),t,t_p);
+    return string_format("%s_%s%s:%s to %s_%s%s:%s", peeer_c.c_str(), peeer_ss.c_str(), peeer.c_str(), peeer_p.c_str(),
+                                                        self_c.c_str(), self_ss.c_str(), self, self_p.c_str());
 
 }
 

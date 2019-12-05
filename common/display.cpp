@@ -31,14 +31,17 @@
 #include "display.hpp"
 #include "buffer.hpp"
 
-#include "stdarg.h"
-#include "stdio.h"
-#include "errno.h"
+#include <cstdarg>
+#include <cstdio>
+#include <cerrno>
 
+class buffer;
 
 std::recursive_mutex formatter_lock;
 
-std::string string_format(const std::string& fmt, ...) {
+
+// don't use this function. Its behavior with writing to c_str() is undefined
+std::string string_format_old(const char* fmt, ...) {
     
     // there could be more precious implemenatation of this in the future
     std::lock_guard<std::recursive_mutex> l(formatter_lock);
@@ -49,7 +52,11 @@ std::string string_format(const std::string& fmt, ...) {
     while (1) {
         str.resize(size);
         va_start(ap, fmt);
-        int n = vsnprintf((char *)str.c_str(), size, fmt.c_str(), ap);
+
+        //  writing to c_str() produced data is undefined behaviour
+        //  https://en.cppreference.com/w/cpp/string/basic_string/c_str
+
+        int n = vsnprintf((char *)str.c_str(), size, fmt, ap);
         va_end(ap);
         if (n > -1 && n < size) {
             str.resize(n);
@@ -96,14 +103,14 @@ std::string hex_dump(unsigned char *data, int size,unsigned int ltrim, unsigned 
     char hexstr[ 16*3 + 5] = {0};
     char charstr[16*1 + 5] = {0};
 	
-	std::string ret = std::string();
+	std::stringstream ret;
 
 	int tr = 0;
 	if (ltrim > 0) {
 		tr = ltrim + 4;
 	}
 
-	std::string pref = std::string();
+	std::string pref;
 	
 	if (prefix != 0) {
 		if (tr > 1) tr--;
@@ -141,7 +148,7 @@ std::string hex_dump(unsigned char *data, int size,unsigned int ltrim, unsigned 
 
         if(n%16 == 0) { 
             /* line completed */
-            ret += pref + string_format("[%4.4s]   %-50.50s  %s\n", addrstr, hexstr, charstr);
+            ret << pref << string_format("[%4.4s]   %-50.50s  %s\n", addrstr, hexstr, charstr);
             hexstr[0] = 0;
             charstr[0] = 0;
         } else if(n%8 == 0) {
@@ -154,10 +161,10 @@ std::string hex_dump(unsigned char *data, int size,unsigned int ltrim, unsigned 
 
     if (strlen(hexstr) > 0) {
         /* print rest of buffer if not empty */
-        ret += pref + string_format("[%4.4s]   %-50.50s  %s\n", addrstr, hexstr, charstr);
+        ret << pref << string_format("[%4.4s]   %-50.50s  %s\n", addrstr, hexstr, charstr);
     }
     
-    return ret;
+    return ret.str();
 }
 
 std::string string_error() {
@@ -172,14 +179,18 @@ std::string string_error() {
 
 
 
-std::string bt() {
+std::string bt(bool add_r) {
 
 #ifndef LIBC_MUSL
     // there could be more precious implemenatation of this in the future
     std::lock_guard<std::recursive_mutex> l(formatter_lock);    
-    
+
+    std::string maybe_r;
+    if(add_r)
+        maybe_r = "\r";
+
     std::string s;
-    s += "\n Backtrace:";
+    s += "\n" + maybe_r + "Backtrace:";
 
     void *trace[64];
     size_t size;
@@ -190,13 +201,14 @@ std::string bt() {
     strings = backtrace_symbols( trace, size );
 
     if (strings == nullptr) {
-        s += "\n failure: backtrace_symbols";
+        s += "\n" + maybe_r + " failure: backtrace_symbols";
         exit(EXIT_FAILURE);
     }
 
 
     for( i = 0; i < size; i++ ) {
         s += "\n";
+        s += maybe_r;
         s += strings[i];
     }
     delete[] strings;
@@ -406,7 +418,7 @@ bool version_check(std::string real_string ,std::string v) {
             real_int = std::stoi(real_ver.at(i));
             target_int = std::stoi(target_ver.at(i));
         }
-        catch(std::invalid_argument e) {
+        catch(std::invalid_argument const& e) {
             //printf("error: cannot convert to a number\n");
 
             // so far we succeeded with version checks
@@ -507,9 +519,9 @@ int safe_val(std::string s, int default_val) {
     try {
         ret = std::stoi(s);
     }
-    catch(std::invalid_argument) {}
-    catch(std::out_of_range) {}
-    catch(std::exception) {}
+    catch(std::invalid_argument const&) {}
+    catch(std::out_of_range const& ) {}
+    catch(std::exception const&) {}
 
     return ret;
 }
@@ -543,12 +555,24 @@ std::string string_trim(const std::string& orig) {
     return ret;
 }
 
-std::string&& string_tolower(const std::string& orig) {
-    std::string r;
+std::string string_tolower(const std::string& orig) {
+    std::stringstream r;
 
     for(char c: orig) {
-        r += tolower((int)c);
+        r << tolower((int)c);
     }
 
-    return std::move(r);
+    return r.str();
+}
+
+std::string string_csv(const std::vector<std::string>& str_list_ref, const char delim) {
+    std::stringstream build;
+    for(unsigned int ii = 0 ; ii < str_list_ref.size() ; ii++ ) {
+        build << str_list_ref[ii];
+        if( ii < str_list_ref.size() - 1) {
+            build << delim;
+        }
+    }
+
+    return build.str();
 }

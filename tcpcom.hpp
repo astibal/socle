@@ -21,7 +21,6 @@
 
 #include <string>
 #include <cstring>
-#include <ctime>
 #include <csignal>
 #include <sys/types.h>
 #include <sys/socket.h>
@@ -29,28 +28,32 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <fcntl.h>
-#include <time.h>
 #include <unistd.h>
 
-#include <logger.hpp>
+#include <ctime>
+
+#include <log/logger.hpp>
 #include <basecom.hpp>
 #include <display.hpp>
 
 class TCPCom : public virtual baseCom {
 public:
-    TCPCom(): baseCom() { l4_proto(SOCK_STREAM); };
+    TCPCom(): baseCom() {
+        l4_proto(SOCK_STREAM);
+        log.sub_area("com.tcp");
+    };
     
-    virtual void init(baseHostCX* owner);
-    virtual baseCom* replicate() { return new TCPCom(); };
+    void init(baseHostCX* owner) override;
+    baseCom* replicate() override { return new TCPCom(); };
     
-    virtual int connect(const char* host, const char* port, bool blocking = false);
-    virtual int bind(unsigned short port);  
-    virtual int bind(const char* __path) { return -1; };
-    virtual int accept ( int sockfd, sockaddr* addr, socklen_t* addrlen_ );
+    int connect(const char* host, const char* port) override;
+    int bind(unsigned short port) override;
+    int bind(const char* __path) override { return -1; };
+    int accept (int sockfd, sockaddr* addr, socklen_t* addrlen_) override;
     
-    virtual int read(int __fd, void* __buf, size_t __n, int __flags) { return ::recv(__fd,__buf,__n,__flags); };
-    virtual int peek(int __fd, void* __buf, size_t __n, int __flags) { return read(__fd,__buf,__n, __flags | MSG_PEEK );};
-    virtual int write(int __fd, const void* __buf, size_t __n, int __flags)  { 
+    int read(int __fd, void* __buf, size_t __n, int __flags) override { return ::recv(__fd,__buf,__n,__flags); };
+    int peek(int __fd, void* __buf, size_t __n, int __flags) override { return read(__fd,__buf,__n, __flags | MSG_PEEK );};
+    int write(int __fd, const void* __buf, size_t __n, int __flags) override {
         int r = ::send(__fd,__buf,__n,__flags); 
         if(r < 0) {
             if(errno == EAGAIN || errno == EWOULDBLOCK) {
@@ -59,26 +62,32 @@ public:
         }
         return r;
     };
-    virtual void shutdown(int __fd) { int r = ::shutdown(__fd,SHUT_RDWR); if(r > 0) DIA_("%s::shutdown[%d]: %s",name().c_str(),__fd,string_error().c_str()); };
+    void shutdown(int __fd) override {
+        int r = ::shutdown(__fd,SHUT_RDWR);
+        if(r > 0)
+            _dia("%s::shutdown[%d]: %s",name().c_str(),__fd,string_error().c_str());
+    };
     
-    virtual void cleanup() {};  
+    void cleanup() override {};
     
-    virtual bool is_connected(int s);
-    virtual bool com_status();
+    bool is_connected(int s) override;
+    bool com_status() override;
+
+    void on_new_socket(int __fd) override;
 
 protected:
     int tcpcom_fd = 0;
-    unsigned int connect_sock_family = AF_UNSPEC;
-    unsigned int connect_sock_type = SOCK_STREAM;
+    int connect_sock_family = AF_UNSPEC;
+    int connect_sock_type = SOCK_STREAM;
     unsigned int bind_sock_family = AF_INET6;
     unsigned int bind_sock_type = SOCK_STREAM;
     unsigned int bind_sock_protocol = IPPROTO_TCP;
     
     DECLARE_C_NAME("TCPCom")
-    DECLARE_DEF_TO_STRING
     DECLARE_LOGGING(to_string)
     
-    virtual const std::string shortname() const { return std::string("tcp"); }
+    const std::string shortname() const override { static std::string s("tcp"); return s; }
+    std::string to_string(int verbosity=iINF) const override { return class_name(); };
 };
 
 #endif

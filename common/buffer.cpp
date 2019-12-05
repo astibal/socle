@@ -5,7 +5,6 @@ unsigned long long buffer::alloc_count = 0;
 unsigned long long buffer::free_bytes = 0;
 unsigned long long buffer::free_count = 0;
 
-memPool buffer::pool(5000,1000,10000,1000,800);
 bool    buffer::use_pool = true;
 
 

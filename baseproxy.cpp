@@ -36,28 +36,19 @@
 #include <hostcx.hpp>
 
 #include <display.hpp>
-#include <logger.hpp>
+#include <log/logger.hpp>
 #include "udpcom.hpp"
-
-#define BUFSIZE 9216
-
-extern int errno;
 
 DEFINE_LOGGING(baseProxy);
 
 baseProxy::baseProxy(baseCom* c) :
-dead_(false),
 new_raw_(false),
-parent_(NULL),
-error_on_read(false),
-error_on_write(false),
-meter_last_read(0),
-meter_last_write(0),
+parent_(nullptr),
+sleep_time_(1000),
 handle_last_status(0)
 {
     com_ = c;
-	set_sleeptime(1000);
-	time(&last_tick_);
+    log = logan_attached(this, "proxy");
 };
 
 
@@ -65,7 +56,7 @@ baseProxy::~baseProxy() {
 	shutdown(); 
     
     if (com_ != nullptr) {
-        DUMS___("Proxy: deleting com");
+        _dum("Proxy: deleting com");
         delete com_;
     }
 };
@@ -80,7 +71,8 @@ void baseProxy::ladd(baseHostCX* cs) {
     com()->set_monitor(s);
     com()->set_poll_handler(s,this);
     left_sockets.push_back(cs);
-    DIA___("baseProxy::ladd: added socket: %s",cs->c_name());
+    cs->parent_proxy(this, 'L');
+    _dia("baseProxy::ladd: added socket: %s",cs->c_name());
 };
 
 
@@ -92,7 +84,8 @@ void baseProxy::radd(baseHostCX* cs) {
     com()->set_monitor(s);
     com()->set_poll_handler(s,this);
     right_sockets.push_back(cs);
-    DIA___("baseProxy::radd: added socket: %s",cs->c_name());
+    cs->parent_proxy(this, 'R');
+    _dia("baseProxy::radd: added socket: %s",cs->c_name());
 };
 
 
@@ -103,7 +96,8 @@ void baseProxy::lbadd(baseHostCX* cs) {
     com()->set_monitor(s);
     com()->set_poll_handler(s,this);
     left_bind_sockets.push_back(cs);
-	DIA___("baseProxy::lbadd: added bound socket: %s",cs->c_name());
+    cs->parent_proxy(this, 'L');
+	_dia("baseProxy::lbadd: added bound socket: %s",cs->c_name());
 };
 
 
@@ -114,7 +108,8 @@ void baseProxy::rbadd(baseHostCX* cs) {
     com()->set_monitor(s);
     com()->set_poll_handler(s,this);
     right_bind_sockets.push_back(cs);
-	DIA___("baseProxy::rbadd: added bound socket: %s",cs->c_name());
+    cs->parent_proxy(this, 'R');
+	_dia("baseProxy::rbadd: added bound socket: %s",cs->c_name());
 };
 
 
@@ -125,7 +120,8 @@ void baseProxy::lpcadd(baseHostCX* cx) {
     com()->set_monitor(s);
     com()->set_poll_handler(s,this);
     left_pc_cx.push_back(cx);
-    DIA___("baseProxy::lpcadd: added perma socket: %s", cx->c_name());
+    cx->parent_proxy(this, 'L');
+    _dia("baseProxy::lpcadd: added perma socket: %s", cx->c_name());
 };
 
 
@@ -137,30 +133,34 @@ void baseProxy::rpcadd(baseHostCX* cx) {
     com()->set_poll_handler(s,this);
     
     right_pc_cx.push_back(cx);
-    DIA___("baseProxy::rpcadd: added perma socket %s", cx->c_name());
+    cx->parent_proxy(this,'R');
+    _dia("baseProxy::rpcadd: added perma socket %s", cx->c_name());
 };
 
 
 void baseProxy::ldaadd(baseHostCX* cs) {
-    
+    cs->unblock();
     int s = cs->com()->translate_socket(cs->socket());
     
     com()->set_monitor(s);
     com()->set_poll_handler(s,this);
 
     left_delayed_accepts.push_back(cs);
-    DIA___("baseProxy::ldaadd: added delayed socket: %s",cs->c_name());
+    cs->parent_proxy(this,'l');
+    _dia("baseProxy::ldaadd: added delayed socket: %s",cs->c_name());
 };
 
 
 void baseProxy::rdaadd(baseHostCX* cs) {
+    cs->unblock();
     int s = cs->com()->translate_socket(cs->socket());
     
     com()->set_monitor(s);
     com()->set_poll_handler(s,this);
     
     right_delayed_accepts.push_back(cs);
-    DIA___("baseProxy::rdaadd: added delayed socket: %s",cs->c_name());
+    cs->parent_proxy(this,'r');
+    _dia("baseProxy::rdaadd: added delayed socket: %s",cs->c_name());
 };
 
 
@@ -172,22 +172,25 @@ void baseProxy::left_shutdown() {
 	
 	int ld = left_delayed_accepts.size();
 	
-	for(typename std::vector<baseHostCX*>::iterator ii = left_bind_sockets.begin(); ii != left_bind_sockets.end(); ++ii) { (*ii)->shutdown(); };
-	for(typename std::vector<baseHostCX*>::iterator ii = left_sockets.begin(); ii != left_sockets.end(); ++ii) { (*ii)->shutdown();  };
-	for(typename std::vector<baseHostCX*>::iterator ii = left_pc_cx.begin(); ii != left_pc_cx.end(); ++ii) { (*ii)->shutdown(); };
-    for(typename std::vector<baseHostCX*>::iterator ii = left_delayed_accepts.begin(); ii != left_delayed_accepts.end(); ++ii) { (*ii)->shutdown(); };
+	for(auto* ii: left_bind_sockets) { ii->shutdown(); };
+	for(auto* ii: left_sockets)       { ii->shutdown(); };
+	for(auto* ii: left_pc_cx)          { ii->shutdown(); };
+    for(auto* ii: left_delayed_accepts) { ii->shutdown(); };
 
-    
-    for(typename std::vector<baseHostCX*>::iterator ii = left_bind_sockets.begin(); ii != left_bind_sockets.end(); ++ii) { delete(*ii); };
+
+    for(auto* ii: left_bind_sockets) { delete ii; };
     left_bind_sockets.clear();
-    for(typename std::vector<baseHostCX*>::iterator ii = left_sockets.begin(); ii != left_sockets.end(); ++ii) {  delete(*ii); };
+
+    for(auto* ii: left_sockets) {  delete ii; };
     left_sockets.clear();
-    for(typename std::vector<baseHostCX*>::iterator ii = left_pc_cx.begin(); ii != left_pc_cx.end(); ++ii) {  delete(*ii); };
+
+    for(auto* ii: left_pc_cx) {  delete ii; };
     left_pc_cx.clear();
-    for(typename std::vector<baseHostCX*>::iterator ii = left_delayed_accepts.begin(); ii != left_delayed_accepts.end(); ++ii) { delete(*ii); };
+
+    for(auto* ii: left_delayed_accepts) { delete ii; };
     left_delayed_accepts.clear();       
     
- 	DEB___("baseProxy::left_shutdown: bind=%d(delayed=%d), sock=%d, perm=%d",lb,ld,ls,lp);
+ 	_deb("baseProxy::left_shutdown: bind=%d(delayed=%d), sock=%d, perm=%d",lb,ld,ls,lp);
 }
 
 
@@ -198,31 +201,34 @@ void baseProxy::right_shutdown() {
     
     int rd = right_delayed_accepts.size();
 	
-	for(typename std::vector<baseHostCX*>::iterator ii = right_bind_sockets.begin(); ii != right_bind_sockets.end(); ++ii) { (*ii)->shutdown(); };
-	for(typename std::vector<baseHostCX*>::iterator ii = right_sockets.begin(); ii != right_sockets.end(); ++ii) { (*ii)->shutdown(); };
-	for(typename std::vector<baseHostCX*>::iterator ii = right_pc_cx.begin(); ii != right_pc_cx.end(); ++ii) { (*ii)->shutdown();  };
-    for(typename std::vector<baseHostCX*>::iterator ii = right_delayed_accepts.begin(); ii != right_delayed_accepts.end(); ++ii) { (*ii)->shutdown(); };
+	for(auto ii: right_bind_sockets) { ii->shutdown(); };
+	for(auto ii: right_sockets)       { ii->shutdown(); };
+	for(auto ii: right_pc_cx)          { ii->shutdown(); };
+    for(auto ii: right_delayed_accepts) { ii->shutdown(); };
 
-    
-    for(typename std::vector<baseHostCX*>::iterator ii = right_bind_sockets.begin(); ii != right_bind_sockets.end(); ++ii) {  delete(*ii); };
+
+    for(auto ii: right_bind_sockets) {  delete ii; };
     right_bind_sockets.clear();
-    for(typename std::vector<baseHostCX*>::iterator ii = right_sockets.begin(); ii != right_sockets.end(); ++ii) {  delete(*ii); };
+
+    for(auto ii: right_sockets) {  delete ii; };
     right_sockets.clear();
-    for(typename std::vector<baseHostCX*>::iterator ii = right_pc_cx.begin(); ii != right_pc_cx.end(); ++ii) { delete(*ii); };
+
+    for(auto ii: right_pc_cx) { delete ii; };
     right_pc_cx.clear();
-    for(typename std::vector<baseHostCX*>::iterator ii = right_delayed_accepts.begin(); ii != right_delayed_accepts.end(); ++ii) {  delete(*ii); };
+
+    for(auto ii: right_delayed_accepts) {  delete ii; };
     right_delayed_accepts.clear();      
     
     
-	DEB___("baseProxy::right_shutdown: bind=%d(delayed=%d), sock=%d, perm=%d",rb,rd,rs,rp);
+	_deb("baseProxy::right_shutdown: bind=%d(delayed=%d), sock=%d, perm=%d",rb,rd,rs,rp);
 }
 
 
 void baseProxy::shutdown() {
-    DIAS___("baseProxy::shutdown");
+    _dia("baseProxy::shutdown");
 	left_shutdown();
 	right_shutdown();
-    DEBS___("baseProxy::shutdown finished");
+    _deb("baseProxy::shutdown finished");
 }
 
 
@@ -248,11 +254,11 @@ bool baseProxy::on_cx_timer(baseHostCX* cx) {
 
 // return true if clicked, false otherwise.
 
-bool baseProxy::reset_timer() {
+bool baseProxy::clicker::reset_timer() {
 
     time(&clock_);
 
-	if( clock_ - last_tick_ > timer_interval) {	
+	if( clock_ - last_tick_ > timer_interval) {
 		time(&last_tick_);
 
 		return true;
@@ -264,9 +270,9 @@ bool baseProxy::reset_timer() {
 
 // (re)set socket set and calculate max socket no
 
-bool baseProxy::run_timers (void) {
+bool baseProxy::run_timers () {
 
-    if(reset_timer()) {
+    if(clicker_.reset_timer()) {
 
         for (auto i: left_sockets) {
             on_cx_timer(i);
@@ -315,9 +321,9 @@ int baseProxy::prepare_sockets(baseCom* fdset_owner) {
 bool baseProxy::handle_cx_events(unsigned char side, baseHostCX* cx) {
         // treat non-blocking still opening sockets 
         if( cx->opening_timeout() ) {
-            DIA___("baseProxy::handle_cx_events[%d]: opening timeout!",cx->socket());
+            _dia("baseProxy::handle_cx_events[%d]: opening timeout!",cx->socket());
             
-                 if(side == 'l')  { on_left_error(cx);  }
+            if     (side == 'l')  { on_left_error(cx);  }
             else if(side == 'r')  { on_right_error(cx); }
             else if(side == 'x')  { on_left_pc_error(cx); }
             else if(side == 'y')  { on_right_pc_error(cx); }
@@ -326,9 +332,9 @@ bool baseProxy::handle_cx_events(unsigned char side, baseHostCX* cx) {
             return false;
         }
         if( cx->idle_timeout() ) {
-            DIA___("baseProxy::handle_cx_events[%d]: idle timeout!",cx->socket());
+            _dia("baseProxy::handle_cx_events[%d]: idle timeout!",cx->socket());
 
-                 if(side == 'l')  { on_left_error(cx);  }
+            if     (side == 'l')  { on_left_error(cx);  }
             else if(side == 'r')  { on_right_error(cx); }
             else if(side == 'x')  { on_left_pc_error(cx); }
             else if(side == 'y')  { on_right_pc_error(cx); }
@@ -337,9 +343,9 @@ bool baseProxy::handle_cx_events(unsigned char side, baseHostCX* cx) {
             return false;
         }
         if( cx->error() ) {
-            DIA___("baseProxy::handle_cx_events[%d]: error!",cx->socket());
+            _dia("baseProxy::handle_cx_events[%d]: error!",cx->socket());
 
-                 if(side == 'l')  { on_left_error(cx);  }
+            if     (side == 'l')  { on_left_error(cx);  }
             else if(side == 'r')  { on_right_error(cx); }
             else if(side == 'x')  { on_left_pc_error(cx); }
             else if(side == 'y')  { on_right_pc_error(cx); }
@@ -350,8 +356,8 @@ bool baseProxy::handle_cx_events(unsigned char side, baseHostCX* cx) {
         
         //process new messages before waiting_for_peercom check
         if( cx->new_message() ) {
-            DIA___("baseProxy::handle_cx_events[%d]: new message!",cx->socket());
-                 if(side == 'l') {  on_left_message(cx); }
+            _dia("baseProxy::handle_cx_events[%d]: new message!",cx->socket());
+            if     (side == 'l') {  on_left_message(cx); }
             else if(side == 'r') { on_right_message(cx); }
             else if(side == 'x')  { on_left_message(cx); }
             else if(side == 'y')  { on_right_message(cx); }
@@ -363,16 +369,16 @@ bool baseProxy::handle_cx_events(unsigned char side, baseHostCX* cx) {
 
 bool baseProxy::handle_cx_read(unsigned char side, baseHostCX* cx) {
     
-    EXT___("%c in R fdset: %d", side, cx->socket());
+    _ext("%c in R fdset: %d", side, cx->socket());
     
     bool proceed = cx->readable();
     if(cx->com()->forced_read_on_write_reset()) {
-        DIA___("baseProxy::handle_cx_read[%c]: read overriden on write socket event",side);
+        _dia("baseProxy::handle_cx_read[%c]: read overriden on write socket event",side);
         proceed = true;
     }
     
     if (proceed) {
-        EXT___("%c in R fdset and readable: %d", side, cx->socket())
+        _ext("%c in R fdset and readable: %d", side, cx->socket());
         int red = cx->read();
         
         if (red == 0) {
@@ -380,25 +386,25 @@ bool baseProxy::handle_cx_read(unsigned char side, baseHostCX* cx) {
             //left_sockets.erase(i);
             handle_last_status |= HANDLE_LEFT_ERROR;
             
-            error_on_read = true;
-                 if(side == 'l') { on_left_error(cx); }
+            state().error_on_read = true;
+            if     (side == 'l') { on_left_error(cx); }
             else if(side == 'r') { on_right_error(cx); }
             else if(side == 'x')  { on_left_pc_error(cx); }
             else if(side == 'y')  { on_right_pc_error(cx); }
            
-            DIA___("baseProxy::handle_cx_read[%c]: error processed",side);
+            _dia("baseProxy::handle_cx_read[%c]: error processed",side);
            
             return false;
         }
         
         if (red > 0) {
-            meter_last_read += red;
-                 if(side == 'l') { on_left_bytes(cx); }
+            meters.last_read += red;
+            if     (side == 'l') { on_left_bytes(cx); }
             else if(side == 'r') { on_right_bytes(cx); }
             else if(side == 'x')  { on_left_bytes(cx); }
             else if(side == 'y')  { on_right_bytes(cx); }
             
-            DIA___("baseProxy::handle_cx_read[%c]: %d bytes processed",side,red);
+            _dia("baseProxy::handle_cx_read[%c]: %d bytes processed",side,red);
         }
     }
     
@@ -407,35 +413,35 @@ bool baseProxy::handle_cx_read(unsigned char side, baseHostCX* cx) {
 
 bool baseProxy::handle_cx_write(unsigned char side, baseHostCX* cx) {
     
-    EXT___("baseProxy::handle_cx_write[%c]: in write fdset: %d",side, cx->socket());
+    _ext("baseProxy::handle_cx_write[%c]: in write fdset: %d",side, cx->socket());
     
     bool proceed = cx->writable();
     if(cx->com()->forced_write_on_read_reset()) {
-        DIA___("baseProxy::handle_cx_read[%c]: write overriden on read socket event",side)
+        _dia("baseProxy::handle_cx_read[%c]: write overriden on read socket event",side);
         proceed = true;
     }
     
     if (proceed) {
-        EXT___("baseProxy::handle_cx_write[%c]: writable: %d",side, cx->socket())
+        _ext("baseProxy::handle_cx_write[%c]: writable: %d",side, cx->socket());
         int wrt = cx->write();
         if (wrt < 0) {
             cx->shutdown();
             //left_sockets.erase(i);
             handle_last_status |= HANDLE_LEFT_ERROR;
             
-            error_on_write = true;
-                 if(side == 'l') { on_left_error(cx); }
+            state().error_on_write = true;
+            if     (side == 'l') { on_left_error(cx); }
             else if(side == 'r') { on_right_error(cx); }
             else if(side == 'x') { on_left_pc_error(cx); }
             else if(side == 'y') { on_right_pc_error(cx); }
             
-            DIA___("baseProxy::handle_cx_write[%c]: error processed",side); 
+            _dia("baseProxy::handle_cx_write[%c]: error processed",side); 
             
             return false;
         } else {
-            meter_last_write += wrt;
+            meters.last_write += wrt;
             if(wrt > 0) {
-                DIA___("baseProxy::handle_cx_write[%c]: %d bytes processed",side,wrt);
+                _dia("baseProxy::handle_cx_write[%c]: %d bytes processed",side,wrt);
             }
         }
     }
@@ -448,21 +454,22 @@ bool baseProxy::handle_cx_read_once(unsigned char side, baseCom* xcom, baseHostC
     bool ret = true;
     bool dont_read = false;
 
-    EXT___("%c: %d",side, cx->socket());
+    _ext("%c: %d",side, cx->socket());
     if(cx->socket() == 0) {
-        DIA___("baseProxy::handle_cx_read_once[%c]: monitored socket changed to zero - terminating.",side);
+        _dia("baseProxy::handle_cx_read_once[%c]: monitored socket changed to zero - terminating.",side);
         cx->error(true);
         ret = false;
         goto failure;
     }
 
 
-    if ((side == 'l' || side == 'x') && write_right_bottleneck()) dont_read = true;
-    else
-    if ((side == 'r' || side == 'y') && write_left_bottleneck()) dont_read = true;
+    if ((side == 'l' || side == 'x') && state().write_right_bottleneck()) dont_read = true;
+    else {
+        if ((side == 'r' || side == 'y') && state().write_left_bottleneck()) dont_read = true;
+    }
 
     if(dont_read){
-        DIA___("baseProxy::handle_cx_read_once[%c]: bottleneck, not reading",side);
+        _dia("baseProxy::handle_cx_read_once[%c]: bottleneck, not reading", side);
     }
 
 
@@ -475,9 +482,9 @@ bool baseProxy::handle_cx_read_once(unsigned char side, baseCom* xcom, baseHostC
 
             if(forced_read) {
                 if(! in_read_set) {
-                    DIA___("baseProxy::handle_cx_read_once[%c]: forced read, NOT in read set",side);
+                    _dia("baseProxy::handle_cx_read_once[%c]: forced read, NOT in read set",side);
                 } else {
-                    DEB___("baseProxy::handle_cx_read_once[%c]: forced read, but in read set too",side);
+                    _deb("baseProxy::handle_cx_read_once[%c]: forced read, but in read set too",side);
                 }
             }
             
@@ -487,7 +494,7 @@ bool baseProxy::handle_cx_read_once(unsigned char side, baseCom* xcom, baseHostC
             }
             
             if(cx->com()->forced_write_on_read()) {
-                DIA___("baseProxy::handle_cx_read_once[%c]: write on read enforced on socket %d",side,cx->socket());
+                _dia("baseProxy::handle_cx_read_once[%c]: write on read enforced on socket %d",side,cx->socket());
                 if(! handle_cx_write(side,cx)) {
                     ret = false;
                     goto failure;
@@ -495,7 +502,7 @@ bool baseProxy::handle_cx_read_once(unsigned char side, baseCom* xcom, baseHostC
             }
         }
     } else {
-        DIA___("baseProxy::handle_cx_read_once[%c]: waiting_for_peercom read in cx with socket %d, in read_set: %s",side, cx->socket(),
+        _dia("baseProxy::handle_cx_read_once[%c]: waiting_for_peercom read in cx with socket %d, in read_set: %s",side, cx->socket(),
                                                                  xcom->in_readset(cx->socket()) ? "yes" : "no");
     }
 
@@ -526,14 +533,14 @@ unsigned int baseProxy::change_monitor_for_cx_vec(std::vector<baseHostCX*>* cx_v
         for(auto cx: nnn) {
             if(ifread && ifwrite) {
                 cx->com()->change_monitor(cx->socket(),EPOLLIN|EPOLLOUT);
-            } else
-            if(ifread) {
-                cx->com()->change_monitor(cx->socket(),EPOLLIN);
-            } else
-            if(ifwrite){
-                cx->com()->change_monitor(cx->socket(),EPOLLOUT);
             } else {
-                cx->com()->unset_monitor(cx->socket());
+                if (ifread) {
+                    cx->com()->change_monitor(cx->socket(), EPOLLIN);
+                } else if (ifwrite) {
+                    cx->com()->change_monitor(cx->socket(), EPOLLOUT);
+                } else {
+                    cx->com()->unset_monitor(cx->socket());
+                }
             }
 
             if(pause_read != 0) {
@@ -577,7 +584,7 @@ unsigned int baseProxy::change_side_monitoring(char side, bool ifread, bool ifwr
     if(bound) {
         sockets_changed += change_monitor_for_cx_vec(bound,ifread,ifwrite, pause_read, pause_write);
     }
-    INF___("side-wide monitor change for side %c|%s [r %d:w %d - pr %d: pw %d]: %d sockets changed.",
+    _inf("side-wide monitor change for side %c|%s [r %d:w %d - pr %d: pw %d]: %d sockets changed.",
                                               side,str_side.c_str(),
                                                  ifread, ifwrite,
                                                                  pause_read, pause_write, sockets_changed);
@@ -591,14 +598,14 @@ bool baseProxy::handle_cx_write_once(unsigned char side, baseCom* xcom, baseHost
     bool ret = true;
     
     if(cx->socket() == 0) {
-        DIA___("baseProxy::handle_cx_write_once[%c]: monitored socket changed to zero - terminating.",side);
+        _dia("baseProxy::handle_cx_write_once[%c]: monitored socket changed to zero - terminating.",side);
         cx->error(true);
         ret = false;
         goto failure;
     }    
 
     if(!cx->write_waiting_for_peercom()) {
-        if(xcom->in_writeset(cx->socket()) || cx->com()->forced_write_reset() || cx->writebuf()->size() > 0) {
+        if( xcom->in_writeset(cx->socket()) || cx->com()->forced_write_reset() || ( !cx->writebuf()->empty() ) ) {
 
             ssize_t  orig_writebuf_size = cx->writebuf()->size();
             ssize_t  cur_writebuf_size = orig_writebuf_size;
@@ -611,7 +618,7 @@ bool baseProxy::handle_cx_write_once(unsigned char side, baseCom* xcom, baseHost
 
 
             if(cx->com()->forced_read_on_write()) {
-                DIA___("baseProxy::handle_cx_write_once[%c]: read on write enforced on socket %d",side,cx->socket());
+                _dia("baseProxy::handle_cx_write_once[%c]: read on write enforced on socket %d",side,cx->socket());
                 if(! handle_cx_read(side,cx)) {
                     ret = false;
                     goto failure;
@@ -625,15 +632,15 @@ bool baseProxy::handle_cx_write_once(unsigned char side, baseCom* xcom, baseHost
                 cx->com()->set_write_monitor(cx->socket());
 
                 if (side == 'l' || side == 'L' || side == 'x' || side == 'X') {
-                    INF___("left write bottleneck %s!", write_left_bottleneck() ? "continuing" : "start");
-                    write_left_bottleneck(true);
+                    _inf("left write bottleneck %s!", state().write_left_bottleneck() ? "continuing" : "start");
+                    state().write_left_bottleneck(true);
                     change_side_monitoring('r', false, false, 1, 0);
 
                 }
                 else
                 if(side == 'r' || side == 'R' || side == 'y' || side == 'Y') {
-                    INF___("right write bottleneck %s!", write_right_bottleneck() ? "continuing" : "start");
-                    write_right_bottleneck(true);
+                    _inf("right write bottleneck %s!", state().write_right_bottleneck() ? "continuing" : "start");
+                    state().write_right_bottleneck(true);
                     change_side_monitoring('l', false, false, 1, 0);
                 }
             } else
@@ -641,14 +648,14 @@ bool baseProxy::handle_cx_write_once(unsigned char side, baseCom* xcom, baseHost
 
                 // we emptied write buffer!
 
-                if(write_left_bottleneck() && (side == 'l' || side == 'L' || side == 'x' || side == 'X')) {
-                    INFS___("left write bottleneck stop!");
-                    write_left_bottleneck(false);
+                if(state().write_left_bottleneck() && (side == 'l' || side == 'L' || side == 'x' || side == 'X')) {
+                    _inf("left write bottleneck stop!");
+                    state().write_left_bottleneck(false);
                     change_side_monitoring('r',true,false, -1, 0); //FIXME: write monitor enable?
                 } else
-                if(write_right_bottleneck() && (side == 'r' || side == 'R' || side == 'y' || side == 'Y')) {
-                    INFS___("right write bottleneck stop!");
-                    write_right_bottleneck(false);
+                if( state().write_right_bottleneck() && (side == 'r' || side == 'R' || side == 'y' || side == 'Y')) {
+                    _inf("right write bottleneck stop!");
+                    state().write_right_bottleneck(false);
                     change_side_monitoring('l',true,false, -1, 0); //FIXME: write monitor enable?
 
                 }
@@ -670,32 +677,32 @@ bool baseProxy::handle_cx_write_once(unsigned char side, baseCom* xcom, baseHost
 }
 
 
-bool baseProxy::handle_cx_new(unsigned char side, baseCom* xcom, baseHostCX* cx) {
+bool baseProxy::handle_cx_new(unsigned char side, baseCom* xcom, baseHostCX* thiscx) {
     
-    sockaddr_in clientInfo;
+    sockaddr_in clientInfo{0};
     socklen_t addrlen = sizeof(clientInfo);
 
-    int client = com()->accept(cx->socket(), (sockaddr*)&clientInfo, &addrlen);
+    int client = com()->accept(thiscx->socket(), (sockaddr*)&clientInfo, &addrlen);
     
     if(client < 0) {
-        DIA___("baseProxy::handle_cx_new[%c]: bound socket accept failed: %s",side,strerror(errno));
+        _dia("baseProxy::handle_cx_new[%c]: bound socket accept failed: %s",side,strerror(errno));
         return true; // still, it's not the error which should break socket list iteration
     }
     
     if(new_raw()) {
-        DEB___("baseProxy::handle_cx_new[%c]: raw processing on %d",side,client);
-             if(side == 'l') { on_left_new_raw(client); }
+        _deb("baseProxy::handle_cx_new[%c]: raw processing on %d",side,client);
+        if     (side == 'l') { on_left_new_raw(client); }
         else if(side == 'r') { on_right_new_raw(client); }
     }
     else {
-        baseHostCX* cx = new_cx(client);
+        auto* cx = new_cx(client);
         
         // propagate nonlocal setting
         // FIXME: this call is a bit strange, is it?
         // cx->com()->nonlocal_dst(cx->com()->nonlocal_dst());
         
         if(!cx->read_waiting_for_peercom()) {
-            DIA___("baseProxy::handle_cx_new[%c]: new unpaused socket %d -> accepting",side,client);
+            _dia("baseProxy::handle_cx_new[%c]: new unpaused socket %d -> accepting",side,client);
             
             cx->on_accept_socket(client);
             //  DON'T: you don't know if this proxy does have child proxy, or wants to handle situation different way.
@@ -703,7 +710,7 @@ bool baseProxy::handle_cx_new(unsigned char side, baseCom* xcom, baseHostCX* cx)
             //   else if(side == 'r') { radd(cx); }
             
         } else {
-            DIA___("baseProxy::handle_cx_new[%c]: new waiting_for_peercom socket %d -> delaying",side,client);
+            _dia("baseProxy::handle_cx_new[%c]: new waiting_for_peercom socket %d -> delaying",side,client);
             
             cx->on_delay_socket(client);
             //  DON'T: you don't know if this proxy does have child proxy, or wants to handle situation different way.
@@ -711,7 +718,7 @@ bool baseProxy::handle_cx_new(unsigned char side, baseCom* xcom, baseHostCX* cx)
             // else if(side == 'r') { rdaadd(cx); }
         }
         
-             if(side == 'l') { on_left_new(cx); }
+        if     (side == 'l') { on_left_new(cx); }
         else if(side == 'r') { on_right_new(cx); }
     }
     
@@ -725,146 +732,151 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
 
 	run_timers();
 	
-	meter_last_read = 0;
-	meter_last_write = 0;
-	error_on_read = false;
-	error_on_write = false;
+	meters.last_read = 0;
+	meters.last_write = 0;
+
+	state().error_on_read = false;
+	state().error_on_write = false;
 	
     if ( xcom->poll_result >= 0) {
 
 
         // READS
-		if(left_sockets.size() > 0)
-		for(typename std::vector<baseHostCX*>::iterator i = left_sockets.begin(); i != left_sockets.end(); ++i) {
-			if(! handle_cx_read_once('l',xcom,*i)) {
-                break;
-            }
-		}
-		if(right_sockets.size() > 0)
-		for(typename std::vector<baseHostCX*>::iterator j = right_sockets.begin(); j != right_sockets.end(); ++j) {
-            if(! handle_cx_read_once('r',xcom,*j)) {
-                break;
-            }
-		}
-
-		//WRITES
-        if(left_sockets.size() > 0)
-        for(typename std::vector<baseHostCX*>::iterator i = left_sockets.begin(); i != left_sockets.end(); ++i) {
-            if(! handle_cx_write_once('l',xcom,*i)) {
-                break;
+		if(! left_sockets.empty() ) {
+            for (auto i: left_sockets) {
+                if (!handle_cx_read_once('l', xcom, i)) {
+                    break;
+                }
             }
         }
-        if(right_sockets.size() > 0)
-        for(typename std::vector<baseHostCX*>::iterator j = right_sockets.begin(); j != right_sockets.end(); ++j) {
-            if(! handle_cx_write_once('r',xcom,*j)) {
-                break;
+
+		if(! right_sockets.empty() ) {
+            for (auto i: right_sockets) {
+                if (!handle_cx_read_once('r', xcom, i)) {
+                    break;
+                }
+            }
+        }
+
+		//WRITES
+        if( ! left_sockets.empty() ) {
+            for (auto i: left_sockets) {
+                if (!handle_cx_write_once('l', xcom, i)) {
+                    break;
+                }
+            }
+        }
+        if( ! right_sockets.empty() ) {
+            for(auto i: right_sockets) {
+                if(! handle_cx_write_once('r',xcom, i)) {
+                    break;
+                }
             }
         }
 
         // now operate permanent-connect sockets to create accepted sockets
         
-        if(left_pc_cx.size() > 0)
-        for(typename std::vector<baseHostCX*>::iterator k = left_pc_cx.begin(); k != left_pc_cx.end(); ++k) {
+        if(! left_pc_cx.empty() ) {
+            for (auto i: left_pc_cx) {
 
-            
-            //READS
-            
-            // if socket is already in error, don't read, instead just raise again error, if we should reconnect
-            if ((*k)->error() and (*k)->should_reconnect_now()) {
-                on_left_pc_error(*k);
-                break;
-            } else if ((*k)->error()) {
-                break;
-            }
+                //READS
 
-            if (!handle_cx_read_once('x',xcom, *k)) {
-                handle_last_status |= HANDLE_LEFT_PC_ERROR;
-                
-                error_on_read = true;
-                on_left_pc_error(*k);
-                break;
-            } else {
-                bool opening_status = (*k)->opening();
-                if (opening_status) {
-                    on_left_pc_restore(*k);
+                // if socket is already in error, don't read, instead just raise again error, if we should reconnect
+                if (i->error() and i->should_reconnect_now()) {
+                    on_left_pc_error(i);
+                    break;
+                } else if (i->error()) {
+                    break;
+                }
+
+                if (!handle_cx_read_once('x', xcom, i)) {
+                    handle_last_status |= HANDLE_LEFT_PC_ERROR;
+
+                    state().error_on_read = true;
+                    on_left_pc_error(i);
+                    break;
+                } else {
+                    bool opening_status = i->opening();
+                    if (opening_status) {
+                        on_left_pc_restore(i);
+                    }
+                }
+
+               //WRITES
+
+                // if socket is already in error, don't read, instead just raise again error, if we should reconnect
+                if (i->error() and i->should_reconnect_now()) {
+                    on_left_pc_error(i);
+                    break;
+                } else if (i->error()) {
+                    break;
+                }
+
+                if (!handle_cx_write_once('x', xcom, i)) {
+                    handle_last_status |= HANDLE_LEFT_PC_ERROR;
+
+                    state().error_on_write = true;
+                    on_left_pc_error(i);
+                    break;
+                } else {
+
+                    if (i->opening()) {
+                        on_left_pc_restore(i);
+                    }
                 }
             }
-            
-
-            //WRITES
-
-            // if socket is already in error, don't read, instead just raise again error, if we should reconnect
-            if ((*k)->error() and (*k)->should_reconnect_now()) {
-                on_left_pc_error(*k);
-                break;
-            } else if ((*k)->error()) {
-                break;
-            }
-                        
-            if(!handle_cx_write_once('x',xcom,*k)) {
-                        handle_last_status |= HANDLE_LEFT_PC_ERROR;
-                        
-                        error_on_write = true;
-                        on_left_pc_error(*k);
-                        break;
-            } 
-            else {
-                
-                if ((*k)->opening()) {
-                    on_left_pc_restore(*k);
-                }
-            }       
         }
         
-        if(right_pc_cx.size() > 0)
-        for(typename std::vector<baseHostCX*>::iterator l = right_pc_cx.begin(); l != right_pc_cx.end(); ++l) {
+        if(! right_pc_cx.empty() ) {
+            for (auto i: right_pc_cx) {
 
-        
-            // if socket is already in error, don't read, instead just raise again error, if we should reconnect
-            if ((*l)->error() and (*l)->should_reconnect_now()) {
-                on_right_pc_error(*l);
-                break;
-            } else if ((*l)->error()) {
-                break;
-            }
-            
-            if (!handle_cx_read_once('y',xcom,*l)) {
-                handle_last_status |= HANDLE_RIGHT_PC_ERROR;
-                
-                error_on_read = true;
-                on_right_pc_error(*l);
-                break;
-            } else {
-                if ((*l)->opening()) {
-                    on_right_pc_restore(*l);
+                // READS
+
+                // if socket is already in error, don't read, instead just raise again error, if we should reconnect
+                if (i->error() and i->should_reconnect_now()) {
+                    on_right_pc_error(i);
+                    break;
+                } else if (i->error()) {
+                    break;
+                }
+
+                if (!handle_cx_read_once('y', xcom, i)) {
+                    handle_last_status |= HANDLE_RIGHT_PC_ERROR;
+
+                    state().error_on_read = true;
+                    on_right_pc_error(i);
+                    break;
+                } else {
+                    if (i->opening()) {
+                        on_right_pc_restore(i);
+                    }
+                }
+
+
+//              // WRITES
+
+                // if socket is already in error, don't read, instead just raise again error, if we should reconnect
+                if (i->error() and i->should_reconnect_now()) {
+                    on_right_pc_error(i);
+                    break;
+                } else if (i->error()) {
+                    break;
+                }
+
+                if (!handle_cx_write_once('y', xcom, i)) {
+                    handle_last_status |= HANDLE_RIGHT_PC_ERROR;
+
+                    state().error_on_write = true;
+                    on_right_pc_error(i);
+                    break;
+                } else {
+
+                    if (i->opening()) {
+                        on_right_pc_restore(i);
+                    }
                 }
             }
-
-        
-            // if socket is already in error, don't read, instead just raise again error, if we should reconnect
-            if ((*l)->error() and (*l)->should_reconnect_now()) {
-                on_right_pc_error(*l);
-                break;
-            } else if ((*l)->error()) {
-                break;
-            }            
-
-
-            if (!handle_cx_write_once('y',xcom,*l)) {
-                handle_last_status |= HANDLE_RIGHT_PC_ERROR;
-                
-                error_on_write = true;
-                on_right_pc_error(*l);
-                break;
-            } 
-            else {
-                
-                if ((*l)->opening()) {
-                    on_right_pc_restore(*l);
-                }
-            }       
-        } 
-        
+        }
         
 		// no socket is really ready to be processed; while it make sense to check 'connecting' sockets, it makes
 		// no sense to loop through bound sockets.
@@ -872,11 +884,12 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
 		if (xcom->poll_result > 0) {
             // now operate bound sockets to create accepted sockets
             
-            if(left_bind_sockets.size() > 0)
-            for(typename std::vector<baseHostCX*>::iterator ii = left_bind_sockets.begin(); ii != left_bind_sockets.end(); ++ii) {
-                int s = (*ii)->socket();
-                if (xcom->in_readset(s)) {
-                        handle_cx_new('l',xcom,(*ii));
+            if( ! left_bind_sockets.empty() ) {
+                for (auto i: left_bind_sockets) {
+                    int s = i->socket();
+                    if (xcom->in_readset(s)) {
+                        handle_cx_new('l', xcom, (i));
+                    }
                 }
             }
             
@@ -887,55 +900,57 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
             while(true) {
                 bool no_suc = true;
                 
-                if(left_delayed_accepts.size())
-                for(typename std::vector<baseHostCX*>::iterator k = left_delayed_accepts.begin(); k != left_delayed_accepts.end(); ++k) {
-                    
-                    baseHostCX *p = *k;
-                    if(!(*k)->read_waiting_for_peercom()) {
-                        p->on_accept_socket(p->socket());
-                        ladd(p);
-                        left_delayed_accepts.erase(k);
-                        
-                        DIA___("baseProxy::run_once: %s removed from delayed",p->c_name());
-                        // restart iterator
-                        no_suc = false;
-                        break;
+                if(! left_delayed_accepts.empty() ) {
+                    for (auto i = left_delayed_accepts.begin(); i != left_delayed_accepts.end() ; ++i) {
+
+                        baseHostCX* p = *i;
+                        if (! p->read_waiting_for_peercom() ) {
+                            p->on_accept_socket(p->socket());
+
+                            ladd(p);
+                            left_delayed_accepts.erase(i);
+
+                            _dia("baseProxy::run_once: %s removed from delayed", p->c_name());
+                            // restart iterator
+                            no_suc = false;
+                            break;
+                        }
                     }
                 }
                 
                 if(no_suc) break;
             }
             
-            if(right_bind_sockets.size() > 0)
-            for(typename std::vector<baseHostCX*>::iterator jj = right_bind_sockets.begin(); jj != right_bind_sockets.end(); ++jj) {
-                int s = (*jj)->socket();
-                if (xcom->in_readset(s)) {
-                    sockaddr_in clientInfo;
-                    socklen_t addrlen = sizeof(clientInfo);
+            if(! right_bind_sockets.empty() ) {
+                for (auto i: right_bind_sockets) {
+                    int s = i->socket();
+                    if (xcom->in_readset(s)) {
+                        sockaddr_in clientInfo{0};
+                        socklen_t addrlen = sizeof(clientInfo);
 
-                    int client = com()->accept(s, (sockaddr*)&clientInfo, &addrlen);
-                    
-                    if(new_raw()) {
-                        on_right_new_raw(client);
-                    } 
-                    else {
-                        baseHostCX* cx = new_cx(client);
+                        int client = com()->accept(s, (sockaddr *) &clientInfo, &addrlen);
 
-                        // propagate nonlocal setting
-                        cx->com()->nonlocal_dst((*jj)->com()->nonlocal_dst());
-
-                        if(!cx->read_waiting_for_peercom()) {
-                            cx->on_accept_socket(client);
+                        if (new_raw()) {
+                            on_right_new_raw(client);
                         } else {
-                            cx->on_delay_socket(client);
-                            // dealayed accept in effect -- carrier is accepted, but we will postpone higher level accept_socket
-                            DEB___("baseProxy::handle_sockets_once[%d]: adding to right delayed sockets",client);
-                            rdaadd(cx);
-                        } 
-                        on_right_new(cx);
+                            baseHostCX *cx = new_cx(client);
+
+                            // propagate nonlocal setting
+                            cx->com()->nonlocal_dst(i->com()->nonlocal_dst());
+
+                            if (!cx->read_waiting_for_peercom()) {
+                                cx->on_accept_socket(client);
+                            } else {
+                                cx->on_delay_socket(client);
+                                // dealayed accept in effect -- carrier is accepted, but we will postpone higher level accept_socket
+                                _deb("baseProxy::handle_sockets_once[%d]: adding to right delayed sockets", client);
+                                rdaadd(cx);
+                            }
+                            on_right_new(cx);
+                        }
+
+                        handle_last_status |= HANDLE_RIGHT_NEW;
                     }
-                    
-                    handle_last_status |= HANDLE_RIGHT_NEW;
                 }
             }
 
@@ -945,33 +960,34 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
             while(true) {
                 bool no_suc = true;
                 
-                if(right_delayed_accepts.size())
-                for(typename std::vector<baseHostCX*>::iterator k = right_delayed_accepts.begin(); k != right_delayed_accepts.end(); ++k) {
-                    
-                    baseHostCX *p = *k;
-                    if(!(*k)->read_waiting_for_peercom()) {
-                        p->on_accept_socket(p->socket());
-                        radd(p);
-                        right_delayed_accepts.erase(k);
-                        
-                        // restart iterator
-                        no_suc = false;
-                        break;
+                if(! right_delayed_accepts.empty() ) {
+                    for (auto i = right_delayed_accepts.begin(); i != right_delayed_accepts.end() ; ++i ) {
+
+                        baseHostCX* p = *i;
+                        if (! p->read_waiting_for_peercom() ) {
+                            p->on_accept_socket(p->socket());
+                            radd(p);
+                            right_delayed_accepts.erase(i);
+
+                            // restart iterator
+                            no_suc = false;
+                            break;
+                        }
                     }
                 }
-                
+
                 if(no_suc) break;
             }		
         }
 
 		
-// 		DIAS___("_");
+// 		_dia("_");
 
         // handle the case when we are running this cycle due to n_tv timeout. In such a case return 0 to sleep accordingly.
         if (xcom->poll_result ==  0) {
             return 0;
         } else {
-            return  meter_last_read + meter_last_write;
+            return  meters.last_read + meters.last_write;
         }
     }
     return 0;
@@ -980,66 +996,66 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
 
 
 void baseProxy::on_left_bytes(baseHostCX* cx) {
-	DEB___("Left context bytes: %s, bytes in buffer: %d", cx->c_name(), cx->readbuf()->size());
+	_deb("Left context bytes: %s, bytes in buffer: %d", cx->c_name(), cx->readbuf()->size());
 };
 
 
 void baseProxy::on_right_bytes(baseHostCX* cx) {
-	DEB___("Right context bytes: %s, bytes in buffer: %d", cx->c_name(), cx->readbuf()->size());
+	_deb("Right context bytes: %s, bytes in buffer: %d", cx->c_name(), cx->readbuf()->size());
 };
 
 
 void baseProxy::on_left_error(baseHostCX* cx) {
 	if (cx->opening()) {
-		ERR___("Left socket connection timeout %s:",cx->c_name());
+		_err("Left socket connection timeout %s:",cx->c_name());
 	} else {
-		NOT___("Left socket error: %s", cx->c_name());
+		_not("Left socket error: %s", cx->c_name());
 	}
 };
 
 
 void baseProxy::on_right_error(baseHostCX* cx) {
 	if (cx->opening()) {
-		ERR___("Right socket connection timeout %s:",cx->c_name());
+		_err("Right socket connection timeout %s:",cx->c_name());
 	} else {	
-		NOT___("Right socket error: %s", cx->c_name());
+		_not("Right socket error: %s", cx->c_name());
 	}
 };
 
 
 void baseProxy::on_left_pc_error(baseHostCX* cx) {
-	DUM___("Left permanent-connect socket error: %s",cx->c_name());
+	_dum("Left permanent-connect socket error: %s",cx->c_name());
 	
 	if (cx->opening()) {
-		ERR___("Left permanent socket connection timeout %s:",cx->c_name());	
+		_err("Left permanent socket connection timeout %s:",cx->c_name());	
 	}
 	else if ( cx->reconnect()) {
-		INFS___("reconnecting");
+		_inf("reconnecting");
 	} 
 	else {
-		DUMS___("reconnection postponed");
+		_dum("reconnection postponed");
 	}
 };
 
 
 void baseProxy::on_right_pc_error(baseHostCX* cx) {
-	DUM___("Right permanent-connect socket error: %s",cx->c_name());
+	_dum("Right permanent-connect socket error: %s",cx->c_name());
 
 	if (cx->opening()) {
-		DIA___("Right permanent socket connection timeout %s:",cx->c_name());	
+		_dia("Right permanent socket connection timeout %s:",cx->c_name());	
 	}
 	
 	if ( cx->reconnect()) {
-		DIA___("Reconnecting %s",cx->c_name());
+		_dia("Reconnecting %s",cx->c_name());
 	} 
 	else {
-		DUMS___("reconnection postponed");
+		_dum("reconnection postponed");
 	}
 };
 
 
 void baseProxy::on_left_pc_restore(baseHostCX* cx) {
-    DIA___("Left permanent connection restored: %s",cx->c_name());
+    _dia("Left permanent connection restored: %s",cx->c_name());
     cx->opening(false);
     com()->set_monitor(cx->socket());
     com()->set_poll_handler(cx->socket(),this);
@@ -1047,7 +1063,7 @@ void baseProxy::on_left_pc_restore(baseHostCX* cx) {
 
 
 void baseProxy::on_right_pc_restore(baseHostCX* cx) {
-    DIA___("Right permanent connection restored: %s",cx->c_name());
+    _dia("Right permanent connection restored: %s",cx->c_name());
     cx->opening(false);
     com()->set_monitor(cx->socket());
     com()->set_poll_handler(cx->socket(),this);    
@@ -1066,15 +1082,15 @@ void baseProxy::on_right_new(baseHostCX* cx) {
 
 // Infinite loop ... 
 
-int baseProxy::run(void) {
+int baseProxy::run() {
     
-    while(! dead() ) {
+    while(! state().dead() ) {
         
         if(pollroot()) {
             
-            EXTS___("baseProxy::run: preparing sockets");
+            _ext("baseProxy::run: preparing sockets");
             int s_max = prepare_sockets(com());
-            EXTS___("baseProxy::run: sockets prepared");
+            _ext("baseProxy::run: sockets prepared");
             if (s_max) {
                 com()->poll();
             }
@@ -1089,7 +1105,7 @@ int baseProxy::run(void) {
             std::vector<int> back_in_set;
             
             // std::set<int>& sets[] = { com()->poller.poller->in_set, com()->poller.poller->out_set };
-            std::vector<std::set<int>*> sets;
+            std::vector<epoll::set_type*> sets;
             sets.push_back(&com()->poller.poller->in_set);
             sets.push_back(&com()->poller.poller->out_set);
             sets.push_back(&com()->poller.poller->idle_set);
@@ -1098,35 +1114,35 @@ int baseProxy::run(void) {
             int name_iter = 0;
 
             bool virt_global_hack = false;
-            std::set<int> udp_in_set;
+            epoll::set_type udp_in_set;
             
-            UDPCom* uc = dynamic_cast<UDPCom*>(com()->master());
+            auto* uc = dynamic_cast<UDPCom*>(com()->master());
             if(uc) {
                 
-                //INFS___("adding virtual sockets");
+                //_inf("adding virtual sockets");
                 {
-                    std::lock_guard<std::recursive_mutex> m(uc->lock);
-                    udp_in_set = uc->in_virt_set;
+                    std::scoped_lock<std::recursive_mutex> m(UDPCom::lock);
+                    udp_in_set = UDPCom::in_virt_set;
                 }
                 
                 sets.push_back(&udp_in_set);
-                setname.push_back("inset_virt");
+                setname.emplace_back("inset_virt");
             }
             
-            for (std::set<int>* current_set: sets) {
+            for (epoll::set_type * current_set: sets) {
                  
                 for (auto s: *current_set) {
                     //FIXME
-                    DEB___("baseProxy::run: %s socket %d ",setname.at(name_iter).c_str(),s);
+                    _deb("baseProxy::run: %s socket %d ",setname.at(name_iter).c_str(),s);
                     epoll_handler* p_handler = com()->poller.get_handler(s);
                     
                     if(p_handler != nullptr) {
 
                         auto seg = p_handler->fence__;
-                        EXT___("baseProxy::run: socket %d has registered handler 0x%x (fence %x)",s,p_handler,seg);
+                        _ext("baseProxy::run: socket %d has registered handler 0x%x (fence %x)",s,p_handler,seg);
                         
                         if(seg != HANDLER_FENCE) {
-                            ERR___("baseProxy::run: socket %d magic fence doesn't match!!",s);
+                            _err("baseProxy::run: socket %d magic fence doesn't match!!",s);
                             counter_fence_fail++;
 
                         } else {
@@ -1136,22 +1152,22 @@ int baseProxy::run(void) {
                             // by proxy (which might be killed and terminated)
                             // and generic "event handler".
 
-                            baseProxy* proxy = dynamic_cast<baseProxy*>(p_handler);
+                            auto* proxy = dynamic_cast<baseProxy*>(p_handler);
                             if(proxy != nullptr) {
-                                EXT___("baseProxy::run: socket %d has baseProxy handler!!",s);
+                                _ext("baseProxy::run: socket %d has baseProxy handler!!",s);
                                 
                                 // call poller-carried proxy handler!
                                 proxy->handle_sockets_once(com());
-                                if(proxy->dead()) {
+                                if(proxy->state().dead()) {
                                     proxy->shutdown();
-                                    DIA___("Proxy 0x%x has been shutdown.", proxy);
+                                    _dia("Proxy 0x%x has been shutdown.", proxy);
                                 }
                                 
                                 counter_proxy_handler++;
                                 
                             } else {
 
-                                EXT___("baseProxy::run: socket %d has generic handler",s);
+                                _ext("baseProxy::run: socket %d has generic handler",s);
                                 p_handler->handle_event(com());
                                 counter_generic_handler++;
                             }
@@ -1161,7 +1177,7 @@ int baseProxy::run(void) {
                         
                         //FIXME: report virtual sockets too, in the future
                         
-                        DEB___("baseProxy::run: socket %d has NO handler!!",s);
+                        _deb("baseProxy::run: socket %d has NO handler!!",s);
 
                         // all real sockets without ANY handler should be re-inserted
                         if(s > 0) {
@@ -1171,20 +1187,20 @@ int baseProxy::run(void) {
                         if (com()->poller.poller) {
                             if(s != com()->poller.poller->hint_socket()) {
                                 if(s < 0) {
-                                    EXT___("virtual socket %d has null handler",s);
+                                    _ext("virtual socket %d has null handler",s);
                                     virt_global_hack = true;
                                 }else {
-                                    ERR___("baseProxy::run: socket %d has registered NULL handler, removing",s);
+                                    _err("baseProxy::run: socket %d has registered NULL handler, removing",s);
                                     com()->poller.poller->del(s);
                                 }
                             } else {
                                 // hint file descriptor don't have handler
-                                DEB___("baseProxy::run: socket %d is hint socket, running proxy socket handler",s);
+                                _deb("baseProxy::run: socket %d is hint socket, running proxy socket handler",s);
                                 handle_sockets_once(com());
                                 counter_hint_handler++;
                             }
                         } else {
-                            ERRS___("com()->poller.poller is null!");                        
+                            _err("com()->poller.poller is null!");                        
                         }
                     }
                 }
@@ -1197,7 +1213,7 @@ int baseProxy::run(void) {
             
             // add back sockets which don't have handler - generally it should be just few sockets!
 
-            if(!back_in_set.empty())  DEB___("%d sockets in back_in_set re-added to in_set", back_in_set.size());
+            if(!back_in_set.empty())  _deb("%d sockets in back_in_set re-added to in_set", back_in_set.size());
 
             for(int a: back_in_set) {
                 counter_back_handler++;
@@ -1212,24 +1228,27 @@ int baseProxy::run(void) {
             }
             
             if(counter_proxy_handler || counter_generic_handler || counter_back_handler) {
-                DIA___("baseProxy::run: called handlers - proxy: %d, gen: %d, back-ins: %d, hint: %d",counter_proxy_handler,
+                _dia("baseProxy::run: called handlers - proxy: %d, gen: %d, back-ins: %d, hint: %d",counter_proxy_handler,
                         counter_generic_handler, counter_back_handler, counter_hint_handler);
             }
-            if (virt_global_hack && !udp_in_set.empty())  DEB___("baseProxy::run: virtual hack, virtuals: %d", udp_in_set.size());
-            if (counter_fence_fail) ERR___("baseProxy::run: fence failures: %d", counter_fence_fail);
+            if (virt_global_hack && !udp_in_set.empty())  _deb("baseProxy::run: virtual hack, virtuals: %d", udp_in_set.size());
+            if (counter_fence_fail) _err("baseProxy::run: fence failures: %d", counter_fence_fail);
         }
+
+        on_run_round();
     }
 
     return 0;
 };
 
-void baseProxy::sleep(void) {
+void baseProxy::sleep() {
   
-	unsigned int x_time = sleep_time;
+	unsigned int x_time = sleep_time();
   
 	if(sleep_factor_ > 0 && sleep_factor_ < 10) {
+
 	  // do some progressive slowdown
-	  x_time = sleep_time*sleep_factor_;
+	  x_time = sleep_time() * sleep_factor_;
 	}
   
 	usleep(x_time);
@@ -1244,7 +1263,7 @@ int baseProxy::bind(unsigned short port, unsigned char side) {
 	
 	// this function will always return value of 'port' parameter (but <=0 will not be added)
 	
-	baseHostCX *cx = new baseHostCX(com()->replicate(), s);
+	auto *cx = new baseHostCX(com()->replicate(), s);
         cx->host() = string_format("listening_%d",port);
 	cx->com()->nonlocal_dst(com()->nonlocal_dst());
 	
@@ -1257,13 +1276,13 @@ int baseProxy::bind(unsigned short port, unsigned char side) {
 };
 
 
-int baseProxy::bind(const char* path, unsigned char side) {
+int baseProxy::bind(std::string const& path, unsigned char side) {
     
-    int s = com()->bind(path);
+    int s = com()->bind(path.c_str());
     
     // this function will always return value of 'port' parameter (but <=0 will not be added)
     
-    baseHostCX *cx = new baseHostCX(com()->replicate(), s);
+    auto* cx = new baseHostCX(com()->replicate(), s);
     cx->host() = string_format("listening_%s",path);
     cx->com()->nonlocal_dst(com()->nonlocal_dst());
     
@@ -1300,12 +1319,12 @@ int baseProxy::left_connect ( const char* host, const char* port, bool blocking)
 {
 	baseHostCX* cx = new_cx(host,port);
 	
-	int sock = cx->connect(blocking);
+	int sock = cx->connect();
         if(sock > 0) {
-            DIA___("baseProxy::left_connect: successfully created socket %d", sock);
+            _dia("baseProxy::left_connect: successfully created socket %d", sock);
             lpcadd(cx);
         } else {
-            ERR___("baseProxy::left_connect: socket not created, returned %s", sock);
+            _err("baseProxy::left_connect: socket not created, returned %s", sock);
         } 
         
         return sock;
@@ -1315,12 +1334,12 @@ int baseProxy::left_connect ( const char* host, const char* port, bool blocking)
 int baseProxy::right_connect ( const char* host, const char* port, bool blocking)
 {
 	baseHostCX* cx = new_cx(host,port);
-        int sock = cx->connect(blocking);
+        int sock = cx->connect();
         if(sock > 0) {
-            DIA___("baseProxy::left_connect: successfully created socket %d", sock);
+            _dia("baseProxy::left_connect: successfully created socket %d", sock);
             rpcadd(cx);
         } else {
-            ERR___("baseProxy::left_connect: socket not created, returned %s", sock);
+            _err("baseProxy::left_connect: socket not created, returned %s", sock);
         } 
         
         return sock;
@@ -1328,7 +1347,7 @@ int baseProxy::right_connect ( const char* host, const char* port, bool blocking
 
 
 
-std::string baseProxy::to_string(int verbosity) {
+std::string baseProxy::to_string(int verbosity) const {
 
     std::string ret;
     ret.append(" ");
@@ -1345,38 +1364,38 @@ std::string baseProxy::to_string(int verbosity) {
 	bool empty = true;
 	
 	if(lb > 0) {
-		for(typename std::vector<baseHostCX*>::iterator ii = left_bind_sockets.begin(); ii != left_bind_sockets.end(); ++ii) { ret += ("a: " + (*ii)->to_string(verbosity) + " "); };
+		for(auto ii: left_bind_sockets) { ret += ("a: " + ii->to_string(verbosity) + " "); };
 		empty = false;
 	}
 	if(ls > 0) {
-		for(typename std::vector<baseHostCX*>::iterator ii = left_sockets.begin(); ii != left_sockets.end(); ++ii) { ret += ("l:" + (*ii)->to_string(verbosity) + " "); };
+		for(auto ii: left_sockets) { ret += ("l:" + ii->to_string(verbosity) + " "); };
 		empty = false;	
 	}
     if(la > 0) {
-        for(typename std::vector<baseHostCX*>::iterator ii = left_delayed_accepts.begin(); ii != left_delayed_accepts.end(); ++ii) { ret += ("l:" + (*ii)->to_string(verbosity) + " "); };
+        for(auto ii: left_delayed_accepts) { ret += ("l:" + ii->to_string(verbosity) + " "); };
         empty = false;  
     }
 	if(lp > 0) {
-		for(typename std::vector<baseHostCX*>::iterator ii = left_pc_cx.begin(); ii != left_pc_cx.end(); ++ii) { ret += ("x:" + (*ii)->to_string(verbosity) + " "); };
+		for(auto ii: left_pc_cx) { ret += ("x:" + ii->to_string(verbosity) + " "); };
 		empty = false;	
 	}
 	
 	ret += "<+> ";
 	
 	if(rb > 0) {
-		for(typename std::vector<baseHostCX*>::iterator ii = right_bind_sockets.begin(); ii != right_bind_sockets.end(); ++ii) { ret += ("b:" + (*ii)->to_string(verbosity) + " "); };
+		for(auto ii: right_bind_sockets) { ret += ("b:" + ii->to_string(verbosity) + " "); };
 		empty = false;	
 	}
 	if(rs > 0) {
-		for(typename std::vector<baseHostCX*>::iterator ii = right_sockets.begin(); ii != right_sockets.end(); ++ii) { ret += ("r:" + (*ii)->to_string(verbosity) + " "); };
+		for(auto ii: right_sockets) { ret += ("r:" + ii->to_string(verbosity) + " "); };
 		empty = false;	
 	}
     if(ra > 0) {
-        for(typename std::vector<baseHostCX*>::iterator ii = right_delayed_accepts.begin(); ii != right_delayed_accepts.end(); ++ii) { ret += ("r:" + (*ii)->to_string(verbosity) + " "); };
+        for(auto ii: right_delayed_accepts) { ret += ("r:" + ii->to_string(verbosity) + " "); };
         empty = false;  
     }
 	if(rp > 0) {
-		for(typename std::vector<baseHostCX*>::iterator ii = right_pc_cx.begin(); ii != right_pc_cx.end(); ++ii) { ret += ("y:" + (*ii)->to_string(verbosity) + " "); };
+		for(auto ii: right_pc_cx) { ret += ("y:" + ii->to_string(verbosity) + " "); };
 		empty = false;	
 	}
 	

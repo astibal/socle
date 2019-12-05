@@ -26,6 +26,7 @@
 #include <arpa/inet.h>
 
 #include <buffer.hpp>
+#include <log/logan.hpp>
 
 inline uint32_t ltv_get_length(uint8_t* data) { return ntohl(*((uint32_t*)data)); };
 inline void ltv_set_length(uint8_t* data,uint32_t l) { *((uint32_t*)data) = htonl(l); };
@@ -110,12 +111,18 @@ public:
 	std::string data_str();
 	std::string data_str_ip();
 	
- 	int pack(::buffer *buf=NULL);
+ 	int pack(::buffer *buf=nullptr);
 	
 	//FIXME: return single string (hr = human readable)
 	std::string hr(int=0);
 	
-        LTVEntry* search(const std::vector<int>&);
+    LTVEntry* search(const std::vector<int>&);
+
+    static logan_lite& get_log() {
+         static logan_lite l = logan_lite("internal.ltv");
+
+         return l;
+    }
 };
 
 #endif // LTVENTRY_HPP

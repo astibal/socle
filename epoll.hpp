@@ -16,10 +16,10 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <fcntl.h>
-#include <time.h>
 #include <unistd.h>
 
-#include <logger.hpp>
+#include <mpstd.hpp>
+#include <log/logan.hpp>
 
 #define EPOLLER_MAX_EVENTS 50
 #define HANDLER_FENCE 0xcaba1a
@@ -28,18 +28,21 @@
 class baseCom;
 
 struct epoll {
+
+    using set_type = mp::set<int>;
+
     struct epoll_event events[EPOLLER_MAX_EVENTS];
     int fd = 0;
     int hint_fd = 0;
     bool auto_epollout_remove = true;
-    std::set<int> in_set;
-    std::set<int> out_set;
+    set_type in_set;
+    set_type out_set;
 
     // this set is used for sockets where ARE already some data, but we wait for more.
     // because of this, socket will be REMOVED from in_set (so avoiding CPU spikes when there are still not enough of data)
     // but those sockets will be added latest after time set in @rescan_timeout microseconds.
-    std::set<int> rescan_set_in;
-    std::set<int> rescan_set_out;
+    set_type rescan_set_in;
+    set_type rescan_set_out;
     struct timeb rescan_timer;
 
     bool in_read_set(int check);
@@ -53,16 +56,16 @@ struct epoll {
     int idle_counter = 0;
     // if round is 0, we are waiting. If 1 - we will trigger on watched sockets
     // make it 1, so on start it will flip to 0
-    bool idle_round = 1;
+    bool idle_round = true;
 
     //sockets to be added to idle_watched (to ensure defined idle timeout (and possibly slightly more)
-    std::set<int> idle_watched_pre;
+    set_type idle_watched_pre;
     //idle socket timer - sockets in this list will be added to idle_set.
     // However, if we receive *any* socket activity (depends on monitoring), socket is
-    std::set<int> idle_watched;
+    set_type idle_watched;
 
     // set with sockets in idle state. Idle list is erased on each poll.
-    std::set<int> idle_set;
+    set_type idle_set;
     bool in_idle_set(int check);
     bool in_idle_watched_set(int check);
 
@@ -85,11 +88,14 @@ struct epoll {
 
     inline void clear() { memset(events,0,EPOLLER_MAX_EVENTS*sizeof(epoll_event)); in_set.clear(); out_set.clear(); idle_set.clear(); }
     bool hint_socket(int socket); // this is the socket which will be additionally monitored for EPOLLIN; each time it's readable, single byte is read from it.
-    inline int hint_socket(void) const { return hint_fd; }
+    [[nodiscard]] inline int hint_socket() const { return hint_fd; }
 
-    virtual ~epoll() {}
+    virtual ~epoll() = default;
 
     static loglevel log_level;
+    logan_lite log = logan_lite("com.epoll");
+
+    mutable std::mutex lock_;
 };
 
 
@@ -138,7 +144,7 @@ struct epoller {
     virtual bool click_timer_now (); // return true if we should add them back to in_set (scan their readability again). If yes, reset timer.
     
     virtual int wait(int timeout = -1);
-    virtual bool hint_socket(int socket); // this is the socket which will be additinally monitored for EPOLLIN; each time it's readable, single byte is read from it.
+    virtual bool hint_socket(int socket); // this is the socket which will be additionally monitored for EPOLLIN; each time it's readable, single byte is read from it.
 
     // handler hints is a map of socket->handler. We will allow to grow it as needed. No purges. 
     std::unordered_map<int,handler_info_t> handler_db;
@@ -149,7 +155,10 @@ struct epoller {
     void set_idle_watch(int check);
     void clear_idle_watch(int check);
 
-    virtual ~epoller() { if(poller) delete poller; }
+    virtual ~epoller() { delete poller; }
+
+    logan_lite log = logan_lite("com.epoll");
+    mutable std::mutex lock_;
 };
 
 class epoll_handler {
@@ -157,10 +166,9 @@ public:
     int fence__ = HANDLER_FENCE;
     virtual void handle_event(baseCom*) = 0;
     virtual ~epoll_handler() {
-        std::recursive_mutex m;
-        std::lock_guard<std::recursive_mutex> guard(m);
-
         if(registrant != nullptr) {
+            std::scoped_lock<std::mutex> l(lock_);
+
             for(auto s: registered_sockets) {
 
                 epoll_handler* owner = registrant->get_handler(s);
@@ -173,11 +181,11 @@ public:
         }
     }
     
-    friend class epoller;
+    friend struct epoller;
 protected:
     epoller* registrant = nullptr;
-    std::set<int> registered_sockets;
-    
+    epoll::set_type registered_sockets;
+    std::mutex lock_;
 };
 
 struct socket_state {
@@ -209,7 +217,7 @@ struct socket_state {
     void mon_read();
     void mon_none();
 
-    inline const int state() const { return state_; };
+    [[nodiscard]] inline const int state() const { return state_; };
 };
 
 #endif //EPOLL_HPP
