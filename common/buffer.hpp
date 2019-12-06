@@ -151,7 +151,7 @@ public:
   buffer view(unsigned int, buffer::size_type);
   buffer view();
   
-protected:
+private:
   unsigned char* data_ = nullptr;
   size_type size_ = 0;
   size_type capacity_ = 0;

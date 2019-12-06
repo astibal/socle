@@ -24,12 +24,11 @@
 class lockable {
 public:
     virtual ~lockable() { lock_.unlock(); };
-    void lock() { lock_.lock(); }
-    void unlock() { lock_.unlock(); }
-    
-    #define lock_guard_me std::lock_guard<std::recursive_mutex> ll(this->lock_)
+    void lock() const { lock_.lock(); }
+    void unlock() const { lock_.unlock(); }
+
 protected:
-    std::recursive_mutex lock_;
+    mutable std::recursive_mutex lock_;
 };
 
 template <class T>
@@ -39,6 +38,7 @@ public:
     
     T* acquire() { lock(); return object_; }
     void release() { unlock(); }
+    T* operator ->() { return object_; };
     
 protected:
     T* object_ = nullptr;

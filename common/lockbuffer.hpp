@@ -40,47 +40,7 @@ public:
 
 inline lockbuffer& lockbuffer::operator= (const lockbuffer& x)
 {
-    if (&x != this)
-    {
-        if (x.size_ > capacity_)
-        {
-            if (free_ and data_ != nullptr ) {
-                if(use_pool) {
-
-                    memPool::pool().release( { data_, capacity_} );
-                }
-                else {
-                    delete[] data_;  // we HAD ownership
-                    counter_free(capacity_);
-                }
-            }
-
-            capacity_ = x.capacity_;
-
-            if(x.free_) {
-
-                if(use_pool) {
-                    mem_chunk_t mch = memPool::pool().acquire(x.capacity_);
-                    data_ = mch.ptr;
-                    capacity_  = mch.capacity;
-                }
-                else {
-                    data_ = new unsigned char[x.capacity_];
-                    counter_alloc(x.capacity_);
-                }
-                free_ = true;
-            } else {
-                data_ = x.data_;
-                free_ = false;
-            }
-        }
-
-        if (x.size_ != 0 && x.free_) // copy only if original had ownership: honor ownership
-            std::memcpy (data_, x.data_, x.size_);
-
-        size_ = x.size_;
-    }
-
+    buffer::operator=(x);
     return *this;
 }
 
