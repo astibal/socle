@@ -1074,43 +1074,41 @@ int baseSSLCom<L4Proto>::status_resp_callback(SSL* ssl, void* arg) {
     X509* peer_cert = nullptr;
     X509* issuer_cert = nullptr;
 
-    if(com != nullptr) {
-
-        // it's not necessary to run any further checks, certificate is not OK
-        // status callback comes usually earlier then certificate verify callback, but this can't be guaranteed.
-        // keeping it here.
-
-        baseSSLCom* pcom = dynamic_cast<baseSSLCom*>(com->peer());
-        if(pcom != nullptr) {
-            name = pcom->hr();
-        } else {
-            name = com->hr();
-        }
-        opt_ocsp_require = (com->opt_ocsp_stapling_mode >= 2);
-        peer_cert   = com->sslcom_target_cert;
-        issuer_cert = com->sslcom_target_issuer;
-
-        if(com->verify_get() != VERIFY_OK && ! com->verify_check(CLIENT_CERT_RQ)) {
-            _dia("status_resp_callback[%s]: certificate verification failed already (%d), no need to check stapling",
-                    name.c_str(),
-                    com->verify_get());
-
-            return com->opt_failed_certcheck_replacement;
-        }
-
-        if (!peer_cert || !issuer_cert) {
-            _dia("status_resp_callback[%s]: status_resp_callback: verify hasn't been yet called", name.c_str());
-            com->opt_ocsp_enforce_in_verify = true;
-            return baseSSLCom::check_revocation_oob(com, opt_ocsp_require ? 0 : 1);
-        }
-        
-        _deb("status_resp_callback[%s]: peer cert=%x, issuer_cert=%x", name.c_str(), peer_cert, issuer_cert);
-       
-    } else {
+    if(! com) {
         _err("status_resp_callback[%s]: argument data is not SSLCom*!", name.c_str());
         return -1;
     }
 
+
+    // it's not necessary to run any further checks, certificate is not OK
+    // status callback comes usually earlier then certificate verify callback, but this can't be guaranteed.
+    // keeping it here.
+
+    baseSSLCom* pcom = dynamic_cast<baseSSLCom*>(com->peer());
+    if(pcom != nullptr) {
+        name = pcom->hr();
+    } else {
+        name = com->hr();
+    }
+    opt_ocsp_require = (com->opt_ocsp_stapling_mode >= 2);
+    peer_cert   = com->sslcom_target_cert;
+    issuer_cert = com->sslcom_target_issuer;
+
+    if(com->verify_get() != VERIFY_OK && ! com->verify_check(CLIENT_CERT_RQ)) {
+        _dia("status_resp_callback[%s]: certificate verification failed already (%d), no need to check stapling",
+                name.c_str(),
+                com->verify_get());
+
+        return com->opt_failed_certcheck_replacement;
+    }
+
+    if (!peer_cert || !issuer_cert) {
+        _dia("status_resp_callback[%s]: status_resp_callback: verify hasn't been yet called", name.c_str());
+        com->opt_ocsp_enforce_in_verify = true;
+        return baseSSLCom::check_revocation_oob(com, opt_ocsp_require ? 0 : 1);
+    }
+
+    _deb("status_resp_callback[%s]: peer cert=%x, issuer_cert=%x", name.c_str(), peer_cert, issuer_cert);
 
     std::string cn = SSLFactory::print_cn(com->sslcom_target_cert) + ";" + SSLFactory::fingerprint(com->sslcom_target_cert);
 
@@ -1119,25 +1117,21 @@ int baseSSLCom<L4Proto>::status_resp_callback(SSL* ssl, void* arg) {
     if(stap_result.first == staple_code::SUCCESS) {
         if (stap_result.second == V_OCSP_CERTSTATUS_GOOD) {
             _dia("[%s] OCSP status is good",name.c_str());
-            if(com != nullptr){
-                com->ocsp_cert_is_revoked = 0;
-                _dia("Connection from %s: certificate %s is valid (stapling OCSP))",name.c_str(),cn.c_str());
+            com->ocsp_cert_is_revoked = 0;
+            _dia("Connection from %s: certificate %s is valid (stapling OCSP))",name.c_str(),cn.c_str());
 
-            }
             return 1;
         } else
         if (stap_result.second == V_OCSP_CERTSTATUS_REVOKED) {
             _dia("[%s] OCSP status is revoked", name.c_str());
-            if (com != nullptr) {
-                com->ocsp_cert_is_revoked = 1;
-                com->verify_set(REVOKED);
-                _war("Connection from %s: certificate %s is revoked (stapling OCSP), replacement=%d)", name.c_str(),
-                     cn.c_str(),
-                     com->opt_failed_certcheck_replacement);
 
-                return com->opt_failed_certcheck_replacement;
-            }
-            return 0;
+            com->ocsp_cert_is_revoked = 1;
+            com->verify_set(REVOKED);
+            _war("Connection from %s: certificate %s is revoked (stapling OCSP), replacement=%d)", name.c_str(),
+                       cn.c_str(),
+                       com->opt_failed_certcheck_replacement);
+
+            return com->opt_failed_certcheck_replacement;
         }
     } else
     if (opt_ocsp_require) {
@@ -1528,54 +1522,53 @@ bool baseSSLCom<L4Proto>::bypass_me_and_peer() {
 }
 
 
-template <class L4Proto>
-void baseSSLCom<L4Proto>::accept_socket ( int sockfd )  {
+template<class L4Proto>
+void baseSSLCom<L4Proto>::accept_socket (int sockfd) {
 
-    _dia("SSLCom::accept_socket[%d]: attempt %d",sockfd,prof_accept_cnt);
+    _dia("SSLCom::accept_socket[%d]: attempt %d", sockfd, prof_accept_cnt);
 
     L4Proto::on_new_socket(sockfd);
     L4Proto::accept_socket(sockfd);
 
-    if(l4_proto() == SOCK_DGRAM && sockfd < 0) {
-        UDPCom* l4com = dynamic_cast<UDPCom*>(this);
-        if(l4com) {
+    if (l4_proto() == SOCK_DGRAM && sockfd < 0) {
+        UDPCom *l4com = dynamic_cast<UDPCom *>(this);
+        if (l4com) {
             _inf("underlying com is UDPCom using virtual sockets");
-            
+
             auto it_rec = l4com->datagrams_received.find(sockfd);
-            if(it_rec != l4com->datagrams_received.end()) {
+            if (it_rec != l4com->datagrams_received.end()) {
                 _deb("datagram records found");
 
-                Datagram& rec = it_rec->second;
-                sslcom_fd = socket(rec.dst_family(),SOCK_DGRAM,IPPROTO_UDP);
+                Datagram &rec = it_rec->second;
+                sslcom_fd = socket(rec.dst_family(), SOCK_DGRAM, IPPROTO_UDP);
                 int n = 1;
 
                 int ret_opt4 = setsockopt(sslcom_fd, SOL_IP, IP_TRANSPARENT, &n, sizeof(n));
                 int ret_opt6 = setsockopt(sslcom_fd, SOL_IPV6, IPV6_TRANSPARENT, &n, sizeof(n));
                 int ret_con = ::connect(sslcom_fd, (sockaddr *) &rec.src, sizeof(sockaddr_storage));
                 int ret_bind = ::bind(sslcom_fd, (sockaddr *) &rec.dst, sizeof(sockaddr_storage));
-                
+
                 _inf("Masked socket: connect=%d, bind=%d, transp4=%d, transp6=%d",
-                                              ret_con == 0, ret_bind ==0 , ret_opt4 == 0, ret_opt6 == 0);
+                     ret_con == 0, ret_bind == 0, ret_opt4 == 0, ret_opt6 == 0);
             } else {
                 _deb("datagram records not found");
             }
-        }
-        else {
+        } else {
             _inf("underlying com is UDPCom using real sockets");
         }
     }
-    
+
     upgrade_server_socket(sockfd);
-    if(opt_bypass) {
+    if (opt_bypass) {
         prof_accept_bypass_cnt++;
         return;
     }
 
-    
-    if(l4_proto() == SOCK_DGRAM) {
+
+    if (l4_proto() == SOCK_DGRAM) {
 
 #ifdef USE_OPENSSL11
-        BIO_ADDR* bia = BIO_ADDR_new();
+        BIO_ADDR *bia = BIO_ADDR_new();
         if (!DTLSv1_listen(sslcom_ssl, bia)) {
             BIO_ADDR_free(bia);
             return;
@@ -1590,7 +1583,7 @@ void baseSSLCom<L4Proto>::accept_socket ( int sockfd )  {
     }
 
     ERR_clear_error();
-    int r = SSL_accept (sslcom_ssl);
+    int r = SSL_accept(sslcom_ssl);
     if (r > 0) {
         _dia("SSLCom::accept_socket[%d]: success at 1st attempt.", sockfd);
         prof_accept_ok++;
@@ -1600,7 +1593,7 @@ void baseSSLCom<L4Proto>::accept_socket ( int sockfd )  {
         forced_read(true);
         forced_write(true);
 
-        if(SSL_session_reused(sslcom_ssl)) {
+        if (SSL_session_reused(sslcom_ssl)) {
             flags_ |= HSK_REUSED;
         }
 
@@ -1610,9 +1603,9 @@ void baseSSLCom<L4Proto>::accept_socket ( int sockfd )  {
             sslkeylog = false;
         }
 #endif
-        
+
     } else {
-        _dia("SSLCom::accept_socket[%d]: ret %d, need to call later.",sockfd,r);
+        _dia("SSLCom::accept_socket[%d]: ret %d, need to call later.", sockfd, r);
     }
     prof_accept_cnt++;
 }

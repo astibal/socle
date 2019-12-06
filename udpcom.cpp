@@ -617,8 +617,17 @@ int UDPCom::write_to_pool(int __fd, const void* __buf, size_t __n, int __flags) 
             int n = 1;
             int d = socket (ss_d.ss_family, SOCK_DGRAM, 0);
             
-            if(ss_d.ss_family == AF_INET6) {  setsockopt(d, SOL_IPV6, IPV6_TRANSPARENT, &n, sizeof(n)); n = 1; }
-            if(ss_d.ss_family == AF_INET ) {  setsockopt(d, SOL_IP, IP_TRANSPARENT, &n, sizeof(n)); n = 1; }
+            if(ss_d.ss_family == AF_INET6) {
+                if(0 != setsockopt(d, SOL_IPV6, IPV6_TRANSPARENT, &n, sizeof(n))) {
+                    _err("cannot set socket %d option IPV6_TRANSPARENT", d);
+                } n = 1;
+            }
+            if(ss_d.ss_family == AF_INET ) {
+                if(0 != setsockopt(d, SOL_IP, IP_TRANSPARENT, &n, sizeof(n))){
+                    _err("cannot set socket %d option IP_TRANSPARENT", d);
+                }
+                n = 1;
+            }
             
             if(0 != setsockopt(d, SOL_SOCKET, SO_REUSEADDR, &n, sizeof(n))) {
                 _err("cannot set socket %d option SO_REUSEADDR", d);
@@ -660,11 +669,32 @@ int UDPCom::write_to_pool(int __fd, const void* __buf, size_t __n, int __flags) 
                 l = ::send(record.socket,__buf,__n, 0);
             } else {
                 int n = 1;
-                if(ss_d.ss_family == AF_INET6) {  setsockopt(d, SOL_IPV6, IPV6_TRANSPARENT, &n, sizeof(n)); n = 1; }
-                if(ss_d.ss_family == AF_INET ) {  setsockopt(d, SOL_IP, IP_TRANSPARENT, &n, sizeof(n)); n = 1; }                
-                setsockopt(d, SOL_SOCKET, SO_REUSEADDR, &n, sizeof(n));
-                setsockopt(d, SOL_SOCKET, SO_BROADCAST, &n, sizeof(n));
+                if(ss_d.ss_family == AF_INET6) {
+                    if(0 != setsockopt(d, SOL_IPV6, IPV6_TRANSPARENT, &n, sizeof(n))) {
+                        _err("UDPCom::write_to_pool[%d]: socket %d cannot set option IPV6_TRANSPARENT: %s", __fd, d, string_error().c_str());
+                    }
+                    n = 1;
+                }
+                if(ss_d.ss_family == AF_INET ) {
+                    if(0 != setsockopt(d, SOL_IP, IP_TRANSPARENT, &n, sizeof(n))) {
+                        _err("UDPCom::write_to_pool[%d]: socket: %d: cannot set option IP_TRANSPARENT: %s", __fd, d, string_error().c_str());
+                    }
+                    n = 1;
+                }
+                if(0 != setsockopt(d, SOL_SOCKET, SO_REUSEADDR, &n, sizeof(n))) {
+                    _err("UDPCom::write_to_pool[%d]: socket: %d: cannot set option SO_REUSEADDR: %s", __fd, d, string_error().c_str());
+                }
+                n = 1;
+
+                if(0 != setsockopt(d, SOL_SOCKET, SO_BROADCAST, &n, sizeof(n))) {
+                    _err("UDPCom::write_to_pool[%d]: socket: %d: cannot set option SO_BROADCAST: %s", __fd, d, string_error().c_str());
+                }
+
                 ret_bind = ::bind (d, (struct sockaddr*)&(ss_d), sizeof (struct sockaddr_storage));
+                if(0 != ret_bind) {
+                    _err("UDPCom::write_to_pool[%d]: socket: %d: cannot bind: %s", __fd, d, string_error().c_str());
+                }
+
                 int ret_conn = ::connect(d, (struct sockaddr*)&(ss_s), sizeof (struct sockaddr_storage));
                 
                 if(ret_conn != 0) {

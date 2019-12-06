@@ -236,8 +236,14 @@ bool TCPCom::com_status() {
 
 void TCPCom::on_new_socket(int __fd) {
     int optval = 1;
-    setsockopt(__fd, IPPROTO_TCP, TCP_NODELAY , &optval, sizeof optval);
-    setsockopt(__fd, IPPROTO_TCP, TCP_QUICKACK , &optval, sizeof optval);
+
+    if(0 != setsockopt(__fd, IPPROTO_TCP, TCP_NODELAY , &optval, sizeof optval)) {
+        _err("TCPCom::on_new_socket[%d]: setsockopt TCP_NODELAY failed: %s", __fd, string_error().c_str());
+    }
+    optval = 1;
+    if(0 != setsockopt(__fd, IPPROTO_TCP, TCP_QUICKACK , &optval, sizeof optval)) {
+        _err("TCPCom::on_new_socket[%d]: setsockopt TCP_QUICKACK failed: %s", __fd, string_error().c_str());
+    }
 
     baseCom::on_new_socket(__fd);
 }
