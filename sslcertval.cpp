@@ -52,7 +52,7 @@ namespace inet {
 
                         //retype mycertser to non-const (not modified by function call - based on API doc promise ... :/ )
 
-                        if (X509_CRL_get0_by_serial(crl_file, &myentry, (ASN1_INTEGER *) mycertser) > 0 && myentry) {
+                        if (X509_CRL_get0_by_serial(crl_file, &myentry, const_cast<ASN1_INTEGER*> (mycertser)) > 0 && myentry) {
                             const ASN1_TIME *tm = X509_REVOKED_get0_revocationDate(myentry);
 
                             std::string revocation_date;
