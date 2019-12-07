@@ -692,7 +692,7 @@ int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
     int is_revoked = -1;
     auto& log = inet::ocsp::OcspFactory::log();
 
-    if(com != nullptr) {
+    if(com && com->sslcom_target_cert && com->sslcom_target_issuer) {
 
         std::string name = "unknown_cx";
 
@@ -755,26 +755,30 @@ int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
         
         
         if(is_revoked < 0) {
-            //if(true) { // testing -- uncomment if needed to test CRL download despite we have OCSP result (and comment if statement above ;))
             
             _not("Connection from %s: certificate OCSP revocation status cannot be obtained)",name.c_str());
             
             std::vector<std::string> crls = inet::crl::crl_urls(com->sslcom_target_cert);
             
-            SSLFactory::expiring_crl* crl_h = nullptr;
-            X509_CRL* crl = nullptr;
+            SSLFactory::expiring_crl* crl_cache_entry = nullptr;
+            X509_CRL* crl_struct = nullptr;
 
 
             std::lock_guard<std::recursive_mutex> l_(com->certstore()->crl_cache.getlock());
             for(auto crl_url: crls) {
                 
                 std::string crl_printable = printable(crl_url);
-                crl_h = certstore()->crl_cache.get(crl_url);
+                crl_cache_entry = certstore()->crl_cache.get(crl_url);
                 
-                if(crl_h != nullptr) {
-                    crl = crl_h->value()->ptr;
+                if(crl_cache_entry != nullptr) {
+                    crl_struct = crl_cache_entry->value()->ptr;
                     _dia("found cached crl: %s",crl_printable.c_str());
                     str_status = str_cached;
+
+                    // we have crl cached, but it points to null (we indicate failed download)
+                    if(!crl_struct) {
+                        _war("failed download was cached for crl: %s, waiting for expire",crl_printable.c_str());
+                    }
                 }
                 else {
                     _dia("crl not cached: %s",crl_printable.c_str());
@@ -798,17 +802,19 @@ int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
                             _war("it took long time to download CRL. You should consider to disable CRL check :(");
                         }
 
-                        crl = inet::crl::crl_from_bytes(b);
+                        crl_struct = inet::crl::crl_from_bytes(b);
                         str_status = str_fresh;
                         
 
-                        if(crl != nullptr) {
-                            _dia("Caching CRL 0x%x", crl);
-                            certstore()->crl_cache.set(crl_url.c_str(),SSLFactory::make_expiring_crl(crl));
+                        if(crl_struct) {
+
+                            _dia("Caching CRL 0x%x", crl_struct);
+                            certstore()->crl_cache.set(crl_url.c_str(),SSLFactory::make_expiring_crl(crl_struct));
                             // but because we are locked, we are happy to overwrite it!
                         }
                     } else {
                         _war("downloading CRL from %s failed.",crl_printable.c_str());
+                        certstore()->crl_cache.set(crl_url.c_str(),SSLFactory::make_expiring_crl(nullptr));
                     }
 
                 }
@@ -816,24 +822,21 @@ int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
                 
                 int is_revoked_by_crl = -1;
                 
-                if(crl != nullptr && com->sslcom_target_cert != nullptr && com->sslcom_target_issuer != nullptr) {
-                    int crl_trust = inet::crl::crl_verify_trust(com->sslcom_target_cert,
-                                                     com->sslcom_target_issuer,
-                                                     crl,
-                                                     com->certstore()->default_client_ca_path().c_str());
-                    _dia("CRL 0x%x trusted = %d",crl, crl_trust);
+                if(crl_struct) {
+
+                    int crl_trust = inet::crl::crl_verify_trust(
+                            com->sslcom_target_cert,
+                            com->sslcom_target_issuer,
+                            crl_struct,
+                            com->certstore()->default_client_ca_path().c_str());
+                    _dia("CRL 0x%x trusted = %d", crl_struct, crl_trust);
                     
-                    bool trust_blindly_downloaded_CRL = true;
-                    if(crl_trust == 0 && !trust_blindly_downloaded_CRL) {
-                        _war("CRL %s is not verified, it's untrusted",crl_printable.c_str());
+                    if(crl_trust == 0) {
+                        _war("CRL %s signature is not verified - untrusted",crl_printable.c_str());
                     }
                     else {
-                        if(crl_trust == 0 && crl_h == nullptr) {
-                            // complain only at download time only
-                            _not("CRL %s is not verified, but we are instructed to trust it.",crl_printable.c_str());
-                        }
-                        _dia("Checking revocation status: CRL 0x%x", crl);
-                        is_revoked_by_crl = inet::crl::crl_is_revoked_by(com->sslcom_target_cert,com->sslcom_target_issuer,crl);
+                        _dia("Checking revocation status: CRL 0x%x", crl_struct);
+                        is_revoked_by_crl = inet::crl::crl_is_revoked_by(com->sslcom_target_cert, com->sslcom_target_issuer, crl_struct);
                     }
                 }
 
@@ -855,6 +858,10 @@ int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
                 }
             }
         }
+    } else {
+        _err("ocsp_explicit_check: failed call requirements: com 0x%x", com);
+        if(com)
+            _err("ocsp_explicit_check: failed call requirements: cert 0x%x, issuer 0x%x" , com->sslcom_target_cert, com->sslcom_target_issuer);
     }
     
     if(is_revoked > 0) {

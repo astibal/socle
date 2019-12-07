@@ -97,23 +97,16 @@ namespace inet {
             sk_X509_push(chain, issuer);
 
             X509_STORE *store = X509_STORE_new();
-            if (store == nullptr) {
+            if (! store) {
                 _err("crl_verify_trust: X509_STORE_new failed");
+
+                sk_X509_free(chain);
                 return 0;
             }
+            X509_STORE_set_default_paths(store);
 
-            X509_LOOKUP *lookup = X509_STORE_add_lookup(store, X509_LOOKUP_file());
-            if (lookup == nullptr) {
-                _err("crl_verify_trust: X509_STORE_add_lookup failed");
-                X509_STORE_free(store);
-                return 0;
-            }
 
-            // FIXME
-            //_inf("crl_verify_trust: Loading CA path %s",cacerts_pem_path.c_str());
-            //int q1 = X509_LOOKUP_load_file(lookup, cacerts_pem_path.c_str(), X509_FILETYPE_PEM);
-            //if (!q1) { _inf("crl_verify_trust: X509_LOOKUP_load_file failed"); return 0; }
-
+            // single-use lookup store
             X509_STORE_CTX *csc = X509_STORE_CTX_new();
 
             int verify_result = 0;
