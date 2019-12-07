@@ -72,8 +72,16 @@ bool MasterProxy::run_timers (void)
 
 int MasterProxy::handle_sockets_once(baseCom* xcom) {
 
-    int my_handle_returned = baseProxy::handle_sockets_once(xcom);
-    _ext("handling own sockets: returned %d", my_handle_returned);
+    int my_handle_returned = 0;
+
+    try {
+        my_handle_returned = baseProxy::handle_sockets_once(xcom);
+        _ext("handling own sockets: returned %d", my_handle_returned);
+    }
+    catch(socle::com_error const& e) {
+        _err("master proxy exception: %s", e.what());
+        return 0;
+    }
     
     int r = 0;
     int proxies_handled= 0;
@@ -86,7 +94,16 @@ int MasterProxy::handle_sockets_once(baseCom* xcom) {
             p->shutdown();
             proxies_shutdown++;
         } else {
-            r += p->handle_sockets_once(xcom);
+
+            try {
+                r += p->handle_sockets_once(xcom);
+            }
+            catch(socle::com_error const& e) {
+                _err("slave proxy exception: %s", e.what());
+                p->state().dead(true);
+            }
+
+
             proxies_handled++;
         }
     }

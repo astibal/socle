@@ -157,6 +157,13 @@ namespace socle {
             return "Com object is nullptr";
         }
     };
+
+    class create_socket_failed : public com_error{
+    public:
+        const char* what () const noexcept override  {
+            return "Cannot create a new socket";
+        }
+    };
 }
 
 class baseHostCX : public Host
