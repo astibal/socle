@@ -1548,15 +1548,21 @@ void baseSSLCom<L4Proto>::accept_socket (int sockfd) {
 
                 Datagram &rec = it_rec->second;
                 sslcom_fd = socket(rec.dst_family(), SOCK_DGRAM, IPPROTO_UDP);
-                int n = 1;
 
-                int ret_opt4 = setsockopt(sslcom_fd, SOL_IP, IP_TRANSPARENT, &n, sizeof(n));
-                int ret_opt6 = setsockopt(sslcom_fd, SOL_IPV6, IPV6_TRANSPARENT, &n, sizeof(n));
-                int ret_con = ::connect(sslcom_fd, (sockaddr *) &rec.src, sizeof(sockaddr_storage));
-                int ret_bind = ::bind(sslcom_fd, (sockaddr *) &rec.dst, sizeof(sockaddr_storage));
+                if(sslcom_fd > 0) {
+                    int n = 1;
+                    int ret_opt4 = setsockopt(sslcom_fd, SOL_IP, IP_TRANSPARENT, &n, sizeof(n));
+                    int ret_opt6 = setsockopt(sslcom_fd, SOL_IPV6, IPV6_TRANSPARENT, &n, sizeof(n));
+                    int ret_con = ::connect(sslcom_fd, (sockaddr *) &rec.src, sizeof(sockaddr_storage));
+                    int ret_bind = ::bind(sslcom_fd, (sockaddr *) &rec.dst, sizeof(sockaddr_storage));
+                    _inf("Masked socket: connect=%d, bind=%d, transp4=%d, transp6=%d",
+                         ret_con == 0, ret_bind == 0, ret_opt4 == 0, ret_opt6 == 0);
+                }
+                else {
+                    _err("SSLCom<UDP>::accept_socket: cannot create real socket for %d", sockfd);
+                    error(ERROR_SOCKET);
+                }
 
-                _inf("Masked socket: connect=%d, bind=%d, transp4=%d, transp6=%d",
-                     ret_con == 0, ret_bind == 0, ret_opt4 == 0, ret_opt6 == 0);
             } else {
                 _deb("datagram records not found");
             }
