@@ -2484,11 +2484,10 @@ int baseSSLCom<L4Proto>::read ( int __fd, void* __buf, size_t __n, int __flags )
 
                 
                 if(sslcom_read_blocked_on_write > 0) {
-                    master()->poller.modify(__fd,EPOLLIN);
+                    master()->poller.modify(__fd, EPOLLIN);
                     sslcom_read_blocked_on_write=0;
                 }
-                
-                sslcom_read_blocked=0;
+
                 
                 // reset IO timeouts
                 set_timer_now(&timer_read_timeout);
@@ -2503,20 +2502,14 @@ int baseSSLCom<L4Proto>::read ( int __fd, void* __buf, size_t __n, int __flags )
                 return r;
 
             case SSL_ERROR_WANT_READ:
-                if(r == -1) {
-                    _deb("SSLCom::read[%d]: want read: err=%d,read_now=%4d,total=%4d",__fd,err,r,total_r);
-                }
-                else {
-                    _deb("SSLCom::read[%d]: want read: err=%d,read_now=%4d,total=%4d",__fd,err,r,total_r);
-                }
-                sslcom_read_blocked=1;
+                _deb("SSLCom::read[%d]: want read: err=%d, read_now=%4d, total=%4d", __fd, err, r, total_r);
                 
                 // defer read operation
                 rescan_read(sslcom_fd);
 
                 // check timers and bail on timeout
                 if(timeval_msdelta_now(&timer_read_timeout) > SSLCOM_READ_TIMEOUT) {
-                    _err("SSLCom::read[%d]: read timeout, closing.",__fd);
+                    _err("SSLCom::read[%d]: wanted read timeout, closing.", __fd);
                     error(ERROR_READ);
                     return 0;
                 }
@@ -2549,12 +2542,13 @@ int baseSSLCom<L4Proto>::read ( int __fd, void* __buf, size_t __n, int __flags )
                 _deb("SSLCom::read[%d]: want write, last read returned %d, total read %4d",__fd,r,total_r);
 
                 forced_read_on_write(true);
-                sslcom_read_blocked_on_write=1;
-                master()->poller.modify(__fd,EPOLLIN|EPOLLOUT);
+
+                sslcom_read_blocked_on_write = 1;
+                master()->poller.modify(__fd, EPOLLIN|EPOLLOUT);
 
                 // check timers and bail on timeout
                 if(timeval_msdelta_now(&timer_read_timeout) > SSLCOM_READ_TIMEOUT) {
-                    _err("SSLCom::read[%d]: read timeout, closing.",__fd);
+                    _err("SSLCom::read[%d]: wanted read timeout, closing.",__fd);
                     error(ERROR_READ);
                     return 0;
                 }
@@ -2575,7 +2569,7 @@ int baseSSLCom<L4Proto>::read ( int __fd, void* __buf, size_t __n, int __flags )
 
             default:
                 if (r != -1 && err != 1) {
-                    _dia("SSLCom::read[%d] problem: %d, read returned %4d",__fd,err,r);
+                    _dia("SSLCom::read[%d] problem: %d, read returned %4d", __fd, err, r);
                 }
                 // 			SSL_shutdown (sslcom_ssl);
                 if(total_r > 0) return total_r;
@@ -2588,8 +2582,7 @@ int baseSSLCom<L4Proto>::read ( int __fd, void* __buf, size_t __n, int __flags )
            loop around SSL_read() */
         rounds++;
 
-        //} while ( SSL_pending ( sslcom_ssl ) && !sslcom_read_blocked );
-    } while ( SSL_pending ( sslcom_ssl ) && !sslcom_read_blocked);
+    } while ( SSL_pending (sslcom_ssl) );
 
     _dia("SSLCom::read: total %4d bytes read",total_r);
 
