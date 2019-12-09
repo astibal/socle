@@ -31,12 +31,26 @@
 #include <linux/in6.h>
 #include <udpcom.hpp>
 
+#define USE_SOCKETPAIR
+
 template<class SubWorker>
 int ThreadedReceiverProxy<SubWorker>::workers_total = 2;
 
 template<class Worker, class SubWorker>
 ThreadedReceiver<Worker,SubWorker>::ThreadedReceiver(baseCom* c): baseProxy(c) {
     baseProxy::new_raw(true);
+
+    #ifdef USE_SOCKETPAIR
+    if(0 == ::socketpair(AF_UNIX, SOCK_STREAM|SOCK_NONBLOCK, 0, sq__hint)) {
+        _inf("acceptor: using socketpair");
+        sq_type_ = SQ_SOCKETPAIR;
+    }
+    else if( 0 == pipe2(sq__hint,O_DIRECT|O_NONBLOCK)) {
+        _inf("acceptor: using pipe2");
+        sq_type_ = SQ_PIPE;
+    }
+
+    #else
 
     if(version_check(get_kernel_version(),"3.4")) {
         _deb("Acceptor: kernel supports O_DIRECT");
@@ -49,6 +63,8 @@ ThreadedReceiver<Worker,SubWorker>::ThreadedReceiver(baseCom* c): baseProxy(c) {
             _err("ThreadedReceiver::new_raw: hint pipe not created, error[%d], %s", errno, string_error().c_str());
         }
     }
+
+    #endif
 }
 
 template<class Worker, class SubWorker>
@@ -500,10 +516,12 @@ void ThreadedReceiver<Worker,SubWorker>::on_right_new_raw(int s) {
 
 
 template<class Worker, class SubWorker>
-int ThreadedReceiver<Worker,SubWorker>::create_workers(int count) {  
+int ThreadedReceiver<Worker,SubWorker>::create_workers(int count) {
 
     auto nthreads = std::thread::hardware_concurrency();
-    _dia("Detected %d cores to use.", nthreads);
+    _dia("Detected %d cores to use, multiplier to apply: %d.", nthreads, core_multiplier());
+    nthreads *= core_multiplier();
+
 
     if(count > 0) {
         nthreads = count;

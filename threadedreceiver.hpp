@@ -58,8 +58,11 @@ public:
     
     void set_quick_list(mp::vector<int>* quick_list) { quick_list_ = quick_list; };
     inline mp::vector<int>* get_quick_list() const { return quick_list_;};
-    
-    
+
+    int sq_type() const { return sq_type_; }
+    int task_count() const { return tasks_.size(); }
+    constexpr int core_multiplier() const noexcept { return 4; };
+
 private:
     mutable std::mutex sq_lock_;
     mp::deque<int> sq_;
@@ -72,6 +75,8 @@ private:
     mp::vector<std::pair< std::thread*, Worker*>> tasks_;
     int worker_count_preference_=0;
     int create_workers(int count=0);
+
+    enum  { SQ_PIPE = 0, SQ_SOCKETPAIR = 1 } sq_type_;
 };
 
 

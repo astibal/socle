@@ -49,6 +49,10 @@ public:
     inline void worker_count_preference(int c) { worker_count_preference_ = c; };
     inline int worker_count_preference() { return worker_count_preference_; };
 
+    int sq_type() const { return sq_type_; }
+    int task_count() const { return tasks_.size(); }
+    constexpr int core_multiplier() const noexcept { return 4; };
+
 private:
 	mutable std::mutex sq_lock_;
 	mp::deque<int> sq_;
@@ -61,6 +65,8 @@ private:
 
     int worker_count_preference_=0;
 	int create_workers(int count=0);
+
+    enum  { SQ_PIPE = 0, SQ_SOCKETPAIR = 1 } sq_type_;
 };
 
 template<class SubWorker>

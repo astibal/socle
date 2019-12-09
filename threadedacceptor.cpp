@@ -33,9 +33,23 @@
 template<class SubWorker>
 int ThreadedAcceptorProxy<SubWorker>::workers_total = 2;
 
+#define USE_SOCKETPAIR
+
 template<class Worker, class SubWorker>
 ThreadedAcceptor<Worker,SubWorker>::ThreadedAcceptor(baseCom* c): baseProxy(c) {
     baseProxy::new_raw(true);
+
+    #ifdef USE_SOCKETPAIR
+    if(0 == ::socketpair(AF_UNIX, SOCK_STREAM|SOCK_NONBLOCK,0, sq__hint)) {
+        _inf("acceptor: using socketpair");
+        sq_type_ = SQ_SOCKETPAIR;
+    }
+    else if( 0 == pipe2(sq__hint,O_DIRECT|O_NONBLOCK)) {
+        _inf("acceptor: using pipe2");
+        sq_type_ = SQ_PIPE;
+    }
+
+    #else
     if(version_check(get_kernel_version(),"3.4")) {
         _deb("Acceptor: kernel supports O_DIRECT");
         if ( 0 != pipe2(sq__hint,O_DIRECT|O_NONBLOCK)) {
@@ -46,7 +60,8 @@ ThreadedAcceptor<Worker,SubWorker>::ThreadedAcceptor(baseCom* c): baseProxy(c) {
         if (0 != pipe2(sq__hint,O_NONBLOCK)) {
             _err("ThreadAcceptor::new_raw: hint pipe not created, error[%d], %s", errno, string_error().c_str());
         }
-    } 
+    }
+    #endif
 }
 
 template<class Worker, class SubWorker>
@@ -87,7 +102,8 @@ template<class Worker, class SubWorker>
 int ThreadedAcceptor<Worker,SubWorker>::create_workers(int count) {	
 
 	auto nthreads = std::thread::hardware_concurrency();
-    _dia("Detected %d cores to use.", nthreads);
+    _dia("Detected %d cores to use, multiplier to apply: %d.", nthreads, core_multiplier());
+    nthreads *= core_multiplier();
 
     if(count > 0) {
         nthreads = count;
