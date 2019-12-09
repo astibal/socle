@@ -224,7 +224,8 @@ class baseHostCX : public Host
 
     // larval connection facility
     bool opening_ = false;
-    
+
+    baseHostCX* peer_ = nullptr;
 protected:
     
     baseCom* com_ = nullptr;
@@ -248,11 +249,14 @@ public:
     
     bool readable() const { return com()->readable(socket()); };
     bool writable() const { return com()->writable(socket()); };
-    
-    baseHostCX* peer_ = nullptr;
+
     baseHostCX* peer() const { return peer_; }
     // set both levels of peering: cx and com
-    void peer(baseHostCX* p) { peer_ = p; com()->peer_ = peer()->com(); }
+    void peer(baseHostCX* p) {
+        peer_ = p;
+        com()->peer(peer()->com());
+    }
+
     baseCom* peercom() const { if(peer()) { return peer()->com(); } return nullptr; }
     
     inline std::string& comlog() { return com()->log_buffer_; };

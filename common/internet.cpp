@@ -85,14 +85,13 @@ namespace inet {
             } else {
                 _err("inet::socket_connect: socket[%d] failed to connect: %s", sd, string_error().c_str());
                 ::close(sd); // coverity: 1407966
+
+                return -2;
             }
         } else {
             _err("inet::socket_connect: invalid socket %d", sd);
             return -1;
         }
-
-        return -2;
-
     }
 
     int download (const std::string &url, buffer &buf, int timeout) {

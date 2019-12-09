@@ -94,6 +94,10 @@ public:
     virtual std::string full_flags_str();
 private:
     unsigned long flags_;
+    // feedback mechanism to get if the communication level is up/down
+    // necessary for some mitm scenarios and connection status feedback between 2 sockets
+    baseCom* peer_ = nullptr;
+
 protected:
     // non-local socket support
     bool nonlocal_dst_;
@@ -108,14 +112,8 @@ protected:
     bool nonlocal_src_ = false;
     std::string nonlocal_src_host_;
     unsigned short nonlocal_src_port_;
-    
 
-    // feedback mechanism to get if the communication level is up/down
-    // necessary for some mitm scenarios and connection status feedback between 2 sockets
-
-    baseCom* peer_ = nullptr;
-
-    // this is log buffer inteded for upper layer logger. Whatever is not only about to be printed out, but also stored, 
+    // this is log buffer intended for upper layer logger. Whatever is not only about to be printed out, but also stored,
     // should appear here.    
     std::string log_buffer_;
 
@@ -142,8 +140,8 @@ public:
 
     void forced_read_on_write(bool b)  { forced_read_on_write_ = b; }
     void forced_write_on_read(bool b) { forced_write_on_read_ = b; }    
-    bool forced_read_on_write(void)  { return forced_read_on_write_; }
-    bool forced_write_on_read(void) { return forced_write_on_read_; }    
+    bool forced_read_on_write()  { return forced_read_on_write_; }
+    bool forced_write_on_read() { return forced_write_on_read_; }
     
     bool forced_read_on_write_reset() { bool r = forced_read_on_write_; forced_read_on_write_= false;  return r; }
     bool forced_write_on_read_reset() { bool r = forced_write_on_read_; forced_write_on_read_ = false;  return r; }
@@ -155,7 +153,8 @@ public:
     virtual bool com_status() { _dum("baseCom::com_status: returning 1"); return true; }
     inline std::string& logbuf() { return log_buffer_; };
     
-    baseCom* peer() { return peer_; }
+    baseCom* peer() const { return peer_; }
+    void peer(baseCom* p) { peer_ = p; }
     
 public:
     virtual void init(baseHostCX* owner);
