@@ -689,7 +689,9 @@ EC_KEY* baseSSLCom<L4Proto>::ssl_ecdh_callback(SSL* s, int is_export, int key_le
 
 template <class L4Proto>
 int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
-    int is_revoked = -1;
+
+    inet::ocsp::OcspResult res;
+
     auto& log = inet::ocsp::OcspFactory::log();
 
     if(com && com->sslcom_target_cert && com->sslcom_target_issuer) {
@@ -705,7 +707,7 @@ int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
         }
 
         std::string cn = "unknown";
-        if(com->sslcom_target_cert != nullptr) {   
+        if(com->sslcom_target_cert != nullptr) {
             cn = SSLFactory::print_cn(com->sslcom_target_cert) + ";" + SSLFactory::fingerprint(com->sslcom_target_cert);
         }
 
@@ -723,20 +725,20 @@ int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
             cached_result = com->certstore()->ocsp_result_cache.get(cn);
 
             if (cached_result != nullptr) {
-                is_revoked = cached_result->value();
+                res.is_revoked = cached_result->value();
                 str_status = str_cached;
             } else {
-                is_revoked = inet::ocsp::ocsp_check_cert(com->sslcom_target_cert, com->sslcom_target_issuer);
+                res = inet::ocsp::ocsp_check_cert(com->sslcom_target_cert, com->sslcom_target_issuer);
                 str_status = str_fresh;
             }
         }
 
-        _dia("[%s]: SSLCom::ocsp_explicit_check[%s]: ocsp is_revoked = %d)",name.c_str(),cn.c_str(),is_revoked);
-        
-        com->ocsp_cert_is_revoked = is_revoked;
-        if(is_revoked > 0) {
+        _dia("[%s]: SSLCom::ocsp_explicit_check[%s]: ocsp is_revoked = %d)",name.c_str(),cn.c_str(), res.is_revoked);
+
+        com->ocsp_cert_is_revoked = res.is_revoked;
+        if(res.is_revoked > 0) {
             _war("Connection from %s: certificate %s is revoked (%s OCSP))",name.c_str(),cn.c_str(),str_status);
-        } else if (is_revoked == 0){
+        } else if (res.is_revoked == 0){
             _dia("Connection from %s: certificate %s is valid (%s OCSP))",name.c_str(),cn.c_str(),str_status);
         } else {
             /*< 0*/
@@ -745,31 +747,31 @@ int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
             _war("Connection from %s: certificate %s revocation status is unknown (%s OCSP))",name.c_str(),cn.c_str(),str_status);
         }
 
-        
+
         if(cached_result == nullptr) {
 
             std::lock_guard<std::recursive_mutex> l_(com->certstore()->ocsp_result_cache.getlock());
             // set cache for 3 minutes
-            certstore()->ocsp_result_cache.set(cn, SSLFactory::make_expiring_ocsp(is_revoked));
+            certstore()->ocsp_result_cache.set(cn, SSLFactory::make_expiring_ocsp(res.is_revoked, res.ttl));
         }
-        
-        
-        if(is_revoked < 0) {
-            
+
+
+        if(res.is_revoked < 0) {
+
             _not("Connection from %s: certificate OCSP revocation status cannot be obtained)",name.c_str());
-            
+
             std::vector<std::string> crls = inet::crl::crl_urls(com->sslcom_target_cert);
-            
+
             SSLFactory::expiring_crl* crl_cache_entry = nullptr;
             X509_CRL* crl_struct = nullptr;
 
 
             std::lock_guard<std::recursive_mutex> l_(com->certstore()->crl_cache.getlock());
             for(auto crl_url: crls) {
-                
+
                 std::string crl_printable = printable(crl_url);
                 crl_cache_entry = certstore()->crl_cache.get(crl_url);
-                
+
                 if(crl_cache_entry != nullptr) {
                     crl_struct = crl_cache_entry->value()->ptr;
                     _dia("found cached crl: %s",crl_printable.c_str());
@@ -782,7 +784,7 @@ int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
                 }
                 else {
                     _dia("crl not cached: %s",crl_printable.c_str());
-                    
+
                     const int tolerated_dnld_time = 3;
                     time_t start = ::time(nullptr);
 
@@ -795,7 +797,7 @@ int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
 
                     if(! dnld_failed ) {
                         time_t t_dif = ::time(nullptr) - start;
-                        
+
                         int crl_size = b.size();
                         _dia("CRL downloaded: size %d bytes in %d seconds",crl_size,t_dif);
                         if(t_dif > tolerated_dnld_time) {
@@ -804,7 +806,7 @@ int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
 
                         crl_struct = inet::crl::crl_from_bytes(b);
                         str_status = str_fresh;
-                        
+
 
                         if(crl_struct) {
 
@@ -819,9 +821,9 @@ int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
 
                 }
                 // all control-paths are locked now
-                
+
                 int is_revoked_by_crl = -1;
-                
+
                 if(crl_struct) {
 
                     int crl_trust = inet::crl::crl_verify_trust(
@@ -830,7 +832,7 @@ int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
                             crl_struct,
                             com->certstore()->default_client_ca_path().c_str());
                     _dia("CRL 0x%x trusted = %d", crl_struct, crl_trust);
-                    
+
                     if(crl_trust == 0) {
                         _war("CRL %s signature is not verified - untrusted",crl_printable.c_str());
                     }
@@ -850,9 +852,9 @@ int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
                 } else {
                     _war("Connection from %s: certificate %s revocation status is still unknown (%s CRL))",name.c_str(),cn.c_str(),str_status);
                 }
-                
-                is_revoked = is_revoked_by_crl;
-                
+
+                res.is_revoked = is_revoked_by_crl;
+
                 if(is_revoked_by_crl >= 0) {
                     break;
                 }
@@ -863,13 +865,13 @@ int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
         if(com)
             _err("ocsp_explicit_check: failed call requirements: cert 0x%x, issuer 0x%x" , com->sslcom_target_cert, com->sslcom_target_issuer);
     }
-    
-    if(is_revoked > 0) {
+
+    if(res.is_revoked > 0) {
         com->verify_set(VRF_REVOKED);
     }
 
-    _dia("ocsp_explicit_check: final result %d", is_revoked);
-    return is_revoked;
+    _dia("ocsp_explicit_check: final result %d", res.is_revoked);
+    return res.is_revoked;
 }
 
 template <class L4Proto>

@@ -386,6 +386,7 @@ namespace inet {
 
         OcspResult ocsp_verify_response(OCSP_RESPONSE *resp, X509* cert, X509* issuer) {
             int is_revoked = -1;
+            int ttl = 60;
 
             auto log = OcspFactory::log();
 
@@ -481,6 +482,9 @@ namespace inet {
                     int secs = 0;
                     if (ASN1_TIME_diff( &days, &secs, nullptr, nextupd) > 0) {
                         _dia("ocsp_verify_response [%d]: TTL: %d days, %d seconds", i, days, secs);
+
+                        ttl = days*24*60*60 + secs;
+
                     } else {
                         _war("ocsp_verify_response [%d]: negative TTL: %d days, %d seconds", i, days, secs);
                         _err("this is possible OCSP replay attack, marked as revoked!");
@@ -522,11 +526,12 @@ namespace inet {
         }
 #endif // USE_OPENSSL11
             _dia("ocsp_verify_response:  returning %d", is_revoked);
-            return OcspResult( {is_revoked, 60 } );
+            return OcspResult( {is_revoked, ttl } );
         }
 
-        int ocsp_check_cert (X509 *x509, X509 *issuer, int req_timeout) {
+        OcspResult ocsp_check_cert (X509 *x509, X509 *issuer, int req_timeout) {
             int is_revoked = -1;
+            OcspResult ret = { .is_revoked = -1, .ttl = 600 };
 
             BIO *bio_out = BIO_new_fp(stdout, BIO_NOCLOSE | BIO_FP_TEXT);
             BIO *bio_err = BIO_new_fp(stderr, BIO_NOCLOSE | BIO_FP_TEXT);
@@ -556,7 +561,7 @@ namespace inet {
 
                             //parse response
                             if (resp && responder_status == OCSP_RESPONSE_STATUS_SUCCESSFUL) {
-                                is_revoked = ocsp_verify_response(resp, x509, issuer).is_revoked;
+                                ret = ocsp_verify_response(resp, x509, issuer);
                             }
                             OCSP_RESPONSE_free(resp);
                         }
@@ -572,7 +577,7 @@ namespace inet {
 
             BIO_free(bio_out);
             BIO_free(bio_err);
-            return is_revoked;
+            return ret;
         }
 
 
@@ -583,7 +588,7 @@ namespace inet {
             BIO_puts(bio_mem2, issuer_bytes);
             X509 *x509 = PEM_read_bio_X509(bio_mem1, nullptr, nullptr, nullptr);
             X509 *issuer = PEM_read_bio_X509(bio_mem2, nullptr, nullptr, nullptr);
-            int ret = inet::ocsp::ocsp_check_cert(x509, issuer);
+            int ret = inet::ocsp::ocsp_check_cert(x509, issuer).is_revoked;
             BIO_free(bio_mem1);
             BIO_free(bio_mem2);
             X509_free(x509);

@@ -67,7 +67,7 @@ namespace inet {
         };
         OcspResult ocsp_verify_response(OCSP_RESPONSE *resp, X509* cert, X509* issuer);
 
-        int ocsp_check_cert (X509 *x509, X509 *issuer, int req_timeout = 2);
+        OcspResult ocsp_check_cert (X509 *x509, X509 *issuer, int req_timeout = 2);
 
         int ocsp_check_bytes (const char cert_bytes[], const char issuer_bytes[]);
 

@@ -69,6 +69,15 @@ struct session_holder {
 
 struct SpoofOptions;
 
+struct CertStatus {
+    bool revoked = true;
+    int ttl = 600;
+
+    enum class status_origin { OCSP, CRL } ;
+
+    status_origin origin = status_origin::OCSP;
+};
+
 class SSLFactory {
 
 public:
@@ -84,8 +93,8 @@ public:
     typedef expiring_ptr<crl_holder> expiring_crl;
 
 
-    static expiring_ocsp_result* make_expiring_ocsp(bool result)
-                                { return new SSLFactory::expiring_ocsp_result(result, ssl_ocsp_status_ttl); };
+    static expiring_ocsp_result* make_expiring_ocsp(bool result, int ttl )
+                                { return new SSLFactory::expiring_ocsp_result(result, ttl); };
 
     static expiring_crl* make_expiring_crl(X509_CRL* crl)
                                 { return new SSLFactory::expiring_crl(new crl_holder(crl), ssl_crl_status_ttl); }
