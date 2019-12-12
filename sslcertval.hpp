@@ -36,6 +36,23 @@
 
 namespace inet {
 
+    namespace cert {
+
+        struct VerifyStatus {
+
+            enum class status_origin { OCSP, CRL } ;
+
+            VerifyStatus() : revoked(true), ttl(600), origin(status_origin::OCSP) {};
+            VerifyStatus(bool revoked, int ttl, status_origin orig): revoked(revoked), ttl(ttl), origin(orig) {};
+
+            int revoked = -1;
+            int ttl = 600;
+
+            status_origin origin = status_origin::OCSP;
+        };
+
+    }
+
     namespace ocsp {
 
         struct OcspFactory {
@@ -58,16 +75,9 @@ namespace inet {
         ocsp_send_request (BIO *err, OCSP_REQUEST *req, char *host, char *path, char *port, int use_ssl,
                            int req_timeout);
 
-        struct OcspResult {
-            // -1 for unknown
-            //  0 valid
-            //  1 revoked
-            int is_revoked = -1;
-            int ttl = 0;
-        };
-        OcspResult ocsp_verify_response(OCSP_RESPONSE *resp, X509* cert, X509* issuer);
+        inet::cert::VerifyStatus ocsp_verify_response(OCSP_RESPONSE *resp, X509* cert, X509* issuer);
 
-        OcspResult ocsp_check_cert (X509 *x509, X509 *issuer, int req_timeout = 2);
+        inet::cert::VerifyStatus ocsp_check_cert (X509 *x509, X509 *issuer, int req_timeout = 2);
 
         int ocsp_check_bytes (const char cert_bytes[], const char issuer_bytes[]);
 

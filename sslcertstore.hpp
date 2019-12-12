@@ -32,6 +32,7 @@
 #include <log/logger.hpp>
 #include <ptr_cache.hpp>
 #include <mpstd.hpp>
+#include <sslcertval.hpp>
 
 #include <regex>
 #include <thread>
@@ -69,14 +70,11 @@ struct session_holder {
 
 struct SpoofOptions;
 
-struct CertStatus {
-    bool revoked = true;
-    int ttl = 600;
 
-    enum class status_origin { OCSP, CRL } ;
 
-    status_origin origin = status_origin::OCSP;
-};
+#define CERTSTORE_CACHE_SIZE 500
+
+using namespace inet::cert;
 
 class SSLFactory {
 
@@ -84,17 +82,20 @@ public:
 
     template<class K, class V>
     using map_type = mp::map<K, V>;
-
-    typedef std::pair<EVP_PKEY*,X509*> X509_PAIR;
+    using X509_PAIR = std::pair<EVP_PKEY*,X509*> ;
     using X509_CACHE = map_type<std::string, X509_PAIR*>;
+
     using FQDN_CACHE = map_type<std::string, std::string>;
 
-    typedef expiring_int expiring_ocsp_result;
-    typedef expiring_ptr<crl_holder> expiring_crl;
+    using expiring_verify_result = expiring<VerifyStatus>;
+    using expiring_crl = expiring_ptr<crl_holder>;
 
 
-    static expiring_ocsp_result* make_expiring_ocsp(bool result, int ttl )
-                                { return new SSLFactory::expiring_ocsp_result(result, ttl); };
+    static expiring_verify_result* make_exp_ocsp_status(bool result, int ttl)
+            { return new expiring_verify_result(VerifyStatus(result, ttl, VerifyStatus::status_origin::OCSP), ttl); };
+    static expiring_verify_result* make_exp_crl_status(bool result, int ttl)
+            { return new expiring_verify_result(VerifyStatus(result, ttl, VerifyStatus::status_origin::CRL), ttl); };
+
 
     static expiring_crl* make_expiring_crl(X509_CRL* crl)
                                 { return new SSLFactory::expiring_crl(new crl_holder(crl), ssl_crl_status_ttl); }
@@ -141,7 +142,8 @@ private:
 
     mutable std::recursive_mutex mutex_cache_write_;
 
-    SSLFactory() = default;
+    SSLFactory(): verify_cache("verify cache", CERTSTORE_CACHE_SIZE, true) {
+    }
 public:
     // avoid having copies of SSLFactory
     SSLFactory(SSLFactory const&) = delete;
@@ -211,7 +213,9 @@ public:
     // static members must be public
     static int ssl_ocsp_status_ttl;
     static int ssl_crl_status_ttl;
-    static ptr_cache<std::string,expiring_ocsp_result> ocsp_result_cache;
+
+    ptr_cache<std::string,expiring_verify_result> verify_cache;
+
     static ptr_cache<std::string,expiring_crl> crl_cache;
     static ptr_cache<std::string,session_holder> session_cache;
 

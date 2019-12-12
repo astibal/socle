@@ -384,7 +384,10 @@ namespace inet {
             return resp;
         }
 
-        OcspResult ocsp_verify_response(OCSP_RESPONSE *resp, X509* cert, X509* issuer) {
+        inet::cert::VerifyStatus ocsp_verify_response(OCSP_RESPONSE *resp, X509* cert, X509* issuer) {
+
+            using namespace inet::cert;
+
             int is_revoked = -1;
             int ttl = 60;
 
@@ -526,12 +529,15 @@ namespace inet {
         }
 #endif // USE_OPENSSL11
             _dia("ocsp_verify_response:  returning %d", is_revoked);
-            return OcspResult( {is_revoked, ttl } );
+            return VerifyStatus( {is_revoked, ttl, VerifyStatus::status_origin::OCSP } );
         }
 
-        OcspResult ocsp_check_cert (X509 *x509, X509 *issuer, int req_timeout) {
+        inet::cert::VerifyStatus ocsp_check_cert (X509 *x509, X509 *issuer, int req_timeout) {
+
+            using namespace inet::cert;
+
             int is_revoked = -1;
-            OcspResult ret = { .is_revoked = -1, .ttl = 600 };
+            VerifyStatus ret = { .is_revoked = -1, .ttl = 600, .origin = VerifyStatus::status_origin::OCSP };
 
             BIO *bio_out = BIO_new_fp(stdout, BIO_NOCLOSE | BIO_FP_TEXT);
             BIO *bio_err = BIO_new_fp(stderr, BIO_NOCLOSE | BIO_FP_TEXT);
@@ -588,7 +594,7 @@ namespace inet {
             BIO_puts(bio_mem2, issuer_bytes);
             X509 *x509 = PEM_read_bio_X509(bio_mem1, nullptr, nullptr, nullptr);
             X509 *issuer = PEM_read_bio_X509(bio_mem2, nullptr, nullptr, nullptr);
-            int ret = inet::ocsp::ocsp_check_cert(x509, issuer).is_revoked;
+            int ret = inet::ocsp::ocsp_check_cert(x509, issuer).revoked;
             BIO_free(bio_mem1);
             BIO_free(bio_mem2);
             X509_free(x509);
@@ -828,7 +834,7 @@ namespace inet {
             auto& log = OcspFactory::log();
 
             if (ocsp_resp) {
-                yield_ = ocsp_verify_response(ocsp_resp, cert_check, cert_issuer).is_revoked;
+                yield_ = ocsp_verify_response(ocsp_resp, cert_check, cert_issuer).revoked;
                 state_ = OcspQuery::ST_FINISHED;
                 _dia("OcspQuery::do_process_response: state FINISHED");
                 return true;

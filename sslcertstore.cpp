@@ -30,11 +30,10 @@ std::string SSLFactory::certs_path = "./certs/";
 std::string SSLFactory::certs_password = "password";
 std::string SSLFactory::def_cl_capath;
 
-#define CERTSTORE_CACHE_SIZE 500
 
 int SSLFactory::ssl_crl_status_ttl  = 86400;
 int SSLFactory::ssl_ocsp_status_ttl = 1800;
-ptr_cache<std::string,SSLFactory::expiring_ocsp_result> SSLFactory::ocsp_result_cache("ocsp response cache",CERTSTORE_CACHE_SIZE,true);
+
 ptr_cache<std::string,SSLFactory::expiring_crl> SSLFactory::crl_cache("crl cache",CERTSTORE_CACHE_SIZE,true);
 ptr_cache<std::string,session_holder> SSLFactory::session_cache("ssl session cache",CERTSTORE_CACHE_SIZE,true);
 
@@ -92,8 +91,8 @@ bool SSLFactory::load() {
         _err("cannot load trusted store.");
     }
 
-    ocsp_result_cache.clear();
-    ocsp_result_cache.expiration_check(expiring_ocsp_result::is_expired);
+    verify_cache.clear();
+    verify_cache.expiration_check(expiring_verify_result::is_expired);
     
     return ret;
 }

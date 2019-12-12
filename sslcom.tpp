@@ -690,7 +690,7 @@ EC_KEY* baseSSLCom<L4Proto>::ssl_ecdh_callback(SSL* s, int is_export, int key_le
 template <class L4Proto>
 int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
 
-    inet::ocsp::OcspResult res;
+    inet::cert::VerifyStatus res;
 
     auto& log = inet::ocsp::OcspFactory::log();
 
@@ -716,16 +716,16 @@ int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
         const char* str_status = "unknown";
 
 
-        SSLFactory::expiring_ocsp_result *cached_result = nullptr;
+        SSLFactory::expiring_verify_result *cached_result = nullptr;
 
         // ocsp_result_cache - locked
         {
-            std::lock_guard<std::recursive_mutex> l_(com->certstore()->ocsp_result_cache.getlock());
+            std::lock_guard<std::recursive_mutex> l_(com->certstore()->verify_cache.getlock());
 
-            cached_result = com->certstore()->ocsp_result_cache.get(cn);
+            cached_result = com->certstore()->verify_cache.get(cn);
 
             if (cached_result != nullptr) {
-                res.is_revoked = cached_result->value();
+                res.revoked = cached_result->value().revoked;
                 str_status = str_cached;
             } else {
                 res = inet::ocsp::ocsp_check_cert(com->sslcom_target_cert, com->sslcom_target_issuer);
@@ -733,12 +733,12 @@ int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
             }
         }
 
-        _dia("[%s]: SSLCom::ocsp_explicit_check[%s]: ocsp is_revoked = %d)",name.c_str(),cn.c_str(), res.is_revoked);
+        _dia("[%s]: SSLCom::ocsp_explicit_check[%s]: ocsp is_revoked = %d)",name.c_str(),cn.c_str(), res.revoked);
 
-        com->ocsp_cert_is_revoked = res.is_revoked;
-        if(res.is_revoked > 0) {
+        com->ocsp_cert_is_revoked = res.revoked;
+        if(res.revoked > 0) {
             _war("Connection from %s: certificate %s is revoked (%s OCSP))",name.c_str(),cn.c_str(),str_status);
-        } else if (res.is_revoked == 0){
+        } else if (res.revoked == 0){
             _dia("Connection from %s: certificate %s is valid (%s OCSP))",name.c_str(),cn.c_str(),str_status);
         } else {
             /*< 0*/
@@ -750,13 +750,13 @@ int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
 
         if(cached_result == nullptr) {
 
-            std::lock_guard<std::recursive_mutex> l_(com->certstore()->ocsp_result_cache.getlock());
+            std::lock_guard<std::recursive_mutex> l_(com->certstore()->verify_cache.getlock());
             // set cache for 3 minutes
-            certstore()->ocsp_result_cache.set(cn, SSLFactory::make_expiring_ocsp(res.is_revoked, res.ttl));
+            certstore()->verify_cache.set(cn, SSLFactory::make_exp_ocsp_status(res.revoked, res.ttl));
         }
 
 
-        if(res.is_revoked < 0) {
+        if(res.revoked < 0) {
 
             _not("Connection from %s: certificate OCSP revocation status cannot be obtained)",name.c_str());
 
@@ -853,7 +853,7 @@ int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
                     _war("Connection from %s: certificate %s revocation status is still unknown (%s CRL))",name.c_str(),cn.c_str(),str_status);
                 }
 
-                res.is_revoked = is_revoked_by_crl;
+                res.revoked = is_revoked_by_crl;
 
                 if(is_revoked_by_crl >= 0) {
                     break;
@@ -866,12 +866,12 @@ int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
             _err("ocsp_explicit_check: failed call requirements: cert 0x%x, issuer 0x%x" , com->sslcom_target_cert, com->sslcom_target_issuer);
     }
 
-    if(res.is_revoked > 0) {
+    if(res.revoked > 0) {
         com->verify_set(VRF_REVOKED);
     }
 
-    _dia("ocsp_explicit_check: final result %d", res.is_revoked);
-    return res.is_revoked;
+    _dia("ocsp_explicit_check: final result %d", res.revoked);
+    return res.revoked;
 }
 
 template <class L4Proto>
