@@ -522,7 +522,7 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int lib_preverify, X509_STORE_
 
             _dia("[%s]: SSLCom::ssl_client_vrfy_callback: unknown issuer: %d", name.c_str(), err);
 
-            com->verify_set(UNKNOWN_ISSUER);
+            com->verify_set(VRF_UNKNOWN_ISSUER);
             if(com->opt_allow_unknown_issuer || com->opt_failed_certcheck_replacement) {
                 callback_return = 1;
             }
@@ -534,7 +534,7 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int lib_preverify, X509_STORE_
 
             _dia("[%s]: SSLCom::ssl_client_vrfy_callback: self-signed cert in the chain: %d", name.c_str(), err);
 
-            com->verify_set(SELF_SIGNED_CHAIN);
+            com->verify_set(VRF_SELF_SIGNED_CHAIN);
             if(com->opt_allow_self_signed_chain || com->opt_failed_certcheck_replacement) {
                 callback_return = 1;
             }
@@ -545,7 +545,7 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int lib_preverify, X509_STORE_
 
             _dia("[%s]: SSLCom::ssl_client_vrfy_callback: end-entity cert is self-signed: %d", name.c_str(), err);
 
-            com->verify_set(SELF_SIGNED);
+            com->verify_set(VRF_SELF_SIGNED);
             if(com->opt_allow_self_signed_cert || com->opt_failed_certcheck_replacement) {
                 callback_return = 1;
             }
@@ -557,7 +557,7 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int lib_preverify, X509_STORE_
             _dia("[%s]: SSLCom::ssl_client_vrfy_callback: not before: %s", name.c_str(),
                     SSLFactory::print_not_before(err_cert).c_str());
 
-            com->verify_set(INVALID);
+            com->verify_set(VRF_INVALID);
             if(com->opt_allow_not_valid_cert || com->opt_failed_certcheck_replacement) {
                 callback_return = 1;
             }
@@ -569,7 +569,7 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int lib_preverify, X509_STORE_
             _dia("[%s]: SSLCom::ssl_client_vrfy_callback: not after: %s",name.c_str(),
                     SSLFactory::print_not_after(err_cert).c_str());
 
-            com->verify_set(INVALID);
+            com->verify_set(VRF_INVALID);
             if(com->opt_allow_not_valid_cert || com->opt_failed_certcheck_replacement) {
                 callback_return = 1;
             }
@@ -865,7 +865,7 @@ int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
     }
     
     if(is_revoked > 0) {
-        com->verify_set(REVOKED);
+        com->verify_set(VRF_REVOKED);
     }
 
     _dia("ocsp_explicit_check: final result %d", is_revoked);
@@ -892,7 +892,7 @@ int baseSSLCom<L4Proto>::check_revocation_oob(baseSSLCom* com, int default_actio
                 } else {
                     name = com->hr();
                 }
-                com->verify_set(REVOKED);
+                com->verify_set(VRF_REVOKED);
                 _war("Connection from %s: certificate %s is revoked (OCSP query), replacement=%d)", name.c_str(), cn.c_str(),
                      com->opt_failed_certcheck_replacement);
 
@@ -1101,7 +1101,7 @@ int baseSSLCom<L4Proto>::status_resp_callback(SSL* ssl, void* arg) {
     peer_cert   = com->sslcom_target_cert;
     issuer_cert = com->sslcom_target_issuer;
 
-    if(com->verify_get() != VERIFY_OK && ! com->verify_check(CLIENT_CERT_RQ)) {
+    if(com->verify_get() != VRF_OK && ! com->verify_check(VRF_CLIENT_CERT_RQ)) {
         _dia("status_resp_callback[%s]: certificate verification failed already (%d), no need to check stapling",
                 name.c_str(),
                 com->verify_get());
@@ -1133,7 +1133,7 @@ int baseSSLCom<L4Proto>::status_resp_callback(SSL* ssl, void* arg) {
             _dia("[%s] OCSP status is revoked", name.c_str());
 
             com->ocsp_cert_is_revoked = 1;
-            com->verify_set(REVOKED);
+            com->verify_set(VRF_REVOKED);
             _war("Connection from %s: certificate %s is revoked (stapling OCSP), replacement=%d)", name.c_str(),
                        cn.c_str(),
                        com->opt_failed_certcheck_replacement);
@@ -1181,7 +1181,7 @@ int baseSSLCom<L4Proto>::ssl_client_cert_callback(SSL* ssl, X509** x509, EVP_PKE
             name = com->hr();
         }
         
-        com->verify_set(baseSSLCom::CLIENT_CERT_RQ);
+        com->verify_set(baseSSLCom::VRF_CLIENT_CERT_RQ);
         switch(com->opt_client_cert_action) {
             
             case 0:
@@ -1990,9 +1990,9 @@ bool baseSSLCom<L4Proto>::store_session_if_needed() {
             _dia("ticketing: key %s: full key exchange, connect attempt %d on socket %d",key.c_str(),prof_connect_cnt,owner_cx()->socket());
 
             // OK is 0, so test if client_cert_rq is equal means OK | CERT_RQ ...
-            if(   verify_status == VERIFY_OK
+            if(   verify_status == VRF_OK
                   ||
-                ( verify_status == ( CLIENT_CERT_RQ | VERIFY_OK ) )
+                ( verify_status == ( VRF_CLIENT_CERT_RQ | VRF_OK ) )
               ) {
 
                 std::lock_guard<std::recursive_mutex> l_( certstore()->session_cache.getlock() );

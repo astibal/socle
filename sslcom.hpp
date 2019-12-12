@@ -435,17 +435,19 @@ public:
                                                         // 2 - bypass next connection
     
     // verify status. Added also verify pseudo-status for client cert request.
-    typedef enum {  VERIFY_OK=0x0,
-                    UNKNOWN_ISSUER=0x1, 
-                    SELF_SIGNED=0x2, 
-                    INVALID=0x4, 
-                    SELF_SIGNED_CHAIN=0x8, 
-                                REVOKED=0x10, 
-                                CLIENT_CERT_RQ=0x20,
-                                HOSTNAME_FAILED=0x40
+    typedef enum {  VRF_OK=0x0,
+                    VRF_UNKNOWN_ISSUER=0x1,
+                    VRF_SELF_SIGNED=0x2,
+                    VRF_INVALID=0x4,
+                    VRF_SELF_SIGNED_CHAIN=0x8,
+                                VRF_REVOKED=0x10,
+                                VRF_CLIENT_CERT_RQ=0x20,
+                                VRF_HOSTNAME_FAILED=0x40,
+
+            VRF_ALLFAILED=0x8000
                                                         } verify_status_t;
                                 
-    unsigned int verify_status = VERIFY_OK;
+    unsigned int verify_status = VRF_OK;
     inline void verify_set(unsigned int s) { flag_set(&verify_status, s); }
     inline bool verify_check(unsigned int s) const { return (flag_test(verify_status, s)); }
     inline int verify_get() const { return (int) verify_status; }

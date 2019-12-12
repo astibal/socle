@@ -41,7 +41,7 @@ bool baseSSLMitmCom<SSLProto>::check_cert(const char* peer_name) {
         p->sslcom_server_ = true;
         
         SpoofOptions spo;
-        if (this->verify_status != SSLCom::VERIFY_OK) {
+        if (this->verify_status != SSLCom::VRF_OK) {
             if(!this->opt_failed_certcheck_replacement) {
                 spo.self_signed = true;
             } else {
@@ -139,7 +139,7 @@ bool baseSSLMitmCom<SSLProto>::check_cert(const char* peer_name) {
             }
             else {
                 _war("SSL hostname check failed (sni %s).",this->sslcom_peer_hello_sni().c_str());
-                this->verify_set(SSLCom::HOSTNAME_FAILED);
+                this->verify_set(SSLCom::VRF_HOSTNAME_FAILED);
 
                 if(!this->opt_failed_certcheck_replacement) {
                     spo.self_signed = true;
