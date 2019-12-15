@@ -226,6 +226,11 @@ class baseHostCX : public Host
     bool opening_ = false;
 
     baseHostCX* peer_ = nullptr;
+
+    // if io is disabled, no read/write should be called.
+    // This is admin indication flag, if you call read() or write(), it will succeed.
+    // Setting is not enforced to prevent EAGAIN loops
+    bool io_disabled_ = false;
 protected:
     
     baseCom* com_ = nullptr;
@@ -247,8 +252,8 @@ public:
     inline unsigned char parent_flag() const { return parent_flag_; }
     inline void parent_proxy(Proxy* p, unsigned char flag) { parent_proxy_ = p; parent_flag_ = flag; };
     
-    bool readable() const { return com()->readable(socket()); };
-    bool writable() const { return com()->writable(socket()); };
+    bool readable() const { return com()->readable(socket()) && !io_disabled(); };
+    bool writable() const { return com()->writable(socket()) && !io_disabled(); };
 
     baseHostCX* peer() const { return peer_; }
     // set both levels of peering: cx and com
@@ -358,7 +363,19 @@ public:
 	
 	inline int next_read_limit() const { return next_read_limit_; }
 	inline void next_read_limit(int s) { next_read_limit_ = s; }
-	
+
+
+
+	inline bool io_disabled() const {
+	    if(io_disabled_)
+	        _deb(" => io is administratively disabled");
+	    return io_disabled_;
+	}
+	inline void io_disabled(bool n) {
+	    _deb("setting io disabled: %d", n);
+        io_disabled_ = n;
+	}
+
 	int read();
 	int process_() { return process(); };
 	int write();

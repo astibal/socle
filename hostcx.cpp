@@ -324,6 +324,10 @@ bool baseHostCX::reconnect(int delay) {
 
 int baseHostCX::read() {
 
+    if(io_disabled()) {
+        _war("io is disabled, but read() called");
+    }
+
     if(read_waiting_for_peercom()) {
         _dum("baseHostCX::read[%s]: read operation is waiting_for_peercom, returning -1",c_name());
         return -1;
@@ -486,6 +490,11 @@ void baseHostCX::post_read() {
 }
 
 int baseHostCX::write() {
+
+    if(io_disabled()) {
+        _war("io is disabled, but write() called");
+    }
+
 
     if(write_waiting_for_peercom()) {
         _deb("baseHostCX::write[%s]: write operation is waiting_for_peercom, returning 0", c_name());
