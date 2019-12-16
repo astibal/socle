@@ -2342,7 +2342,7 @@ int baseSSLCom<L4Proto>::parse_peer_hello() {
         } else {
             baseSSLCom* p = dynamic_cast<baseSSLCom*>(peer());
             if(p != nullptr) 
-                master()->poller.poller->rescan_in(p->sslcom_fd);
+                master()->poller.rescan_in(p->sslcom_fd);
             
             _dia("SSLCom::parse_peer_hello: only %d bytes in peek:\n%s",b.size(),hex_dump(b.data(),b.size()).c_str());
             if(timeval_msdelta_now(&timer_start) > SSLCOM_CLIENTHELLO_TIMEOUT) {
