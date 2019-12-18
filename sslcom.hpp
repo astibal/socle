@@ -356,7 +356,15 @@ public:
     int prof_accept_cnt=0;
     int prof_accept_bypass_cnt=0;
     int prof_connect_cnt=0;
+    int write_want_read_cur=0; // immediate counter used to rescan socket
+    int read_want_read_cur=0; // immediate counter used to rescan socket
     int prof_want_read_cnt=0;
+    int write_want_write_cur=0; // immediate counter used to rescan socket
+    int read_want_write_cur=0; // immediate counter used to rescan socket
+
+    static const int rescan_threshold_read = 30;
+    static const int rescan_threshold_write = 30;
+
     int prof_want_write_cnt=0;
     int prof_write_cnt=0;
     int prof_read_cnt=0;

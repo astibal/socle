@@ -1893,7 +1893,7 @@ ret_handshake baseSSLCom<L4Proto>::handshake() {
             prof_want_read_cnt++;
 
             // don't wait first XY attempts - slow down later
-            if(prof_want_read_cnt > 100) {
+            if(prof_want_read_cnt > rescan_threshold_read) {
                 _dia("SSLCom::handshake: SSL_%s[%d]: pending on want_read - repeated, rescanning", op_descr , socket());
                 rescan_read(socket());
             } else {
@@ -1909,7 +1909,7 @@ ret_handshake baseSSLCom<L4Proto>::handshake() {
             prof_want_write_cnt++;
 
             // don't wait first XY attempts - slow down later
-            if(prof_want_write_cnt > 100) {
+            if(prof_want_write_cnt > rescan_threshold_write) {
                 _dia("SSLCom::handshake: SSL_%s[%d]: pending on want_write, repeated, rescanning", op_descr, socket());
                 rescan_write(socket());
             } else {
@@ -2508,8 +2508,12 @@ int baseSSLCom<L4Proto>::read ( int __fd, void* __buf, size_t __n, int __flags )
                 // reset IO timeouts
                 set_timer_now(&timer_read_timeout);
                 set_timer_now(&timer_write_timeout);
-                
-                
+
+                // reset WANT counters
+                read_want_write_cur = 0;
+                read_want_read_cur = 0;
+
+
                 break;
 
             case SSL_ERROR_ZERO_RETURN:
@@ -2519,9 +2523,17 @@ int baseSSLCom<L4Proto>::read ( int __fd, void* __buf, size_t __n, int __flags )
 
             case SSL_ERROR_WANT_READ:
                 _deb("SSLCom::read[%d]: want read: err=%d, read_now=%4d, total=%4d", __fd, err, r, total_r);
-                
+
+                read_want_read_cur++;
+                prof_want_read_cnt++;
+
                 // defer read operation
-                rescan_read(socket());
+                if( read_want_read_cur > rescan_threshold_read) {
+                    rescan_read(socket());
+                    read_want_read_cur = 0;
+                } else {
+                    set_monitor(socket());
+                }
 
                 // check timers and bail on timeout
                 if(timeval_msdelta_now(&timer_read_timeout) > SSLCOM_READ_TIMEOUT) {
@@ -2558,9 +2570,21 @@ int baseSSLCom<L4Proto>::read ( int __fd, void* __buf, size_t __n, int __flags )
                 _deb("SSLCom::read[%d]: want write, last read returned %d, total read %4d",__fd,r,total_r);
 
                 forced_read_on_write(true);
-
                 sslcom_read_blocked_on_write = 1;
-                master()->poller.modify(__fd, EPOLLIN|EPOLLOUT);
+
+                read_want_write_cur++;
+                prof_want_write_cnt++;
+
+                // defer read operation
+                if( read_want_write_cur > rescan_threshold_write) {
+
+                    rescan_write(socket());
+                    read_want_write_cur = 0;
+                } else {
+                    // master()->poller.modify(__fd, EPOLLIN|EPOLLOUT);
+                    set_write_monitor(socket());
+                }
+
 
                 // check timers and bail on timeout
                 if(timeval_msdelta_now(&timer_read_timeout) > SSLCOM_READ_TIMEOUT) {
@@ -2700,6 +2724,11 @@ int baseSSLCom<L4Proto>::write ( int __fd, const void* __buf, size_t __n, int __
             set_timer_now(&timer_read_timeout);
             set_timer_now(&timer_write_timeout);
 
+
+            // reset rescan counters
+            write_want_read_cur = 0;
+            write_want_write_cur = 0;
+
             break;
 
             /* We would have blocked */
@@ -2717,6 +2746,19 @@ int baseSSLCom<L4Proto>::write ( int __fd, const void* __buf, size_t __n, int __
                 _dum("SSLCom::write[%d]: want write: repeating last operation",__fd);
             }
 
+            write_want_write_cur++;
+            prof_want_write_cnt++;
+
+            // defer write operation
+            if( write_want_write_cur > rescan_threshold_write) {
+
+                rescan_write(socket());
+                write_want_write_cur = 0;
+            } else {
+                // master()->poller.modify(__fd, EPOLLIN|EPOLLOUT);
+                set_write_monitor(socket());
+            }
+
             apply_error_timer = true;
             break;
 
@@ -2728,10 +2770,21 @@ int baseSSLCom<L4Proto>::write ( int __fd, const void* __buf, size_t __n, int __
                     but reinitiate our write when it is */
         case SSL_ERROR_WANT_READ:
             _dia("SSLCom::write[%d]: want read: %d (written %4d)",__fd,err,r);
-            sslcom_write_blocked_on_read=1;
 
+            sslcom_write_blocked_on_read=1;
             forced_write_on_read(true);
-            master()->poller.modify(__fd,EPOLLIN);
+
+            write_want_read_cur++;
+            prof_want_read_cnt++;
+
+            // defer read operation
+            if( write_want_read_cur > rescan_threshold_read) {
+                rescan_read(socket());
+                write_want_read_cur = 0;
+            } else {
+                set_monitor(socket());
+            }
+
 
             apply_error_timer = true;
             break;
