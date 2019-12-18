@@ -677,7 +677,6 @@ namespace inet {
 
             auto& log = OcspFactory::log();
 
-            bool to_continue = false;
             int skip = 0;
 
             // prepare skipping
@@ -687,66 +686,63 @@ namespace inet {
             //reset index (so it starts at 0 once incremented)
             ocsp_target_index = -1;
 
-            for (const auto &tup: ocsp_targets) {
-                // count again the index
-                ocsp_target_index++;
 
-                // skip to previous position
-                if (skip > 0) {
-                    skip--;
-                    continue;
-                }
+            if(! conn_bio) {
+                for (const auto &tup: ocsp_targets) {
+                    // count again the index
+                    ocsp_target_index++;
 
-                // run this only if we are not retrying (initiate conn_bio)
-                if (!ocsp_target_retry) {
-                    ocsp_host = std::get<0>(tup);
-                    ocsp_port = std::get<1>(tup);
-                    ocsp_path = std::get<2>(tup);
-                    ocsp_ssl = std::get<3>(tup);
+                    // skip to previous position
+                    if (skip > 0) {
+                        skip--;
+                        continue;
+                    }
 
-                    // free old structure
-                    if (conn_bio) { BIO_free_all(conn_bio); }
+                    // cound be init in previous iteration
+                    if(conn_bio) { BIO_free(conn_bio); }
 
-                    conn_bio = BIO_new_connect(ocsp_host.c_str());
+                    // run this only if we are not retrying (initiate conn_bio)
+                    if (!ocsp_target_retry) {
+                        ocsp_host = std::get<0>(tup);
+                        ocsp_port = std::get<1>(tup);
+                        ocsp_path = std::get<2>(tup);
+                        ocsp_ssl = std::get<3>(tup);
 
-                    if (conn_bio && !ocsp_ssl) {
-                        state_ = OcspQuery::ST_CONNECTING;
-                        _dia("OcspQuery::do_send_request: state CONNECTING");
-                        BIO_set_nbio(conn_bio, 1);
-
-                        socket.socket_ = BIO_get_fd(conn_bio, nullptr);
-
+                        std::string host_port = ocsp_host;
                         if (!ocsp_port.empty()) {
-                            BIO_set_conn_port(conn_bio, ocsp_port.c_str());
+                            //BIO_set_conn_port(conn_bio, ocsp_port.c_str());
+                            host_port += ":" + ocsp_port;
+                        }
+                        conn_bio = BIO_new_connect(host_port.c_str());
+
+                        if (conn_bio && !ocsp_ssl) {
+                            state_ = OcspQuery::ST_CONNECTING;
+                            _dia("OcspQuery::do_send_request: state CONNECTING");
+                            BIO_set_nbio(conn_bio, 1);
+                        } else {
+                            continue;
                         }
                     }
                 }
-                if (conn_bio) {
-                    // attempt to connect to this OCSP service
-                    if (BIO_do_connect(conn_bio) <= 0) {
-                        if (BIO_should_retry(conn_bio)) {
+            }
 
-                            ocsp_target_retry = true;
-                            return false;
+            if (conn_bio) {
+                // attempt to connect to this OCSP service
+                if (BIO_do_connect(conn_bio) <= 0) {
+                    socket.socket_ = BIO_get_fd(conn_bio, nullptr);
+                    if (BIO_should_retry(conn_bio)) {
+                        _dia("OcspQuery::do_send_request: retry on socket %d", socket.socket_);
 
-                        } else {
-                            to_continue = true;
-                        }
-                    } else {
-                        // reset retry
-                        ocsp_target_retry = false;
-                        state_ = OcspQuery::ST_CONNECTED;
-                        _dia("OcspQuery::do_send_request: state CONNECTED");
+                        ocsp_target_retry = true;
+                        return false;
                     }
-
 
                 } else {
-                    to_continue = true;
-                }
-
-
-                if (!to_continue) {
-                    break;
+                    // reset retry
+                    socket.socket_ = BIO_get_fd(conn_bio, nullptr);
+                    ocsp_target_retry = false;
+                    state_ = OcspQuery::ST_CONNECTED;
+                    _dia("OcspQuery::do_send_request: state CONNECTED");
                 }
             }
 
@@ -837,8 +833,12 @@ namespace inet {
                 yield_ = ocsp_verify_response(ocsp_resp, cert_check, cert_issuer).revoked;
                 state_ = OcspQuery::ST_FINISHED;
                 _dia("OcspQuery::do_process_response: state FINISHED");
+
                 return true;
+            } else {
+                _err("OcspQuery::do_process_response: no OCSP response");
             }
+
 
             return false;
         }
@@ -853,14 +853,17 @@ namespace inet {
 
                     // return only on IO blocking (can connect immediately)
                     if (!do_connect()) break;
-
+                    state_ = ST_CONNECTED;
 
                 case OcspQuery::ST_CONNECTED:
                 case OcspQuery::ST_REQ_INPROGRESS:
 
                     // break on IO retry
-                    if (!do_send_request())
+                    if (!do_send_request()) {
                         break;
+                    } else {
+                        state_ = ST_REQ_SENT;
+                    }
 
                 case OcspQuery::ST_RESP_RECEIVED:
                     do_process_response();

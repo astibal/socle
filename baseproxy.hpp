@@ -126,6 +126,8 @@ public:
     
     baseCom* com_;
     baseCom* com() { return com_; };
+    baseCom const* com() const { return com_; };
+
     explicit baseProxy(baseCom* c);
     ~baseProxy() override;
     

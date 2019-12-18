@@ -120,6 +120,10 @@ public:
     static SSL_SESSION* server_get_session_callback(SSL* ssl, const unsigned char* , int, int* );
     static int new_session_callback(SSL* ssl, SSL_SESSION* session);
 
+
+    X509* target_cert() const { return sslcom_target_cert; }
+    X509* target_issuer() const { return sslcom_target_issuer; };
+    X509* target_issuer_issuer() const { return sslcom_target_issuer_issuer; };
 protected:
 
 	SSL_CTX* sslcom_ctx = nullptr;

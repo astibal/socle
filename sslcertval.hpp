@@ -38,6 +38,44 @@ namespace inet {
 
     namespace cert {
 
+
+        // yet another smart pointer
+
+        template <class T, class Deleter = std::default_delete<T>>
+        struct finger {
+            explicit finger(T* x, Deleter d) : p_(x), deletor(d) {};
+//            finger(finger &&rr) {
+//                this->p_ = rr.p_;
+//                rr.p_ = nullptr;
+//            }
+
+
+            finger(finger const& r) = delete;
+            finger& operator=(finger const&) = delete;
+
+//            finger& operator=(finger&& rr) noexcept {
+//                this->p_ = rr.p_;
+//                rr.p_ = nullptr;
+//            }
+
+            operator T*() const { return p_; };
+            T* operator->() const { return p_; };
+
+            explicit operator bool() const { return p_ != nullptr; };
+
+            T* get() const { return p_; }
+            T* release() { T* r = p_; p_ = nullptr; return r; }
+            void assign(T* p) { if(p_) deletor(p_); p_ = p; };
+
+            virtual ~finger() { if(p_) deletor(p_); }
+
+        private:
+            T* p_ = nullptr;
+            Deleter deletor;
+        };
+
+        typedef finger<X509, decltype(&X509_free)> px509;
+
         struct VerifyStatus {
 
             enum class status_origin { OCSP, CRL } ;
@@ -86,7 +124,10 @@ namespace inet {
  * Non-blocking, stateful OCSP responder
  *
  * */
+
         class OcspQuery {
+
+            using x509ptr = inet::cert::finger<X509, decltype(&X509_free)>;
 
             // socket state structure used together with event_handlers
             socket_state socket;
@@ -95,8 +136,8 @@ namespace inet {
             BIO *conn_bio = nullptr;
 
             // certificate and issuer to check
-            X509 *cert_check = nullptr;
-            X509 *cert_issuer = nullptr;
+            x509ptr cert_check;
+            x509ptr cert_issuer;
 
 
             // OCSP request structures
@@ -127,7 +168,7 @@ namespace inet {
 
             // state machine ... states
             enum state_t{
-                ST_INIT = 1000, ST_CONNECTING, ST_CONNECTED, ST_REQ_INPROGRESS, ST_RESP_RECEIVED, ST_FINISHED, ST_CLOSED
+                ST_INIT = 1000, ST_CONNECTING, ST_CONNECTED, ST_REQ_INPROGRESS, ST_REQ_SENT, ST_RESP_RECEIVED, ST_FINISHED, ST_CLOSED
             } ;
 
             //
@@ -141,8 +182,12 @@ namespace inet {
             } ;
 
             inline const socket_state &io () const { return socket; }
+            inline socket_state &io () { return socket; }
 
-            OcspQuery (X509 *cert, X509 *issuer) : cert_check(cert), cert_issuer(issuer) {};
+            OcspQuery(X509 *cert, X509 *issuer):
+              cert_check(X509_dup(cert), &X509_free),
+              cert_issuer(X509_dup(issuer), &X509_free) {};
+
 
             // parse cert and find useful fields -> copy to internal structures
             void parse_cert ();
@@ -168,6 +213,9 @@ namespace inet {
 
             // proces received response
             bool do_process_response ();
+
+            int state() const { return state_; }
+            int yield() const { return yield_; };
 
         private:
             int state_ = OcspQuery::ST_INIT;
