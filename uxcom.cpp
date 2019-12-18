@@ -26,7 +26,7 @@ int UxCom::connect(const char* host, const char* noop_port) {
     int sfd = -1;
 
     
-    sfd = socket(connect_sock_family, connect_sock_type, 0);
+    sfd = ::socket(connect_sock_family, connect_sock_type, 0);
 
 
     if (sfd == -1) {
@@ -66,9 +66,7 @@ int UxCom::connect(const char* host, const char* noop_port) {
         _dum("UxCom::connect[%s:%s]: socket[%d]: connect ok",host,port,sfd);
     }
 
-    tcpcom_fd = sfd;
-    
-    return sfd;
+    return socket(sfd);
 
 };
 
@@ -84,7 +82,7 @@ int UxCom::bind(const char* name) {
     server.sun_family = bind_sock_family;
     strcpy(server.sun_path, name);
 
-    if ((s = socket(bind_sock_family, bind_sock_type, bind_sock_protocol)) == -1) return -129;
+    if ((s = ::socket(bind_sock_family, bind_sock_type, bind_sock_protocol)) == -1) return -129;
 
     int optval = 1;
     if(0 != setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof optval)) {

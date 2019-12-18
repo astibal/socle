@@ -153,9 +153,6 @@ protected:
     //set if we are server/client
 	bool sslcom_server_=false;
     
-	int sslcom_fd=0;
-
-
 
     bool handshake_peer_client(); // check if peer received already ClientHello
     ret_handshake handshake();
@@ -175,7 +172,7 @@ protected:
         if(peer()) { 
             auto* p = dynamic_cast<baseSSLCom*>(peer());
             if(p != nullptr) {
-                unset_monitor(p->sslcom_fd); 
+                unset_monitor(p->socket());
                 return true; 
             }
         } 
@@ -185,7 +182,7 @@ protected:
         if(peer()) { 
             auto* p = dynamic_cast<baseSSLCom*>(peer());
             if(p != nullptr) {
-                set_monitor(p->sslcom_fd); 
+                set_monitor(p->socket());
                 return true; 
             }
         } 

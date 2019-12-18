@@ -93,6 +93,8 @@ public:
     virtual std::string flags_str() { return "0"; };
     virtual std::string full_flags_str();
 private:
+
+    int fd_;
     unsigned long flags_;
     // feedback mechanism to get if the communication level is up/down
     // necessary for some mitm scenarios and connection status feedback between 2 sockets
@@ -177,7 +179,30 @@ public:
     
     // support for pseudo-socket, we call it virtual socket. It's negative numbered socket 
     // which can ne used by Com classes for socket translations (see UDPCom, for example)
-    virtual int translate_socket(int vsock) { return vsock; };
+    virtual int translate_socket(int vsock) const { return vsock; };
+
+
+    virtual int socket() const {
+        return fd_;
+    }
+
+    // sets a socket and closes previous socket if set
+    virtual int socket(int sock) {
+
+        if( sock !=  fd_ && fd_ > 0) {
+            _err("basecom::socket: orphaned fd %d, new socket %d", fd_, sock);
+
+            // prepared to fix https://github.com/astibal/smithproxy/issues/7
+            // auto bts = bt(true);
+            // _err("trace: \r\n%s", bts.c_str());
+            //::close(fd_);
+        }
+
+        fd_ = sock;
+        return fd_;
+    }
+
+
     virtual void on_new_socket(int __fd) {};
 
     // syscall wrapper 
@@ -195,6 +220,8 @@ public:
         /* do nothing */
     }
 
+
+    inline int unblock() const { return unblock(socket()); };
     int unblock(int s) const;
     static inline int is_blocking(int s) { return !(::fcntl(s, F_GETFL, 0) & O_NONBLOCK);  }
     

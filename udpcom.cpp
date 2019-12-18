@@ -90,7 +90,7 @@ int UDPCom::bind(short unsigned int port) {
         inet::to_sockaddr_in6(&sa)->sin6_addr = in6addr_any;
     }
 
-    if ((s = socket(sa.ss_family, bind_sock_type, bind_sock_protocol)) == -1)
+    if ((s = ::socket(sa.ss_family, bind_sock_type, bind_sock_protocol)) == -1)
         return -129;
     
     int optval = 1;
@@ -160,12 +160,9 @@ int UDPCom::connect(const char* host, const char* port) {
     and) try the next address. */
 
     for (rp = gai_result; rp != nullptr; rp = rp->ai_next) {
-        sfd = socket(rp->ai_family, rp->ai_socktype,
-                    rp->ai_protocol);
-        
-        //sfd = socket(AF_INET6, SOCK_DGRAM, 0);
 
-        //if (DDEB(110)) 
+        sfd = ::socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+        
         _deb("UDPCom::connect: gai info found");
         
         if (sfd == -1) {
@@ -190,7 +187,7 @@ int UDPCom::connect(const char* host, const char* port) {
 
             std::string connect_cache_key = string_format("%s:%d-%s:%s",nonlocal_src_host().c_str(),nonlocal_src_port(),host,port);
             
-            connect_fd_cache_lock.lock();
+            std::scoped_lock<std::recursive_mutex> l(connect_fd_cache_lock);
             int bind_status = namesocket(sfd,nonlocal_src_host(),nonlocal_src_port(),l3_proto());
 
             if (bind_status != 0) {
@@ -223,8 +220,8 @@ int UDPCom::connect(const char* host, const char* port) {
                 
                 _dia("UDPCom::connect[%s:%s]: socket[%d] transparency for %s:%d OK",host,port,sfd,nonlocal_src_host().c_str(),nonlocal_src_port());
             }
-        }        
-        connect_fd_cache_lock.unlock();
+        }
+
         
         //udpcom_addr =    rp->ai_addr;
         //udpcom_addrlen = rp->ai_addrlen;
@@ -268,10 +265,8 @@ int UDPCom::connect(const char* host, const char* port) {
         return -2;
     }
 
-
-    udpcom_fd = sfd;
     
-    return sfd;
+    return socket(sfd);
 }
 
 void UDPCom::init(baseHostCX* owner)
@@ -575,7 +570,7 @@ int UDPCom::write_to_pool(int __fd, const void* __buf, size_t __n, int __flags) 
                 pktinfo->ipi_ifindex = 0;
                 message_header.msg_controllen = CMSG_SPACE(sizeof(struct in_pktinfo));
                 
-                d = socket (record.dst_family(), SOCK_DGRAM, 0);
+                d = ::socket (record.dst_family(), SOCK_DGRAM, 0);
             }
         }
         else if(record.dst_family() == AF_INET6){
@@ -592,7 +587,7 @@ int UDPCom::write_to_pool(int __fd, const void* __buf, size_t __n, int __flags) 
                 pktinfo6->ipi6_addr = record.dst_in_addr6();
                 pktinfo6->ipi6_ifindex = 0;
                 message_header.msg_controllen = CMSG_SPACE(sizeof(struct in6_pktinfo));
-                d = socket (record.dst_family(), SOCK_DGRAM, 0);
+                d = ::socket (record.dst_family(), SOCK_DGRAM, 0);
             }
         }
 
@@ -615,7 +610,7 @@ int UDPCom::write_to_pool(int __fd, const void* __buf, size_t __n, int __flags) 
             
             
             int n = 1;
-            int d = socket (ss_d.ss_family, SOCK_DGRAM, 0);
+            int d = ::socket (ss_d.ss_family, SOCK_DGRAM, 0);
             
             if(ss_d.ss_family == AF_INET6) {
                 if(0 != setsockopt(d, SOL_IPV6, IPV6_TRANSPARENT, &n, sizeof(n))) {

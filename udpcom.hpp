@@ -137,7 +137,7 @@ public:
     virtual bool resolve_nonlocal_socket(int sock);
     virtual bool resolve_socket(bool source, int s, std::string* target_host, std::string* target_port, sockaddr_storage* target_storage = 0);
 protected:
-    int udpcom_fd = 0;
+
     unsigned int bind_sock_family = AF_INET6;
     unsigned int bind_sock_type = SOCK_DGRAM;
     unsigned int bind_sock_protocol = IPPROTO_UDP;

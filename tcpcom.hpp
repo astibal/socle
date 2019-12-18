@@ -76,7 +76,6 @@ public:
     void on_new_socket(int __fd) override;
 
 protected:
-    int tcpcom_fd = 0;
     int connect_sock_family = AF_UNSPEC;
     int connect_sock_type = SOCK_STREAM;
     unsigned int bind_sock_family = AF_INET6;

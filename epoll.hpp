@@ -218,6 +218,7 @@ struct socket_state {
     void mon_none();
 
     [[nodiscard]] inline const int state() const { return state_; };
+    [[nodiscard]] inline const int socket() const { return socket_; };
 };
 
 #endif //EPOLL_HPP

@@ -54,7 +54,7 @@ int TCPCom::connect(const char* host, const char* port) {
     for (rp = gai_result; rp != nullptr; rp = rp->ai_next) {
         _deb("TCPCom::connect[%s:%s]: gai info found",host,port);
 
-        sfd = socket(rp->ai_family, rp->ai_socktype,
+        sfd = ::socket(rp->ai_family, rp->ai_socktype,
                     rp->ai_protocol);
 
         on_new_socket(sfd);
@@ -120,9 +120,7 @@ int TCPCom::connect(const char* host, const char* port) {
 
     freeaddrinfo(gai_result);
 
-    tcpcom_fd = sfd;
-    
-    return sfd;
+    return socket(sfd);
 
 };
 
@@ -142,7 +140,7 @@ int TCPCom::bind(unsigned short port) {
         inet::to_sockaddr_in6(&sa)->sin6_addr = in6addr_any;
     }
         
-    if ((s = socket(bind_sock_family, bind_sock_type, bind_sock_protocol)) == -1) return -129;
+    if ((s = ::socket(bind_sock_family, bind_sock_type, bind_sock_protocol)) == -1) return -129;
     
     int optval = 1;
     setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof optval);
@@ -172,7 +170,7 @@ int TCPCom::accept ( int sockfd, sockaddr* addr, socklen_t* addrlen_ ) {
 
 bool TCPCom::is_connected(int s) {
     
-    if(tcpcom_fd == 0) {
+    if(socket() == 0) {
         _deb("TCPCom::is_connected: called for non-connecting socket");
         return true;
     }
@@ -225,7 +223,7 @@ bool TCPCom::is_connected(int s) {
 bool TCPCom::com_status() {
     
     if(baseCom::com_status()) {
-        bool r = is_connected(tcpcom_fd);
+        bool r = is_connected(socket());
         _deb("TCPCom::com_status: returning %d",r);
         return r;
     }
