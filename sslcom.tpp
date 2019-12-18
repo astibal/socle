@@ -1892,8 +1892,13 @@ ret_handshake baseSSLCom<L4Proto>::handshake() {
             sslcom_waiting = true;
             prof_want_read_cnt++;
 
-            // unmonitor, wait a while and monitor read back
-            rescan_read(socket());
+            // don't wait first XY attempts - slow down later
+            if(prof_want_read_cnt > 100) {
+                _dia("SSLCom::handshake: SSL_%s[%d]: pending on want_read - repeated, rescanning", op_descr , socket());
+                rescan_read(socket());
+            } else {
+                set_monitor(socket());
+            }
 
             return ret_handshake::AGAIN;
         }
@@ -1903,8 +1908,13 @@ ret_handshake baseSSLCom<L4Proto>::handshake() {
             sslcom_waiting = true;
             prof_want_write_cnt++;
 
-            // unmonitor, wait a while and monitor write only
-            set_write_monitor_only(socket());
+            // don't wait first XY attempts - slow down later
+            if(prof_want_write_cnt > 100) {
+                _dia("SSLCom::handshake: SSL_%s[%d]: pending on want_write, repeated, rescanning", op_descr, socket());
+                rescan_write(socket());
+            } else {
+                set_write_monitor_only(socket());
+            }
             return ret_handshake::AGAIN;
         }
         // this is error code produced by SSL_connect via OCSP callback. 
