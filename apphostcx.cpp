@@ -37,23 +37,23 @@ AppHostCX::AppHostCX(baseCom* c, unsigned int s) :baseHostCX(c,s) {
     }
 }
 
-int AppHostCX::make_sig_states(sensorType& sig_states, std::vector<duplexFlowMatch*>& source_signatures) {
+int AppHostCX::make_sig_states(sensorType& sig_states, std::vector<std::shared_ptr<duplexFlowMatch>>& source_signatures) {
     sig_states.clear();
     int r = 0;
     
     _deb("AppHostCX::zip_signatures: zipper start");
-    for( auto* ptr: source_signatures ) {
+    for( auto& sh_ptr: source_signatures ) {
         
-        if(! ptr ) {
+        if(! sh_ptr ) {
             _deb("AppHostCX::zip_signatures: attempt to zip nullptr signature");
             continue;
         }
 
-        _deb("AppHostCX::zip_signatures: sensor 0x%x, adding %s at 0x%x",&sig_states, ptr->name().c_str(), ptr);
+        _deb("AppHostCX::zip_signatures: sensor 0x%x, adding %s at 0x%x",&sig_states, sh_ptr->name().c_str(), sh_ptr.get());
         
-        std::pair<flowMatchState,duplexFlowMatch*> a;
+        std::pair<flowMatchState, std::shared_ptr<duplexFlowMatch>> a;
         a.first = flowMatchState();
-        a.second = ptr;
+        a.second = std::shared_ptr<duplexFlowMatch>(sh_ptr);
 
 
         sig_states.push_back(a);
@@ -75,7 +75,7 @@ bool AppHostCX::detect(sensorType& cur_sensor,char side) {
     for (auto& sig: cur_sensor) {
         
         // get zipped results with signature pointers
-        duplexFlowMatch* sig_sig = std::get<1>(sig);
+        duplexFlowMatch* sig_sig = std::get<1>(sig).get();
         flowMatchState& sig_res = std::get<0>(sig);
         
         if (! sig_res.hit()) {
