@@ -76,7 +76,7 @@ protected:
     bool detect(sensorType&,char side); // signature detection engine
     virtual void inspect(char side) { }; // to be overriden for ALG inspectors
     
-    virtual void on_detect(duplexFlowMatch*, flowMatchState&, vector_range&);
+    virtual void on_detect(std::shared_ptr<duplexFlowMatch>, flowMatchState&, vector_range&);
     virtual void on_starttls() {};
 
 

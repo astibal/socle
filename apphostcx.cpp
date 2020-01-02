@@ -75,7 +75,7 @@ bool AppHostCX::detect(sensorType& cur_sensor,char side) {
     for (auto& sig: cur_sensor) {
         
         // get zipped results with signature pointers
-        duplexFlowMatch* sig_sig = std::get<1>(sig).get();
+        std::shared_ptr<duplexFlowMatch> sig_sig = std::get<1>(sig);
         flowMatchState& sig_res = std::get<0>(sig);
         
         if (! sig_res.hit()) {
@@ -330,5 +330,5 @@ void AppHostCX::pre_write() {
 }
 
 
-void AppHostCX::on_detect(duplexFlowMatch* sig_sig, flowMatchState& s, vector_range& r) {}
+void AppHostCX::on_detect(std::shared_ptr<duplexFlowMatch> sig_sig, flowMatchState& s, vector_range& r) {}
 
