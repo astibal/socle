@@ -459,7 +459,7 @@ public:
     bool& hit() { return hit_; }
     vector_range& result() { return ranges_; };
     
-    bool update(duplexFlow* f, duplexFlowMatch* signature) {
+    bool update(duplexFlow* f, std::shared_ptr<duplexFlowMatch> signature) {
        return signature->match(f,ranges_,sig_pos_);
     }
 };

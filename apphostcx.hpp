@@ -26,7 +26,7 @@
 #include <hostcx.hpp>
 #include <signature.hpp>
 
-typedef typename std::vector<std::pair<flowMatchState,duplexFlowMatch*>> sensorType;
+typedef typename std::vector<std::pair<flowMatchState,std::shared_ptr<duplexFlowMatch>>> sensorType;
 
 
 class AppHostCX: public baseHostCX {
@@ -49,7 +49,7 @@ public:
     sensorType& sensor() { return sensor_; };
 
     // create pairs of results and pointers to (somewhere, already created) signatures.
-    int make_sig_states(sensorType& sig_states, std::vector<duplexFlowMatch*>& source_signatures);
+    int make_sig_states(sensorType& sig_states, std::vector<std::shared_ptr<duplexFlowMatch>>& source_signatures);
     
     ~AppHostCX() override = default;
 
@@ -76,7 +76,7 @@ protected:
     bool detect(sensorType&,char side); // signature detection engine
     virtual void inspect(char side) { }; // to be overriden for ALG inspectors
     
-    virtual void on_detect(duplexFlowMatch*, flowMatchState&, vector_range&);
+    virtual void on_detect(std::shared_ptr<duplexFlowMatch>, flowMatchState&, vector_range&);
     virtual void on_starttls() {};
 
 

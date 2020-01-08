@@ -376,8 +376,13 @@ namespace inet {
             if (cbio && port && use_ssl == 0) {
                 BIO_set_conn_port(cbio, port);
                 resp = ocsp_query_responder(err, cbio, path, host, req, req_timeout);
-                if (!resp)
-                    _dia("ocsp_send_request: Error querying OCSP responder");
+                if (!resp) {
+                    auto xhost = host ? host : "?";
+                    auto xport = port ? port : "?";
+                    auto xpath = path ? path : "?";
+
+                    _dia("ocsp_send_request: Error querying OCSP responder: %s:%s/%s", xhost, xport, xpath);
+                }
             }
             if (cbio)
                 BIO_free_all(cbio);
