@@ -80,7 +80,7 @@ namespace inet {
 
             enum class status_origin { OCSP, CRL } ;
 
-            VerifyStatus() : revoked(1), ttl(600), origin(status_origin::OCSP) {};
+            VerifyStatus() : revoked(-1), ttl(600), origin(status_origin::OCSP) {};
             VerifyStatus(int revoked, int ttl, status_origin orig): revoked(revoked), ttl(ttl), origin(orig) {};
 
             int revoked = -1;

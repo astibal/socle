@@ -534,7 +534,7 @@ namespace inet {
         }
 #endif // USE_OPENSSL11
             _dia("ocsp_verify_response:  returning %d", is_revoked);
-            return VerifyStatus( {is_revoked, ttl, VerifyStatus::status_origin::OCSP } );
+            return VerifyStatus(is_revoked, ttl, VerifyStatus::status_origin::OCSP);
         }
 
         inet::cert::VerifyStatus ocsp_check_cert (X509 *x509, X509 *issuer, int req_timeout) {
@@ -542,7 +542,7 @@ namespace inet {
             using namespace inet::cert;
 
             int is_revoked = -1;
-            VerifyStatus ret = { .is_revoked = -1, .ttl = 600, .origin = VerifyStatus::status_origin::OCSP };
+            VerifyStatus ret(-1, 60, VerifyStatus::status_origin::OCSP);
 
             BIO *bio_out = BIO_new_fp(stdout, BIO_NOCLOSE | BIO_FP_TEXT);
             BIO *bio_err = BIO_new_fp(stderr, BIO_NOCLOSE | BIO_FP_TEXT);
