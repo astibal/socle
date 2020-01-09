@@ -376,8 +376,13 @@ namespace inet {
             if (cbio && port && use_ssl == 0) {
                 BIO_set_conn_port(cbio, port);
                 resp = ocsp_query_responder(err, cbio, path, host, req, req_timeout);
-                if (!resp)
-                    _dia("ocsp_send_request: Error querying OCSP responder");
+                if (!resp) {
+                    auto xhost = host ? host : "?";
+                    auto xport = port ? port : "?";
+                    auto xpath = path ? path : "?";
+
+                    _dia("ocsp_send_request: Error querying OCSP responder: %s:%s/%s", xhost, xport, xpath);
+                }
             }
             if (cbio)
                 BIO_free_all(cbio);
@@ -529,7 +534,7 @@ namespace inet {
         }
 #endif // USE_OPENSSL11
             _dia("ocsp_verify_response:  returning %d", is_revoked);
-            return VerifyStatus( {is_revoked, ttl, VerifyStatus::status_origin::OCSP } );
+            return VerifyStatus(is_revoked, ttl, VerifyStatus::status_origin::OCSP);
         }
 
         inet::cert::VerifyStatus ocsp_check_cert (X509 *x509, X509 *issuer, int req_timeout) {
@@ -537,7 +542,7 @@ namespace inet {
             using namespace inet::cert;
 
             int is_revoked = -1;
-            VerifyStatus ret = { .is_revoked = -1, .ttl = 600, .origin = VerifyStatus::status_origin::OCSP };
+            VerifyStatus ret(-1, 60, VerifyStatus::status_origin::OCSP);
 
             BIO *bio_out = BIO_new_fp(stdout, BIO_NOCLOSE | BIO_FP_TEXT);
             BIO *bio_err = BIO_new_fp(stderr, BIO_NOCLOSE | BIO_FP_TEXT);
