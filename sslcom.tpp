@@ -886,7 +886,7 @@ int baseSSLCom<L4Proto>::check_revocation_oob(baseSSLCom* com, int default_actio
 
             std::string cn = SSLFactory::print_cn(com->sslcom_target_cert) + ";" + SSLFactory::fingerprint(com->sslcom_target_cert);
             std::string name = "unknown_cx";
-            if(is_revoked > 0) {
+            if(is_revoked != 0) {
 
                 baseSSLCom* pcom = dynamic_cast<baseSSLCom*>(com->peer());
                 if(pcom != nullptr) {
@@ -894,18 +894,25 @@ int baseSSLCom<L4Proto>::check_revocation_oob(baseSSLCom* com, int default_actio
                 } else {
                     name = com->hr();
                 }
-                com->verify_set(VRF_REVOKED);
-                _war("Connection from %s: certificate %s is revoked (OCSP query), replacement=%d)", name.c_str(), cn.c_str(),
+
+                _war("Connection from %s: certificate %s OCSP validation error %d, replacement=%d)", name.c_str(), cn.c_str(),
+                     is_revoked,
                      com->opt_failed_certcheck_replacement);
+
+                if(is_revoked > 0) {
+                    com->verify_set(VRF_REVOKED);
+                } else {
+                    // is_revoked < 0 - various errors
+                    com->verify_set(VRF_ALLFAILED);
+                }
 
                 if(com->opt_failed_certcheck_replacement) {
                     ERR_clear_error();
                 }
                 return com->opt_failed_certcheck_replacement;
 
-            } else
-            if(is_revoked == 0) {
-                _dia("ocsp_resp_callback_explicit: GOOD: returning 1");
+            } else {
+                _dia("check_revocation_oob: GOOD: returning 1");
                 return 1;
             }
         }

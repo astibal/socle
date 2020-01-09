@@ -91,9 +91,9 @@ public:
     using expiring_crl = expiring_ptr<crl_holder>;
 
 
-    static expiring_verify_result* make_exp_ocsp_status(bool result, int ttl)
+    static expiring_verify_result* make_exp_ocsp_status(int result, int ttl)
             { return new expiring_verify_result(VerifyStatus(result, ttl, VerifyStatus::status_origin::OCSP), ttl); };
-    static expiring_verify_result* make_exp_crl_status(bool result, int ttl)
+    static expiring_verify_result* make_exp_crl_status(int result, int ttl)
             { return new expiring_verify_result(VerifyStatus(result, ttl, VerifyStatus::status_origin::CRL), ttl); };
 
 
