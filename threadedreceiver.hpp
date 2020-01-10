@@ -22,6 +22,7 @@
 #include <hostcx.hpp>
 #include <baseproxy.hpp>
 #include <masterproxy.hpp>
+#include <threadedworker.hpp>
 
 #include <vector>
 #include <deque>
@@ -35,7 +36,8 @@
 template<class Worker, class SubWorker>
 class ThreadedReceiver : public baseProxy {
 public:
-    ThreadedReceiver(baseCom* c);
+    using proxy_type = threadedProxyWorker::proxy_type;
+    ThreadedReceiver(baseCom* c, proxy_type t);
     ~ThreadedReceiver() override;
     
     bool     is_quick_port(int sock, short unsigned int dport);
@@ -64,6 +66,8 @@ public:
     constexpr int core_multiplier() const noexcept { return 4; };
 
 private:
+    threadedProxyWorker::proxy_type proxy_type_;
+
     mutable std::mutex sq_lock_;
     mp::deque<int> sq_;
     mp::vector<int>* quick_list_ = nullptr;
@@ -82,18 +86,19 @@ private:
 
 
 template<class SubWorker>
-class ThreadedReceiverProxy : public MasterProxy {
+class ThreadedReceiverProxy : public threadedProxyWorker, public MasterProxy {
 public:
-    ThreadedReceiverProxy(baseCom* c, int worker_id): MasterProxy(c), worker_id_(worker_id) {}
+    ThreadedReceiverProxy(baseCom* c, int worker_id, threadedProxyWorker::proxy_type p):
+            threadedProxyWorker(worker_id, p),
+            MasterProxy(c) {}
 
     int handle_sockets_once(baseCom*) override;
     void on_run_round() override;
 
-    static int workers_total;   
-    
-protected:
-    int worker_id_ = 0;
- 
+    static int& workers_total() {
+        static int workers_total_ = 2;
+        return workers_total_;
+    };
 };
 
 #include <threadedreceiver.cpp>

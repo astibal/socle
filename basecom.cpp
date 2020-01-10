@@ -103,6 +103,58 @@ int baseCom::namesocket(int sockfd, std::string& addr, unsigned short port, sa_f
 }
 
 
+bool baseCom::resolve_redirected(int s, std::string* target_host, std::string* target_port, sockaddr_storage* target_storage) {
+
+    char orig_host[INET6_ADDRSTRLEN];
+    struct sockaddr_storage peer_info_;
+    struct sockaddr_storage *ptr_peer_info = &peer_info_;
+
+    //clear peer info struct
+    socklen_t addrlen = sizeof(peer_info_);
+    memset(ptr_peer_info, 0, addrlen);
+
+    const char* op = "getsockopt(redir)";
+
+    if ( 0 != getsockopt( s, SOL_IP, SO_ORIGINAL_DST, &ptr_peer_info, &addrlen )) {
+        _err("error getting original DST: %s", string_error().c_str());
+    }
+    else {
+        unsigned short orig_port = 0;
+
+        if (ptr_peer_info->ss_family == AF_INET) {
+            inet_ntop(AF_INET, &(((struct sockaddr_in *) ptr_peer_info)->sin_addr), orig_host, INET_ADDRSTRLEN);
+            orig_port = ntohs(((struct sockaddr_in *) ptr_peer_info)->sin_port);
+
+            _deb("baseCom::resolve_socket(ipv4-redir): %s returns %s:%d", op, orig_host, orig_port);
+
+            l3_proto(AF_INET);
+        } else if (ptr_peer_info->ss_family == AF_INET6) {
+            inet_ntop(AF_INET6, &(((struct sockaddr_in6 *) ptr_peer_info)->sin6_addr), orig_host, INET6_ADDRSTRLEN);
+            orig_port = ntohs(((struct sockaddr_in6 *) ptr_peer_info)->sin6_port);
+
+            _deb("baseCom::resolve_socket(ipv6-redir): %s returns %s:%d", op, orig_host, orig_port);
+
+            l3_proto(AF_INET6);
+        }
+
+        std::string mapped4_temp = orig_host;
+        if (mapped4_temp.find("::ffff:") == 0) {
+            _deb("baseCom::resolve_socket: mapped IPv4 detected, removing mapping prefix");
+            mapped4_temp = mapped4_temp.substr(7);
+
+            l3_proto(AF_INET);
+        }
+
+        if (target_host != nullptr) *target_host = mapped4_temp;
+        if (target_port != nullptr) *target_port = std::to_string(orig_port);
+        if (target_storage != nullptr) *target_storage = peer_info_;
+        return true;
+    }
+
+    return false;
+}
+
+
 bool baseCom::resolve_socket(bool source, int s, std::string* target_host, std::string* target_port, sockaddr_storage* target_storage) {
 
     char orig_host[INET6_ADDRSTRLEN];
@@ -182,8 +234,14 @@ bool baseCom::resolve_nonlocal_dst_socket(int sock) {
         nonlocal_dst_host_ = h;
         nonlocal_dst_port_ = std::stoi(p);
         nonlocal_dst_peer_info_ = s;
-        
+
+        _err("nonlocal dst: %s:%s", h.c_str(), p.c_str());
+
         return true;
+    }
+    else {
+        nonlocal_dst_resolved_ = resolve_redirected(sock, &h, &p, &s);
+        _err("nonlocal redirected dst: %s:%s", h.c_str(), p.c_str());
     }
     
     return false;

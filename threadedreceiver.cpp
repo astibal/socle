@@ -33,11 +33,9 @@
 
 #define USE_SOCKETPAIR
 
-template<class SubWorker>
-int ThreadedReceiverProxy<SubWorker>::workers_total = 2;
-
 template<class Worker, class SubWorker>
-ThreadedReceiver<Worker,SubWorker>::ThreadedReceiver(baseCom* c): baseProxy(c) {
+ThreadedReceiver<Worker,SubWorker>::ThreadedReceiver(baseCom* c, threadedProxyWorker::proxy_type t): baseProxy(c),
+    proxy_type_(t) {
     baseProxy::new_raw(true);
 
     #ifdef USE_SOCKETPAIR
@@ -528,15 +526,15 @@ int ThreadedReceiver<Worker,SubWorker>::create_workers(int count) {
         _dia("Threads poolsize overridden: %d", nthreads);
 
     } else if (count < 0) {
-        Worker::workers_total = count;
+        Worker::workers_total() = count;
         return count;
     }
     
-    Worker::workers_total = nthreads;
+    Worker::workers_total() = nthreads;
 
     for( unsigned int i = 0; i < nthreads; i++) {
 
-        Worker *w = new Worker(this->com()->replicate(),i);
+        Worker *w = new Worker(this->com()->replicate(),i,proxy_type_);
         w->com()->nonlocal_dst(this->com()->nonlocal_dst());
         w->parent(this);
         w->pollroot(true);
@@ -620,7 +618,7 @@ int ThreadedReceiver<Worker, SubWorker>::pop_for_worker(int id) {
         return 0;
     }
 
-    if (((unsigned int)b) % Worker::workers_total == (unsigned int)id) {
+    if (((unsigned int)b) % Worker::workers_total() == (unsigned int)id) {
         int r = sq_.back();
         sq_.pop_back();
         _dia("ThreadedReceiver::pop_for_worker: pop-ing %d for worker %d, queue size %d",r,id,sq_.size());
@@ -661,7 +659,7 @@ int ThreadedReceiverProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
             // this session key is for us!
             _dia("ThreadedReceiverProxy::handle_sockets_once: new data notification for %d", s);
 
-            if (((unsigned int) s) % workers_total == (unsigned int) worker_id_) {
+            if (((unsigned int) s) % workers_total() == (unsigned int) worker_id_) {
                 _dia("ThreadedReceiverProxy::%d is for me!", s);
 
                 _dia("ThreadedReceiverProxy::handle_sockets_once: DatagramCom::datagrams_received.size() = %d",
