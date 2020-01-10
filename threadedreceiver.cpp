@@ -573,7 +573,7 @@ int ThreadedReceiver<Worker,SubWorker>::run() {
 
 template<class Worker, class SubWorker>
 void ThreadedReceiver<Worker,SubWorker>::on_run_round() {
-    std::this_thread::yield();
+    //std::this_thread::yield();
 }
 
 template<class Worker, class SubWorker>

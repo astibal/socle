@@ -155,7 +155,7 @@ int ThreadedAcceptor<Worker,SubWorker>::run(void) {
 
 template<class Worker, class SubWorker>
 void ThreadedAcceptor<Worker,SubWorker>::on_run_round() {
-    std::this_thread::yield();
+    // std::this_thread::yield();
 }
 
 template<class Worker, class SubWorker>
