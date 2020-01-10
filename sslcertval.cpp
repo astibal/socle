@@ -349,7 +349,7 @@ namespace inet {
                     _err("ocsp_query_responder: timeout on request");
                     break;
                 } else if (rv == -1) {
-                    _err("ocsp_query_responder: Select error");
+                    _err("ocsp_query_responder: Select error: %s", string_error().c_str());
                     break;
                 } else {
                     _deb("ocsp_query_responder: select ok - returned %d", rv);
