@@ -154,9 +154,11 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
         
         unsigned char recv_buf_[2048];
         char cmbuf[256];
-        struct sockaddr_storage from;
-        struct iovec io;
-        struct msghdr msg;
+        sockaddr_storage from{0};
+
+        iovec io{0};
+        msghdr msg{0};
+
         bool found_origdst = false;
         memset(&msg, 0, sizeof(msg));
         
@@ -184,7 +186,7 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
     //     hdr.client_port_ = ntohs(from.sin_port);
         
         // iterate through all the control headers
-        for ( struct cmsghdr* cmsg = CMSG_FIRSTHDR(&msg); cmsg != NULL; cmsg = CMSG_NXTHDR(&msg, cmsg))   {
+        for ( struct cmsghdr* cmsg = CMSG_FIRSTHDR(&msg); cmsg != nullptr; cmsg = CMSG_NXTHDR(&msg, cmsg))   {
 
             _deb("ThreadedReceiver::on_left_new_raw[%d]: ancillary data level=%d, type=%d",sock,cmsg->cmsg_level,cmsg->cmsg_type);
                 
@@ -234,7 +236,7 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
 
             _dia("ThreadedReceiver::on_left_new_raw[%d]: new data for key %d",sock,session_key);
             
-            DatagramCom* c = dynamic_cast<DatagramCom*>(com());
+            auto* c = dynamic_cast<DatagramCom*>(com());
             if(c == nullptr) {
                 _war("ThreadedReceiver::on_left_new_raw[%d]: my com() is not Datagram storage!",sock);
                 exit(1);
@@ -341,17 +343,16 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
                         ::setsockopt(d.socket, SOL_IP,IPV6_RECVORIGDSTADDR, &n, sizeof(int)); n = 1;
                         ::setsockopt(d.socket, SOL_IPV6, IPV6_TRANSPARENT, &n, sizeof(int));
 
-                        sockaddr_storage ss_src,ss_dst;
-                        memset(&ss_src,0,sizeof(struct sockaddr_storage));
-                        memset(&ss_dst,0,sizeof(struct sockaddr_storage));
-                        
+                        sockaddr_storage ss_src{0};
+                        sockaddr_storage ss_dst{0};
+
                         inet_pton(AF_INET6,str_src_host.c_str(),&ss_src); ss_src.ss_family=AF_INET6; ((sockaddr_in6*)&ss_src)->sin6_port = htons(sport);
                         inet_pton(AF_INET6,str_dst_host.c_str(),&ss_dst); ss_dst.ss_family=AF_INET6; ((sockaddr_in6*)&ss_dst)->sin6_port = htons(dport);
 
                         ret_bin = ::bind (d.socket, (struct sockaddr*)&(d.dst), sizeof (struct sockaddr_storage));
-                        if(ret_bin != 0) _dia("ipv6 transparenting: bind error: %s",string_error().c_str()); // bind is not succeeding with already bound socket ... => this will create empbryonic connection
+                        if(ret_bin != 0) _dia("ipv6 transparency: bind error: %s",string_error().c_str()); // bind is not succeeding with already bound socket ... => this will create empbryonic connection
                         ret_con = ::connect(d.socket,(struct sockaddr*)&(d.src),sizeof (struct sockaddr_storage));
-                        if(ret_con != 0) _err("ipv6 transparenting: connect error: %s",string_error().c_str());
+                        if(ret_con != 0) _err("ipv6 transparency: connect error: %s",string_error().c_str());
                     }
 
                 }
@@ -363,7 +364,7 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
                             );            
                 
                 if(use_virtual_socket) {
-                    _dia("ThreadedReceiver transparenting for inbound connection: connect=%d, bind=%d",ret_con,ret_bin);
+                    _dia("ThreadedReceiver transparency for inbound connection: connect=%d, bind=%d",ret_con,ret_bin);
                 } else {
                     _dia("ThreadedReceiver using virtual socket %d",session_key);
                 }
@@ -432,7 +433,6 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
             else {
                 Datagram& o_it = DatagramCom::datagrams_received[session_key];
 
-                int dst_family = o_it.dst_family();
                 bool clashed_cond = false;
                 
                 
@@ -460,7 +460,7 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
                 
                 buffer_guard bg(o_it.rx);
                 
-                if(o_it.rx.size() != 0) {
+                if(! o_it.rx.empty()) {
                     // If there are data, we apparently can't catch up with the speed.
                     // replace current data. Application is not interested in old UDP datagrams.
                     _dia("ThreadedReceiver::on_left_new_raw[%d]: key %d: dropped %dB of non-proxied data",sock, session_key,o_it.rx.size());
@@ -478,10 +478,10 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
                 
                 if(o_it.cx) {
                     baseCom* com = o_it.cx->com();
-                    DatagramCom* um = dynamic_cast<DatagramCom*>(com->master());
+                    auto* um = dynamic_cast<DatagramCom*>(com->master());
                     if(um) {
-                        std::lock_guard<std::recursive_mutex>(um->lock);
-                        um->in_virt_set.insert(session_key);
+                        std::lock_guard<std::recursive_mutex> l_(DatagramCom::lock);
+                        DatagramCom::in_virt_set.insert(session_key);
                     }
                     
                     // mark target cx's socket as write-monitor, triggering proxy session.
@@ -559,7 +559,7 @@ int ThreadedReceiver<Worker,SubWorker>::run() {
 
     for( unsigned int i = 0; i < tasks_.size() ; i++) {
         auto& thread_worker = tasks_[i];
-        std::thread* ptr = new std::thread(&Worker::run, thread_worker.second);
+        auto* ptr = new std::thread(&Worker::run, thread_worker.second);
         _dia("ThreadedReceiver::run: started new thread[%d]: ptr=%x, thread_id=%d",i,ptr,ptr->get_id());
         thread_worker.first = ptr;
     }
@@ -583,7 +583,7 @@ int ThreadedReceiver<Worker,SubWorker>::push(int s) {
         _err("ThreadedReceiver::push: failed to write hint byte - error[%d]: %s", wr, string_error().c_str());
     }
     return sq_.size();
-};
+}
 
 template<class Worker, class SubWorker>
 int ThreadedReceiver<Worker,SubWorker>::pop() {
