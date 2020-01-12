@@ -217,8 +217,16 @@ int ThreadedAcceptorProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
                 } else {
                     cx->on_delay_socket(s);
                 }
+
                 cx->com()->nonlocal_dst(this->com()->nonlocal_dst());
-                cx->com()->resolve_nonlocal_dst_socket(s);
+
+                if (proxy_type() == proxy_type_t::TRANSPARENT) {
+                    cx->com()->resolve_nonlocal_dst_socket(s);
+                } else
+                    if (proxy_type() == proxy_type_t::REDIRECT) {
+                    cx->com()->resolve_redirected_dst_socket(s);
+                }
+
                 this->on_left_new(cx);
 
             } catch (socle::com_is_null const& e) {

@@ -36,7 +36,7 @@
 template<class Worker, class SubWorker>
 class ThreadedReceiver : public baseProxy {
 public:
-    using proxy_type = threadedProxyWorker::proxy_type;
+    using proxy_type = threadedProxyWorker::proxy_type_t;
     ThreadedReceiver(baseCom* c, proxy_type t);
     ~ThreadedReceiver() override;
     
@@ -66,7 +66,7 @@ public:
     constexpr int core_multiplier() const noexcept { return 4; };
 
 private:
-    threadedProxyWorker::proxy_type proxy_type_;
+    threadedProxyWorker::proxy_type_t proxy_type_;
 
     mutable std::mutex sq_lock_;
     mp::deque<int> sq_;
@@ -88,7 +88,7 @@ private:
 template<class SubWorker>
 class ThreadedReceiverProxy : public threadedProxyWorker, public MasterProxy {
 public:
-    ThreadedReceiverProxy(baseCom* c, int worker_id, threadedProxyWorker::proxy_type p):
+    ThreadedReceiverProxy(baseCom* c, int worker_id, threadedProxyWorker::proxy_type_t p):
             threadedProxyWorker(worker_id, p),
             MasterProxy(c) {}
 

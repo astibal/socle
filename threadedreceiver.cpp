@@ -34,8 +34,8 @@
 #define USE_SOCKETPAIR
 
 template<class Worker, class SubWorker>
-ThreadedReceiver<Worker,SubWorker>::ThreadedReceiver(baseCom* c, threadedProxyWorker::proxy_type t): baseProxy(c),
-    proxy_type_(t) {
+ThreadedReceiver<Worker,SubWorker>::ThreadedReceiver(baseCom* c, threadedProxyWorker::proxy_type_t t): baseProxy(c),
+                                                                                                       proxy_type_(t) {
     baseProxy::new_raw(true);
 
     #ifdef USE_SOCKETPAIR

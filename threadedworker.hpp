@@ -22,11 +22,14 @@
 class threadedProxyWorker  {
 
 public:
-    using proxy_type = enum class proxy_type { NONE, TRANSPARENT, PROXY, REDIRECT };
+    using proxy_type_t = enum class proxy_type_t { NONE, TRANSPARENT, PROXY, REDIRECT };
 
-    threadedProxyWorker(int worker_id, proxy_type t):  type_(t), worker_id_(worker_id) {}
+    threadedProxyWorker(int worker_id, proxy_type_t t): type_(t), worker_id_(worker_id) {}
 
-    proxy_type type_;
+    proxy_type_t type_;
+
+    [[nodiscard]]
+    inline proxy_type_t proxy_type() const { return type_; }
     int worker_id_ = 0;
 
 };

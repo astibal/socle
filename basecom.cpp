@@ -115,7 +115,7 @@ bool baseCom::resolve_redirected(int s, std::string* target_host, std::string* t
 
     const char* op = "getsockopt(redir)";
 
-    if ( 0 != getsockopt( s, SOL_IP, SO_ORIGINAL_DST, &ptr_peer_info, &addrlen )) {
+    if ( 0 != getsockopt( s, SOL_IP, SO_ORIGINAL_DST, ptr_peer_info, &addrlen )) {
         _err("error getting original DST: %s", string_error().c_str());
     }
     else {
@@ -234,17 +234,27 @@ bool baseCom::resolve_nonlocal_dst_socket(int sock) {
         nonlocal_dst_host_ = h;
         nonlocal_dst_port_ = std::stoi(p);
         nonlocal_dst_peer_info_ = s;
-
-        _err("nonlocal dst: %s:%s", h.c_str(), p.c_str());
-
-        return true;
     }
-    else {
-        nonlocal_dst_resolved_ = resolve_redirected(sock, &h, &p, &s);
-        _err("nonlocal redirected dst: %s:%s", h.c_str(), p.c_str());
+    _dia("baseCom::resolve_nonlocal_dst_socket: nonlocal dst: %s:%s", h.c_str(), p.c_str());
+    return nonlocal_dst_resolved_;
+}
+
+bool baseCom::resolve_redirected_dst_socket(int sock) {
+
+    std::string h("0.0.0.0");
+    std::string p("0");
+    struct sockaddr_storage s; memset(&s,0,sizeof(s));
+
+    nonlocal_dst_resolved_ = resolve_redirected(sock, &h, &p, &s);
+
+    if(nonlocal_dst_resolved()) {
+        nonlocal_dst_host_ = h;
+        nonlocal_dst_port_ = std::stoi(p);
+        nonlocal_dst_peer_info_ = s;
     }
-    
-    return false;
+
+    _dia("baseCom::resolve_redirected_dst_socket: nonlocal redirected dst: %s:%s", h.c_str(), p.c_str());
+    return nonlocal_dst_resolved_;
 }
 
 
