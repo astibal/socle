@@ -87,6 +87,49 @@ private:
 
 
 
+struct ReceiverRedirectMap {
+private:
+    ReceiverRedirectMap() = default;
+
+public:
+    ReceiverRedirectMap(ReceiverRedirectMap const&) = delete;
+    ReceiverRedirectMap& operator=(ReceiverRedirectMap const&) = delete;
+
+    // to support iptables redirect target limitation
+    using redir_target_t = std::pair<std::string, unsigned short>;
+    using redir_target_map_t = std::map<int, redir_target_t>;
+
+    redir_target_map_t  rmap_;
+    std::mutex redir_target_lock_;
+
+    void map_add(unsigned short port, redir_target_t entry) {
+        std::scoped_lock<std::mutex> l_(redir_target_lock_);
+        rmap_[port] = entry;
+    }
+
+    void map_clear() {
+        std::scoped_lock<std::mutex> l_(redir_target_lock_);
+        rmap_.clear();
+    }
+
+    // return redir target
+    virtual std::optional<redir_target_t> redir_target(unsigned short redir_port) {
+
+        std::scoped_lock<std::mutex> l_(redir_target_lock_);
+
+        if(rmap_.find(redir_port) != rmap_.end()) {
+            return  rmap_[redir_port];
+        }
+        return std::make_optional(std::make_pair("8.8.8.8", 53));
+    };
+
+    static ReceiverRedirectMap& instance() {
+        static ReceiverRedirectMap r;
+        return r;
+    }
+};
+
+
 template<class SubWorker>
 class ThreadedReceiverProxy : public threadedProxyWorker, public MasterProxy {
 public:

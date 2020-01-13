@@ -715,18 +715,43 @@ int ThreadedReceiverProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
 
                             } else {
                                 cx_bcom->nonlocal_dst(this->com()->nonlocal_dst());
+
+
                                 if (proxy_type() == proxy_type_t::TRANSPARENT) {
                                     cx_bcom->resolve_nonlocal_dst_socket(s);
                                 } else {
-                                    cx_bcom->nonlocal_dst_host() = "8.8.8.8";
-                                    cx_bcom->nonlocal_dst_port() = 53;
-                                    cx_bcom->nonlocal_dst_resolved(true);
+
+                                    // get REDIR port needed for destination lookup
+                                    cx_bcom->resolve_nonlocal_dst_socket(s);
+
+                                    // get port -> target mapping
+                                    auto o_target = ReceiverRedirectMap::instance().redir_target(cx_bcom->nonlocal_dst_port());
+
+                                    if(o_target.has_value()) {
+
+                                        auto target = o_target.value();
+
+                                        cx_bcom->nonlocal_dst_host() = target.first;
+                                        cx_bcom->nonlocal_dst_port() = target.second;
+                                        cx_bcom->nonlocal_dst_resolved(true);
+
+                                        _err("redir map host: %s:%d", target.first.c_str(), target.second);
+                                    } else {
+
+                                        _dia("ThreadedReceiverProxy::handle_sockets_once[%d]: CX created, bound socket %d: no redirection target",
+                                             s, record.socket);
+
+                                        delete cx;
+                                        cx = nullptr;
+                                    }
                                 }
 
-                                _dia("ThreadedReceiverProxy::handle_sockets_once[%d]: CX created, bound socket %d ,nonlocal: %s:%u",
-                                     s, record.socket, cx->com()->nonlocal_dst_host().c_str(),
-                                     cx->com()->nonlocal_dst_port());
-                                this->on_left_new(cx);
+                                if(cx) {
+                                    _dia("ThreadedReceiverProxy::handle_sockets_once[%d]: CX created, bound socket %d ,nonlocal: %s:%u",
+                                         s, record.socket, cx->com()->nonlocal_dst_host().c_str(),
+                                         cx->com()->nonlocal_dst_port());
+                                    this->on_left_new(cx);
+                                }
                             }
 
                         } catch (socle::com_is_null const& e) {
