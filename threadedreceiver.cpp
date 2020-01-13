@@ -199,12 +199,21 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
                 found_origdst = true;
                 memcpy(&orig,(struct sockaddr_storage*)CMSG_DATA(cmsg),sizeof(struct sockaddr_storage));
 
-                
-                std::string str_src_host; unsigned short sport;
-                int src_family = inet_ss_address_unpack(&from,&str_src_host,&sport);
-                std::string str_dst_host; unsigned short dport;
-                int dst_family = inet_ss_address_unpack(&orig,&str_dst_host,&dport);
-                
+                std::string str_src_host;
+                unsigned short sport;
+                std::string str_dst_host;
+                unsigned short dport;
+                int src_family = AF_INET;
+                int dst_family = AF_INET;
+
+                if(proxy_type() == proxy_type_t::REDIRECT) {
+                    src_family = inet_ss_address_unpack(&from, &str_src_host, &sport);
+                    str_dst_host = "8.8.8.8";
+                    dport = 53;
+                } else {
+                    src_family = inet_ss_address_unpack(&from, &str_src_host, &sport);
+                    dst_family = inet_ss_address_unpack(&orig, &str_dst_host, &dport);
+                }
                 use_virtual_socket = is_quick_port(sock, dport);
                 
                 _dia("ThreadedReceiver::on_left_new_raw[%d]: datagram from: %s/%s:%u to %s/%s:%u (%s)",
@@ -213,7 +222,7 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
                             inet_family_str(dst_family).c_str(),str_dst_host.c_str(), dport,
                             use_virtual_socket ? "quick" : "cooked"
                             );
-                
+
                 if(src_family == AF_INET) {
                     _deb("session key: source socket is IPv4");
 
@@ -706,7 +715,13 @@ int ThreadedReceiverProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
 
                             } else {
                                 cx_bcom->nonlocal_dst(this->com()->nonlocal_dst());
-                                cx_bcom->resolve_nonlocal_dst_socket(s);
+                                if (proxy_type() == proxy_type_t::TRANSPARENT) {
+                                    cx_bcom->resolve_nonlocal_dst_socket(s);
+                                } else {
+                                    cx_bcom->nonlocal_dst_host() = "8.8.8.8";
+                                    cx_bcom->nonlocal_dst_port() = 53;
+                                    cx_bcom->nonlocal_dst_resolved(true);
+                                }
 
                                 _dia("ThreadedReceiverProxy::handle_sockets_once[%d]: CX created, bound socket %d ,nonlocal: %s:%u",
                                      s, record.socket, cx->com()->nonlocal_dst_host().c_str(),

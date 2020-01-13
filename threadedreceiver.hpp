@@ -36,8 +36,10 @@
 template<class Worker, class SubWorker>
 class ThreadedReceiver : public baseProxy {
 public:
-    using proxy_type = threadedProxyWorker::proxy_type_t;
-    ThreadedReceiver(baseCom* c, proxy_type t);
+    using proxy_type_t = threadedProxyWorker::proxy_type_t;
+    inline proxy_type_t proxy_type() const { return proxy_type_; }
+
+    ThreadedReceiver(baseCom* c, proxy_type_t t);
     ~ThreadedReceiver() override;
     
     bool     is_quick_port(int sock, short unsigned int dport);
