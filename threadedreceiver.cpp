@@ -735,7 +735,7 @@ int ThreadedReceiverProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
                                         cx_bcom->nonlocal_dst_port() = target.second;
                                         cx_bcom->nonlocal_dst_resolved(true);
 
-                                        _err("redir map host: %s:%d", target.first.c_str(), target.second);
+                                        _deb("redir map host: %s:%d", target.first.c_str(), target.second);
                                     } else {
 
                                         _dia("ThreadedReceiverProxy::handle_sockets_once[%d]: CX created, bound socket %d: no redirection target",
