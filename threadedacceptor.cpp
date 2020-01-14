@@ -30,13 +30,12 @@
 #include <threadedacceptor.hpp>
 #include <log/logger.hpp>
 
-template<class SubWorker>
-int ThreadedAcceptorProxy<SubWorker>::workers_total = 2;
-
 #define USE_SOCKETPAIR
 
 template<class Worker, class SubWorker>
-ThreadedAcceptor<Worker,SubWorker>::ThreadedAcceptor(baseCom* c): baseProxy(c) {
+ThreadedAcceptor<Worker,SubWorker>::ThreadedAcceptor(baseCom* c, proxy_type t): baseProxy(c),
+    proxy_type_(t) {
+
     baseProxy::new_raw(true);
 
     #ifdef USE_SOCKETPAIR
@@ -99,7 +98,7 @@ void ThreadedAcceptor<Worker,SubWorker>::on_right_new_raw(int s) {
 
 
 template<class Worker, class SubWorker>
-int ThreadedAcceptor<Worker,SubWorker>::create_workers(int count) {	
+int ThreadedAcceptor<Worker,SubWorker>::create_workers(int count) {
 
 	auto nthreads = std::thread::hardware_concurrency();
     _dia("Detected %d cores to use, multiplier to apply: %d.", nthreads, core_multiplier());
@@ -110,15 +109,15 @@ int ThreadedAcceptor<Worker,SubWorker>::create_workers(int count) {
         _dia("Threads poolsize overridden: %d", nthreads);
 
     } else if (count < 0) {
-        Worker::workers_total = count;
+        Worker::workers_total() = count;
         return count;
     }
 
-    Worker::workers_total = nthreads;
+    Worker::workers_total() = nthreads;
 
 	for( unsigned int i = 0; i < nthreads; i++) {
 
-		Worker *w = new Worker(this->com()->replicate(),i);
+		Worker *w = new Worker(this->com()->replicate(),i, proxy_type_);
 		w->com()->nonlocal_dst(this->com()->nonlocal_dst());
 		w->parent(this);
         w->pollroot(true);
@@ -218,8 +217,16 @@ int ThreadedAcceptorProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
                 } else {
                     cx->on_delay_socket(s);
                 }
+
                 cx->com()->nonlocal_dst(this->com()->nonlocal_dst());
-                cx->com()->resolve_nonlocal_dst_socket(s);
+
+                if (proxy_type() == proxy_type_t::TRANSPARENT) {
+                    cx->com()->resolve_nonlocal_dst_socket(s);
+                } else
+                    if (proxy_type() == proxy_type_t::REDIRECT) {
+                    cx->com()->resolve_redirected_dst_socket(s);
+                }
+
                 this->on_left_new(cx);
 
             } catch (socle::com_is_null const& e) {

@@ -22,6 +22,7 @@
 #include <hostcx.hpp>
 #include <baseproxy.hpp>
 #include <masterproxy.hpp>
+#include <threadedworker.hpp>
 
 #include <vector>
 #include <deque>
@@ -34,7 +35,9 @@
 template<class Worker, class SubWorker>
 class ThreadedAcceptor : public baseProxy {
 public:
-	explicit ThreadedAcceptor(baseCom* c);
+    using proxy_type = threadedProxyWorker::proxy_type_t;
+
+	explicit ThreadedAcceptor(baseCom* c, proxy_type type);
 	~ThreadedAcceptor() override;
 	
 	void on_left_new_raw(int) override;
@@ -54,6 +57,8 @@ public:
     constexpr int core_multiplier() const noexcept { return 4; };
 
 private:
+    threadedProxyWorker::proxy_type_t proxy_type_;
+
 	mutable std::mutex sq_lock_;
 	mp::deque<int> sq_;
     
@@ -70,16 +75,19 @@ private:
 };
 
 template<class SubWorker>
-class ThreadedAcceptorProxy : public MasterProxy {
+class ThreadedAcceptorProxy : public threadedProxyWorker, public MasterProxy {
 public:
-	ThreadedAcceptorProxy(baseCom* c, int worker_id): MasterProxy(c), worker_id_(worker_id) {}
+    ThreadedAcceptorProxy(baseCom* c, int worker_id, threadedProxyWorker::proxy_type_t p):
+            threadedProxyWorker(worker_id, p),
+            MasterProxy(c) {}
+
 	int handle_sockets_once(baseCom*) override;
     void on_run_round() override;
-    
-    static int workers_total;
-private:
-    int worker_id_ = 0;
 
+    static int& workers_total() {
+        static int workers_total_ = 2;
+        return workers_total_;
+    };
 };
 
 #include <threadedacceptor.cpp>

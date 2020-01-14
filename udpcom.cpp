@@ -126,7 +126,7 @@ int UDPCom::bind(short unsigned int port) {
     }
 
     
-    _dia("UDPCom::bind[%d]: successfull", s);
+    _dia("UDPCom::bind[%d]: successful", s);
     return s;    
 }
 

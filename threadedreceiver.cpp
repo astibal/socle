@@ -33,11 +33,9 @@
 
 #define USE_SOCKETPAIR
 
-template<class SubWorker>
-int ThreadedReceiverProxy<SubWorker>::workers_total = 2;
-
 template<class Worker, class SubWorker>
-ThreadedReceiver<Worker,SubWorker>::ThreadedReceiver(baseCom* c): baseProxy(c) {
+ThreadedReceiver<Worker,SubWorker>::ThreadedReceiver(baseCom* c, threadedProxyWorker::proxy_type_t t): baseProxy(c),
+                                                                                                       proxy_type_(t) {
     baseProxy::new_raw(true);
 
     #ifdef USE_SOCKETPAIR
@@ -156,9 +154,11 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
         
         unsigned char recv_buf_[2048];
         char cmbuf[256];
-        struct sockaddr_storage from;
-        struct iovec io;
-        struct msghdr msg;
+        sockaddr_storage from{0};
+
+        iovec io{0};
+        msghdr msg{0};
+
         bool found_origdst = false;
         memset(&msg, 0, sizeof(msg));
         
@@ -186,7 +186,7 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
     //     hdr.client_port_ = ntohs(from.sin_port);
         
         // iterate through all the control headers
-        for ( struct cmsghdr* cmsg = CMSG_FIRSTHDR(&msg); cmsg != NULL; cmsg = CMSG_NXTHDR(&msg, cmsg))   {
+        for ( struct cmsghdr* cmsg = CMSG_FIRSTHDR(&msg); cmsg != nullptr; cmsg = CMSG_NXTHDR(&msg, cmsg))   {
 
             _deb("ThreadedReceiver::on_left_new_raw[%d]: ancillary data level=%d, type=%d",sock,cmsg->cmsg_level,cmsg->cmsg_type);
                 
@@ -199,12 +199,21 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
                 found_origdst = true;
                 memcpy(&orig,(struct sockaddr_storage*)CMSG_DATA(cmsg),sizeof(struct sockaddr_storage));
 
-                
-                std::string str_src_host; unsigned short sport;
-                int src_family = inet_ss_address_unpack(&from,&str_src_host,&sport);
-                std::string str_dst_host; unsigned short dport;
-                int dst_family = inet_ss_address_unpack(&orig,&str_dst_host,&dport);
-                
+                std::string str_src_host;
+                unsigned short sport;
+                std::string str_dst_host;
+                unsigned short dport;
+                int src_family = AF_INET;
+                int dst_family = AF_INET;
+
+                if(proxy_type() == proxy_type_t::REDIRECT) {
+                    src_family = inet_ss_address_unpack(&from, &str_src_host, &sport);
+                    str_dst_host = "8.8.8.8";
+                    dport = 53;
+                } else {
+                    src_family = inet_ss_address_unpack(&from, &str_src_host, &sport);
+                    dst_family = inet_ss_address_unpack(&orig, &str_dst_host, &dport);
+                }
                 use_virtual_socket = is_quick_port(sock, dport);
                 
                 _dia("ThreadedReceiver::on_left_new_raw[%d]: datagram from: %s/%s:%u to %s/%s:%u (%s)",
@@ -213,7 +222,7 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
                             inet_family_str(dst_family).c_str(),str_dst_host.c_str(), dport,
                             use_virtual_socket ? "quick" : "cooked"
                             );
-                
+
                 if(src_family == AF_INET) {
                     _deb("session key: source socket is IPv4");
 
@@ -236,7 +245,7 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
 
             _dia("ThreadedReceiver::on_left_new_raw[%d]: new data for key %d",sock,session_key);
             
-            DatagramCom* c = dynamic_cast<DatagramCom*>(com());
+            auto* c = dynamic_cast<DatagramCom*>(com());
             if(c == nullptr) {
                 _war("ThreadedReceiver::on_left_new_raw[%d]: my com() is not Datagram storage!",sock);
                 exit(1);
@@ -343,17 +352,16 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
                         ::setsockopt(d.socket, SOL_IP,IPV6_RECVORIGDSTADDR, &n, sizeof(int)); n = 1;
                         ::setsockopt(d.socket, SOL_IPV6, IPV6_TRANSPARENT, &n, sizeof(int));
 
-                        sockaddr_storage ss_src,ss_dst;
-                        memset(&ss_src,0,sizeof(struct sockaddr_storage));
-                        memset(&ss_dst,0,sizeof(struct sockaddr_storage));
-                        
+                        sockaddr_storage ss_src{0};
+                        sockaddr_storage ss_dst{0};
+
                         inet_pton(AF_INET6,str_src_host.c_str(),&ss_src); ss_src.ss_family=AF_INET6; ((sockaddr_in6*)&ss_src)->sin6_port = htons(sport);
                         inet_pton(AF_INET6,str_dst_host.c_str(),&ss_dst); ss_dst.ss_family=AF_INET6; ((sockaddr_in6*)&ss_dst)->sin6_port = htons(dport);
 
                         ret_bin = ::bind (d.socket, (struct sockaddr*)&(d.dst), sizeof (struct sockaddr_storage));
-                        if(ret_bin != 0) _dia("ipv6 transparenting: bind error: %s",string_error().c_str()); // bind is not succeeding with already bound socket ... => this will create empbryonic connection
+                        if(ret_bin != 0) _dia("ipv6 transparency: bind error: %s",string_error().c_str()); // bind is not succeeding with already bound socket ... => this will create empbryonic connection
                         ret_con = ::connect(d.socket,(struct sockaddr*)&(d.src),sizeof (struct sockaddr_storage));
-                        if(ret_con != 0) _err("ipv6 transparenting: connect error: %s",string_error().c_str());
+                        if(ret_con != 0) _err("ipv6 transparency: connect error: %s",string_error().c_str());
                     }
 
                 }
@@ -365,7 +373,7 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
                             );            
                 
                 if(use_virtual_socket) {
-                    _dia("ThreadedReceiver transparenting for inbound connection: connect=%d, bind=%d",ret_con,ret_bin);
+                    _dia("ThreadedReceiver transparency for inbound connection: connect=%d, bind=%d",ret_con,ret_bin);
                 } else {
                     _dia("ThreadedReceiver using virtual socket %d",session_key);
                 }
@@ -434,7 +442,6 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
             else {
                 Datagram& o_it = DatagramCom::datagrams_received[session_key];
 
-                int dst_family = o_it.dst_family();
                 bool clashed_cond = false;
                 
                 
@@ -462,7 +469,7 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
                 
                 buffer_guard bg(o_it.rx);
                 
-                if(o_it.rx.size() != 0) {
+                if(! o_it.rx.empty()) {
                     // If there are data, we apparently can't catch up with the speed.
                     // replace current data. Application is not interested in old UDP datagrams.
                     _dia("ThreadedReceiver::on_left_new_raw[%d]: key %d: dropped %dB of non-proxied data",sock, session_key,o_it.rx.size());
@@ -480,10 +487,10 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
                 
                 if(o_it.cx) {
                     baseCom* com = o_it.cx->com();
-                    DatagramCom* um = dynamic_cast<DatagramCom*>(com->master());
+                    auto* um = dynamic_cast<DatagramCom*>(com->master());
                     if(um) {
-                        std::lock_guard<std::recursive_mutex>(um->lock);
-                        um->in_virt_set.insert(session_key);
+                        std::lock_guard<std::recursive_mutex> l_(DatagramCom::lock);
+                        DatagramCom::in_virt_set.insert(session_key);
                     }
                     
                     // mark target cx's socket as write-monitor, triggering proxy session.
@@ -528,15 +535,15 @@ int ThreadedReceiver<Worker,SubWorker>::create_workers(int count) {
         _dia("Threads poolsize overridden: %d", nthreads);
 
     } else if (count < 0) {
-        Worker::workers_total = count;
+        Worker::workers_total() = count;
         return count;
     }
     
-    Worker::workers_total = nthreads;
+    Worker::workers_total() = nthreads;
 
     for( unsigned int i = 0; i < nthreads; i++) {
 
-        Worker *w = new Worker(this->com()->replicate(),i);
+        Worker *w = new Worker(this->com()->replicate(),i,proxy_type_);
         w->com()->nonlocal_dst(this->com()->nonlocal_dst());
         w->parent(this);
         w->pollroot(true);
@@ -561,7 +568,7 @@ int ThreadedReceiver<Worker,SubWorker>::run() {
 
     for( unsigned int i = 0; i < tasks_.size() ; i++) {
         auto& thread_worker = tasks_[i];
-        std::thread* ptr = new std::thread(&Worker::run, thread_worker.second);
+        auto* ptr = new std::thread(&Worker::run, thread_worker.second);
         _dia("ThreadedReceiver::run: started new thread[%d]: ptr=%x, thread_id=%d",i,ptr,ptr->get_id());
         thread_worker.first = ptr;
     }
@@ -585,7 +592,7 @@ int ThreadedReceiver<Worker,SubWorker>::push(int s) {
         _err("ThreadedReceiver::push: failed to write hint byte - error[%d]: %s", wr, string_error().c_str());
     }
     return sq_.size();
-};
+}
 
 template<class Worker, class SubWorker>
 int ThreadedReceiver<Worker,SubWorker>::pop() {
@@ -620,7 +627,7 @@ int ThreadedReceiver<Worker, SubWorker>::pop_for_worker(int id) {
         return 0;
     }
 
-    if (((unsigned int)b) % Worker::workers_total == (unsigned int)id) {
+    if (((unsigned int)b) % Worker::workers_total() == (unsigned int)id) {
         int r = sq_.back();
         sq_.pop_back();
         _dia("ThreadedReceiver::pop_for_worker: pop-ing %d for worker %d, queue size %d",r,id,sq_.size());
@@ -661,7 +668,7 @@ int ThreadedReceiverProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
             // this session key is for us!
             _dia("ThreadedReceiverProxy::handle_sockets_once: new data notification for %d", s);
 
-            if (((unsigned int) s) % workers_total == (unsigned int) worker_id_) {
+            if (((unsigned int) s) % workers_total() == (unsigned int) worker_id_) {
                 _dia("ThreadedReceiverProxy::%d is for me!", s);
 
                 _dia("ThreadedReceiverProxy::handle_sockets_once: DatagramCom::datagrams_received.size() = %d",
@@ -708,12 +715,43 @@ int ThreadedReceiverProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
 
                             } else {
                                 cx_bcom->nonlocal_dst(this->com()->nonlocal_dst());
-                                cx_bcom->resolve_nonlocal_dst_socket(s);
 
-                                _dia("ThreadedReceiverProxy::handle_sockets_once[%d]: CX created, bound socket %d ,nonlocal: %s:%u",
-                                     s, record.socket, cx->com()->nonlocal_dst_host().c_str(),
-                                     cx->com()->nonlocal_dst_port());
-                                this->on_left_new(cx);
+
+                                if (proxy_type() == proxy_type_t::TRANSPARENT) {
+                                    cx_bcom->resolve_nonlocal_dst_socket(s);
+                                } else {
+
+                                    // get REDIR port needed for destination lookup
+                                    cx_bcom->resolve_nonlocal_dst_socket(s);
+
+                                    // get port -> target mapping
+                                    auto o_target = ReceiverRedirectMap::instance().redir_target(cx_bcom->nonlocal_dst_port());
+
+                                    if(o_target.has_value()) {
+
+                                        auto target = o_target.value();
+
+                                        cx_bcom->nonlocal_dst_host() = target.first;
+                                        cx_bcom->nonlocal_dst_port() = target.second;
+                                        cx_bcom->nonlocal_dst_resolved(true);
+
+                                        _deb("redir map host: %s:%d", target.first.c_str(), target.second);
+                                    } else {
+
+                                        _dia("ThreadedReceiverProxy::handle_sockets_once[%d]: CX created, bound socket %d: no redirection target",
+                                             s, record.socket);
+
+                                        delete cx;
+                                        cx = nullptr;
+                                    }
+                                }
+
+                                if(cx) {
+                                    _dia("ThreadedReceiverProxy::handle_sockets_once[%d]: CX created, bound socket %d ,nonlocal: %s:%u",
+                                         s, record.socket, cx->com()->nonlocal_dst_host().c_str(),
+                                         cx->com()->nonlocal_dst_port());
+                                    this->on_left_new(cx);
+                                }
                             }
 
                         } catch (socle::com_is_null const& e) {

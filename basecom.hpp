@@ -36,8 +36,8 @@
 #include <log/logger.hpp>
 
 static const char str_unknown[] = "unknown";
-static const char str_getsockname[] = "getsockname";
-static const char str_getpeername[] = "getpeername";
+static const char str_getsockname[] = "getsockname-tproxy";
+static const char str_getpeername[] = "getpeername-tproxy";
 
 class baseHostCX;
 
@@ -316,13 +316,17 @@ public:
         } 
     }
         
-    virtual bool resolve_socket(bool source,int s, std::string *target_host, std::string *target_port, struct sockaddr_storage *target_storage = NULL );    
-    bool resolve_socket_src(int s, std::string *target_host, std::string *target_port, struct sockaddr_storage *target_storage = NULL ) { 
+    virtual bool resolve_socket(bool source,int s, std::string *target_host, std::string *target_port, struct sockaddr_storage *target_storage = nullptr );
+    bool resolve_socket_src(int s, std::string *target_host, std::string *target_port, struct sockaddr_storage *target_storage = nullptr ) {
         return resolve_socket(true, s, target_host, target_port, target_storage);
     }
-    bool resolve_socket_dst(int s, std::string *target_host, std::string *target_port, struct sockaddr_storage *target_storage = NULL ) {
+    bool resolve_socket_dst(int s, std::string *target_host, std::string *target_port, struct sockaddr_storage *target_storage = nullptr ) {
         return resolve_socket(false, s, target_host, target_port, target_storage);
-    }	
+    }
+
+    // resolve destination if REDIRECTed
+    bool resolve_redirected(int s, std::string* target_host, std::string* target_port, sockaddr_storage* target_storage);
+    bool resolve_redirected_dst_socket(int sock);
 
     // non-local socket support
     inline bool nonlocal_dst() { return nonlocal_dst_; }

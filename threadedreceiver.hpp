@@ -22,6 +22,7 @@
 #include <hostcx.hpp>
 #include <baseproxy.hpp>
 #include <masterproxy.hpp>
+#include <threadedworker.hpp>
 
 #include <vector>
 #include <deque>
@@ -35,7 +36,10 @@
 template<class Worker, class SubWorker>
 class ThreadedReceiver : public baseProxy {
 public:
-    ThreadedReceiver(baseCom* c);
+    using proxy_type_t = threadedProxyWorker::proxy_type_t;
+    inline proxy_type_t proxy_type() const { return proxy_type_; }
+
+    ThreadedReceiver(baseCom* c, proxy_type_t t);
     ~ThreadedReceiver() override;
     
     bool     is_quick_port(int sock, short unsigned int dport);
@@ -64,6 +68,8 @@ public:
     constexpr int core_multiplier() const noexcept { return 4; };
 
 private:
+    threadedProxyWorker::proxy_type_t proxy_type_;
+
     mutable std::mutex sq_lock_;
     mp::deque<int> sq_;
     mp::vector<int>* quick_list_ = nullptr;
@@ -81,19 +87,63 @@ private:
 
 
 
-template<class SubWorker>
-class ThreadedReceiverProxy : public MasterProxy {
+struct ReceiverRedirectMap {
+private:
+    ReceiverRedirectMap() = default;
+
 public:
-    ThreadedReceiverProxy(baseCom* c, int worker_id): MasterProxy(c), worker_id_(worker_id) {}
+    ReceiverRedirectMap(ReceiverRedirectMap const&) = delete;
+    ReceiverRedirectMap& operator=(ReceiverRedirectMap const&) = delete;
+
+    // to support iptables redirect target limitation
+    using redir_target_t = std::pair<std::string, unsigned short>;
+    using redir_target_map_t = std::map<int, redir_target_t>;
+
+    redir_target_map_t  rmap_;
+    std::mutex redir_target_lock_;
+
+    void map_add(unsigned short port, redir_target_t entry) {
+        std::scoped_lock<std::mutex> l_(redir_target_lock_);
+        rmap_[port] = entry;
+    }
+
+    void map_clear() {
+        std::scoped_lock<std::mutex> l_(redir_target_lock_);
+        rmap_.clear();
+    }
+
+    // return redir target
+    virtual std::optional<redir_target_t> redir_target(unsigned short redir_port) {
+
+        std::scoped_lock<std::mutex> l_(redir_target_lock_);
+
+        if(rmap_.find(redir_port) != rmap_.end()) {
+            return  rmap_[redir_port];
+        }
+        return std::make_optional(std::make_pair("8.8.8.8", 53));
+    };
+
+    static ReceiverRedirectMap& instance() {
+        static ReceiverRedirectMap r;
+        return r;
+    }
+};
+
+
+template<class SubWorker>
+class ThreadedReceiverProxy : public threadedProxyWorker, public MasterProxy {
+public:
+    ThreadedReceiverProxy(baseCom* c, int worker_id, threadedProxyWorker::proxy_type_t p):
+            threadedProxyWorker(worker_id, p),
+            MasterProxy(c) {}
 
     int handle_sockets_once(baseCom*) override;
     void on_run_round() override;
 
-    static int workers_total;   
-    
-protected:
-    int worker_id_ = 0;
- 
+    static int& workers_total() {
+        static int workers_total_ = 2;
+        return workers_total_;
+    };
 };
 
 #include <threadedreceiver.cpp>
