@@ -22,6 +22,7 @@
 
 #include <vector>
 #include <thread>
+#include <random>
 
 #include <internet.hpp>
 #include <display.hpp>
@@ -118,27 +119,49 @@ bool ThreadedReceiver<Worker,SubWorker>::is_quick_port(int sock, short unsigned 
 template<class Worker, class SubWorker>
 uint32_t ThreadedReceiver<Worker,SubWorker>::create_session_key4(sockaddr_storage* from, sockaddr_storage* orig) {
     
-    uint32_t s = inet::to_sockaddr_in(from)->sin_addr.s_addr | inet::to_sockaddr_in(orig)->sin_addr.s_addr;
-    uint16_t sp = ntohs(inet::to_sockaddr_in(from)->sin_port) | ntohs(inet::to_sockaddr_in(orig)->sin_port);
-    s += sp;
+    uint32_t s = inet::to_sockaddr_in(from)->sin_addr.s_addr;
+    uint32_t d = inet::to_sockaddr_in(orig)->sin_addr.s_addr;
+    uint32_t sp = ntohs(inet::to_sockaddr_in(from)->sin_port);
+    uint32_t sd = ntohs(inet::to_sockaddr_in(orig)->sin_port);
 
-    s |= (1 << 31); //this will produce negative number, which should determine  if it's normal socket or not    
+    std::seed_seq seed1{ s, d, sp, sd };
+    std::mt19937 e(seed1);
+    std::uniform_int_distribution<> dist;
 
-    return s; // however we return it as the key, therefore cast to unsigned int
+    uint32_t mirand = dist(e);
+
+
+    mirand |= (1 << 31); //this will produce negative number, which should determine  if it's normal socket or not
+
+
+
+    return mirand; // however we return it as the key, therefore cast to unsigned int
 }
 
 template<class Worker, class SubWorker>
 uint32_t ThreadedReceiver<Worker,SubWorker>::create_session_key6(sockaddr_storage* from, sockaddr_storage* orig) {
 
-    uint32_t s = ((uint32_t*)&inet::to_sockaddr_in6(from)->sin6_addr)[3]
-                    | ((uint32_t*)&inet::to_sockaddr_in6(orig)->sin6_addr)[3];   // coverity: 1407956
+    uint32_t s0 = ((uint32_t*)&inet::to_sockaddr_in6(from)->sin6_addr)[0];
+    uint32_t s1 = ((uint32_t*)&inet::to_sockaddr_in6(from)->sin6_addr)[1];
+    uint32_t s2 = ((uint32_t*)&inet::to_sockaddr_in6(from)->sin6_addr)[2];
+    uint32_t s3 = ((uint32_t*)&inet::to_sockaddr_in6(from)->sin6_addr)[3];
 
-    uint16_t sp = ntohs(inet::to_sockaddr_in6(from)->sin6_port) | ntohs(inet::to_sockaddr_in6(orig)->sin6_port);
-    s += sp;
-    
-    s |= (1 << 31); //this will produce negative number, which should determine  if it's normal socket or not    
+    uint32_t d0 = ((uint32_t*)&inet::to_sockaddr_in6(orig)->sin6_addr)[0];
+    uint32_t d1 = ((uint32_t*)&inet::to_sockaddr_in6(orig)->sin6_addr)[1];
+    uint32_t d2 = ((uint32_t*)&inet::to_sockaddr_in6(orig)->sin6_addr)[2];
+    uint32_t d3 = ((uint32_t*)&inet::to_sockaddr_in6(orig)->sin6_addr)[3];
 
-    return s; // however we return it as the key, therefore cast to unsigned int
+    uint32_t sp = ntohs(inet::to_sockaddr_in6(from)->sin6_port);
+    uint32_t dp = ntohs(inet::to_sockaddr_in6(orig)->sin6_port);
+
+    std::seed_seq seed1{ s0, d0, s1, d1, s2, d2, s3, d3, sp, dp };
+    std::mt19937 e(seed1);
+    std::uniform_int_distribution<> dist;
+
+    uint32_t mirand = dist(e);
+    mirand |= (1 << 31); //this will produce negative number, which should determine  if it's normal socket or not
+
+    return mirand; // however we return it as the key, therefore cast to unsigned int
 }
 
 template<class Worker, class SubWorker>
