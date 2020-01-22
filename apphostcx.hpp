@@ -60,9 +60,11 @@ public:
     inline  duplexFlow  const* cflowptr() const { return &appflow_; }
 
     std::string to_string(int verbosity=iINF) const override {
+        std::string hstr = baseHostCX::to_string(verbosity);
+        int sz = cflow().cflow().size();
         return string_format("AppHostCX: flow-size: %d[%s]",
-                                                           cflow().cflow().size()),
-                                                                baseHostCX::to_string(verbosity);
+                                                           sz),
+                                                                hstr.c_str();
     };
 protected:
 
