@@ -60,9 +60,11 @@ public:
     inline  duplexFlow  const* cflowptr() const { return &appflow_; }
 
     std::string to_string(int verbosity=iINF) const override {
-        return string_format("AppHostCX: flow-size: %d[%s]",
-                                                           cflow().cflow().size()),
-                                                                baseHostCX::to_string(verbosity);
+
+        std::string ts = baseHostCX::to_string(verbosity);
+        int sz = cflow().cflow().size();
+
+        return string_format("AppHostCX: sz:%d [%s]", sz,ts.c_str());
     };
 protected:
 
@@ -74,7 +76,7 @@ protected:
     void pre_write() override;
     
     bool detect(sensorType&,char side); // signature detection engine
-    virtual void inspect(char side) { }; // to be overriden for ALG inspectors
+    virtual void inspect(char side) { }; // to be overridden for ALG inspectors
     
     virtual void on_detect(std::shared_ptr<duplexFlowMatch>, flowMatchState&, vector_range&);
     virtual void on_starttls() {};
