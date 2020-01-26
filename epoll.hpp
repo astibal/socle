@@ -90,7 +90,9 @@ struct epoll {
     bool hint_socket(int socket); // this is the socket which will be additionally monitored for EPOLLIN; each time it's readable, single byte is read from it.
     [[nodiscard]] inline int hint_socket() const { return hint_fd; }
 
-    virtual ~epoll() = default;
+    virtual ~epoll() {
+        if (fd > 0) ::close(fd);
+    };
 
     static loglevel log_level;
     logan_lite log = logan_lite("com.epoll");

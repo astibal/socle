@@ -269,9 +269,6 @@ namespace inet {
             int rv;
             OCSP_REQ_CTX *ctx = nullptr;
             OCSP_RESPONSE *rsp = nullptr;
-            fd_set confds{0};
-
-            timeval tv;
 
             auto log = OcspFactory::log();
 
@@ -286,19 +283,25 @@ namespace inet {
                 return nullptr;
             }
 
+            epoll epoller;
+            if ( epoller.init() <= 0) {
+                _err("ocsp_query_responder: Can't initialize epoll");
+                goto err;
+            }
+
             if (BIO_get_fd(cbio, &fd) <= 0) {
                 _err("ocsp_query_responder: Can't get connection fd");
                 goto err;
             }
 
+            epoller.add(fd, EPOLLOUT);
+
             if (req_timeout != -1 && rv <= 0) {
 
-                FD_ZERO(&confds);
-                FD_SET(fd, &confds);
-                tv.tv_usec = 0;
-                tv.tv_sec = req_timeout;
-                rv = select(fd + 1, nullptr, &confds, nullptr, &tv);
-                if (rv == 0) {
+
+                int nfds = epoller.wait(req_timeout*1000);
+
+                if (nfds == 0) {
 
                     _err("ocsp_query_responder: Timeout on connect");
 
@@ -325,20 +328,17 @@ namespace inet {
                 if (req_timeout == -1)
                     continue;
 
-                FD_ZERO(&confds);
-                FD_SET(fd, &confds);
-
-                tv.tv_usec = 0;
-                tv.tv_sec = req_timeout;
-
                 if (BIO_should_read(cbio)) {
 
-                    _deb("ocsp_query_responder: select - wait for reading");
-                    rv = select(fd + 1, &confds, nullptr, nullptr, &tv);
+                    epoller.modify(fd, EPOLLIN);
+
+                    _deb("ocsp_query_responder: epoll - wait for reading");
+                    rv = epoller.wait(req_timeout*1000);
                 } else if (BIO_should_write(cbio)) {
 
-                    _deb("ocsp_query_responder: select - wait for writing");
-                    rv = select(fd + 1, nullptr, &confds, nullptr, &tv);
+                    epoller.modify(fd, EPOLLOUT);
+                    _deb("ocsp_query_responder: epoll - wait for writing");
+                    rv = epoller.wait(req_timeout*1000);
                 } else {
                     _war("ocsp_query_responder: unexpected retry condition");
                     goto err;
@@ -349,10 +349,10 @@ namespace inet {
                     _err("ocsp_query_responder: timeout on request");
                     break;
                 } else if (rv == -1) {
-                    _err("ocsp_query_responder: Select error: %s", string_error().c_str());
+                    _err("ocsp_query_responder: epoll error: %s", string_error().c_str());
                     break;
                 } else {
-                    _deb("ocsp_query_responder: select ok - returned %d", rv);
+                    _deb("ocsp_query_responder: epoll ok - returned %d", rv);
                 }
             }
 
