@@ -378,7 +378,7 @@ std::string escape(std::string orig, bool to_print) {
 }
 
 
-std::vector<std::string> string_split(std::string str, char delimiter) {
+std::vector<std::string> string_split(const std::string &str, const char delimiter) {
     std::vector<std::string> internal;
     std::stringstream ss(str); // Turn the string into a stream.
     std::string tok;

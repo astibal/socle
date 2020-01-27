@@ -34,7 +34,7 @@ template <class ... Args>
 std::string string_format(const char* format, Args ... args);
 
 std::vector<std::string> 
-            string_split(std::string str, char delimiter);
+            string_split(const std::string &str, const char delimiter);
 std::string string_trim(const std::string& orig);
 std::string string_tolower(const std::string& orig);
 std::string string_csv(const std::vector<std::string>& str_list_ref, const char delim = ',');
