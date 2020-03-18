@@ -64,6 +64,7 @@ protected:
 struct meter {
 
 private:
+    unsigned long total_{};
 
     unsigned long prev_counter_{};
     unsigned long curr_counter_{};
@@ -77,6 +78,7 @@ public:
 
     unsigned long update(unsigned long val);
     [[nodiscard]] unsigned long get() const;
+    [[nodiscard]] unsigned long total() const { return total_; };
 };
 
 

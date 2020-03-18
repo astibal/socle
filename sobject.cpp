@@ -205,7 +205,9 @@ int sobjectDB::ask_destroy(void* ptr) {
 long unsigned int meter::update(unsigned long val) {
     
     auto now = std::chrono::system_clock::now();
-    
+
+    total_ += val;
+
     if( now - last_update > std::chrono::seconds(interval_)) {
         // threshold is reached => counter contains all bytes in previous second
         last_update = now;
