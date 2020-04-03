@@ -151,7 +151,7 @@ bool epoll::add(int socket, int mask) {
 }
 
 bool epoll::modify(int socket, int mask) {
-    struct epoll_event ev;
+    epoll_event ev{0};
     ev.events = mask;
     ev.data.fd = socket;
     

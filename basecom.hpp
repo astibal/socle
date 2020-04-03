@@ -56,7 +56,7 @@ public:
     inline baseHostCX* owner_cx() const { return owner_cx_; }
     
     virtual int poll();
-    inline void polltime(int msec) { poll_msec = msec; }
+    static void polltime(int msec) { poll_msec = msec; }
 
     bool __static_init = false;
 
@@ -86,15 +86,15 @@ public:
     int error_flags() const { return error_flag_; };
     inline void error(baseCom::err_flags e) { error_flag_ = e;}
     
-    baseCom() {
+    explicit baseCom() {
         log = logan_attached<baseCom>(this, "com");
     }
-    virtual ~baseCom() {};
+    virtual ~baseCom() = default;
     virtual std::string flags_str() { return "0"; };
     virtual std::string full_flags_str();
 private:
 
-    int fd_;
+    int fd_ = 0;
     unsigned long flags_;
     // feedback mechanism to get if the communication level is up/down
     // necessary for some mitm scenarios and connection status feedback between 2 sockets
@@ -102,18 +102,18 @@ private:
 
 protected:
     // non-local socket support
-    bool nonlocal_dst_;
-    bool nonlocal_dst_resolved_;
+    bool nonlocal_dst_ = false;
+    bool nonlocal_dst_resolved_ = false;
     std::string nonlocal_dst_host_;
-    unsigned short nonlocal_dst_port_;
-    struct sockaddr_storage nonlocal_dst_peer_info_;
+    unsigned short nonlocal_dst_port_ = 0;
+    struct sockaddr_storage nonlocal_dst_peer_info_{0};
     
     int l3_proto_ = AF_INET;
     int l4_proto_ = 0;
     
     bool nonlocal_src_ = false;
     std::string nonlocal_src_host_;
-    unsigned short nonlocal_src_port_;
+    unsigned short nonlocal_src_port_ =  0;
 
     // this is log buffer intended for upper layer logger. Whatever is not only about to be printed out, but also stored,
     // should appear here.    
