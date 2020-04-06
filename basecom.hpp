@@ -29,7 +29,6 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <fcntl.h>
-#include <time.h>
 #include <unistd.h>
 
 #include <epoll.hpp>
