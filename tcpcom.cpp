@@ -184,11 +184,9 @@ bool TCPCom::is_connected(int s) {
     // fstating with stat struct buffer wasn't working too!
     // 2016-01-16: seems not needed anymore. But keep to easy revert in case.
 
-#pragma GCC diagnostic ignored "-Wnonnull"
-#pragma GCC diagnostic push        
-    fstat(s,nullptr);
-#pragma GCC diagnostic pop
-    
+    struct stat stb{0};
+    fstat(s, &stb);
+
     int r_getsockopt = getsockopt(s, SOL_SOCKET, SO_ERROR, &error_code, &l);
     error_code = errno;
     
