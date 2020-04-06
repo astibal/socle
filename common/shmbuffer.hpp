@@ -170,7 +170,12 @@ public:
     }
     
     int acquire() {
+
         auto log = get_log();
+        if(! semaphore) {
+            _war("Acquiring the semaphore failed; semaphore is not initialized");
+            return -1;
+        }
         int rc = sem_wait(semaphore);
 
         if(rc) {
