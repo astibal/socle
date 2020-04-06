@@ -158,25 +158,25 @@ public:
     unsigned long long stat_out_free;
     unsigned long long stat_out_free_size;
 
-    inline const std::vector<mem_chunk_t>::size_type mem_32_av() const { return available_32.size(); };
-    inline const std::vector<mem_chunk_t>::size_type mem_64_av() const { return available_64.size(); };
-    inline const std::vector<mem_chunk_t>::size_type mem_128_av() const { return available_128.size(); };
-    inline const std::vector<mem_chunk_t>::size_type mem_256_av() const { return available_256.size(); };
-    inline const std::vector<mem_chunk_t>::size_type mem_1k_av() const { return available_1k.size(); };
-    inline const std::vector<mem_chunk_t>::size_type mem_5k_av() const { return available_5k.size(); };
-    inline const std::vector<mem_chunk_t>::size_type mem_10k_av() const { return available_10k.size(); };
-    inline const std::vector<mem_chunk_t>::size_type mem_20k_av() const { return available_20k.size(); };
-    inline const std::vector<mem_chunk_t>::size_type mem_big_av() const { return available_big.size(); };
+    inline const long unsigned int mem_32_av() const { return static_cast<long unsigned int>(available_32.size()); };
+    inline const long unsigned int mem_64_av() const { return static_cast<long unsigned int>(available_64.size()); };
+    inline const long unsigned int mem_128_av() const { return static_cast<long unsigned int>(available_128.size()); };
+    inline const long unsigned int mem_256_av() const { return static_cast<long unsigned int>(available_256.size()); };
+    inline const long unsigned int mem_1k_av() const { return static_cast<long unsigned int>(available_1k.size()); };
+    inline const long unsigned int mem_5k_av() const { return static_cast<long unsigned int>(available_5k.size()); };
+    inline const long unsigned int mem_10k_av() const { return static_cast<long unsigned int>(available_10k.size()); };
+    inline const long unsigned int mem_20k_av() const { return static_cast<long unsigned int>(available_20k.size()); };
+    inline const long unsigned int mem_big_av() const { return static_cast<long unsigned int>(available_big.size()); };
 
 
-    inline const std::size_t mem_32_sz() const { return sz32; };
-    inline const std::size_t mem_64_sz() const { return sz64; };
-    inline const std::size_t mem_128_sz() const { return sz128; };
-    inline const std::size_t mem_256_sz() const { return sz256; };
-    inline const std::size_t mem_1k_sz() const { return sz1k; };
-    inline const std::size_t mem_5k_sz() const { return sz5k; };
-    inline const std::size_t mem_10k_sz() const { return sz10k; };
-    inline const std::size_t mem_20k_sz() const { return sz20k; };
+    inline const long unsigned int mem_32_sz() const { return static_cast<long unsigned int>(sz32); };
+    inline const long unsigned int mem_64_sz() const { return static_cast<long unsigned int>(sz64); };
+    inline const long unsigned int mem_128_sz() const { return static_cast<long unsigned int>(sz128); };
+    inline const long unsigned int mem_256_sz() const { return static_cast<long unsigned int>(sz256); };
+    inline const long unsigned int mem_1k_sz() const { return static_cast<long unsigned int>(sz1k); };
+    inline const long unsigned int mem_5k_sz() const { return static_cast<long unsigned int>(sz5k); };
+    inline const long unsigned int mem_10k_sz() const { return static_cast<long unsigned int>(sz10k); };
+    inline const long unsigned int mem_20k_sz() const { return static_cast<long unsigned int>(sz20k); };
 
     std::mutex lock;
 };

@@ -45,7 +45,7 @@ std::string sobject_info::to_string(int verbosity) const {
     }
     
     return r.str();
-};
+}
 
 sobject::sobject() {
     std::lock_guard<std::recursive_mutex> l_(db().getlock());
@@ -92,14 +92,15 @@ std::string sobjectDB::str_list(const char* class_criteria, const char* delimite
         
         //having criteria specified, select if it's name match, or pointer match
         if(criteria.length()) {
-            matched = false;
 
             if(criteria.compare(0,2,"0x") == 0) {
                 std::string str_ptr = string_format("0x%lx",ptr);
                 
                 _deb("comparing pointer: %s and %s",str_ptr.c_str(), criteria.c_str());
                 matched = (str_ptr == criteria);
-            } else if(criteria.compare(0,3,"oid") == 0) {
+            }
+            else if(criteria.compare(0,3,"oid") == 0) {
+
                 auto find_oid = criteria.substr(3);
                 matched = (std::to_string(ptr->oid()) == find_oid );
             }
@@ -144,8 +145,8 @@ std::string sobjectDB::str_stats(const char* criteria) {
 
     unsigned long object_counter = 0;
     
-    int youngest_age = -1;
-    int oldest_age = -1;
+    unsigned int youngest_age = -1;
+    unsigned int oldest_age = -1;
     float sum_age = 0.0;
     
     for(auto it: db().cache()) {
@@ -160,8 +161,8 @@ std::string sobjectDB::str_stats(const char* criteria) {
             object_counter++;
             
             if(si != nullptr) {
-                int a = si->age();
-                sum_age += a;
+                unsigned int a = si->age();
+                sum_age += static_cast<float>(a);
                 
                 if(a > oldest_age) oldest_age = a;
                 if(a < youngest_age || youngest_age < 0) youngest_age = a;
@@ -172,7 +173,7 @@ std::string sobjectDB::str_stats(const char* criteria) {
 
     float avg_age = 0;
     if (object_counter > 0) 
-        avg_age = sum_age/object_counter;
+        avg_age = sum_age/static_cast<float>(object_counter);
     
     ret << "Performance: " << socle::sobject::mtr_created().get() << " new objects per second, "
                            << socle::sobject::mtr_deleted().get() << " deleted objects per second.\n";
@@ -224,9 +225,9 @@ long unsigned int meter::update(unsigned long val) {
 
     unsigned long update(unsigned long val);
 
-unsigned long meter::get() const {
+    unsigned long meter::get() const {
 
-        auto now = std::chrono::system_clock::now();;
+        auto now = std::chrono::system_clock::now();
 
         if( now > last_update + std::chrono::seconds(interval_)) {
             // not updated for a while
@@ -238,5 +239,5 @@ unsigned long meter::get() const {
         }
 
         return prev_counter_;
-    };
+    }
 }

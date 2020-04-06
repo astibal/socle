@@ -258,7 +258,7 @@ bool baseProxy::clicker::reset_timer() {
 
     time(&clock_);
 
-	if( clock_ - last_tick_ > timer_interval) {
+	if( static_cast<long unsigned int>(clock_) - static_cast<long unsigned int>(last_tick_) > timer_interval) {
 		time(&last_tick_);
 
 		return true;
