@@ -67,9 +67,9 @@ logger_profile::~logger_profile() {
 }
 
 bool logger::periodic_start(unsigned int s) {
-	auto now = static_cast<long int>(time(nullptr));
+	auto now = static_cast<unsigned long>(time(nullptr));
 
-    last_period_status = now > static_cast<long int>(last_period) + s;
+    last_period_status = now > static_cast<unsigned long>(last_period) + s;
 
 	return last_period_status;
 }

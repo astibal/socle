@@ -134,7 +134,7 @@ class memPool {
 public:
 
     static memPool& pool() {
-        static memPool m = memPool(5000,1000,10000,1000,800);
+        static memPool m = memPool(5000,10000,10000,1000,800);
         return m;
     }
 
