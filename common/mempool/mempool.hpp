@@ -36,7 +36,7 @@ class buffer;
 typedef struct mem_chunk
 {
     mem_chunk(): ptr(nullptr), capacity(0) {};
-    mem_chunk(std::size_t s): capacity(s) { ptr = new unsigned char[s]; };
+    explicit mem_chunk(std::size_t s): capacity(s) { ptr = new unsigned char[s]; };
     mem_chunk(unsigned char* p, std::size_t c): ptr(p), capacity(c) {};
 
     // Actually coverity found wanted feature - mem_chunk is basically pointer with size
@@ -158,25 +158,25 @@ public:
     unsigned long long stat_out_free;
     unsigned long long stat_out_free_size;
 
-    inline const long unsigned int mem_32_av() const { return static_cast<long unsigned int>(available_32.size()); };
-    inline const long unsigned int mem_64_av() const { return static_cast<long unsigned int>(available_64.size()); };
-    inline const long unsigned int mem_128_av() const { return static_cast<long unsigned int>(available_128.size()); };
-    inline const long unsigned int mem_256_av() const { return static_cast<long unsigned int>(available_256.size()); };
-    inline const long unsigned int mem_1k_av() const { return static_cast<long unsigned int>(available_1k.size()); };
-    inline const long unsigned int mem_5k_av() const { return static_cast<long unsigned int>(available_5k.size()); };
-    inline const long unsigned int mem_10k_av() const { return static_cast<long unsigned int>(available_10k.size()); };
-    inline const long unsigned int mem_20k_av() const { return static_cast<long unsigned int>(available_20k.size()); };
-    inline const long unsigned int mem_big_av() const { return static_cast<long unsigned int>(available_big.size()); };
+    long unsigned int mem_32_av() const { return static_cast<long unsigned int>(available_32.size()); };
+    long unsigned int mem_64_av() const { return static_cast<long unsigned int>(available_64.size()); };
+    long unsigned int mem_128_av() const { return static_cast<long unsigned int>(available_128.size()); };
+    long unsigned int mem_256_av() const { return static_cast<long unsigned int>(available_256.size()); };
+    long unsigned int mem_1k_av() const { return static_cast<long unsigned int>(available_1k.size()); };
+    long unsigned int mem_5k_av() const { return static_cast<long unsigned int>(available_5k.size()); };
+    long unsigned int mem_10k_av() const { return static_cast<long unsigned int>(available_10k.size()); };
+    long unsigned int mem_20k_av() const { return static_cast<long unsigned int>(available_20k.size()); };
+    long unsigned int mem_big_av() const { return static_cast<long unsigned int>(available_big.size()); };
 
 
-    inline const long unsigned int mem_32_sz() const { return static_cast<long unsigned int>(sz32); };
-    inline const long unsigned int mem_64_sz() const { return static_cast<long unsigned int>(sz64); };
-    inline const long unsigned int mem_128_sz() const { return static_cast<long unsigned int>(sz128); };
-    inline const long unsigned int mem_256_sz() const { return static_cast<long unsigned int>(sz256); };
-    inline const long unsigned int mem_1k_sz() const { return static_cast<long unsigned int>(sz1k); };
-    inline const long unsigned int mem_5k_sz() const { return static_cast<long unsigned int>(sz5k); };
-    inline const long unsigned int mem_10k_sz() const { return static_cast<long unsigned int>(sz10k); };
-    inline const long unsigned int mem_20k_sz() const { return static_cast<long unsigned int>(sz20k); };
+    long unsigned int mem_32_sz() const { return static_cast<long unsigned int>(sz32); };
+    long unsigned int mem_64_sz() const { return static_cast<long unsigned int>(sz64); };
+    long unsigned int mem_128_sz() const { return static_cast<long unsigned int>(sz128); };
+    long unsigned int mem_256_sz() const { return static_cast<long unsigned int>(sz256); };
+    long unsigned int mem_1k_sz() const { return static_cast<long unsigned int>(sz1k); };
+    long unsigned int mem_5k_sz() const { return static_cast<long unsigned int>(sz5k); };
+    long unsigned int mem_10k_sz() const { return static_cast<long unsigned int>(sz10k); };
+    long unsigned int mem_20k_sz() const { return static_cast<long unsigned int>(sz20k); };
 
     std::mutex lock;
 };
