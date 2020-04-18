@@ -373,7 +373,7 @@ bool baseProxy::handle_cx_read(unsigned char side, baseHostCX* cx) {
     
     bool proceed = cx->readable();
     if(cx->com()->forced_read_on_write_reset()) {
-        _dia("baseProxy::handle_cx_read[%c]: read overriden on write socket event",side);
+        _dia("baseProxy::handle_cx_read[%c]: read overridden on write socket event",side);
         proceed = true;
     }
     
@@ -392,7 +392,7 @@ bool baseProxy::handle_cx_read(unsigned char side, baseHostCX* cx) {
             else if(side == 'x')  { on_left_pc_error(cx); }
             else if(side == 'y')  { on_right_pc_error(cx); }
            
-            _dia("baseProxy::handle_cx_read[%c]: error processed",side);
+            _deb("baseProxy::handle_cx_read[%c]: error processed",side);
            
             return false;
         }
@@ -404,7 +404,7 @@ bool baseProxy::handle_cx_read(unsigned char side, baseHostCX* cx) {
             else if(side == 'x')  { on_left_bytes(cx); }
             else if(side == 'y')  { on_right_bytes(cx); }
             
-            _dia("baseProxy::handle_cx_read[%c]: %d bytes processed",side,red);
+            _deb("baseProxy::handle_cx_read[%c]: %d bytes processed",side,red);
         }
     }
     
@@ -435,13 +435,13 @@ bool baseProxy::handle_cx_write(unsigned char side, baseHostCX* cx) {
             else if(side == 'x') { on_left_pc_error(cx); }
             else if(side == 'y') { on_right_pc_error(cx); }
             
-            _dia("baseProxy::handle_cx_write[%c]: error processed",side); 
+            _deb("baseProxy::handle_cx_write[%c]: error processed",side);
             
             return false;
         } else {
             meters.last_write += wrt;
             if(wrt > 0) {
-                _dia("baseProxy::handle_cx_write[%c]: %d bytes processed",side,wrt);
+                _deb("baseProxy::handle_cx_write[%c]: %d bytes processed",side,wrt);
             }
         }
     }
