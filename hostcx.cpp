@@ -202,15 +202,18 @@ bool baseHostCX::read_waiting_for_peercom () {
 
 bool baseHostCX::write_waiting_for_peercom () {
 
-    if(write_waiting_for_peercom_ && peercom()) {
-        if(peercom()->com_status()) {
-            _dia("baseHostCX::write_waiting_for_peercom[%s]: peer's com status ok, un-pausing write", c_name());
-            write_waiting_for_peercom(false);
+    if(write_waiting_for_peercom_) {
+        if(peercom()) {
+            if(peercom()->com_status()) {
+                _dia("baseHostCX::write_waiting_for_peercom[%s]: peer's com status ok, un-pausing write", c_name());
+                write_waiting_for_peercom(false);
+            }
         }
-    }
-    else if(write_waiting_for_peercom_) {
-        // peer() == NULL !
-        _dum("baseHostCX::write_waiting_for_peercom: no peer set => no peer to wait for => manual mode");
+        else  {
+            // peer() == NULL !
+            _err("baseHostCX::write_waiting_for_peercom: no peer set => no peer to wait for => manual mode");
+            error(true);
+        }
     }
 
     return write_waiting_for_peercom_;
