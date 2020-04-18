@@ -169,7 +169,30 @@ namespace inet {
             // state machine ... states
             enum state_t{
                 ST_INIT = 1000, ST_CONNECTING, ST_CONNECTED, ST_REQ_INPROGRESS, ST_REQ_SENT, ST_RESP_RECEIVED, ST_FINISHED, ST_CLOSED
-            } ;
+            };
+
+            [[nodiscard]] const char* state_str(int s) const {
+                switch(s) {
+                    case ST_INIT:
+                        return "ST_INIT";
+                    case ST_CONNECTING:
+                        return "ST_CONNECTING";
+                    case ST_CONNECTED:
+                        return "ST_CONNECTED";
+                    case ST_REQ_INPROGRESS:
+                        return "ST_REQ_INPROGRESS";
+                    case ST_REQ_SENT:
+                        return "ST_REQ_SENT";
+                    case ST_RESP_RECEIVED:
+                        return  "ST_RESP_RECEIVED";
+                    case ST_FINISHED:
+                        return "ST_FINISHED";
+                    case ST_CLOSED:
+                        return "ST_CLOSED";
+                    default:
+                        return "<?>";
+                }
+            }
 
             //
             enum yield_t {
@@ -179,9 +202,28 @@ namespace inet {
                 RET_VALID = 1,
                 RET_UNKNOWNSTATUS = 2,
                 RET_NOOCSP_TARGETS
-            } ;
+            };
 
-            inline const socket_state &io () const { return socket; }
+            [[nodiscard]] const char* yield_str(int y) const {
+                switch(y) {
+                    case RET_CONNFAIL:
+                        return "RET_CONNFAIL";
+                    case RET_UNKNOWN:
+                        return "RET_UNKNOWN";
+                    case RET_REVOKED:
+                        return "RET_REVOKED";
+                    case RET_VALID:
+                        return "RET_VALID";
+                    case RET_UNKNOWNSTATUS:
+                        return "RET_UNKNOWNSTATUS";
+                    case RET_NOOCSP_TARGETS:
+                        return "RET_NOOCSP_TARGETS";
+                    default:
+                        return "<?>";
+                }
+            }
+
+            [[nodiscard]] inline const socket_state &io () const { return socket; }
             inline socket_state &io () { return socket; }
 
             OcspQuery(X509 *cert, X509 *issuer):
@@ -214,8 +256,11 @@ namespace inet {
             // proces received response
             bool do_process_response ();
 
-            int state() const { return state_; }
-            int yield() const { return yield_; };
+            [[nodiscard]] int state() const { return state_; }
+            [[nodiscard]] const char* state_str() const { return state_str(state_); };
+
+            [[nodiscard]] int yield() const { return yield_; };
+            [[nodiscard]] const char*yield_str() const { return yield_str(yield_); }
 
         private:
             int state_ = OcspQuery::ST_INIT;
