@@ -731,7 +731,7 @@ namespace inet {
 
                         if (conn_bio && !ocsp_ssl) {
                             state_ = OcspQuery::ST_CONNECTING;
-                            _dia("OcspQuery::do_send_request: state CONNECTING");
+                            _dia("OcspQuery::do_connect: state CONNECTING");
                             BIO_set_nbio(conn_bio, 1);
                         } else {
                             continue;
@@ -756,7 +756,7 @@ namespace inet {
                     socket.socket_ = BIO_get_fd(conn_bio, nullptr);
                     ocsp_target_retry = false;
                     state_ = OcspQuery::ST_CONNECTED;
-                    _dia("OcspQuery::do_send_request: state CONNECTED");
+                    _dia("OcspQuery::do_connect: state CONNECTED");
                 }
             }
 
