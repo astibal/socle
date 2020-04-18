@@ -170,6 +170,11 @@ int baseSSLCom<L4Proto>::new_session_callback(SSL* ssl, SSL_SESSION* session) {
 
     _inf("new session[%s]: SSL: 0x%x, SSL_SESSION: 0x%x", name.c_str(), ssl, session);
 
+    if(com->verify_bitcheck(VRF_REVOKED)) {
+        _inf("new session[%s]: SSL: 0x%x, session rejected due verify status: 0x%04x", name.c_str(), ssl, com->verify_get());
+        return 0;
+    }
+
     return 1;
 }
 
@@ -522,7 +527,7 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int lib_preverify, X509_STORE_
 
             _dia("[%s]: SSLCom::ssl_client_vrfy_callback: unknown issuer: %d", name.c_str(), err);
 
-            com->verify_set(VRF_UNKNOWN_ISSUER);
+            com->verify_bitset(VRF_UNKNOWN_ISSUER);
             if(com->opt_allow_unknown_issuer || com->opt_failed_certcheck_replacement) {
                 callback_return = 1;
             }
@@ -534,7 +539,7 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int lib_preverify, X509_STORE_
 
             _dia("[%s]: SSLCom::ssl_client_vrfy_callback: self-signed cert in the chain: %d", name.c_str(), err);
 
-            com->verify_set(VRF_SELF_SIGNED_CHAIN);
+            com->verify_bitset(VRF_SELF_SIGNED_CHAIN);
             if(com->opt_allow_self_signed_chain || com->opt_failed_certcheck_replacement) {
                 callback_return = 1;
             }
@@ -545,7 +550,7 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int lib_preverify, X509_STORE_
 
             _dia("[%s]: SSLCom::ssl_client_vrfy_callback: end-entity cert is self-signed: %d", name.c_str(), err);
 
-            com->verify_set(VRF_SELF_SIGNED);
+            com->verify_bitset(VRF_SELF_SIGNED);
             if(com->opt_allow_self_signed_cert || com->opt_failed_certcheck_replacement) {
                 callback_return = 1;
             }
@@ -557,7 +562,7 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int lib_preverify, X509_STORE_
             _dia("[%s]: SSLCom::ssl_client_vrfy_callback: not before: %s", name.c_str(),
                     SSLFactory::print_not_before(err_cert).c_str());
 
-            com->verify_set(VRF_INVALID);
+            com->verify_bitset(VRF_INVALID);
             if(com->opt_allow_not_valid_cert || com->opt_failed_certcheck_replacement) {
                 callback_return = 1;
             }
@@ -569,7 +574,7 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int lib_preverify, X509_STORE_
             _dia("[%s]: SSLCom::ssl_client_vrfy_callback: not after: %s",name.c_str(),
                     SSLFactory::print_not_after(err_cert).c_str());
 
-            com->verify_set(VRF_INVALID);
+            com->verify_bitset(VRF_INVALID);
             if(com->opt_allow_not_valid_cert || com->opt_failed_certcheck_replacement) {
                 callback_return = 1;
             }
@@ -688,7 +693,7 @@ EC_KEY* baseSSLCom<L4Proto>::ssl_ecdh_callback(SSL* s, int is_export, int key_le
 }
 
 template <class L4Proto>
-int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
+int baseSSLCom<L4Proto>::certificate_status_ocsp_check(baseSSLCom* com) {
 
     inet::cert::VerifyStatus res;
 
@@ -861,28 +866,38 @@ int baseSSLCom<L4Proto>::ocsp_explicit_check(baseSSLCom* com) {
             }
         }
     } else {
-        _err("ocsp_explicit_check: failed call requirements: com 0x%x", com);
+        _err("ocsp_explicit_check__: failed call requirements: com 0x%x", com);
         if(com)
-            _err("ocsp_explicit_check: failed call requirements: cert 0x%x, issuer 0x%x" , com->sslcom_target_cert, com->sslcom_target_issuer);
+            _err("ocsp_explicit_check__: failed call requirements: cert 0x%x, issuer 0x%x" , com->sslcom_target_cert, com->sslcom_target_issuer);
     }
 
-    if(res.revoked > 0) {
-        com->verify_set(VRF_REVOKED);
+    if(com) {
+        if (res.revoked > 0) {
+            com->verify_bitreset(VRF_OK);
+            com->verify_bitset(VRF_REVOKED);
+        } else if (res.revoked == 0) {
+            com->verify_bitset(VRF_OK);
+        } else {
+            com->verify_bitreset(VRF_OK);
+            com->verify_bitset(VRF_DEFERRED);
+        }
     }
-
-    _dia("ocsp_explicit_check: final result %d", res.revoked);
+    _dia("ocsp_explicit_check__: final result %d", res.revoked);
     return res.revoked;
 }
 
 template <class L4Proto>
-int baseSSLCom<L4Proto>::check_revocation_oob(baseSSLCom* com, int default_action) {
+int baseSSLCom<L4Proto>::certificate_status_oob_check(baseSSLCom* com, int default_action) {
 
     auto& log = inet::ocsp::OcspFactory::log();
 
+
     if(com != nullptr) {
+        com->verify_bitreset(VRF_DEFERRED);
+
         if(com->opt_ocsp_enforce_in_verify) {
-            _dia("check_revocation_oob: full OCSP request query (callback context)");
-            int is_revoked = baseSSLCom::ocsp_explicit_check(com);
+            _dia("certificate_status_oob_check: full OCSP request query (callback context)");
+            int is_revoked = baseSSLCom::certificate_status_ocsp_check(com);
 
             std::string cn = SSLFactory::print_cn(com->sslcom_target_cert) + ";" + SSLFactory::fingerprint(com->sslcom_target_cert);
             std::string name = "unknown_cx";
@@ -900,10 +915,12 @@ int baseSSLCom<L4Proto>::check_revocation_oob(baseSSLCom* com, int default_actio
                      com->opt_failed_certcheck_replacement);
 
                 if(is_revoked > 0) {
-                    com->verify_set(VRF_REVOKED);
+                    com->verify_bitreset(VRF_OK);
+                    com->verify_bitset(VRF_REVOKED);
                 } else {
                     // is_revoked < 0 - various errors
-                    com->verify_set(VRF_ALLFAILED);
+                    com->verify_bitreset(VRF_OK);
+                    com->verify_bitset(VRF_ALLFAILED);
                 }
 
                 if(com->opt_failed_certcheck_replacement) {
@@ -912,13 +929,15 @@ int baseSSLCom<L4Proto>::check_revocation_oob(baseSSLCom* com, int default_actio
                 return com->opt_failed_certcheck_replacement;
 
             } else {
-                _dia("check_revocation_oob: GOOD: returning 1");
+                _dia("certificate_status_oob_check: GOOD: returning 1");
                 return 1;
             }
+        } else {
+            _dia("certificate_status_oob_check:  OCSP request query not enforced");
         }
     }
 
-    _dia("check_revocation_oob: default action - returning %d", default_action);
+    _dia("certificate_status_oob_check: default action - returning %d", default_action);
     return default_action;
 }
 
@@ -1110,18 +1129,26 @@ int baseSSLCom<L4Proto>::status_resp_callback(SSL* ssl, void* arg) {
     peer_cert   = com->sslcom_target_cert;
     issuer_cert = com->sslcom_target_issuer;
 
-    if(com->verify_get() != VRF_OK && ! com->verify_check(VRF_CLIENT_CERT_RQ)) {
-        _dia("status_resp_callback[%s]: certificate verification failed already (%d), no need to check stapling",
-                name.c_str(),
-                com->verify_get());
+    if(! com->verify_bitcheck(VRF_NOTTESTED)) {
+        // check how it was tested already
 
-        return com->opt_failed_certcheck_replacement;
+        if (com->verify_get() != VRF_OK && !com->verify_bitcheck(VRF_CLIENT_CERT_RQ)) {
+            _dia("status_resp_callback[%s]: certificate verification failed already (%d), no need to check stapling",
+                 name.c_str(),
+                 com->verify_get());
+
+            return com->opt_failed_certcheck_replacement;
+        }
     }
+
+    com->verify_bitreset(VRF_NOTTESTED);
 
     if (!peer_cert || !issuer_cert) {
         _dia("status_resp_callback[%s]: status_resp_callback: verify hasn't been yet called", name.c_str());
         com->opt_ocsp_enforce_in_verify = true;
-        return baseSSLCom::check_revocation_oob(com, opt_ocsp_require ? 0 : 1);
+
+        auto cb_status = baseSSLCom::certificate_status_oob_check(com, opt_ocsp_require ? 0 : 1);
+        return cb_status;
     }
 
     _deb("status_resp_callback[%s]: peer cert=%x, issuer_cert=%x", name.c_str(), peer_cert, issuer_cert);
@@ -1131,8 +1158,11 @@ int baseSSLCom<L4Proto>::status_resp_callback(SSL* ssl, void* arg) {
     auto stap_result = check_revocation_stapling(name, com, ssl);
 
     if(stap_result.first == staple_code::SUCCESS) {
+        com->verify_bitreset(VRF_OK);
+
         if (stap_result.second == V_OCSP_CERTSTATUS_GOOD) {
             _dia("[%s] OCSP status is good",name.c_str());
+            com->verify_bitset(VRF_OK);
             com->ocsp_cert_is_revoked = 0;
             _dia("Connection from %s: certificate %s is valid (stapling OCSP))",name.c_str(),cn.c_str());
 
@@ -1142,29 +1172,34 @@ int baseSSLCom<L4Proto>::status_resp_callback(SSL* ssl, void* arg) {
             _dia("[%s] OCSP status is revoked", name.c_str());
 
             com->ocsp_cert_is_revoked = 1;
-            com->verify_set(VRF_REVOKED);
+            com->verify_bitset(VRF_REVOKED);
             _war("Connection from %s: certificate %s is revoked (stapling OCSP), replacement=%d)", name.c_str(),
                        cn.c_str(),
                        com->opt_failed_certcheck_replacement);
 
             return com->opt_failed_certcheck_replacement;
         }
-    } else
-    if (opt_ocsp_require) {
-        _err("[%s] OCSP status unknown, but OCSP required, failing", name.c_str());
-        
-        int ocsp_check = baseSSLCom::check_revocation_oob(com,0);
-        _dia("SSLCom::ocsp_resp_callback: OCSP returned %d", ocsp_check);
-        
-        return ocsp_check;             
     }
 
-    _dia("[%s] OCSP status unknown, but OCSP was not required, continue", name.c_str());
 
-    int ocsp_check = baseSSLCom::check_revocation_oob(com,1);
-    _dia("SSLCom::ocsp_resp_callback: OCSP returned %d", ocsp_check);
+    if (opt_ocsp_require) {
+        com->verify_bitset(VRF_DEFERRED);
+        com->verify_bitreset(VRF_OK);
+        _err("[%s] cert status unknown, but OCSP required", name.c_str());
 
-    return ocsp_check;         
+        int cb_status = baseSSLCom::certificate_status_oob_check(com, 0);
+        _dia("SSLCom::ocsp_resp_callback: required OCSP returned %d", cb_status);
+
+        return cb_status;
+    }
+    else {
+        _dia("[%s] cert status unknown, but OCSP was not required, failing only on positive negative", name.c_str());
+
+        int cb_status = baseSSLCom::certificate_status_oob_check(com, 1);
+        _dia("SSLCom::ocsp_resp_callback: OCSP returned %d", cb_status);
+
+        return cb_status;
+    }
 }
 
 template <class L4Proto>
@@ -1190,7 +1225,7 @@ int baseSSLCom<L4Proto>::ssl_client_cert_callback(SSL* ssl, X509** x509, EVP_PKE
             name = com->hr();
         }
         
-        com->verify_set(baseSSLCom::VRF_CLIENT_CERT_RQ);
+        com->verify_bitset(baseSSLCom::VRF_CLIENT_CERT_RQ);
         switch(com->opt_client_cert_action) {
             
             case 0:
@@ -1478,6 +1513,9 @@ bool baseSSLCom<L4Proto>::check_cert (const char* host) {
     // X509_NAME_free(x509_name);
 
     // finally, SSL is up, set status flag
+
+    // FIXME: this is bogus code for testing - sslcom_status should be set after certificate revocation status
+    //sslcom_status(sslcom_status());
     sslcom_status(true);
 
     return true;
@@ -2009,24 +2047,26 @@ bool baseSSLCom<L4Proto>::store_session_if_needed() {
         if(!SSL_session_reused(sslcom_ssl)) {
             _dia("ticketing: key %s: full key exchange, connect attempt %d on socket %d",key.c_str(),prof_connect_cnt,owner_cx()->socket());
 
-            // OK is 0, so test if client_cert_rq is equal means OK | CERT_RQ ...
-            if(   verify_status == VRF_OK
-                  ||
-                ( verify_status == ( VRF_CLIENT_CERT_RQ | VRF_OK ) )
-              ) {
+            if(verify_bitcheck(VRF_OK)) {
 
                 std::lock_guard<std::recursive_mutex> l_( certstore()->session_cache.getlock() );
 
 #if defined USE_OPENSSL111
                 if(SSL_SESSION_is_resumable(SSL_get0_session(sslcom_ssl))) {
-                    _dia("session is resumable");
-                    certstore()->session_cache.set(key, new session_holder(SSL_get1_session(sslcom_ssl)));
-                    _dia("ticketing: key %s: keying material stored, cache size = %d",key.c_str(),certstore()->session_cache.cache().size());
+                    _dia("ticketing: obtained session can be used for resumption");
+
+                    if(verify_bitcheck(VRF_OK)) {
+                        certstore()->session_cache.set(key, new session_holder(SSL_get1_session(sslcom_ssl)));
+                        _dia("ticketing: key %s: keying material stored, cache size = %d", key.c_str(),
+                             certstore()->session_cache.cache().size());
+                    } else {
+                        _dia("ticketing: session not stored due to verify result");
+                    }
 
                     ret = true;
 
                 } else {
-                    _dia("session is NOT resumable");
+                    _dia("session CANNOT be resumed");
                 }
 #else
                 certstore()->session_cache.set(key,new session_holder(SSL_get1_session(sslcom_ssl)));
@@ -2036,13 +2076,23 @@ bool baseSSLCom<L4Proto>::store_session_if_needed() {
 
 #endif // USE_OPENSSL11
             } else {
-                _dia("certificate verification failed, session not stored in the cache.");
+                if(verify_bitcheck(VRF_NOTTESTED)) {
+                    _dia("certificate verification not tested yet, session not stored in the cache.");
+                } else {
+                    _war("certificate verification failed, session not stored in the cache.");
+                }
                 ret = false;
             }
             
         } else {
             _dia("ticketing: key %s: abbreviated key exchange, connect attempt %d on socket %d",key.c_str(),prof_connect_cnt,owner_cx()->socket());
             flags_ |= HSK_REUSED;
+
+
+            // we trust sites we have already connected to!
+            _dia("verified by previous connection");
+            verify_bitreset(VRF_NOTTESTED);
+            verify_bitset(VRF_OK);
         }
     }
     
@@ -2980,17 +3030,31 @@ bool baseSSLCom<L4Proto>::com_status() {
             return true;
         }
 
-        bool r = sslcom_status();
+        bool l5_status = sslcom_status();
         // T__dia("sslcom_status_ok",1,"SSLCom::com_status: returning %d",r);
 
-        if(r) {
-            _dia("SSLCom::com_status: L4 and SSL layers OK");
+        if(l5_status) {
+            if(! is_server()) {
+                _war("SSLCom::com_status: L4 and SSL layers OK - client: target cert: %d, issuer: %d", (target_cert() != nullptr), (target_issuer() != nullptr));
+                if( target_cert() || target_issuer() ) {
+                    _war("SSLCom::com_status: L4 and SSL layers OK - verify status: 0x%04x", verify_get());
+                }
+
+                if(verify_bitcheck(VRF_NOTTESTED)) {
+                    _war("SSLCom::com_status: not yet verified");
+
+                    return false;
+                }
+            }
+            else {
+                _war("SSLCom::com_status: L4 and SSL layers OK - server", (target_cert() != nullptr), (target_issuer() != nullptr));
+            }
         } else {
             _deb("SSLCom::com_status: L4 OK, but SSL layer not ready.");
         }
 
-        _deb("SSLCom::com_status: returning %d",r);
-        return r;
+        _deb("SSLCom::com_status: returning %d", l5_status);
+        return l5_status;
     }
 
     // T__dia("sslcom_status_nok",1,"SSLCom::com_status: returning 0");

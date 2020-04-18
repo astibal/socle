@@ -406,8 +406,8 @@ public:
     int  opt_ocsp_mode = 0;
 
     int ocsp_cert_is_revoked = -1;
-    static int ocsp_explicit_check(baseSSLCom* com);
-    static int check_revocation_oob(baseSSLCom* com, int required);
+    static int certificate_status_ocsp_check(baseSSLCom* com);
+    static int certificate_status_oob_check(baseSSLCom* com, int required);
 
     enum class staple_code {
             NOT_PROCESSED,
@@ -444,25 +444,42 @@ public:
                                                         // 2 - bypass next connection
     
     // verify status. Added also verify pseudo-status for client cert request.
-    typedef enum {  VRF_OK=0x0,
-                    VRF_UNKNOWN_ISSUER=0x1,
-                    VRF_SELF_SIGNED=0x2,
-                    VRF_INVALID=0x4,
-                    VRF_SELF_SIGNED_CHAIN=0x8,
-                                VRF_REVOKED=0x10,
-                                VRF_CLIENT_CERT_RQ=0x20,
-                                VRF_HOSTNAME_FAILED=0x40,
+    typedef enum {
+            VRF_OK=0x1,
+            VRF_UNKNOWN_ISSUER=0x2,
+            VRF_SELF_SIGNED=0x4,
+            VRF_INVALID=0x8,
+                    VRF_SELF_SIGNED_CHAIN=0x10,
+                    VRF_REVOKED=0x20,
+                    VRF_CLIENT_CERT_RQ=0x40,
+                    VRF_HOSTNAME_FAILED=0x80,
 
-            VRF_ALLFAILED=0x8000
-                                                        } verify_status_t;
-                                
-    unsigned int verify_status = VRF_OK;
-    inline void verify_set(unsigned int s) { flag_set(&verify_status, s); }
-    inline bool verify_check(unsigned int s) const { return (flag_test(verify_status, s)); }
-    inline int verify_get() const { return (int) verify_status; }
+                                    VRF_DEFERRED=0x1000,
+                                    VRF_ALLFAILED=0x4000,
+                                    VRF_NOTTESTED=0x8000
+    } verify_status_t;
+
+    inline int verify_get() const { return static_cast<int>(verify_status_); }
+    inline bool verify_bitcheck(unsigned int s) const { return (flag_check(verify_status_, s)); }
+    inline void verify_bitset(unsigned int s) {
+        flag_set(&verify_status_, s);
+        _dia("verify_bitset: set 0x%04x: result 0x%04x", s, verify_status_);
+    }
+    inline void verify_bitreset(unsigned int s) {
+        verify_status_ = flag_reset(verify_status_, s);
+        _dia("verify_bitreset: set 0x%04x: result 0x%04x", s, verify_status_);
+    }
+    inline void verify_bitflip(unsigned int s)  {
+        verify_status_ = flag_flip(verify_status_, s);
+        _dia("verify_bitflip: set 0x%04x: result 0x%04x", s, verify_status_);
+    }
+
 
     DECLARE_C_NAME("SSLCom");
-    DECLARE_LOGGING(to_string);  
+    DECLARE_LOGGING(to_string);
+
+private:
+    unsigned int verify_status_ = VRF_NOTTESTED;
 };
 
 
