@@ -178,7 +178,7 @@ std::string sobjectDB::str_stats(const char* criteria) {
     ret << "Performance: " << socle::sobject::mtr_created().get() << " new objects per second, "
                            << socle::sobject::mtr_deleted().get() << " deleted objects per second.\n";
 
-    ret << "Database contains: "<< object_counter << " matching entries (" << ( criteria ? criteria : "*" ) << "), oldest " << oldest_age << "s, ";
+    ret << "Database contains: "<< object_counter << " matching entries (" << ( criteria ? criteria : "*" ) << "), oldest " << static_cast<int>(oldest_age) << "s, ";
     ret << "youngest age "<< youngest_age << "s, average age is "<< avg_age << "s.";
     ret << "\n";
     ret << "Full DB size: " << db().cache().size() << " full OID DB size: " << oid_db().cache().size();
