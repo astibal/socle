@@ -858,6 +858,7 @@ namespace inet {
         }
 
         bool OcspQuery::run () {
+
             switch (state_) {
                 case OcspQuery::ST_INIT:
 
@@ -866,7 +867,13 @@ namespace inet {
                 case OcspQuery::ST_CONNECTING:
 
                     // return only on IO blocking (can connect immediately)
-                    if (!do_connect()) break;
+                    if (!do_connect()) {
+                        if (state_ == OcspQuery::ST_CONNECTING) {
+                            return false;
+                        } else {
+                            break;
+                        }
+                    }
                     state_ = ST_CONNECTED;
 
                 case OcspQuery::ST_CONNECTED:
