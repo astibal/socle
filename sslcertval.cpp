@@ -402,137 +402,146 @@ namespace inet {
 
             OCSP_BASICRESP *br = OCSP_response_get1_basic(resp);
 
-            X509_STORE *st = X509_STORE_new();
-            X509_STORE_set_default_paths(st);
+            if(br) {
 
-            STACK_OF(X509*) signers = sk_X509_new_null();
-            sk_X509_push(signers, issuer);
+                X509_STORE *st = X509_STORE_new();
+                X509_STORE_set_default_paths(st);
 
-            // @certs - untrusted intermediates
-            // @st - truststore
-            // 1 .. looking for _signer_ in certs and (if !OCSP_NOINTERN) in OCSP response (therefore untrusted sources)
-            //   .. fails if cannot be found!
-            // 2 ..
-            int ocsp_verify_result = OCSP_basic_verify(br, signers, st, 0);
+                STACK_OF(X509*) signers = sk_X509_new_null();
+                sk_X509_push(signers, issuer);
 
-            _dia("ocsp_verify_response: OCSP_basic_verify returned %d", ocsp_verify_result);
+                // @certs - untrusted intermediates
+                // @st - truststore
+                // 1 .. looking for _signer_ in certs and (if !OCSP_NOINTERN) in OCSP response (therefore untrusted sources)
+                //   .. fails if cannot be found!
+                // 2 ..
+                int ocsp_verify_result = OCSP_basic_verify(br, signers, st, 0);
 
-            if (ocsp_verify_result <= 0) {
-                is_revoked = -1;
+                _dia("ocsp_verify_response: OCSP_basic_verify returned %d", ocsp_verify_result);
 
-                int err = ERR_get_error();
-                _dia("    error: %s",ERR_error_string(err,nullptr));
+                if (ocsp_verify_result <= 0) {
+                    is_revoked = -1;
 
-            } else {
+                    int err = static_cast<int>(ERR_get_error());
+                    _dia("    error: %s",ERR_error_string(err,nullptr));
 
-                bool matching_ids = false;
+                } else {
 
-                int resp_count = OCSP_resp_count(br);
-                _deb("ocsp_verify_response: got %d entries in response", resp_count);
-                for (int i = 0; i < resp_count; i++) {
-                    OCSP_SINGLERESP *single = OCSP_resp_get0(br, i);
-                    int reason;
-                    ASN1_GENERALIZEDTIME *revtime;
-                    ASN1_GENERALIZEDTIME *thisupd;
-                    ASN1_GENERALIZEDTIME *nextupd;
+                    bool matching_ids = false;
 
-                    int status = OCSP_single_get0_status(single, &reason, &revtime, &thisupd, &nextupd);
+                    int resp_count = OCSP_resp_count(br);
+                    _deb("ocsp_verify_response: got %d entries in response", resp_count);
+                    for (int i = 0; i < resp_count; i++) {
+                        OCSP_SINGLERESP *single = OCSP_resp_get0(br, i);
+                        int reason;
+                        ASN1_GENERALIZEDTIME *revtime;
+                        ASN1_GENERALIZEDTIME *thisupd;
+                        ASN1_GENERALIZEDTIME *nextupd;
 
-                    const OCSP_CERTID* id = OCSP_SINGLERESP_get0_id(single);
-                    ASN1_OCTET_STRING* name_hash;
-                    ASN1_OCTET_STRING* key_hash;
-                    ASN1_OBJECT* pmd;
-                    ASN1_INTEGER* serial;
+                        int status = OCSP_single_get0_status(single, &reason, &revtime, &thisupd, &nextupd);
 
-                    // get shallow details from CERTID
-                    OCSP_id_get0_info(&name_hash, &pmd, &key_hash, &serial, const_cast<OCSP_CERTID*>(id));
+                        const OCSP_CERTID* id = OCSP_SINGLERESP_get0_id(single);
+                        ASN1_OCTET_STRING* name_hash;
+                        ASN1_OCTET_STRING* key_hash;
+                        ASN1_OBJECT* pmd;
+                        ASN1_INTEGER* serial;
 
-                    // now we can create cert ID and compare it to one from OCSP response
+                        // get shallow details from CERTID
+                        OCSP_id_get0_info(&name_hash, &pmd, &key_hash, &serial, const_cast<OCSP_CERTID*>(id));
 
-                    const EVP_MD* md = EVP_get_digestbyobj(const_cast<const ASN1_OBJECT*>(pmd));
-                    OCSP_CERTID* my_id = OCSP_cert_to_id(md , cert , issuer);
+                        // now we can create cert ID and compare it to one from OCSP response
 
-                    // match certificate ID in response with checked cert (to prevent replays of correct OCSP responses
-                    // but for different cert
-                    if (OCSP_id_cmp(const_cast<OCSP_CERTID*>(id), my_id) == 0) {
-                        _dia("ocsp_verify_response [%d]: certificate ID matching this single", i);
-                        matching_ids = true;
-                    } else {
-                        _dia("ocsp_verify_response [%d]: certificate ID NOT MATCHING this single", i);
+                        const EVP_MD* md = EVP_get_digestbyobj(const_cast<const ASN1_OBJECT*>(pmd));
+                        OCSP_CERTID* my_id = OCSP_cert_to_id(md , cert , issuer);
+
+                        // match certificate ID in response with checked cert (to prevent replays of correct OCSP responses
+                        // but for different cert
+                        if (OCSP_id_cmp(const_cast<OCSP_CERTID*>(id), my_id) == 0) {
+                            _dia("ocsp_verify_response [%d]: certificate ID matching this single", i);
+                            matching_ids = true;
+                        } else {
+                            _dia("ocsp_verify_response [%d]: certificate ID NOT MATCHING this single", i);
+                        }
+                        // don't forget to free mycert CERTID
+                        OCSP_CERTID_free(my_id);
+                        my_id = nullptr;
+
+                        if(! matching_ids) {
+                            continue;
+                        }
+
+                        std::string s_name_hash = SSLFactory::print_ASN1_OCTET_STRING(name_hash);
+
+                        _dia("ocsp_verify_response [%d]: response for name hash: %s", i, s_name_hash.c_str());
+
+                        if (status == V_OCSP_CERTSTATUS_REVOKED) {
+                            _dia("ocsp_verify_response [%d]: OCSP_single_get0_status returned REVOKED(%d)", i, status);
+                            is_revoked = 1;
+                            //break;
+                        } else if (status == V_OCSP_CERTSTATUS_GOOD) {
+                            _dia("ocsp_verify_response [%d]: OCSP_single_get0_status returned GOOD(%d)", i, status);
+                            is_revoked = 0;
+                            //break;
+                        } else if (status == V_OCSP_CERTSTATUS_UNKNOWN) {
+                            _dia("ocsp_verify_response [%d]: OCSP_single_get0_status returned UNKNOWN(%d)", i, status);
+                        } else {
+                            _dia("ocsp_verify_response [%d]: OCSP_single_get0_status returned ?(%d)", i, status);
+                        }
+
+                        int days = 0;
+                        int secs = 0;
+                        if (ASN1_TIME_diff( &days, &secs, nullptr, nextupd) > 0) {
+                            _dia("ocsp_verify_response [%d]: TTL: %d days, %d seconds", i, days, secs);
+
+                            ttl = days*24*60*60 + secs;
+
+                        } else {
+                            _war("ocsp_verify_response [%d]: negative TTL: %d days, %d seconds", i, days, secs);
+                            _err("this is possible OCSP replay attack, marked as revoked!");
+                            is_revoked = 1;
+                        }
                     }
-                    // don't forget to free mycert CERTID
-                    OCSP_CERTID_free(my_id);
-                    my_id = nullptr;
 
                     if(! matching_ids) {
-                        continue;
-                    }
-
-                    std::string s_name_hash = SSLFactory::print_ASN1_OCTET_STRING(name_hash);
-
-                    _dia("ocsp_verify_response [%d]: response for name hash: %s", i, s_name_hash.c_str());
-
-                    if (status == V_OCSP_CERTSTATUS_REVOKED) {
-                        _dia("ocsp_verify_response [%d]: OCSP_single_get0_status returned REVOKED(%d)", i, status);
-                        is_revoked = 1;
-                        //break;
-                    } else if (status == V_OCSP_CERTSTATUS_GOOD) {
-                        _dia("ocsp_verify_response [%d]: OCSP_single_get0_status returned GOOD(%d)", i, status);
-                        is_revoked = 0;
-                        //break;
-                    } else if (status == V_OCSP_CERTSTATUS_UNKNOWN) {
-                        _dia("ocsp_verify_response [%d]: OCSP_single_get0_status returned UNKNOWN(%d)", i, status);
-                    } else {
-                        _dia("ocsp_verify_response [%d]: OCSP_single_get0_status returned ?(%d)", i, status);
-                    }
-
-                    int days = 0;
-                    int secs = 0;
-                    if (ASN1_TIME_diff( &days, &secs, nullptr, nextupd) > 0) {
-                        _dia("ocsp_verify_response [%d]: TTL: %d days, %d seconds", i, days, secs);
-
-                        ttl = days*24*60*60 + secs;
-
-                    } else {
-                        _war("ocsp_verify_response [%d]: negative TTL: %d days, %d seconds", i, days, secs);
-                        _err("this is possible OCSP replay attack, marked as revoked!");
-                        is_revoked = 1;
+                        _err("no matching cert IDs were found in OCSP response, returning -1");
+                        is_revoked = -1;
                     }
                 }
 
-                if(! matching_ids) {
-                    _err("no matching cert IDs were found in OCSP response, returning -1");
-                    is_revoked = -1;
-                }
+                OCSP_BASICRESP_free(br);
+                X509_STORE_free(st);
+                sk_X509_free(signers);
+            } else {
+                _err("received data doesn't contain OCSP response");
             }
 
-            OCSP_BASICRESP_free(br);
-            X509_STORE_free(st);
-            sk_X509_free(signers);
 #else
             OCSP_RESPBYTES *rb = resp->responseBytes;
-        if (rb && OBJ_obj2nid(rb->responseType) == NID_id_pkix_OCSP_basic)
-        {
-            OCSP_BASICRESP *br = OCSP_response_get1_basic(resp);
-            OCSP_RESPDATA  *rd = br->tbsResponseData;
-
-            for (int i = 0; i < sk_OCSP_SINGLERESP_num(rd->responses); i++)
+            if (rb && OBJ_obj2nid(rb->responseType) == NID_id_pkix_OCSP_basic)
             {
-                OCSP_SINGLERESP *single = sk_OCSP_SINGLERESP_value(rd->responses, i);
-                //OCSP_CERTID *cid = single->certId;
-                OCSP_CERTSTATUS *cst = single->certStatus;
-                if (cst->type == V_OCSP_CERTSTATUS_REVOKED)
-                {
-                    is_revoked = 1;
-                }
-                else if (cst->type == V_OCSP_CERTSTATUS_GOOD)
-                {
-                    is_revoked = 0;
+                OCSP_BASICRESP *br = OCSP_response_get1_basic(resp);
+                if(br) {
+                    OCSP_RESPDATA  *rd = br->tbsResponseData;
+
+                    for (int i = 0; i < sk_OCSP_SINGLERESP_num(rd->responses); i++)
+                    {
+                        OCSP_SINGLERESP *single = sk_OCSP_SINGLERESP_value(rd->responses, i);
+                        //OCSP_CERTID *cid = single->certId;
+                        OCSP_CERTSTATUS *cst = single->certStatus;
+                        if (cst->type == V_OCSP_CERTSTATUS_REVOKED)
+                        {
+                            is_revoked = 1;
+                        }
+                        else if (cst->type == V_OCSP_CERTSTATUS_GOOD)
+                        {
+                            is_revoked = 0;
+                        }
+                    }
+                    OCSP_BASICRESP_free(br);
                 }
             }
-            OCSP_BASICRESP_free(br);
-        }
 #endif // USE_OPENSSL11
+
             _dia("ocsp_verify_response:  returning %d", is_revoked);
             return VerifyStatus(is_revoked, ttl, VerifyStatus::status_origin::OCSP);
         }
