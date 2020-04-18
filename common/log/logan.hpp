@@ -161,7 +161,7 @@ public:
 
 
     template<class ... Args>
-    void log(loglevel lev, const std::string& topic, const char* fmt, Args ... args) const {
+    void log(loglevel const& lev, const std::string& topic, const char* fmt, Args ... args) const {
         if( *level() >= lev) {
             std::stringstream ms;
             if( ! flag_test(lev.flags(),LOG_FLRAW)) {
