@@ -711,7 +711,7 @@ std::string baseHostCX::full_name(unsigned char side) {
 
     //else
     return string_format("%s_%s%s:%s to %s_%s%s:%s", peeer_c.c_str(), peeer_ss.c_str(), peeer.c_str(), peeer_p.c_str(),
-                                                        self_c.c_str(), self_ss.c_str(), self, self_p.c_str());
+                                                        self_c.c_str(), self_ss.c_str(), self.c_str(), self_p.c_str());
 
 }
 
