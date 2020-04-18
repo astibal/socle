@@ -197,11 +197,12 @@ struct socket_state {
     baseCom *com_;
     int state_;
     enum { SS_NONE = -1, SS_CLOSING = 0, SS_OPENING = 1 };
+
     bool owner_ = true;
 
-    socket_state() : socket_(0), handler_(nullptr), com_(nullptr), state_(socket_state::SS_NONE), owner_(true) {};
+    socket_state() : socket_(0), handler_(nullptr), com_(nullptr), state_(socket_state::SS_NONE), owner_(true) {}
     socket_state(int s, epoll_handler *h, baseCom *com, bool owner) :
-        socket_(s), handler_(h), com_(com), state_(socket_state::SS_NONE), owner_(owner) {};
+        socket_(s), handler_(h), com_(com), state_(socket_state::SS_NONE), owner_(owner) {}
     virtual ~socket_state();
 
     void set(int s, epoll_handler *h, baseCom *com, bool owner=true) {
@@ -212,15 +213,31 @@ struct socket_state {
     }
 
     virtual void update (int s);
-    inline void opening() { update(socket_state::SS_OPENING); };
-    inline void closing() { update(socket_state::SS_CLOSING); };
+    inline void opening() { update(socket_state::SS_OPENING); }
+    inline void closing() { update(socket_state::SS_CLOSING); }
 
     void mon_write();
     void mon_read();
     void mon_none();
 
-    [[nodiscard]] inline const int state() const { return state_; };
-    [[nodiscard]] inline const int socket() const { return socket_; };
+    [[nodiscard]] inline int state() const { return state_; }
+    [[nodiscard]] inline int socket() const { return socket_; }
+    [[nodiscard]] const char* state_str() const { return ss_str(state_); }
+
+private:
+    // convert state to string
+    static const char* ss_str(int s) {
+        switch(s) {
+            case SS_NONE:
+                return "NONE";
+            case SS_OPENING:
+                return "OPENING";
+            case SS_CLOSING:
+                return "CLOSING";
+            default:
+                return "<?>";
+        }
+    }
 };
 
 #endif //EPOLL_HPP
