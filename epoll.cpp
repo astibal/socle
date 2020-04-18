@@ -588,7 +588,7 @@ void socket_state::update(int s) {
             case socket_state::SS_OPENING:
                 // set handler
 
-                com_->set_monitor(socket_);
+                com_->set_write_monitor(socket_);
                 com_->set_poll_handler(socket_, handler_);
 
                 com_->set_idle_watch(socket_);
