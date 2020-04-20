@@ -139,6 +139,9 @@ namespace inet {
             x509ptr cert_check;
             x509ptr cert_issuer;
 
+            // reference ID (time being it's a OID of owning object)
+            uint64_t ref_id;
+
 
             // OCSP request structures
             OCSP_REQUEST *ocsp_req = nullptr;
@@ -155,9 +158,6 @@ namespace inet {
             // currently used ocsp_target index
             int ocsp_target_index = -1;
 
-            // if retry flag is set, already created connection bio will be used to establish connection
-            bool ocsp_target_retry = false;
-
             // currently used OCSP server (full list in tuple vector 'ocsp_targes').
             std::string ocsp_host;
             std::string ocsp_port;
@@ -171,7 +171,7 @@ namespace inet {
                 ST_INIT = 1000, ST_CONNECTING, ST_CONNECTED, ST_REQ_INPROGRESS, ST_REQ_SENT, ST_RESP_RECEIVED, ST_FINISHED, ST_CLOSED
             };
 
-            [[nodiscard]] const char* state_str(int s) const {
+            [[nodiscard]] static const char* state_str(int s) {
                 switch(s) {
                     case ST_INIT:
                         return "ST_INIT";
@@ -226,9 +226,12 @@ namespace inet {
             [[nodiscard]] inline const socket_state &io () const { return socket; }
             inline socket_state &io () { return socket; }
 
-            OcspQuery(X509 *cert, X509 *issuer):
+            OcspQuery(X509 *cert, X509 *issuer, uint64_t ref_id):
               cert_check(X509_dup(cert), &X509_free),
-              cert_issuer(X509_dup(issuer), &X509_free) {};
+              cert_issuer(X509_dup(issuer), &X509_free),
+              ref_id(ref_id) {
+                timer_ = time(nullptr);
+            };
 
 
             // parse cert and find useful fields -> copy to internal structures
@@ -247,12 +250,19 @@ namespace inet {
             bool do_init ();
 
 
+            time_t timer_;
+
+
+            bool do_prepare_target();
+
+            int timeout_connect = 2;
             // connect to responder -- Might be called multiple times if needed or if the operation would block.
             bool do_connect ();
 
             // send request -- Might be called multiple times if needed or if the operation would block.
             bool do_send_request ();
 
+            int timeout_request = 5;
             // proces received response
             bool do_process_response ();
 
