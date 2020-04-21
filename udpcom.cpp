@@ -23,8 +23,6 @@
 #include <linux/in6.h>
 
 
-DEFINE_LOGGING(UDPCom)
-
 unsigned int UDPCom::default_sock_family = AF_INET6;
 
 std::map<uint64_t,Datagram> DatagramCom::datagrams_received;
@@ -35,7 +33,7 @@ std::recursive_mutex UDPCom::connect_fd_cache_lock;
 
 epoll::set_type DatagramCom::in_virt_set;
 
-int UDPCom::translate_socket(int vsock) {
+int UDPCom::translate_socket(int vsock) const {
     
     if(vsock >= 0) { 
         _dia("UDPCom::translate_socket[%d]: non-virtual",vsock);
