@@ -56,7 +56,7 @@ template <class L4Proto> int baseSSLCom<L4Proto>::sslcom_ssl_extdata_index = -1;
 
 template <class L4Proto> int baseSSLCom<L4Proto>::counter_ssl_connect = 0;
 template <class L4Proto> int baseSSLCom<L4Proto>::counter_ssl_accept = 0;
-template <class L4Proto> loglevel baseSSLCom<L4Proto>::log_level = NON;
+
 template <class L4Proto> std::string baseSSLCom<L4Proto>::ci_def_filter = "HIGH RC4 !aNULL !eNULL !LOW !3DES !MD5 !EXP !DSS !PSK !SRP !kECDH !CAMELLIA !IDEA !SEED @STRENGTH";
 
 

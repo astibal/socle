@@ -3,7 +3,5 @@
 
 namespace socle {
 
-DEFINE_LOGGING(trafLog);
-
 
 }

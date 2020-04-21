@@ -63,7 +63,7 @@ public:
     DECLARE_C_NAME("UxCom")
     DECLARE_DEF_TO_STRING
 
-    virtual const std::string shortname() const { return std::string("ux"); }
+    virtual std::string shortname() const { return std::string("ux"); }
 };
 
 #endif

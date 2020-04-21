@@ -165,7 +165,7 @@ public:
     DECLARE_LOGGING(to_string);
 
     std::string to_string(int verbosity=iINF) const override { return class_name(); }
-    const std::string shortname() const override { static  std::string s("udp"); return s; }
+    std::string shortname() const override { static  std::string s("udp"); return s; }
 };
 
 #endif

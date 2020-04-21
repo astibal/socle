@@ -158,7 +158,7 @@
     }
 
 #define LN_LOGS_(lev,x) \
-    if(this->get_this_log_level() >= lev || get_logger()->level() >= lev || this->log_level >= lev) { \
+    if(this->get_this_log_level() >= lev || get_logger()->level() >= lev || this->log_level() >= lev) { \
         if(                                     \
             (                                   \
                 ( get_logger()->print_srcline() &&  lev >= INF )   \
@@ -178,7 +178,7 @@
 
 #define T_LN_LOG_(name,interval,lev,x,...) \
     if(this->get_this_log_level() >= lev || get_logger()->level() >= lev) { \
-        if( ( get_logger()->print_srcline() && get_logger()->level() > INF ) || ( get_logger()->print_srcline() && log_level > INF ) || get_logger()->print_srcline_always()) { \
+        if( ( get_logger()->print_srcline() && get_logger()->level() > INF ) || ( get_logger()->print_srcline() && log_level() > INF ) || get_logger()->print_srcline_always()) { \
             if(get_logger()->click_timer(name,interval)) { \
                 LN_LOG_(lev,x,__VA_ARGS__); \
             } \
@@ -187,7 +187,7 @@
 
 #define T_LN_LOGS_(name,interval,lev,x) \
     if(this->get_this_log_level() >= lev || get_logger()->level() >= lev) { \
-        if( ( get_logger()->print_srcline() && get_logger()->level() > INF ) || ( get_logger()->print_srcline() && log_level > INF ) || get_logger()->print_srcline_always())) { \
+        if( ( get_logger()->print_srcline() && get_logger()->level() > INF ) || ( get_logger()->print_srcline() && log_level() > INF ) || get_logger()->print_srcline_always())) { \
             if(get_logger()->click_timer(name,interval)) { \
                 LN_LOGS_(lev,x); \
             } \
@@ -398,7 +398,7 @@
 
 
 // takes argument of pointer to function which returns std::string, indicate object name.
-#define DECLARE_LOGGING(get_name_func)  \
+#define DECLARE_LOGGING_OLD(get_name_func)  \
 public:                                      \
     std::string hr() const { hr(get_name_func()); return hr_; }; \
     void hr(std::string const& s) const { \
@@ -406,21 +406,39 @@ public:                                      \
        std::scoped_lock<std::mutex> l(hr_mutex_);  \
        hr_ = s;   \
     } \
-    static loglevel& log_level_ref() { return log_level; } \
+    static loglevel& log_level_ref() { return log_level(); } \
+    static loglevel& log_level() { static loglevel l = NON; return l; };                             \
     loglevel& this_log_level_ref() { return this_log_level_; } \
-    static loglevel log_level;                             \
-    virtual loglevel get_this_log_level() const { return this_log_level_ > log_level ? this_log_level_: log_level ; }     \
+    virtual loglevel get_this_log_level() const { return this_log_level_ > log_level() ? this_log_level_: log_level() ; }     \
     virtual void set_this_log_level(loglevel const& nl) { this_log_level_ = nl; }  \
 private:                                                       \
     mutable std::string hr_;                                           \
     loglevel this_log_level_ = NON;
 
-// takes argument of class name. It defines static variables
-#define DEFINE_LOGGING(cls)   \
-loglevel cls::log_level = NON; \
 
-#define DEFINE_TEMPLATE_LOGGING(cls)   \
-template<> loglevel cls::log_level = NON; \
+#define DECLARE_LOGGING(get_name_func)  \
+public:                                      \
+    std::string hr() const { hr(get_name_func()); return hr_; }; \
+    void hr(std::string const& s) const { \
+       std::scoped_lock<std::mutex> l(hr_lock_.mtx_);  \
+       hr_ = s;   \
+    } \
+    static loglevel& log_level_ref() { return log_level(); } \
+    static loglevel& log_level() { static loglevel l = NON; return l; };                             \
+    loglevel& this_log_level_ref() { return this_log_level_; } \
+    virtual loglevel get_this_log_level() const { return this_log_level_ > log_level() ? this_log_level_: log_level() ; }     \
+    virtual void set_this_log_level(loglevel const& nl) { this_log_level_ = nl; }  \
+    struct lock_struct {                    \
+       lock_struct() = default;             \
+       lock_struct(lock_struct const& r) {} \
+       lock_struct& operator=(lock_struct const&) { return *this; } \
+       std::mutex mtx_;                \
+    };                                      \
+private:                                                       \
+    mutable std::string hr_;                                   \
+    mutable lock_struct hr_lock_; \
+    loglevel this_log_level_ = NON;
+
 
 
 #define DECLARE_C_NAME(string_name)     \

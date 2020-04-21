@@ -39,7 +39,7 @@
 #include <log/logger.hpp>
 #include "udpcom.hpp"
 
-DEFINE_LOGGING(baseProxy);
+
 
 baseProxy::baseProxy(baseCom* c) :
 new_raw_(false),

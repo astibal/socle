@@ -47,7 +47,7 @@ public:
 
     baseCom* replicate() override { return new baseSSLMitmCom(); };
 
-    const std::string shortname() const override { return std::string("ssli"); }
+    std::string shortname() const override { static std::string s("ssli"); return s; }
 
     DECLARE_C_NAME("baseSSLMitmCom")
     DECLARE_DEF_TO_STRING;

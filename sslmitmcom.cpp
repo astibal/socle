@@ -18,6 +18,5 @@
 
 #include <sslmitmcom.hpp>
 
-DEFINE_TEMPLATE_LOGGING(baseSSLMitmCom<baseSSLCom<UDPCom>>)
-DEFINE_TEMPLATE_LOGGING(baseSSLMitmCom<baseSSLCom<TCPCom>>)
+
 

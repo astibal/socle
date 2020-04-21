@@ -20,10 +20,6 @@
 
 namespace socle {
 
-DEFINE_LOGGING(sobject)
-DEFINE_LOGGING(sobject_info)
-DEFINE_LOGGING(sobjectDB)
-
 
 #ifdef SOCLE_MEM_PROFILE
 bool sobject_info::enable_bt_ = true;

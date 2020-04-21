@@ -359,7 +359,7 @@ public:
     DECLARE_LOGGING(to_string)
 
     virtual std::string to_string(int verbosity=iINF) const = 0;
-    virtual const std::string shortname() const = 0;
+    virtual std::string shortname() const = 0;
 
 protected:
     logan_attached<baseCom> log;

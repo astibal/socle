@@ -18,8 +18,6 @@
 
 #include <apphostcx.hpp>
 
-DEFINE_LOGGING(AppHostCX);
-
 AppHostCX::AppHostCX(baseCom* c, const char* h, const char* p) :baseHostCX(c,h,p) {
 
     log = logan::attach(this, "inspect");
