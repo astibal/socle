@@ -105,7 +105,7 @@ int baseCom::namesocket(int sockfd, std::string& addr, unsigned short port, sa_f
 bool baseCom::resolve_redirected(int s, std::string* target_host, std::string* target_port, sockaddr_storage* target_storage) {
 
     char orig_host[INET6_ADDRSTRLEN];
-    struct sockaddr_storage peer_info_;
+    struct sockaddr_storage peer_info_{0};
     struct sockaddr_storage *ptr_peer_info = &peer_info_;
 
     //clear peer info struct
@@ -157,7 +157,7 @@ bool baseCom::resolve_redirected(int s, std::string* target_host, std::string* t
 bool baseCom::resolve_socket(bool source, int s, std::string* target_host, std::string* target_port, sockaddr_storage* target_storage) {
 
     char orig_host[INET6_ADDRSTRLEN];
-    struct sockaddr_storage peer_info_;
+    struct sockaddr_storage peer_info_{0};
     struct sockaddr_storage *ptr_peer_info = &peer_info_;
 
     //clear peer info struct

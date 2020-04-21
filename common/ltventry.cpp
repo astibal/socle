@@ -286,7 +286,7 @@ void LTVEntry::set_num(unsigned char i, unsigned char t, uint32_t d) {
 }
 
 void LTVEntry::set_ip(unsigned char id, unsigned char type, const char* str) {
-	struct in_addr inp;
+	struct in_addr inp{0};
 	inet_aton(str,&inp);
 	
 	//what?? ip addresses are always hl and not honor network byte-order?
