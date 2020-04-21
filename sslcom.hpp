@@ -237,7 +237,7 @@ private:
     typedef enum { HSK_REUSED = 0x4 } sslcom_flags;
     unsigned long flags_ = 0;
     
-    bool sslcom_refcount_incremented__ = false;
+    bool sslcom_refcount_incremented_ = false;
 public:    
     // debug counters
     static int counter_ssl_connect;
@@ -317,17 +317,17 @@ public:
     socle::sref_vector_string& sni_filter_to_bypass() { return sni_filter_to_bypass_; }
     
     int connect( const char* host, const char* port) override;
-	int read ( int __fd, void* __buf, size_t __n, int __flags ) override;
-	int write ( int __fd, const void* __buf, size_t __n, int __flags ) override;
+	int read ( int _fd, void* _buf, size_t _n, int _flags ) override;
+	int write ( int _fd, const void* _buf, size_t _n, int _flags ) override;
 	
 	void cleanup() override;
 
     bool com_status() override;
     
     
-    void shutdown(int __fd) override;
+    void shutdown(int _fd) override;
     ~baseSSLCom() override {
-        if(sslcom_refcount_incremented__) {
+        if(sslcom_refcount_incremented_) {
 #ifdef USE_OPENSSL11
             EVP_PKEY_free(sslcom_pref_key);
             X509_free(sslcom_pref_cert);

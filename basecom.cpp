@@ -273,14 +273,14 @@ int baseCom::poll() {
 }
 
 
-void baseCom::close(int __fd) {
+void baseCom::close(int _fd) {
     //really close the socket! Beware, from this point it can be reused!
-    if(__fd > 0) {
+    if(_fd > 0) {
             
-        shutdown(__fd);
+        shutdown(_fd);
         
-        int r = ::close(__fd);
-        if(r < 0) _dia("baseCom::close[%d]: error: %s",__fd, string_error().c_str());
+        int r = ::close(_fd);
+        if(r < 0) _dia("baseCom::close[%d]: error: %s", _fd, string_error().c_str());
     }
 }
 

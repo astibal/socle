@@ -2798,7 +2798,7 @@ int baseSSLCom<L4Proto>::write ( int __fd, const void* __buf, size_t __n, int __
 
             if (r > 0) {
                 normalized__n = normalized__n - r;
-                ptr += r;
+                ptr = static_cast<uint8_t*>(ptr) + r;
             } else {
                 _dum("SSLCom::write[%d]: want write: repeating last operation",__fd);
             }

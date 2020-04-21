@@ -23,6 +23,8 @@
 #include <cstring>
 #include <ctime>
 #include <csignal>
+#include <atomic>
+
 #include <sys/types.h>
 #include <sys/socket.h>
 #include <sys/stat.h>
@@ -49,7 +51,6 @@ public:
     
     static int poll_msec;
     static int rescan_poll_multiplier;
-    int     poll_sockmax = 0;
     int     poll_result = 0;
     baseHostCX* owner_cx_ = nullptr;
     inline baseHostCX* owner_cx() const { return owner_cx_; }
@@ -57,7 +58,7 @@ public:
     virtual int poll();
     [[maybe_unused]] static void polltime(int msec) { poll_msec = msec; }
 
-    bool __static_init = false;
+    bool _static_init = false;
 
     // my master: add me to the poll monitor at the right time
     baseCom* master_ = nullptr;
@@ -168,13 +169,13 @@ public:
 //     virtual std::string& name() = 0;
     
     virtual int connect(const char* , const char*) = 0;
-    virtual int read(int __fd, void* __buf, size_t __n, int __flags) = 0;
-    virtual int peek(int __fd, void* __buf, size_t __n, int __flags) = 0;
-    virtual int write(int __fd, const void* __buf, size_t __n, int __flags) = 0;
-    virtual void shutdown(int __fd) = 0;
-    virtual void close(int __fd); 
-    virtual int bind(unsigned short __port) = 0;
-    virtual int bind(const char* __path) = 0;
+    virtual int read(int _fd, void* _buf, size_t _n, int _flags) = 0;
+    virtual int peek(int _fd, void* _buf, size_t _n, int _flags) = 0;
+    virtual int write(int _fd, const void* _buf, size_t _n, int _flags) = 0;
+    virtual void shutdown(int _fd) = 0;
+    virtual void close(int _fd);
+    virtual int bind(unsigned short _port) = 0;
+    virtual int bind(const char* _path) = 0;
     
     // support for pseudo-socket, we call it virtual socket. It's negative numbered socket 
     // which can ne used by Com classes for socket translations (see UDPCom, for example)
@@ -202,7 +203,7 @@ public:
     }
 
 
-    virtual void on_new_socket(int __fd) {};
+    virtual void on_new_socket(int _fd) {};
 
     // syscall wrapper 
     virtual int accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen_) = 0;
@@ -354,9 +355,8 @@ public:
     inline int l4_proto() const { return l4_proto_; };
     inline void l4_proto(int p) { l4_proto_ = p; }    
 
-    DECLARE_C_NAME("baseCom");
-
-    DECLARE_LOGGING(to_string);
+    DECLARE_C_NAME("baseCom")
+    DECLARE_LOGGING(to_string)
 
     virtual std::string to_string(int verbosity=iINF) const = 0;
     virtual const std::string shortname() const = 0;
