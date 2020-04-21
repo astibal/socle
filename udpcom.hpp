@@ -105,37 +105,37 @@ public:
     
     static std::string udpcom_name_;
     
-    virtual void init(baseHostCX* owner);
-    virtual baseCom* replicate() { return new UDPCom(); };
+    void init(baseHostCX* owner) override;
+    baseCom* replicate() override { return new UDPCom(); };
     
     int connect(const char* host, const char* port) override;
-    virtual int bind(unsigned short port);
-    virtual int bind(const char* path) { return -1; };  
-    virtual int accept ( int sockfd, sockaddr* addr, socklen_t* addrlen_ );
-    virtual int translate_socket(int vsock);
+    int bind(unsigned short port) override;
+    int bind(const char* path) override { return -1; };
+    int accept ( int sockfd, sockaddr* addr, socklen_t* addrlen_ ) override;
+    int translate_socket(int vsock) const override;
     
-    virtual bool in_readset(int s);
-    virtual bool in_writeset(int s);
+    bool in_readset(int s) override;
+    bool in_writeset(int s) override;
     virtual bool in_exset(int s);
-    virtual int poll();
-    virtual int read(int __fd, void* __buf, size_t __n, int __flags);
-    virtual int read_from_pool(int __fd, void* __buf, size_t __n, int __flags);
-    virtual int recv(int __fd, void* __buf, size_t __n, int __flags) { return ::recv(__fd,__buf,__n,__flags);}; 
-    virtual int peek(int __fd, void* __buf, size_t __n, int __flags) { return read(__fd,__buf,__n, __flags | MSG_PEEK );};
+    int poll() override ;
+    int read(int _fd, void* _buf, size_t _n, int _flags) override;
+    virtual int read_from_pool(int _fd, void* _buf, size_t _n, int _flags);
+    virtual int recv(int _fd, void* _buf, size_t _n, int _flags) { return ::recv(_fd,_buf,_n,_flags); }
+    int peek(int _fd, void* _buf, size_t _n, int _flags) override { return read(_fd,_buf,_n, _flags | MSG_PEEK );};
     
     
-    virtual int write(int __fd, const void* __buf, size_t __n, int __flags);
-    virtual int write_to_pool(int __fd, const void* __buf, size_t __n, int __flags);
+    int write(int _fd, const void* _buf, size_t _n, int _flags) override;
+    virtual int write_to_pool(int _fd, const void* _buf, size_t _n, int _flags);
     
-    virtual void shutdown(int __fd);
+    void shutdown(int _fd) override;
     
-    virtual void cleanup() {};  
+    void cleanup() override {};
     
-    virtual bool is_connected(int s);
-    virtual bool com_status();
+    bool is_connected(int s) override;
+    bool com_status() override;
 
     virtual bool resolve_nonlocal_socket(int sock);
-    virtual bool resolve_socket(bool source, int s, std::string* target_host, std::string* target_port, sockaddr_storage* target_storage = 0);
+    bool resolve_socket(bool source, int s, std::string* target_host, std::string* target_port, sockaddr_storage* target_storage) override;
 protected:
 
     unsigned int bind_sock_family = AF_INET6;

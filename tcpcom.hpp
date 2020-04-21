@@ -48,13 +48,13 @@ public:
     
     int connect(const char* host, const char* port) override;
     int bind(unsigned short port) override;
-    int bind(const char* __path) override { return -1; };
+    int bind(const char* _path) override { return -1; };
     int accept (int sockfd, sockaddr* addr, socklen_t* addrlen_) override;
     
-    int read(int __fd, void* __buf, size_t __n, int __flags) override { return ::recv(__fd,__buf,__n,__flags); };
-    int peek(int __fd, void* __buf, size_t __n, int __flags) override { return read(__fd,__buf,__n, __flags | MSG_PEEK );};
-    int write(int __fd, const void* __buf, size_t __n, int __flags) override {
-        int r = ::send(__fd,__buf,__n,__flags); 
+    int read(int _fd, void* _buf, size_t _n, int _flags) override { return ::recv(_fd,_buf,_n,_flags); };
+    int peek(int _fd, void* _buf, size_t _n, int _flags) override { return read(_fd,_buf,_n, _flags | MSG_PEEK );};
+    int write(int _fd, const void* _buf, size_t _n, int _flags) override {
+        int r = ::send(_fd,_buf,_n,_flags);
         if(r < 0) {
             if(errno == EAGAIN || errno == EWOULDBLOCK) {
                 return 0;
@@ -62,10 +62,10 @@ public:
         }
         return r;
     };
-    void shutdown(int __fd) override {
-        int r = ::shutdown(__fd,SHUT_RDWR);
+    void shutdown(int _fd) override {
+        int r = ::shutdown(_fd,SHUT_RDWR);
         if(r > 0)
-            _dia("%s::shutdown[%d]: %s",name().c_str(),__fd,string_error().c_str());
+            _dia("%s::shutdown[%d]: %s",name().c_str(),_fd,string_error().c_str());
     };
     
     void cleanup() override {};
@@ -73,19 +73,19 @@ public:
     bool is_connected(int s) override;
     bool com_status() override;
 
-    void on_new_socket(int __fd) override;
+    void on_new_socket(int _fd) override;
 
 protected:
     int connect_sock_family = AF_UNSPEC;
     int connect_sock_type = SOCK_STREAM;
-    unsigned int bind_sock_family = AF_INET6;
-    unsigned int bind_sock_type = SOCK_STREAM;
-    unsigned int bind_sock_protocol = IPPROTO_TCP;
+    int bind_sock_family = AF_INET6;
+    int bind_sock_type = SOCK_STREAM;
+    int bind_sock_protocol = IPPROTO_TCP;
     
     DECLARE_C_NAME("TCPCom")
     DECLARE_LOGGING(to_string)
     
-    const std::string shortname() const override { static std::string s("tcp"); return s; }
+    std::string shortname() const override { static std::string s("tcp"); return s; }
     std::string to_string(int verbosity=iINF) const override { return class_name(); };
 };
 

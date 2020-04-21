@@ -19,12 +19,11 @@
 #include <tcpcom.hpp>
 #include <internet.hpp>
 
-DEFINE_LOGGING(TCPCom)
 
 void TCPCom::init(baseHostCX* owner) { 
     
     baseCom::init(owner); 
-};
+}
 
 int TCPCom::connect(const char* host, const char* port) {
     struct addrinfo hints{};
@@ -122,10 +121,10 @@ int TCPCom::connect(const char* host, const char* port) {
 
     return socket(sfd);
 
-};
+}
 
 int TCPCom::bind(unsigned short port) {
-    int s;
+
     sockaddr_storage sa{};
 
     sa.ss_family = bind_sock_family;
@@ -134,31 +133,33 @@ int TCPCom::bind(unsigned short port) {
         inet::to_sockaddr_in(&sa)->sin_port = htons(port);
         inet::to_sockaddr_in(&sa)->sin_addr.s_addr = INADDR_ANY;
     }
-    else
-    if(sa.ss_family == AF_INET6) {
+    else if(sa.ss_family == AF_INET6) {
         inet::to_sockaddr_in6(&sa)->sin6_port = htons(port);
         inet::to_sockaddr_in6(&sa)->sin6_addr = in6addr_any;
     }
-        
-    if ((s = ::socket(bind_sock_family, bind_sock_type, bind_sock_protocol)) == -1) return -129;
+
+    int sock = ::socket(bind_sock_family, bind_sock_type, bind_sock_protocol);
+
+    if (sock == -1)
+        return -129;
     
     int optval = 1;
-    setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof optval);
+    setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof optval);
     
     if(nonlocal_dst_) {
         // allows socket to accept connections for non-local IPs
-        _dia("TCPCom::bind[%d]: setting it transparent",s);
-        setsockopt(s, SOL_IP, IP_TRANSPARENT, &optval, sizeof(optval));     
+        _dia("TCPCom::bind[%d]: setting it transparent", sock);
+        setsockopt(sock, SOL_IP, IP_TRANSPARENT, &optval, sizeof(optval));
     }
     
-    if (::bind(s, (sockaddr *)&sa, sizeof(sa)) == -1) {
-        ::close(s);   // coverity: 1407959
+    if (::bind(sock, (sockaddr *)&sa, sizeof(sa)) == -1) {
+        ::close(sock);   // coverity: 1407959
         return -130;
     }
-    if (listen(s, 10) == -1)  return -131;
+    if (listen(sock, 10) == -1)  return -131;
     
-    return s;
-};  
+    return sock;
+}
 
 
 int TCPCom::accept ( int sockfd, sockaddr* addr, socklen_t* addrlen_ ) {
@@ -230,16 +231,16 @@ bool TCPCom::com_status() {
     return false;    
 }
 
-void TCPCom::on_new_socket(int __fd) {
+void TCPCom::on_new_socket(int _fd) {
     int optval = 1;
 
-    if(0 != setsockopt(__fd, IPPROTO_TCP, TCP_NODELAY , &optval, sizeof optval)) {
-        _err("TCPCom::on_new_socket[%d]: setsockopt TCP_NODELAY failed: %s", __fd, string_error().c_str());
+    if(0 != setsockopt(_fd, IPPROTO_TCP, TCP_NODELAY , &optval, sizeof optval)) {
+        _err("TCPCom::on_new_socket[%d]: setsockopt TCP_NODELAY failed: %s", _fd, string_error().c_str());
     }
     optval = 1;
-    if(0 != setsockopt(__fd, IPPROTO_TCP, TCP_QUICKACK , &optval, sizeof optval)) {
-        _err("TCPCom::on_new_socket[%d]: setsockopt TCP_QUICKACK failed: %s", __fd, string_error().c_str());
+    if(0 != setsockopt(_fd, IPPROTO_TCP, TCP_QUICKACK , &optval, sizeof optval)) {
+        _err("TCPCom::on_new_socket[%d]: setsockopt TCP_QUICKACK failed: %s", _fd, string_error().c_str());
     }
 
-    baseCom::on_new_socket(__fd);
+    baseCom::on_new_socket(_fd);
 }
