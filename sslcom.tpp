@@ -1440,7 +1440,7 @@ void baseSSLCom<L4Proto>::init_server() {
         SSL_use_PrivateKey(sslcom_ssl,sslcom_pref_key);
         SSL_use_certificate(sslcom_ssl,sslcom_pref_cert);
         
-        if(!sslcom_refcount_incremented__) {
+        if(!sslcom_refcount_incremented_) {
 #ifdef USE_OPENSSL11
             EVP_PKEY_up_ref(sslcom_pref_key);
             X509_up_ref(sslcom_pref_cert);
@@ -1448,7 +1448,7 @@ void baseSSLCom<L4Proto>::init_server() {
             CRYPTO_add(&sslcom_pref_key->references,+1,CRYPTO_LOCK_EVP_PKEY);
             CRYPTO_add(&sslcom_pref_cert->references,+1,CRYPTO_LOCK_X509);
 #endif
-            sslcom_refcount_incremented__ = true;
+            sslcom_refcount_incremented_ = true;
         }
     }
 
@@ -2473,44 +2473,44 @@ unsigned short baseSSLCom<L4Proto>::parse_peer_hello_extensions(buffer& b, unsig
 #pragma GCC diagnostic push
 
 template <class L4Proto>
-int baseSSLCom<L4Proto>::read ( int __fd, void* __buf, size_t __n, int __flags )  {
+int baseSSLCom<L4Proto>::read (int _fd, void* _buf, size_t _n, int _flags )  {
 
     int total_r = 0;
     int rounds = 0;
 
     if(opt_bypass) {
-        return L4Proto::read(__fd,__buf,__n,__flags);
+        return L4Proto::read(_fd, _buf, _n, _flags);
     }
 
     // non-blocking socket can be still opening
     if( sslcom_waiting ) {
-        _dum("SSLCom::read[%d]: still waiting for handshake to complete.",__fd);
+        _dum("SSLCom::read[%d]: still waiting for handshake to complete.", _fd);
         ret_handshake c = handshake();
 
         if (c == ret_handshake::AGAIN) {
-            _dum("SSLCom:: read[%d]: ssl_waiting() returned %d: still waiting",__fd,c);
+            _dum("SSLCom:: read[%d]: ssl_waiting() returned %d: still waiting", _fd, c);
             return -1;
         } else if (c == ret_handshake::ERROR) {
-            _dia("SSLCom:: read[%d]: ssl_waiting() returned %d: unrecoverable!",__fd,c);
+            _dia("SSLCom:: read[%d]: ssl_waiting() returned %d: unrecoverable!", _fd, c);
             return 0;
         }
 
-        _dia("SSLCom::read[%d]: handshake finished, continue with %s from socket",__fd, __flags & MSG_PEEK ? "peek" : "read");
+        _dia("SSLCom::read[%d]: handshake finished, continue with %s from socket", _fd, _flags & MSG_PEEK ? "peek" : "read");
         // if we were waiting, force next round of read
         forced_read(true);
         monitor_peer();
     }
 
     // if we are peeking, just do it and return, no magic done is here
-    if ((__flags & MSG_PEEK) != 0) {
-        _dum("SSLCom::read[%d]: about to peek  max %4d bytes",__fd,__n);
-        int peek_r = SSL_peek(sslcom_ssl,__buf,__n);
+    if ((_flags & MSG_PEEK) != 0) {
+        _dum("SSLCom::read[%d]: about to peek  max %4d bytes", _fd, _n);
+        int peek_r = SSL_peek(sslcom_ssl, _buf, _n);
         prof_peek_cnt++;
 
         if(peek_r > 0) {
-            _dia("SSLCom::read[%d]: peek returned %d",__fd, peek_r);
+            _dia("SSLCom::read[%d]: peek returned %d", _fd, peek_r);
         } else {
-            _dum("SSLCom::read[%d]: peek returned %d",__fd, peek_r);
+            _dum("SSLCom::read[%d]: peek returned %d", _fd, peek_r);
         }
 
         return peek_r;
@@ -2518,8 +2518,8 @@ int baseSSLCom<L4Proto>::read ( int __fd, void* __buf, size_t __n, int __flags )
 
     do {
 
-        if(total_r >= (int)__n) {
-            _deb("SSLCom::read[%d]: reached buffer capacity of %4d bytes, forcing new read",__fd,__n);
+        if(total_r >= (int)_n) {
+            _deb("SSLCom::read[%d]: reached buffer capacity of %4d bytes, forcing new read", _fd, _n);
 
             // this is tricky one :)
             // I have spent quite couple of hours of troubleshooting this:
@@ -2533,10 +2533,10 @@ int baseSSLCom<L4Proto>::read ( int __fd, void* __buf, size_t __n, int __flags )
             break;
         }
 
-        _ext("SSLCom::read[%d]: about to read  max %4d bytes",__fd,__n);
+        _ext("SSLCom::read[%d]: about to read  max %4d bytes", _fd, _n);
 
         ERR_clear_error();
-        int r = SSL_read (sslcom_ssl, __buf + total_r, __n - total_r);
+        int r = SSL_read (sslcom_ssl, static_cast<uint8_t*>(_buf) + total_r, _n - total_r);
         prof_read_cnt++;
 
         if(r == 0) {
@@ -2547,9 +2547,9 @@ int baseSSLCom<L4Proto>::read ( int __fd, void* __buf, size_t __n, int __flags )
         switch ( err ) {
             case SSL_ERROR_NONE:
 
-                _deb("SSLCom::read [%d]: %4d bytes read:(round %d) %s, %X",__fd,r,rounds,
-                                                                    (r == (signed int)__n) ? "(max)" : "(no-max)",
-                                                                         debug_log_data_crc ? socle_crc32(0,__buf,r) : 0
+                _deb("SSLCom::read [%d]: %4d bytes read:(round %d) %s, %X", _fd, r, rounds,
+                     (r == (signed int)_n) ? "(max)" : "(no-max)",
+                     debug_log_data_crc ? socle_crc32(0, _buf, r) : 0
                     );
 
                 if(r > 0)
@@ -2557,7 +2557,7 @@ int baseSSLCom<L4Proto>::read ( int __fd, void* __buf, size_t __n, int __flags )
 
                 
                 if(sslcom_read_blocked_on_write > 0) {
-                    master()->poller.modify(__fd, EPOLLIN);
+                    master()->poller.modify(_fd, EPOLLIN);
                     sslcom_read_blocked_on_write=0;
                 }
 
@@ -2574,12 +2574,12 @@ int baseSSLCom<L4Proto>::read ( int __fd, void* __buf, size_t __n, int __flags )
                 break;
 
             case SSL_ERROR_ZERO_RETURN:
-                _deb("SSLCom::read[%d]: zero returned",__fd);
+                _deb("SSLCom::read[%d]: zero returned", _fd);
                 SSL_shutdown (sslcom_ssl);
                 return r;
 
             case SSL_ERROR_WANT_READ:
-                _deb("SSLCom::read[%d]: want read: err=%d, read_now=%4d, total=%4d", __fd, err, r, total_r);
+                _deb("SSLCom::read[%d]: want read: err=%d, read_now=%4d, total=%4d", _fd, err, r, total_r);
 
                 read_want_read_cur++;
                 prof_want_read_cnt++;
@@ -2594,7 +2594,7 @@ int baseSSLCom<L4Proto>::read ( int __fd, void* __buf, size_t __n, int __flags )
 
                 // check timers and bail on timeout
                 if(timeval_msdelta_now(&timer_read_timeout) > SSLCOM_READ_TIMEOUT) {
-                    _err("SSLCom::read[%d]: wanted read timeout, closing.", __fd);
+                    _err("SSLCom::read[%d]: wanted read timeout, closing.", _fd);
                     error(ERROR_READ);
                     return 0;
                 }
@@ -2611,20 +2611,20 @@ int baseSSLCom<L4Proto>::read ( int __fd, void* __buf, size_t __n, int __flags )
                 when it is */
 
             case SSL_ERROR_WANT_CONNECT:
-                _dia("SSLCom::read[%d]: want connect",__fd);
+                _dia("SSLCom::read[%d]: want connect", _fd);
 
                 if(total_r > 0) return total_r;
                 return r;
 
             case SSL_ERROR_WANT_ACCEPT:
-                _dia("SSLCom::read[%d]: want accept",__fd);
+                _dia("SSLCom::read[%d]: want accept", _fd);
 
                 if(total_r > 0) return total_r;
                 return r;
 
 
             case SSL_ERROR_WANT_WRITE:
-                _deb("SSLCom::read[%d]: want write, last read returned %d, total read %4d",__fd,r,total_r);
+                _deb("SSLCom::read[%d]: want write, last read returned %d, total read %4d", _fd, r, total_r);
 
                 forced_read_on_write(true);
                 sslcom_read_blocked_on_write = 1;
@@ -2638,14 +2638,14 @@ int baseSSLCom<L4Proto>::read ( int __fd, void* __buf, size_t __n, int __flags )
                     rescan_write(socket());
                     read_want_write_cur = 0;
                 } else {
-                    // master()->poller.modify(__fd, EPOLLIN|EPOLLOUT);
+                    // master()->poller.modify(_fd, EPOLLIN|EPOLLOUT);
                     set_write_monitor(socket());
                 }
 
 
                 // check timers and bail on timeout
                 if(timeval_msdelta_now(&timer_read_timeout) > SSLCOM_READ_TIMEOUT) {
-                    _err("SSLCom::read[%d]: wanted read timeout, closing.",__fd);
+                    _err("SSLCom::read[%d]: wanted read timeout, closing.", _fd);
                     error(ERROR_READ);
                     return 0;
                 }
@@ -2655,18 +2655,18 @@ int baseSSLCom<L4Proto>::read ( int __fd, void* __buf, size_t __n, int __flags )
                 return r;
 
             case SSL_ERROR_WANT_X509_LOOKUP:
-                _dia("SSLCom::read[%d]: want x509 lookup",__fd);
+                _dia("SSLCom::read[%d]: want x509 lookup", _fd);
                 if(total_r > 0) return total_r;
                 return r;
 
             case SSL_ERROR_SYSCALL:
-                _dia("SSLCom::read[%d]: syscall error",__fd);
+                _dia("SSLCom::read[%d]: syscall error", _fd);
                 if(total_r > 0) return total_r;
                 return r;
 
             default:
                 if (r != -1 && err != 1) {
-                    _dia("SSLCom::read[%d] problem: %d, read returned %4d", __fd, err, r);
+                    _dia("SSLCom::read[%d] problem: %d, read returned %4d", _fd, err, r);
                 }
                 // 			SSL_shutdown (sslcom_ssl);
                 if(total_r > 0) return total_r;
@@ -2692,17 +2692,17 @@ int baseSSLCom<L4Proto>::read ( int __fd, void* __buf, size_t __n, int __flags )
 
 
 template <class L4Proto>
-int baseSSLCom<L4Proto>::write ( int __fd, const void* __buf, size_t __n, int __flags )  {
+int baseSSLCom<L4Proto>::write (int _fd, const void* _buf, size_t _n, int _flags )  {
 
-    if(__n == 0) {
-        _ext("SSLCom::write[%d]: called: about to write %d bytes",__fd,__n);
+    if(_n == 0) {
+        _ext("SSLCom::write[%d]: called: about to write %d bytes", _fd, _n);
     } else {
-        _deb("SSLCom::write[%d]: called: about to write %d bytes",__fd,__n);
+        _deb("SSLCom::write[%d]: called: about to write %d bytes", _fd, _n);
     }
 
 
     if(opt_bypass) {
-        return L4Proto::write(__fd,__buf,__n,__flags);
+        return L4Proto::write(_fd, _buf, _n, _flags);
     }
 
     // this one will be much trickier than just single call of SSL_read
@@ -2710,17 +2710,17 @@ int baseSSLCom<L4Proto>::write ( int __fd, const void* __buf, size_t __n, int __
 
     // non-blocking socket can be still opening
     if( sslcom_waiting ) {
-        _dum("SSLCom::write[%d]: still waiting for handshake to complete.",__fd);
+        _dum("SSLCom::write[%d]: still waiting for handshake to complete.", _fd);
 
         ret_handshake c = handshake();
         if (c == ret_handshake::AGAIN) {
-            _dum("SSLCom::write[%d]: ssl_waiting() returned %d: still waiting",__fd,c);
+            _dum("SSLCom::write[%d]: ssl_waiting() returned %d: still waiting", _fd, c);
             return 0;
         } else if (c == ret_handshake::ERROR) {
-            _dia("SSLCom::write[%d]: ssl_waiting() returned %d: unrecoverable!",__fd,c);
+            _dia("SSLCom::write[%d]: ssl_waiting() returned %d: unrecoverable!", _fd, c);
             return -1;
         }
-        _dia("SSLCom::write[%d]: handshake finished, continue with writing to socket",__fd);
+        _dia("SSLCom::write[%d]: handshake finished, continue with writing to socket", _fd);
         // if we were waiting, force next round of write
         forced_write(true);
         monitor_peer();
@@ -2728,18 +2728,18 @@ int baseSSLCom<L4Proto>::write ( int __fd, const void* __buf, size_t __n, int __
 
     sslcom_write_blocked_on_read=0;
     int normalized__n = 20480;
-    void *ptr = (void*)__buf;
+    void *ptr = (void*)_buf;
 
-    if(__n == 0) {
-        _ext("SSLCom::write[%d]: attempt to send %d bytes",__fd,__n);
+    if(_n == 0) {
+        _ext("SSLCom::write[%d]: attempt to send %d bytes", _fd, _n);
     } else {
-        _deb("SSLCom::write[%d]: attempt to send %d bytes",__fd,__n);
+        _deb("SSLCom::write[%d]: attempt to send %d bytes", _fd, _n);
     }
-    if ( __n < 20480) {
-        normalized__n = __n;
+    if (_n < 20480) {
+        normalized__n = _n;
     }
 
-    if (__n <= 0 ) {
+    if (_n <= 0 ) {
         return 0;
     }
 
@@ -2761,20 +2761,20 @@ int baseSSLCom<L4Proto>::write ( int __fd, const void* __buf, size_t __n, int __
 
             /* We wrote something*/
         case SSL_ERROR_NONE:
-            _deb("SSLCom::write[%d]: %4d bytes written to the ssl socket %s, %X",__fd,r, r != (signed int)__n ? "(incomplete)" : "",
-                debug_log_data_crc ? socle_crc32(0,__buf,r) : 0
+            _deb("SSLCom::write[%d]: %4d bytes written to the ssl socket %s, %X", _fd, r, r != (signed int)_n ? "(incomplete)" : "",
+                 debug_log_data_crc ? socle_crc32(0, _buf, r) : 0
                 );
             is_problem = false;
 
             if(sslcom_write_blocked_on_read > 0) {
                 sslcom_write_blocked_on_read = 0;
                 forced_write_on_read(false);
-                _dia("SSLCom::write[%d]: want read: cleared",__fd);
+                _dia("SSLCom::write[%d]: want read: cleared", _fd);
             }
             if(sslcom_write_blocked_on_write > 0) {
                 sslcom_write_blocked_on_write = 0;
-                master()->poller.modify(__fd,EPOLLIN);
-                _dia("SSLCom::write[%d]: want write: cleared",__fd);
+                master()->poller.modify(_fd, EPOLLIN);
+                _dia("SSLCom::write[%d]: want write: cleared", _fd);
             }
             
             // reset IO timeouts
@@ -2790,17 +2790,17 @@ int baseSSLCom<L4Proto>::write ( int __fd, const void* __buf, size_t __n, int __
 
             /* We would have blocked */
         case SSL_ERROR_WANT_WRITE:
-            _dia("SSLCom::write[%d]: want write: %d (written %4d)",__fd,err,r);
+            _dia("SSLCom::write[%d]: want write: %d (written %4d)", _fd, err, r);
 
             // trigger write again
-            master()->poller.modify(__fd,EPOLLIN|EPOLLOUT);
+            master()->poller.modify(_fd, EPOLLIN | EPOLLOUT);
             sslcom_write_blocked_on_write=1;
 
             if (r > 0) {
                 normalized__n = normalized__n - r;
                 ptr = static_cast<uint8_t*>(ptr) + r;
             } else {
-                _dum("SSLCom::write[%d]: want write: repeating last operation",__fd);
+                _dum("SSLCom::write[%d]: want write: repeating last operation", _fd);
             }
 
             write_want_write_cur++;
@@ -2812,7 +2812,7 @@ int baseSSLCom<L4Proto>::write ( int __fd, const void* __buf, size_t __n, int __
                 rescan_write(socket());
                 write_want_write_cur = 0;
             } else {
-                // master()->poller.modify(__fd, EPOLLIN|EPOLLOUT);
+                // master()->poller.modify(_fd, EPOLLIN|EPOLLOUT);
                 set_write_monitor(socket());
             }
 
@@ -2826,7 +2826,7 @@ int baseSSLCom<L4Proto>::write ( int __fd, const void* __buf, size_t __n, int __
                     We need to wait on the socket to be readable
                     but reinitiate our write when it is */
         case SSL_ERROR_WANT_READ:
-            _dia("SSLCom::write[%d]: want read: %d (written %4d)",__fd,err,r);
+            _dia("SSLCom::write[%d]: want read: %d (written %4d)", _fd, err, r);
 
             sslcom_write_blocked_on_read=1;
             forced_write_on_read(true);
@@ -2848,14 +2848,14 @@ int baseSSLCom<L4Proto>::write ( int __fd, const void* __buf, size_t __n, int __
 
             /* Some other error */
         default:
-            _deb("SSLCom::write[%d]: problem: %d",__fd,err);
+            _deb("SSLCom::write[%d]: problem: %d", _fd, err);
             apply_error_timer = true;
 
 
     }
     
     if(apply_error_timer && timeval_msdelta_now(&timer_write_timeout) > SSLCOM_WRITE_TIMEOUT) {
-        _err("SSLCom::write[%d]: write timeout, closing.",__fd);
+        _err("SSLCom::write[%d]: write timeout, closing.", _fd);
         error(ERROR_WRITE);
         is_problem = true;
     }    
@@ -2864,7 +2864,7 @@ int baseSSLCom<L4Proto>::write ( int __fd, const void* __buf, size_t __n, int __
         return 0;
     }
 
-    _dia("SSLCom::write[%d]: %4d bytes written",__fd,r);
+    _dia("SSLCom::write[%d]: %4d bytes written", _fd, r);
     return r;
 };
 
@@ -3063,12 +3063,12 @@ bool baseSSLCom<L4Proto>::com_status() {
 }
 
 template <class L4Proto>
-void baseSSLCom<L4Proto>::shutdown(int __fd) {
+void baseSSLCom<L4Proto>::shutdown(int _fd) {
     
     if(sslcom_ssl != nullptr) {
         SSL_shutdown(sslcom_ssl);
     }
-    L4Proto::shutdown(__fd);
+    L4Proto::shutdown(_fd);
 }
 
 
