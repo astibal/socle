@@ -1283,7 +1283,7 @@ int baseProxy::bind(std::string const& path, unsigned char side) {
     // this function will always return value of 'port' parameter (but <=0 will not be added)
     
     auto* cx = new baseHostCX(com()->replicate(), s);
-    cx->host() = string_format("listening_%s",path);
+    cx->host() = string_format("listening_%s", path.c_str());
     cx->com()->nonlocal_dst(com()->nonlocal_dst());
     
     if ( s > 0 ) {

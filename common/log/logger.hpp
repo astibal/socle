@@ -204,8 +204,9 @@ void logger::log(loglevel l, const std::string& fmt,  Args ... args) {
 
 
     std::string desc = std::string(level_table[0]);
+
     if (l > sizeof(level_table)-1) {
-        desc = string_format("%d",l);
+        desc = string_format("%d",l.level());
     } else {
         desc = level_table[l.level()];
     }
