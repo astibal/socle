@@ -55,7 +55,7 @@ public:
     inline baseHostCX* owner_cx() const { return owner_cx_; }
     
     virtual int poll();
-    static void polltime(int msec) { poll_msec = msec; }
+    [[maybe_unused]] static void polltime(int msec) { poll_msec = msec; }
 
     bool __static_init = false;
 
@@ -94,7 +94,7 @@ public:
 private:
 
     int fd_ = 0;
-    unsigned long flags_;
+
     // feedback mechanism to get if the communication level is up/down
     // necessary for some mitm scenarios and connection status feedback between 2 sockets
     baseCom* peer_ = nullptr;
@@ -141,8 +141,8 @@ public:
 
     void forced_read_on_write(bool b)  { forced_read_on_write_ = b; }
     void forced_write_on_read(bool b) { forced_write_on_read_ = b; }    
-    bool forced_read_on_write()  { return forced_read_on_write_; }
-    bool forced_write_on_read() { return forced_write_on_read_; }
+    [[nodiscard]] bool forced_read_on_write() const  { return forced_read_on_write_; }
+    [[nodiscard]] bool forced_write_on_read() const { return forced_write_on_read_; }
     
     bool forced_read_on_write_reset() { bool r = forced_read_on_write_; forced_read_on_write_= false;  return r; }
     bool forced_write_on_read_reset() { bool r = forced_write_on_read_; forced_write_on_read_ = false;  return r; }
@@ -220,9 +220,9 @@ public:
     }
 
 
-    inline int unblock() const { return unblock(socket()); };
+    [[maybe_unused]] inline int unblock() const { return unblock(socket()); };
     int unblock(int s) const;
-    static inline int is_blocking(int s) { return !(::fcntl(s, F_GETFL, 0) & O_NONBLOCK);  }
+    [[maybe_unused]] static inline int is_blocking(int s) { return !(::fcntl(s, F_GETFL, 0) & O_NONBLOCK);  }
     
     virtual void cleanup() = 0;
 
@@ -315,7 +315,7 @@ public:
         } 
     }
         
-    virtual bool resolve_socket(bool source,int s, std::string *target_host, std::string *target_port, struct sockaddr_storage *target_storage = nullptr );
+    virtual bool resolve_socket(bool source,int s, std::string *target_host, std::string *target_port, struct sockaddr_storage *target_storage);
     bool resolve_socket_src(int s, std::string *target_host, std::string *target_port, struct sockaddr_storage *target_storage = nullptr ) {
         return resolve_socket(true, s, target_host, target_port, target_storage);
     }
@@ -328,20 +328,20 @@ public:
     bool resolve_redirected_dst_socket(int sock);
 
     // non-local socket support
-    inline bool nonlocal_dst() { return nonlocal_dst_; }
+    [[nodiscard]] inline bool nonlocal_dst() const { return nonlocal_dst_; }
     inline void nonlocal_dst(bool b) { nonlocal_dst_ = b; }	
-    virtual int namesocket(int, std::string&, unsigned short,sa_family_t=AF_INET);
+    virtual int namesocket(int, std::string&, unsigned short, sa_family_t);
 
     inline void nonlocal_dst_resolved(bool b) { nonlocal_dst_resolved_ = b; }
-    inline bool nonlocal_dst_resolved(void) { return nonlocal_dst_resolved_; }
-    inline std::string& nonlocal_dst_host(void) { return nonlocal_dst_host_; }
-    inline unsigned short& nonlocal_dst_port(void) { return nonlocal_dst_port_; }
+    [[nodiscard]] inline bool nonlocal_dst_resolved() const { return nonlocal_dst_resolved_; }
+    inline std::string& nonlocal_dst_host() { return nonlocal_dst_host_; }
+    inline unsigned short& nonlocal_dst_port() { return nonlocal_dst_port_; }
     inline struct sockaddr_storage* nonlocal_dst_peer_info() { return &nonlocal_dst_peer_info_; }	
 
-    inline bool nonlocal_src() { return nonlocal_src_; }
+    [[nodiscard]] inline bool nonlocal_src() const { return nonlocal_src_; }
     inline void nonlocal_src(bool b) { nonlocal_src_ = b; } 
-    inline std::string& nonlocal_src_host(void) { return nonlocal_src_host_; }
-    inline unsigned short& nonlocal_src_port(void) { return nonlocal_src_port_; }
+    inline std::string& nonlocal_src_host() { return nonlocal_src_host_; }
+    inline unsigned short& nonlocal_src_port() { return nonlocal_src_port_; }
     
 
 

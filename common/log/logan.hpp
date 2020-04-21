@@ -310,7 +310,7 @@ public:
             // found loglevel
             return it->second;
         } else {
-            loglevel* l = new loglevel(0,0);
+            auto* l = new loglevel(0,0);
             l->subject(subject);
 
             topic_db_.emplace( std::pair<std::string, loglevel*>(subject, l));
@@ -352,7 +352,7 @@ public:
     };
 
 
-    static logan_lite create(std::string s) {
+    static logan_lite create(std::string const& s) {
         logan_lite l = logan_lite(s);
 
         return l;
@@ -409,7 +409,7 @@ public:
     }
 
     template<class ... Args>
-    static void log(loglevel lev, const std::string& topic, const char* fmt, Args ... args) {
+    static void log(loglevel const& lev, const std::string& topic, const char* fmt, Args ... args) {
 
         auto* topic_lev = get()[topic];
 
@@ -466,14 +466,16 @@ loglevel* logan_attached<T>::level() const {
 
     l_name = logan_lite::level();
 
-    if( l_area && *l_area > *l_this)
-        return l_area;
+    if(l_this) {
+        if (l_area && *l_area > *l_this)
+            return l_area;
 
-    if( l_name && *l_name > *l_this )
-        return l_name;
+        if (l_name && *l_name > *l_this)
+            return l_name;
 
-    if( l_this && *l_this > NON)
-        return l_this;
+        if (*l_this > NON)
+            return l_this;
+    }
 
     // return damn default
     return logan_lite::level();

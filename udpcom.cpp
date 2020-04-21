@@ -857,7 +857,7 @@ void UDPCom::shutdown(int __fd) {
                         ::close(it.socket);
                     }
                     
-                    DatagramCom* m = dynamic_cast<DatagramCom*>(master());
+                    auto* m = dynamic_cast<DatagramCom*>(master());
                     if(m) {
                         std::lock_guard<std::recursive_mutex>(m->lock);
                         int remc = m->in_virt_set.erase(__fd);

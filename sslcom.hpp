@@ -73,8 +73,8 @@ void locking_function ( int mode, int n, const char * file, int line );
 unsigned long id_function ();
 
 
-#pragma GCC diagnostic pop 
-#pragma GCC diagnostic pop 
+#pragma GCC diagnostic pop
+#pragma GCC diagnostic pop
 
 int THREAD_setup ();
 int THREAD_cleanup ();
@@ -91,8 +91,7 @@ extern int SSLCOM_WRITE_TIMEOUT;
 
 enum class ret_handshake { ERROR=-1, AGAIN=0, SUCCESS=1, BYPASS=2 };
 
-namespace socle {
-    namespace ex {
+namespace socle::ex {
         class SSL_clienthello_malformed : public std::exception {
         public:
 
@@ -102,7 +101,6 @@ namespace socle {
             }
         };
     }
-}
 
 template <class L4Proto>
 class baseSSLCom : public L4Proto, public virtual baseCom {
@@ -406,8 +404,8 @@ public:
     int  opt_ocsp_mode = 0;
 
     int ocsp_cert_is_revoked = -1;
-    static int certificate_status_ocsp_check(baseSSLCom* com);
-    static int certificate_status_oob_check(baseSSLCom* com, int required);
+    [[maybe_unused]] static int certificate_status_ocsp_check(baseSSLCom* com);
+    [[maybe_unused]] static int certificate_status_oob_check(baseSSLCom* com, int required);
 
     enum class staple_code {
             NOT_PROCESSED,
@@ -459,17 +457,17 @@ public:
                                     VRF_NOTTESTED=0x8000
     } verify_status_t;
 
-    inline int verify_get() const { return static_cast<int>(verify_status_); }
-    inline bool verify_bitcheck(unsigned int s) const { return (flag_check(verify_status_, s)); }
-    inline void verify_bitset(unsigned int s) {
+    [[maybe_unused]] inline int verify_get() const { return static_cast<int>(verify_status_); }
+    [[maybe_unused]] inline bool verify_bitcheck(unsigned int s) const { return (flag_check(verify_status_, s)); }
+    [[maybe_unused]] inline void verify_bitset(unsigned int s) {
         flag_set(&verify_status_, s);
         _dia("verify_bitset: set 0x%04x: result 0x%04x", s, verify_status_);
     }
-    inline void verify_bitreset(unsigned int s) {
+    [[maybe_unused]] inline void verify_bitreset(unsigned int s) {
         verify_status_ = flag_reset(verify_status_, s);
         _dia("verify_bitreset: set 0x%04x: result 0x%04x", s, verify_status_);
     }
-    inline void verify_bitflip(unsigned int s)  {
+    [[maybe_unused]] inline void verify_bitflip(unsigned int s)  {
         verify_status_ = flag_flip(verify_status_, s);
         _dia("verify_bitflip: set 0x%04x: result 0x%04x", s, verify_status_);
     }

@@ -64,7 +64,7 @@ public:
         std::string ts = baseHostCX::to_string(verbosity);
         int sz = cflow().cflow().size();
 
-        return string_format("AppHostCX: sz:%d [%s]", sz,ts.c_str());
+        return string_format("AppHostCX: sz:%d [%s]", sz, ts.c_str());
     };
 protected:
 

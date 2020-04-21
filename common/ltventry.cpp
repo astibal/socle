@@ -50,7 +50,7 @@ LTVEntry::~LTVEntry() {
 	
 	for (auto ltve: contains()) {
 		delete ltve;
-	};
+	}
 	
 	contains().clear();
 	data_ = nullptr;
@@ -124,7 +124,7 @@ int LTVEntry::unpack(uint8_t* buffer, unsigned int buflen) {
 			
 			do {
 				// all sub-entries should not allocate a single byte of memory => owner(false) will ensure this
-				LTVEntry* l = new LTVEntry();
+				auto* l = new LTVEntry();
 				l->owner(false);
 				
 				uint8_t* new_data = data() + data_index;
@@ -148,7 +148,7 @@ int LTVEntry::unpack(uint8_t* buffer, unsigned int buflen) {
 					break;
 				}
 				
-			} while (1);
+			} while (true);
 		}
 	}
 
@@ -184,15 +184,16 @@ std::string LTVEntry::hr(int ltrim) {
 	if (type_ == typ::str) {
 		std::string s = std::string((char*)data(),(unsigned int)len_-ltv_header_size());
 		r << p + "Value (string) : " << s << '\n' ;
-	} else 
-	if (type_ == typ::cont) {
-		r << p + "... " << std::to_string(contains().size()) << " element(s):\n";
 	} else
-	{
+    if (type_ == typ::cont) {
+        r << p + "... " << std::to_string(contains().size()) << " element(s):\n";
+	} else {
 		r << hex_dump(data(),datalen(),ltrim);
-	};
+	}
 	
-	if (tr != 0) r << "\n";
+    if(tr) {
+        r << "\n";
+    }
 	
 	
 	for (auto* ltve: contains()) {
@@ -202,11 +203,11 @@ std::string LTVEntry::hr(int ltrim) {
 	return r.str();
 }
 
-std::string LTVEntry::data_str() {
+std::string LTVEntry::data_str() const {
 	return std::string((char*)data(),(unsigned int)len_-ltv_header_size());
 }
 
-std::string LTVEntry::data_str_ip() {
+std::string LTVEntry::data_str_ip() const {
 	in_addr dd_addr = *(in_addr*)data();
 	const char *ip = ::inet_ntoa((in_addr)dd_addr);
 	return std::string(ip);

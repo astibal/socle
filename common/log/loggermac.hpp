@@ -410,7 +410,7 @@ public:                                      \
     loglevel& this_log_level_ref() { return this_log_level_; } \
     static loglevel log_level;                             \
     virtual loglevel get_this_log_level() const { return this_log_level_ > log_level ? this_log_level_: log_level ; }     \
-    virtual void set_this_log_level(loglevel nl) { this_log_level_ = nl; }  \
+    virtual void set_this_log_level(loglevel const& nl) { this_log_level_ = nl; }  \
 private:                                                       \
     mutable std::string hr_;                                           \
     loglevel this_log_level_ = NON;
@@ -430,7 +430,7 @@ public:                                             \
     virtual std::string const& name() const  { return this->name_; }          \
     virtual const char* c_name() const { return this->name_.c_str(); }; \
     virtual void name(const char* n) { name_ = n; };        \
-    virtual void name(std::string n) { name_ = n; };        \
+    virtual void name(std::string const& n) { name_ = n; };        \
     \
                     \
     virtual const std::string& class_name() const { static const std::string c(string_name); return c; } \

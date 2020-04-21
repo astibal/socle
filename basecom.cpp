@@ -32,9 +32,9 @@ DEFINE_LOGGING(baseCom)
 
 void baseCom::init(baseHostCX* owner) {
 
-	if(!__static_init) { 
-		static_init(); 
-		__static_init = true; 
+	if(!_static_init) {
+		static_init();
+        _static_init = true;
 	} 	
 	
 	owner_cx_ = owner;
@@ -84,8 +84,7 @@ int baseCom::namesocket(int sockfd, std::string& addr, unsigned short port, sa_f
         inet::to_sockaddr_in(&sa)->sin_port = htons(port);
         inet_pton(family,addr.c_str(),&inet::to_sockaddr_in(&sa)->sin_addr);
         
-    } else
-    if(family == AF_INET6) {
+    } else if(family == AF_INET6) {
         inet::to_sockaddr_in6(&sa)->sin6_port = htons(port);
         inet_pton(family,addr.c_str(),&inet::to_sockaddr_in6(&sa)->sin6_addr);
     }
@@ -267,8 +266,7 @@ int baseCom::poll() {
     if (r < 0) {
         _dia("baseCom::poll: returned by poll: %s",string_error().c_str());
     }
-    
-    poll_sockmax = 0;
+
     poll_result = r;
     
     return r;

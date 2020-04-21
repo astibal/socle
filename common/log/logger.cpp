@@ -102,7 +102,7 @@ bool logger::should_log_topic(loglevel& writer, loglevel& msg) {
             }
             
             // Exclusive topic
-            if(msg.more()->exclusive_topic) {
+            if (msg.more()->exclusive_topic) {
                 if(t == iNON) return false;
                 
                 unsigned int l_area = 0xffff0000 | msg.topic();
