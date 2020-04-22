@@ -497,6 +497,15 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int lib_preverify, X509_STORE_
         }
 
         com->sslcom_target_issuer = X509_dup(xcert);
+
+        if(xcert) {
+            int sig_nid = X509_get_signature_nid(xcert);
+            _dia("Intermediate signature type(%d): %s", sig_nid, OBJ_nid2ln(sig_nid));
+            if(sig_nid == NID_sha1WithRSAEncryption) {
+                com->verify_bitset(VRF_EXTENDED_INFO);
+                com->verify_extended_info().emplace_back(SSLCom::VRF_OTHER_SHA1_SIGNATURE);
+            }
+        }
     }
     else if (depth == 2) {
         if(com->sslcom_target_issuer_issuer)  {
@@ -2055,12 +2064,13 @@ bool baseSSLCom<L4Proto>::store_session_if_needed() {
                 if(SSL_SESSION_is_resumable(SSL_get0_session(sslcom_ssl))) {
                     _dia("ticketing: obtained session can be used for resumption");
 
-                    if(verify_bitcheck(VRF_OK)) {
+                    // only resumable, crystal OK sessions will be trusted for resumption
+                    if(verify_get() == VRF_OK) {
                         certstore()->session_cache.set(key, new session_holder(SSL_get1_session(sslcom_ssl)));
                         _dia("ticketing: key %s: keying material stored, cache size = %d", key.c_str(),
                              certstore()->session_cache.cache().size());
                     } else {
-                        _dia("ticketing: session not stored due to verify result");
+                        _dia("ticketing: session not stored due to verify result 0x%04x, extended 0x%04x", verify_get(), verify_extended_info());
                     }
 
                     ret = true;

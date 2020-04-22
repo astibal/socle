@@ -437,7 +437,7 @@ public:
     int  opt_failed_certcheck_override_timeout = 600; // if failed ssl override is active, this is the timeout.
     int  opt_failed_certcheck_override_timeout_type = 0; // 0 - hard timeout, 1 - idle timeout (reset timer on traffic)
     
-    int opt_client_cert_action = 1;                    // 0 - display a warning message and block, or drop the connection
+    int opt_client_cert_action = 1;                     // 0 - display a warning message and block, or drop the connection
                                                         // 1 - pass, don't provide any certificate to server
                                                         // 2 - bypass next connection
     
@@ -451,11 +451,16 @@ public:
                     VRF_REVOKED=0x20,
                     VRF_CLIENT_CERT_RQ=0x40,
                     VRF_HOSTNAME_FAILED=0x80,
-
                                     VRF_DEFERRED=0x1000,
+                                    VRF_EXTENDED_INFO=0x2000,
                                     VRF_ALLFAILED=0x4000,
                                     VRF_NOTTESTED=0x8000
     } verify_status_t;
+
+    using vrf_other_list = std::vector<short>;
+    vrf_other_list vrf_other_;
+    typedef enum { VRF_OTHER_SHA1_SIGNATURE=42 } vrf_other_values_t;
+    vrf_other_list& verify_extended_info() { return vrf_other_; }
 
     [[maybe_unused]] inline int verify_get() const { return static_cast<int>(verify_status_); }
     [[maybe_unused]] inline bool verify_bitcheck(unsigned int s) const { return (flag_check(verify_status_, s)); }
