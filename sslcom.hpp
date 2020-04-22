@@ -118,7 +118,7 @@ public:
     static SSL_SESSION* server_get_session_callback(SSL* ssl, const unsigned char* , int, int* );
     static int new_session_callback(SSL* ssl, SSL_SESSION* session);
 
-
+    SSL* get_SSL() const { return sslcom_ssl; }
     X509* target_cert() const { return sslcom_target_cert; }
     X509* target_issuer() const { return sslcom_target_issuer; };
     X509* target_issuer_issuer() const { return sslcom_target_issuer_issuer; };
