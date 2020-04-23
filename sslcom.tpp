@@ -2070,7 +2070,17 @@ bool baseSSLCom<L4Proto>::store_session_if_needed() {
                         _dia("ticketing: key %s: keying material stored, cache size = %d", key.c_str(),
                              certstore()->session_cache.cache().size());
                     } else {
-                        _dia("ticketing: session not stored due to verify result 0x%04x, extended 0x%04x", verify_get(), verify_extended_info());
+
+                        std::string ext_str;
+
+                        if(! verify_extended_info().empty()) {
+                            ext_str += ", extended ";
+                            for (auto ei: verify_extended_info()) {
+                                ext_str += string_format("%d, ", ei);
+                            }
+                        }
+
+                        _dia("ticketing: session not stored due to verify result 0x%04x%s", verify_get(), ext_str.c_str());
                     }
 
                     ret = true;
