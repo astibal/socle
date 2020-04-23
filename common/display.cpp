@@ -37,14 +37,10 @@
 
 class buffer;
 
-std::recursive_mutex formatter_lock;
 
 
 // don't use this function. Its behavior with writing to c_str() is undefined
 std::string string_format_old(const char* fmt, ...) {
-    
-    // there could be more precious implemenatation of this in the future
-    std::lock_guard<std::recursive_mutex> l(formatter_lock);
     
     int size = 512;
     std::string str;
@@ -72,11 +68,11 @@ std::string string_format_old(const char* fmt, ...) {
 
 std::string hex_print(unsigned char* data, unsigned int len) {
     std::stringstream ss;
-    
+
     for(unsigned int i=0; i < len; i++) {
         ss << string_format("%02X", data[i]);
     }
-    
+
     return ss.str();
 }
 
@@ -87,14 +83,10 @@ std::string hex_dump(buffer& b, unsigned int ltrim, unsigned char prefix) { retu
 std::string hex_dump(unsigned char *data, int size,unsigned int ltrim, unsigned char prefix)
 {
     /* dumps size bytes of *data to stdout. Looks like:
-     * [0000] 75 6E 6B 6E 6F 77 6E 20
-     *                  30 FF 00 00 00 00 39 00 unknown 0.....9.
-     * (in a single line of course)
+     * [0000] 75 6E 6B 6E 6F 77 6E 20 30 FF 00 00 00 00 39 00 unknown 0.....9.
      */
 
-    // there could be more precious implemenatation of this in the future
-    std::lock_guard<std::recursive_mutex> l(formatter_lock);    
-    
+
     unsigned char *p = data;
 
     int n;
@@ -168,9 +160,7 @@ std::string hex_dump(unsigned char *data, int size,unsigned int ltrim, unsigned 
 }
 
 std::string string_error() {
-    // there could be more precious implemenatation of this in the future
-    std::lock_guard<std::recursive_mutex> l(formatter_lock);
-    
+
     int e = errno;
     char msg[255];
     memset(msg,0,255);
@@ -182,8 +172,6 @@ std::string string_error() {
 std::string bt(bool add_r) {
 
 #ifndef LIBC_MUSL
-    // there could be more precious implemenatation of this in the future
-    std::lock_guard<std::recursive_mutex> l(formatter_lock);    
 
     std::string maybe_r;
     if(add_r)
