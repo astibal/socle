@@ -139,8 +139,8 @@ public:
 protected:
 
     unsigned int bind_sock_family = AF_INET6;
-    unsigned int bind_sock_type = SOCK_DGRAM;
-    unsigned int bind_sock_protocol = IPPROTO_UDP;
+    int bind_sock_type = SOCK_DGRAM;
+    int bind_sock_protocol = IPPROTO_UDP;
     
     sockaddr_storage udpcom_addr {0};
     socklen_t udpcom_addrlen {0};

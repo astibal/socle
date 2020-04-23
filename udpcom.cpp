@@ -496,11 +496,11 @@ int UDPCom::write(int __fd, const void* __buf, size_t __n, int __flags)
     return -1;
 }
 
-int UDPCom::write_to_pool(int __fd, const void* __buf, size_t __n, int __flags) {
+int UDPCom::write_to_pool(int _fd, const void* _buf, size_t _n, int _flags) {
     
     std::lock_guard<std::recursive_mutex> l(DatagramCom::lock);
     
-    auto it_record = DatagramCom::datagrams_received.find((unsigned int)__fd);
+    auto it_record = DatagramCom::datagrams_received.find((unsigned int)_fd);
     if(it_record != DatagramCom::datagrams_received.end()) {  
         Datagram& record = (*it_record).second;
         
@@ -508,16 +508,16 @@ int UDPCom::write_to_pool(int __fd, const void* __buf, size_t __n, int __flags) 
         unsigned short port_src, port_dst;
         inet_ss_address_unpack(&record.src,&ip_src,&port_src);
         
-        sockaddr_storage record_src_4fix;
+        sockaddr_storage record_src_4fix{0};
         
         inet_ss_address_unpack(&record.dst,&ip_dst,&port_dst);
         std::string af_src = inet_family_str(record.src_family());
         std::string af_dst = inet_family_str(record.dst_family());
         
-        _dia("UDPCom::write_to_pool[%d]: about to write %d bytes into socket %d",__fd,__n,record.socket);
-        _deb("UDPCom::write_to_pool[%d]: %s:%s:%d - %s:%s:%d",__fd,
-                                         af_src.c_str(),ip_src.c_str(), port_src,
-                                                            af_dst.c_str(),ip_dst.c_str(), port_dst
+        _dia("UDPCom::write_to_pool[%d]: about to write %d bytes into socket %d", _fd, _n, record.socket);
+        _deb("UDPCom::write_to_pool[%d]: %s:%s:%d - %s:%s:%d", _fd,
+             af_src.c_str(), ip_src.c_str(), port_src,
+             af_dst.c_str(), ip_dst.c_str(), port_dst
             );
 
 
@@ -528,8 +528,8 @@ int UDPCom::write_to_pool(int __fd, const void* __buf, size_t __n, int __flags) 
         char cmbuf[128];
         memset(cmbuf,0,sizeof(cmbuf));
         
-        io.iov_base = (void*)__buf;
-        io.iov_len = __n;
+        io.iov_base = (void*)_buf;
+        io.iov_len = _n;
 
         message_header.msg_iov = &io;
         message_header.msg_iovlen = 1;
@@ -602,9 +602,9 @@ int UDPCom::write_to_pool(int __fd, const void* __buf, size_t __n, int __flags) 
         inet_ss_address_remap(&record.dst, &ss_d);
         inet_ss_address_remap(&record.src, &ss_s);
         
-        _dia("UDPCom::write_to_pool[%d]: real=%d, embryonic=%d",__fd,record.real_socket,record.embryonic);
+        _dia("UDPCom::write_to_pool[%d]: real=%d, embryonic=%d", _fd, record.real_socket, record.embryonic);
         if(record.real_socket && record.embryonic) {
-            _dia("UDPCom::write_to_pool[%d]: changing background embryonic socket %d to %d",__fd,record.socket,d);
+            _dia("UDPCom::write_to_pool[%d]: changing background embryonic socket %d to %d", _fd, record.socket, d);
             
             
             int n = 1;
@@ -629,12 +629,12 @@ int UDPCom::write_to_pool(int __fd, const void* __buf, size_t __n, int __flags) 
                 _err("cannot set socket %d option SO_BROADCAST", d);
             }
             
-            _dia("UDPCom::write_to_pool[%d]: background embryonic socket %s-%s",__fd, inet_ss_str(&ss_s).c_str(), inet_ss_str(&ss_d).c_str());
+            _dia("UDPCom::write_to_pool[%d]: background embryonic socket %s-%s", _fd, inet_ss_str(&ss_s).c_str(), inet_ss_str(&ss_d).c_str());
             
             ret_bind = ::bind (d, (struct sockaddr*)&(ss_d), sizeof (struct sockaddr_storage));
             int ret_conn = ::connect(d, (struct sockaddr*)&(ss_s), sizeof (struct sockaddr_storage));
             
-            if (ret_bind != 0) _dia("UDPCom::write_to_pool[%d]: %s",__fd,string_error().c_str());
+            if (ret_bind != 0) _dia("UDPCom::write_to_pool[%d]: %s", _fd, string_error().c_str());
             
             record.embryonic = false;
             
@@ -642,7 +642,7 @@ int UDPCom::write_to_pool(int __fd, const void* __buf, size_t __n, int __flags) 
             record.socket = d;
             
             
-            _dia("UDPCom::write_to_pool[%d]: background mature socket %d bind status %d, conn status %d",__fd,record.socket,ret_bind,ret_conn);
+            _dia("UDPCom::write_to_pool[%d]: background mature socket %d bind status %d, conn status %d", _fd, record.socket, ret_bind, ret_conn);
             
             master()->set_monitor(record.socket);
             master()->set_poll_handler(record.socket,master()->get_poll_handler(old_socket));
@@ -653,54 +653,54 @@ int UDPCom::write_to_pool(int __fd, const void* __buf, size_t __n, int __flags) 
         }
         
         if(ret_bind != 0) {
-            _err("UDPCom::write_to_pool[%d]: cannot bind to destination!",__fd);
+            _err("UDPCom::write_to_pool[%d]: cannot bind to destination!", _fd);
         } else {
-            _deb("UDPCom::write_to_pool[%d]: about to write %d bytes into socket %d",__fd,__n,record.socket);
-            _deb("UDPCom::write_to_pool[%d]: custom transparent socket: %d",__fd,d);
+            _deb("UDPCom::write_to_pool[%d]: about to write %d bytes into socket %d", _fd, _n, record.socket);
+            _deb("UDPCom::write_to_pool[%d]: custom transparent socket: %d", _fd, d);
             
             if(record.real_socket) {
-                l = ::send(record.socket,__buf,__n, 0);
+                l = ::send(record.socket, _buf, _n, 0);
             } else {
                 int n = 1;
                 if(ss_d.ss_family == AF_INET6) {
                     if(0 != setsockopt(d, SOL_IPV6, IPV6_TRANSPARENT, &n, sizeof(n))) {
-                        _err("UDPCom::write_to_pool[%d]: socket %d cannot set option IPV6_TRANSPARENT: %s", __fd, d, string_error().c_str());
+                        _err("UDPCom::write_to_pool[%d]: socket %d cannot set option IPV6_TRANSPARENT: %s", _fd, d, string_error().c_str());
                     }
                     n = 1;
                 }
                 if(ss_d.ss_family == AF_INET ) {
                     if(0 != setsockopt(d, SOL_IP, IP_TRANSPARENT, &n, sizeof(n))) {
-                        _err("UDPCom::write_to_pool[%d]: socket: %d: cannot set option IP_TRANSPARENT: %s", __fd, d, string_error().c_str());
+                        _err("UDPCom::write_to_pool[%d]: socket: %d: cannot set option IP_TRANSPARENT: %s", _fd, d, string_error().c_str());
                     }
                     n = 1;
                 }
                 if(0 != setsockopt(d, SOL_SOCKET, SO_REUSEADDR, &n, sizeof(n))) {
-                    _err("UDPCom::write_to_pool[%d]: socket: %d: cannot set option SO_REUSEADDR: %s", __fd, d, string_error().c_str());
+                    _err("UDPCom::write_to_pool[%d]: socket: %d: cannot set option SO_REUSEADDR: %s", _fd, d, string_error().c_str());
                 }
                 n = 1;
 
                 if(0 != setsockopt(d, SOL_SOCKET, SO_BROADCAST, &n, sizeof(n))) {
-                    _err("UDPCom::write_to_pool[%d]: socket: %d: cannot set option SO_BROADCAST: %s", __fd, d, string_error().c_str());
+                    _err("UDPCom::write_to_pool[%d]: socket: %d: cannot set option SO_BROADCAST: %s", _fd, d, string_error().c_str());
                 }
 
                 ret_bind = ::bind (d, (struct sockaddr*)&(ss_d), sizeof (struct sockaddr_storage));
                 if(0 != ret_bind) {
-                    _err("UDPCom::write_to_pool[%d]: socket: %d: cannot bind: %s", __fd, d, string_error().c_str());
+                    _err("UDPCom::write_to_pool[%d]: socket: %d: cannot bind: %s", _fd, d, string_error().c_str());
                 }
 
                 int ret_conn = ::connect(d, (struct sockaddr*)&(ss_s), sizeof (struct sockaddr_storage));
                 
                 if(ret_conn != 0) {
-                    _err("UDPCom::write_to_pool[%d]: socket: %d: connect error: %s",__fd,d,string_error().c_str());
+                    _err("UDPCom::write_to_pool[%d]: socket: %d: connect error: %s", _fd, d, string_error().c_str());
                 }
                 
                 l = ::sendmsg(d,&message_header,0);
             }
             
             if(l < 0) {
-                _err("UDPCom::write_to_pool[%d]: socket: %d: written %d bytes: %s",__fd,d,l, string_error().c_str());
+                _err("UDPCom::write_to_pool[%d]: socket: %d: written %d bytes: %s", _fd, d, l, string_error().c_str());
             } else {
-                _deb("UDPCom::write_to_pool[%d]: socket: %d: written %d bytes",__fd,d,l);
+                _deb("UDPCom::write_to_pool[%d]: socket: %d: written %d bytes", _fd, d, l);
             }
         }
         
