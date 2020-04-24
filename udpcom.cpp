@@ -595,10 +595,6 @@ int UDPCom::write_to_pool(int _fd, const void* _buf, size_t _n, int _flags) {
         }
 
 
-        // avoid other threads to potentially bind to the same source IP:PORT and fail on that.
-        std::recursive_mutex send_lock;
-        send_lock.lock();
-        
         int l = 0;
         int ret_bind = 0;
 
@@ -858,14 +854,10 @@ void UDPCom::shutdown(int _fd) {
                     if(it.real_socket && it.socket > 0) {
                         ::close(it.socket);
                     }
-                    
-                    auto* m = dynamic_cast<DatagramCom*>(master());
-                    if(m) {
-                        auto lck = std::lock_guard<std::recursive_mutex>(m->lock);
-                        int remc = m->in_virt_set.erase(_fd);
-                        _dia("removing %d from in_virt_set on shutdown (%d entries)", _fd, remc);
-                    }
-                    
+
+                    int remc = UDPCom::in_virt_set.erase(_fd);
+                    _dia("removing %d from in_virt_set on shutdown (%d entries)", _fd, remc);
+
                 } else {
                     _dia("UDPCom::close[%d]: datagrams_received entry reuse flag set, entry  not deleted.", _fd);
                     it.reuse = false;
