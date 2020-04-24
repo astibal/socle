@@ -69,8 +69,13 @@ private:
     unsigned long prev_counter_{};
     unsigned long curr_counter_{};
 
+    constexpr static int scoreboard_sz = 3;
+    unsigned long scoreboard[scoreboard_sz] = {0};
+
     std::chrono::system_clock::time_point last_update{};
-    int interval_{1};
+    unsigned int interval_{1};
+
+    unsigned int cnt_updates = 0;       // count no. of updates and shorten avg division if smaller than ( 2 + scoreboard_sz)
 
 public:
 
@@ -79,6 +84,31 @@ public:
     unsigned long update(unsigned long val);
     [[nodiscard]] unsigned long get() const;
     [[nodiscard]] unsigned long total() const { return total_; };
+
+    void push_score(unsigned long val) {
+
+        for(int i =  scoreboard_sz - 1 ; i > 0; i--) {
+            scoreboard[i] = scoreboard[i-1];
+        }
+        scoreboard[0] = val;
+    }
+
+    [[nodiscard]]
+    unsigned long sum_score() const {
+        unsigned long ret = 0;
+
+        unsigned int max_it = cnt_updates;
+        unsigned int cur_it = 0;
+
+        for(int i =  scoreboard_sz - 1 ; i >= 0 ; i--) {
+            if(++cur_it > max_it){
+                break;  // dont count starting-zero values
+            }
+
+            ret += scoreboard[i];
+        }
+        return ret;
+    }
 };
 
 

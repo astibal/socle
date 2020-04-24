@@ -206,8 +206,21 @@ long unsigned int meter::update(unsigned long val) {
     total_ += val;
 
     if( now - last_update > std::chrono::seconds(interval_)) {
+
+        int missed_scores = (now - last_update)/std::chrono::seconds(interval_);
+        if(missed_scores > scoreboard_sz) missed_scores = scoreboard_sz;
+
         // threshold is reached => counter contains all bytes in previous second
         last_update = now;
+        cnt_updates ++;
+
+        push_score(prev_counter_);
+
+        // push zero for missed values
+        for(int i = 0; i < missed_scores ; i++) {
+            push_score(0);
+        }
+
         prev_counter_  = curr_counter_;
         
         curr_counter_ = val;
@@ -225,15 +238,29 @@ long unsigned int meter::update(unsigned long val) {
 
         auto now = std::chrono::system_clock::now();
 
-        if( now > last_update + std::chrono::seconds(interval_)) {
+        if( now > last_update + (2 + scoreboard_sz) * std::chrono::seconds(interval_)) {
             // not updated for a while
             return 0;
         }
-        else if(now > last_update) {
-            // we are in the window if this update
-            return ( curr_counter_ + prev_counter_)  / 2;
-        }
 
-        return prev_counter_;
+//        if(now > last_update) {
+//
+            unsigned long divisor = (2+scoreboard_sz )*interval_;
+
+            if(cnt_updates < 2 + scoreboard_sz) {
+                divisor = cnt_updates*interval_;
+            }
+
+            if(! divisor) {
+                divisor = 1;
+            }
+
+            // we are in the window if this update
+            return ( curr_counter_ + prev_counter_ + sum_score() )
+                     /
+                   ( divisor );
+//        }
+//
+//        return prev_counter_;
     }
 }
