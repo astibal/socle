@@ -82,8 +82,7 @@ int UDPCom::bind(short unsigned int port) {
         inet::to_sockaddr_in(&sa)->sin_port = htons(port);
         inet::to_sockaddr_in(&sa)->sin_addr.s_addr = INADDR_ANY;
     }
-    else
-    if(sa.ss_family == AF_INET6) {
+    else if(sa.ss_family == AF_INET6) {
         inet::to_sockaddr_in6(&sa)->sin6_port = htons(port);
         inet::to_sockaddr_in6(&sa)->sin6_addr = in6addr_any;
     }
@@ -232,10 +231,10 @@ int UDPCom::connect(const char* host, const char* port) {
 
         if(*log.level() >= DEB) {
             std::string rps;
-            unsigned short port;
+            unsigned short rp_port;
 
-            int fa = inet_ss_address_unpack(((sockaddr_storage*)&udpcom_addr),&rps,&port);
-            _deb("connect[%d]: rp contains: %s/%s:%d", sfd, inet_family_str(fa).c_str(),rps.c_str(),port );
+            int fa = inet_ss_address_unpack(((sockaddr_storage*)&udpcom_addr),&rps, &rp_port);
+            _deb("connect[%d]: rp contains: %s/%s:%d", sfd, inet_family_str(fa).c_str(), rps.c_str(), rp_port);
         }
         
         ::connect(sfd,(sockaddr*)&udpcom_addr,sizeof(sockaddr));
@@ -342,11 +341,11 @@ bool UDPCom::in_readset(int s) {
         
         buffer_guard bg(record.rx);
         
-        if(record.rx.size() > 0) {
+        if(! record.rx.empty()) {
             _deb("UDPCom::in_readset[%d]: record found, data size %dB",s,record.rx.size());
         }
         
-        return (record.rx.size() > 0);
+        return (! record.rx.empty());
         
     } else {
         _ext("UDPCom::in_readset[%d]: record NOT found",s);
@@ -396,66 +395,72 @@ int UDPCom::poll() {
 
 
 
-int UDPCom::read(int __fd, void* __buf, size_t __n, int __flags) {
+int UDPCom::read(int _fd, void* _buf, size_t _n, int _flags) {
 
-    _dum("UDPCom::read[%d] read",__fd);
+    _dum("UDPCom::read[%d] read", _fd);
     
-    if (__fd < 0) {
-        return read_from_pool(__fd,__buf,__n,__flags);
+    if (_fd < 0) {
+        return read_from_pool(_fd, _buf, _n, _flags);
     } else {
-        return recv(__fd,__buf,__n,__flags);
+        return recv(_fd, _buf, _n, _flags);
     }
-};
+}
 
-int UDPCom::read_from_pool(int __fd, void* __buf, size_t __n, int __flags) {
+int UDPCom::read_from_pool(int _fd, void* _buf, size_t _n, int _flags) {
 
     std::lock_guard<std::recursive_mutex> l(DatagramCom::lock);
     
-    auto it_record = DatagramCom::datagrams_received.find((unsigned int)__fd);
+    auto it_record = DatagramCom::datagrams_received.find((unsigned int)_fd);
     if(it_record != DatagramCom::datagrams_received.end()) {  
         Datagram& record = (*it_record).second;
 
         if(record.real_socket) {
-            return recv(record.socket,__buf,__n,__flags);
+            return recv(record.socket, _buf, _n, _flags);
         }
         
         buffer_guard bg(record.rx);
         
-        if(record.rx.size() == 0) {
+        if(record.rx.empty()) {
 //            return ::recv(record.socket,__buf,__n,__flags);
         } else {
         
             
-            int to_copy = __n;
-            if(record.rx.size() <= __n) {
+            int to_copy = _n;
+            if(record.rx.size() <= _n) {
                 to_copy = record.rx.size();
             }
             
-            memcpy(__buf,record.rx.data(),to_copy);
+            memcpy(_buf, record.rx.data(), to_copy);
 
-            if(! (__flags & MSG_PEEK)) {
+            if(! (_flags & MSG_PEEK)) {
                 record.rx.flush(to_copy);
-                _dia("UDPCom::read_from_pool[%d]: retrieved %d bytes from receive pool, in buffer left %d bytes",__fd,to_copy,record.rx.size());
+                _dia("UDPCom::read_from_pool[%d]: retrieved %d bytes from receive pool, in buffer left %d bytes", _fd, to_copy, record.rx.size());
                 
-                if(record.rx.size() == 0) {
+                if(record.rx.empty()) {
                     if( record.cx && record.cx->com()) {
-                        DatagramCom* m = dynamic_cast<DatagramCom*>(record.cx->com()->master());
+                        auto* m = dynamic_cast<DatagramCom*>(record.cx->com()->master());
                         if(m) {
-                            std::lock_guard<std::recursive_mutex>(m->lock);
-                            int rem_count = m->in_virt_set.erase(__fd);
-                            if(rem_count > 0) {
-                                _dia("buffer read to zero, erased %d entries in in_virt_set",rem_count);
+
+                            int rem_count = 0;
+                            {
+                                std::lock_guard<std::recursive_mutex> l_ (UDPCom::lock);
+                                rem_count = UDPCom::in_virt_set.erase(_fd);
                             }
+
+                            if(rem_count > 0) {
+                                _dia("buffer read to zero, erased %d entries in in_virt_set", rem_count);
+                            }
+
                         } else {
-                            _dia("cannot erase %d  from in_virt_set: 's com master is not DataGramCom",__fd);
+                            _dia("cannot erase %d  from in_virt_set: 's com master is not DataGramCom", _fd);
                         }
                     } else {
-                        _dia("cannot erase %d  from in_virt_set: cx=0x%x cx->com=0x%x",__fd,record.cx, record.cx ? record.cx->com() : 0);
+                        _dia("cannot erase %d  from in_virt_set: cx=0x%x cx->com=0x%x", _fd, record.cx, record.cx ? record.cx->com() : nullptr);
                     }
                 } 
                 
             } else {
-                _dia("UDPCom::read_from_pool[%x]: peek %d bytes from receive pool, in buffer is %d bytes",__fd,to_copy,record.rx.size());
+                _dia("UDPCom::read_from_pool[%x]: peek %d bytes from receive pool, in buffer is %d bytes", _fd, to_copy, record.rx.size());
             }
 
             
@@ -468,14 +473,14 @@ int UDPCom::read_from_pool(int __fd, void* __buf, size_t __n, int __flags) {
     return 0;
 }
 
-int UDPCom::write(int __fd, const void* __buf, size_t __n, int __flags)
+int UDPCom::write(int _fd, const void* _buf, size_t _n, int _flags)
 {
-    if(__n <= 0) {
+    if(_n <= 0) {
         return 0;
     }
     
-    if(__fd < 0) {
-        return write_to_pool(__fd,__buf,__n,__flags);
+    if(_fd < 0) {
+        return write_to_pool(_fd, _buf, _n, _flags);
     } else {
         
         
@@ -483,11 +488,11 @@ int UDPCom::write(int __fd, const void* __buf, size_t __n, int __flags)
         unsigned short port;
         int fa = inet_ss_address_unpack(&udpcom_addr,&rps, &port);
         
-        int ret =  ::sendto(__fd,__buf,__n,__flags, (sockaddr*)&udpcom_addr, sizeof(sockaddr_storage));
-        _deb("write[%d]: sendto %s/%s:%d returned %d", __fd,inet_family_str(fa).c_str(),rps.c_str(), port, ret);
+        int ret =  ::sendto(_fd, _buf, _n, _flags, (sockaddr*)&udpcom_addr, sizeof(sockaddr_storage));
+        _deb("write[%d]: sendto %s/%s:%d returned %d", _fd, inet_family_str(fa).c_str(), rps.c_str(), port, ret);
         
         if(ret < 0) {
-            _err("write[%d]: sendto %s/%s:%d returned %d: %s", __fd,inet_family_str(fa).c_str(),rps.c_str(), port, ret, string_error().c_str());
+            _err("write[%d]: sendto %s/%s:%d returned %d: %s", _fd, inet_family_str(fa).c_str(), rps.c_str(), port, ret, string_error().c_str());
         }
         
         return ret;
@@ -498,7 +503,7 @@ int UDPCom::write(int __fd, const void* __buf, size_t __n, int __flags)
 
 int UDPCom::write_to_pool(int _fd, const void* _buf, size_t _n, int _flags) {
     
-    std::lock_guard<std::recursive_mutex> l(DatagramCom::lock);
+    std::scoped_lock<std::recursive_mutex> l_(DatagramCom::lock);
     
     auto it_record = DatagramCom::datagrams_received.find((unsigned int)_fd);
     if(it_record != DatagramCom::datagrams_received.end()) {  
@@ -521,14 +526,14 @@ int UDPCom::write_to_pool(int _fd, const void* _buf, size_t _n, int _flags) {
             );
 
 
-        int d = 0; // socket will be created later
+        int da_socket = 0; // socket will be created later
         
-        msghdr message_header {0};
-        struct iovec io {0};
+        msghdr message_header {};
+        struct iovec io {};
         char cmbuf[128];
-        memset(cmbuf,0,sizeof(cmbuf));
+        memset(cmbuf, 0, sizeof(cmbuf));
         
-        io.iov_base = (void*)_buf;
+        io.iov_base = const_cast<void*>(_buf);
         io.iov_len = _n;
 
         message_header.msg_iov = &io;
@@ -549,9 +554,9 @@ int UDPCom::write_to_pool(int _fd, const void* _buf, size_t _n, int _flags) {
         if(record.dst_family() == AF_INET) {
             
             if(record.real_socket) {
-                d = record.socket;
+                da_socket = record.socket;
             } else {
-                _deb("Constucting IPv4 pktinfo");
+                _deb("Constructing IPv4 pktinfo");
                 
                 if(record.src_family() == AF_INET6) {
                     _deb("reconstructing mapped IPv4 src address record");
@@ -567,14 +572,14 @@ int UDPCom::write_to_pool(int _fd, const void* _buf, size_t _n, int _flags) {
                 pktinfo->ipi_spec_dst = record.dst_in_addr4();
                 pktinfo->ipi_ifindex = 0;
                 message_header.msg_controllen = CMSG_SPACE(sizeof(struct in_pktinfo));
-                
-                d = ::socket (record.dst_family(), SOCK_DGRAM, 0);
+
+                da_socket = ::socket (record.dst_family(), SOCK_DGRAM, 0);
             }
         }
         else if(record.dst_family() == AF_INET6){
             
             if(record.real_socket) {
-                d = record.socket;
+                da_socket = record.socket;
             } else {
                 _deb("Constucting IPv6 pktinfo");
                 
@@ -585,7 +590,7 @@ int UDPCom::write_to_pool(int _fd, const void* _buf, size_t _n, int _flags) {
                 pktinfo6->ipi6_addr = record.dst_in_addr6();
                 pktinfo6->ipi6_ifindex = 0;
                 message_header.msg_controllen = CMSG_SPACE(sizeof(struct in6_pktinfo));
-                d = ::socket (record.dst_family(), SOCK_DGRAM, 0);
+                da_socket = ::socket (record.dst_family(), SOCK_DGRAM, 0);
             }
         }
 
@@ -604,42 +609,42 @@ int UDPCom::write_to_pool(int _fd, const void* _buf, size_t _n, int _flags) {
         
         _dia("UDPCom::write_to_pool[%d]: real=%d, embryonic=%d", _fd, record.real_socket, record.embryonic);
         if(record.real_socket && record.embryonic) {
-            _dia("UDPCom::write_to_pool[%d]: changing background embryonic socket %d to %d", _fd, record.socket, d);
+            _dia("UDPCom::write_to_pool[%d]: changing background embryonic socket %d to %d", _fd, record.socket, da_socket);
             
             
             int n = 1;
-            int d = ::socket (ss_d.ss_family, SOCK_DGRAM, 0);
+            int da_real_socket = ::socket (ss_d.ss_family, SOCK_DGRAM, 0);
             
             if(ss_d.ss_family == AF_INET6) {
-                if(0 != setsockopt(d, SOL_IPV6, IPV6_TRANSPARENT, &n, sizeof(n))) {
-                    _err("cannot set socket %d option IPV6_TRANSPARENT", d);
+                if(0 != setsockopt(da_real_socket, SOL_IPV6, IPV6_TRANSPARENT, &n, sizeof(n))) {
+                    _err("cannot set socket %d option IPV6_TRANSPARENT", da_real_socket);
                 } n = 1;
             }
             if(ss_d.ss_family == AF_INET ) {
-                if(0 != setsockopt(d, SOL_IP, IP_TRANSPARENT, &n, sizeof(n))){
-                    _err("cannot set socket %d option IP_TRANSPARENT", d);
+                if(0 != setsockopt(da_real_socket, SOL_IP, IP_TRANSPARENT, &n, sizeof(n))){
+                    _err("cannot set socket %d option IP_TRANSPARENT", da_real_socket);
                 }
                 n = 1;
             }
             
-            if(0 != setsockopt(d, SOL_SOCKET, SO_REUSEADDR, &n, sizeof(n))) {
-                _err("cannot set socket %d option SO_REUSEADDR", d);
+            if(0 != setsockopt(da_real_socket, SOL_SOCKET, SO_REUSEADDR, &n, sizeof(n))) {
+                _err("cannot set socket %d option SO_REUSEADDR", da_real_socket);
             }
-            if(0 != setsockopt(d, SOL_SOCKET, SO_BROADCAST, &n, sizeof(n))) {
-                _err("cannot set socket %d option SO_BROADCAST", d);
+            if(0 != setsockopt(da_real_socket, SOL_SOCKET, SO_BROADCAST, &n, sizeof(n))) {
+                _err("cannot set socket %d option SO_BROADCAST", da_real_socket);
             }
             
             _dia("UDPCom::write_to_pool[%d]: background embryonic socket %s-%s", _fd, inet_ss_str(&ss_s).c_str(), inet_ss_str(&ss_d).c_str());
             
-            ret_bind = ::bind (d, (struct sockaddr*)&(ss_d), sizeof (struct sockaddr_storage));
-            int ret_conn = ::connect(d, (struct sockaddr*)&(ss_s), sizeof (struct sockaddr_storage));
+            ret_bind = ::bind (da_real_socket, (struct sockaddr*)&(ss_d), sizeof (struct sockaddr_storage));
+            int ret_conn = ::connect(da_real_socket, (struct sockaddr*)&(ss_s), sizeof (struct sockaddr_storage));
             
             if (ret_bind != 0) _dia("UDPCom::write_to_pool[%d]: %s", _fd, string_error().c_str());
             
             record.embryonic = false;
             
             int old_socket = record.socket;
-            record.socket = d;
+            record.socket = da_real_socket;
             
             
             _dia("UDPCom::write_to_pool[%d]: background mature socket %d bind status %d, conn status %d", _fd, record.socket, ret_bind, ret_conn);
@@ -656,58 +661,57 @@ int UDPCom::write_to_pool(int _fd, const void* _buf, size_t _n, int _flags) {
             _err("UDPCom::write_to_pool[%d]: cannot bind to destination!", _fd);
         } else {
             _deb("UDPCom::write_to_pool[%d]: about to write %d bytes into socket %d", _fd, _n, record.socket);
-            _deb("UDPCom::write_to_pool[%d]: custom transparent socket: %d", _fd, d);
+            _deb("UDPCom::write_to_pool[%d]: custom transparent socket: %d", _fd, da_socket);
             
             if(record.real_socket) {
                 l = ::send(record.socket, _buf, _n, 0);
             } else {
                 int n = 1;
                 if(ss_d.ss_family == AF_INET6) {
-                    if(0 != setsockopt(d, SOL_IPV6, IPV6_TRANSPARENT, &n, sizeof(n))) {
-                        _err("UDPCom::write_to_pool[%d]: socket %d cannot set option IPV6_TRANSPARENT: %s", _fd, d, string_error().c_str());
+                    if(0 != setsockopt(da_socket, SOL_IPV6, IPV6_TRANSPARENT, &n, sizeof(n))) {
+                        _err("UDPCom::write_to_pool[%d]: socket %d cannot set option IPV6_TRANSPARENT: %s", _fd, da_socket, string_error().c_str());
                     }
                     n = 1;
                 }
                 if(ss_d.ss_family == AF_INET ) {
-                    if(0 != setsockopt(d, SOL_IP, IP_TRANSPARENT, &n, sizeof(n))) {
-                        _err("UDPCom::write_to_pool[%d]: socket: %d: cannot set option IP_TRANSPARENT: %s", _fd, d, string_error().c_str());
+                    if(0 != setsockopt(da_socket, SOL_IP, IP_TRANSPARENT, &n, sizeof(n))) {
+                        _err("UDPCom::write_to_pool[%d]: socket: %d: cannot set option IP_TRANSPARENT: %s", _fd, da_socket, string_error().c_str());
                     }
                     n = 1;
                 }
-                if(0 != setsockopt(d, SOL_SOCKET, SO_REUSEADDR, &n, sizeof(n))) {
-                    _err("UDPCom::write_to_pool[%d]: socket: %d: cannot set option SO_REUSEADDR: %s", _fd, d, string_error().c_str());
+                if(0 != setsockopt(da_socket, SOL_SOCKET, SO_REUSEADDR, &n, sizeof(n))) {
+                    _err("UDPCom::write_to_pool[%d]: socket: %d: cannot set option SO_REUSEADDR: %s", _fd, da_socket, string_error().c_str());
                 }
                 n = 1;
 
-                if(0 != setsockopt(d, SOL_SOCKET, SO_BROADCAST, &n, sizeof(n))) {
-                    _err("UDPCom::write_to_pool[%d]: socket: %d: cannot set option SO_BROADCAST: %s", _fd, d, string_error().c_str());
+                if(0 != setsockopt(da_socket, SOL_SOCKET, SO_BROADCAST, &n, sizeof(n))) {
+                    _err("UDPCom::write_to_pool[%d]: socket: %d: cannot set option SO_BROADCAST: %s", _fd, da_socket, string_error().c_str());
                 }
 
-                ret_bind = ::bind (d, (struct sockaddr*)&(ss_d), sizeof (struct sockaddr_storage));
+                ret_bind = ::bind (da_socket, (struct sockaddr*)&(ss_d), sizeof (struct sockaddr_storage));
                 if(0 != ret_bind) {
-                    _err("UDPCom::write_to_pool[%d]: socket: %d: cannot bind: %s", _fd, d, string_error().c_str());
+                    _err("UDPCom::write_to_pool[%d]: socket: %d: cannot bind: %s", _fd, da_socket, string_error().c_str());
                 }
 
-                int ret_conn = ::connect(d, (struct sockaddr*)&(ss_s), sizeof (struct sockaddr_storage));
+                int ret_conn = ::connect(da_socket, (struct sockaddr*)&(ss_s), sizeof (struct sockaddr_storage));
                 
                 if(ret_conn != 0) {
-                    _err("UDPCom::write_to_pool[%d]: socket: %d: connect error: %s", _fd, d, string_error().c_str());
+                    _err("UDPCom::write_to_pool[%d]: socket: %d: connect error: %s", _fd, da_socket, string_error().c_str());
                 }
                 
-                l = ::sendmsg(d,&message_header,0);
+                l = ::sendmsg(da_socket, &message_header, 0);
             }
             
             if(l < 0) {
-                _err("UDPCom::write_to_pool[%d]: socket: %d: written %d bytes: %s", _fd, d, l, string_error().c_str());
+                _err("UDPCom::write_to_pool[%d]: socket: %d: written %d bytes: %s", _fd, da_socket, l, string_error().c_str());
             } else {
-                _deb("UDPCom::write_to_pool[%d]: socket: %d: written %d bytes", _fd, d, l);
+                _deb("UDPCom::write_to_pool[%d]: socket: %d: written %d bytes", _fd, da_socket, l);
             }
         }
         
         if(!record.real_socket) {
-            ::close(d);
+            ::close(da_socket);
         }
-        send_lock.unlock();
         
         //l = send(record.socket,__buf,__n,__flags);
         return l;
@@ -729,7 +733,7 @@ bool UDPCom::resolve_socket(bool source, int s, std::string* target_host, std::s
         
         _deb("UDPCom::resolve_socket: found in datagrams");
         
-        if(source == true) {
+        if(source) {
             
             if(record.src_family() == AF_INET || record.src_family() == 0) {
                 inet_ntop(AF_INET, &record.src_in_addr4(), b, 64);

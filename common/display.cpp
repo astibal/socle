@@ -45,7 +45,7 @@ std::string string_format_old(const char* fmt, ...) {
     int size = 512;
     std::string str;
     va_list ap;
-    while (1) {
+    while (true) {
         str.resize(size);
         va_start(ap, fmt);
 
@@ -99,7 +99,7 @@ std::string hex_dump(unsigned char *data, int size,unsigned int ltrim, unsigned 
 
 	int tr = 0;
 	if (ltrim > 0) {
-		tr = ltrim + 4;
+		tr = static_cast<int>(ltrim) + 4;
 	}
 
 	std::string pref;
@@ -215,22 +215,23 @@ std::string bt(bool add_r) {
 #define POW_4   1099511627776.0
 
 std::string number_suffixed(unsigned long xn) {
-    unsigned long n = labs(xn);
+
+    auto n = static_cast<double>(xn);
 
     if(n < POW_1 ) {
-        return string_format("%.1ld",xn);
+        return string_format("%.1f", n);
     } else 
     if(n >= POW_1 && n < POW_2 ) {
-        return string_format("%.fk",xn/POW_1);
+        return string_format("%.2fk", n / POW_1);
     } else 
     if(n >= POW_2 && n < POW_3 ) {
-        return string_format("%.2fM",xn/POW_2);
+        return string_format("%.2fM", n / POW_2);
     } else 
     if (n >= POW_3 && n < POW_4 ) {
-        return string_format("%.2fG",xn/POW_3);
+        return string_format("%.2fG", n / POW_3);
     }
     else {
-        return string_format("%.3fT",xn/POW_4);
+        return string_format("%.3fT", n / POW_4);
     }
 }
 
@@ -239,7 +240,7 @@ void chr_cstrlit(unsigned char u, char *buffer, size_t buflen, bool to_print = f
 
     
     if (buflen < 2)
-        *buffer = '\0';
+        buffer[0] = '\0';
     else if (isprint(u) && u != '\'' && u != '\"' && u != '\\' && u != '\?')
         sprintf(buffer, "%c", u);
     else if (buflen < 3)
@@ -286,11 +287,10 @@ void chr_cstrlit(unsigned char u, char *buffer, size_t buflen, bool to_print = f
  * For internal only, it will escape everything to be escaped, except formating character '%'
  * For printing purposes, it will escape only non-printables, + formatting character '%'
  */
-std::string escape(std::string orig, bool to_print) {
+std::string escape(const std::string &orig, bool to_print) {
     std::string ret;
     
-    for (size_t i = 0; i < orig.size(); ++i) {
-        char c = orig[i];
+    for (char c : orig) {
         if (isprint(c) && c != '\'' && c != '\"' && c != '\\' && c != '\?' && c != '%') {
             ret += c;        
         }
@@ -366,7 +366,7 @@ std::string escape(std::string orig, bool to_print) {
 }
 
 
-std::vector<std::string> string_split(const std::string &str, const char delimiter) {
+std::vector<std::string> string_split(const std::string &str, char delimiter) {
     std::vector<std::string> internal;
     std::stringstream ss(str); // Turn the string into a stream.
     std::string tok;
@@ -379,7 +379,7 @@ std::vector<std::string> string_split(const std::string &str, const char delimit
 }
 
 std::string get_kernel_version() {
-    utsname u;
+    utsname u{};
     memset(&u,0,sizeof(utsname));
     uname(&u);
 
@@ -392,7 +392,7 @@ std::string get_kernel_version() {
     return kernel_ver;
 }
 
-bool version_check(std::string real_string ,std::string v) {
+bool version_check(const std::string &real_string , std::string v) {
 
     std::vector<std::string> real_ver = string_split(real_string,'.');
     std::vector<std::string> target_ver = string_split(v,'.');
@@ -481,8 +481,8 @@ int inet_ss_address_remap(sockaddr_storage* orig, sockaddr_storage* mapped) {
         inet_pton(fa,ip_part.c_str(),&((struct sockaddr_in*)mapped)->sin_addr);
         ((struct sockaddr_in*)mapped)->sin_port = htons(port_part);
         mapped->ss_family = fa;
-    } else
-    if(fa == AF_INET6) {
+    }
+    else if(fa == AF_INET6) {
         inet_pton(fa,ip_part.c_str(),&((struct sockaddr_in6*)mapped)->sin6_addr);
         ((struct sockaddr_in6*)mapped)->sin6_port = htons(port_part);
         mapped->ss_family = fa;
@@ -501,11 +501,11 @@ std::string inet_ss_str(sockaddr_storage* s) {
 }
 
 
-int safe_val(std::string s, int default_val) {
+int safe_val(const std::string &str_val, int default_val) {
     int ret = default_val;
     
     try {
-        ret = std::stoi(s);
+        ret = std::stoi(str_val);
     }
     catch(std::invalid_argument const&) {}
     catch(std::out_of_range const& ) {}
@@ -553,7 +553,7 @@ std::string string_tolower(const std::string& orig) {
     return r.str();
 }
 
-std::string string_csv(const std::vector<std::string>& str_list_ref, const char delim) {
+std::string string_csv(const std::vector<std::string>& str_list_ref, char delim) {
     std::stringstream build;
     for(unsigned int ii = 0 ; ii < str_list_ref.size() ; ii++ ) {
         build << str_list_ref[ii];
@@ -563,4 +563,42 @@ std::string string_csv(const std::vector<std::string>& str_list_ref, const char 
     }
 
     return build.str();
+}
+
+template <typename ... Args>
+std::string string_printf(const std::string& fmt, const Args& ... args)
+{
+    std::stringstream ss;
+
+    size_t fmtIndex = 0;
+    size_t placeHolders = 0;
+    auto printFmt = [&fmt, &ss, &fmtIndex, &placeHolders]()
+    {
+        for (; fmtIndex < fmt.size(); ++fmtIndex)
+        {
+            if (fmt[fmtIndex] != '%')
+                ss << fmt[fmtIndex];
+            else if (++fmtIndex < fmt.size())
+            {
+                if (fmt[fmtIndex] == '%')
+                    ss << '%';
+                else
+                {
+                    ++fmtIndex;
+                    ++placeHolders;
+                    break;
+                }
+            }
+        }
+    };
+
+    ((printFmt(), ss, ss << args), ..., (printFmt()));
+
+    if (placeHolders < sizeof...(args))
+        throw std::runtime_error("extra arguments provided to printf");
+    if (placeHolders > sizeof...(args))
+        throw std::runtime_error("invalid format string: missing arguments");
+
+
+    return ss.str();
 }
