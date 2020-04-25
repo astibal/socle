@@ -204,7 +204,7 @@ namespace inet {
                 RET_NOOCSP_TARGETS
             };
 
-            [[nodiscard]] const char* yield_str(int y) const {
+            [[nodiscard]] static const char* yield_str(int y)  {
                 switch(y) {
                     case RET_CONNFAIL:
                         return "RET_CONNFAIL";

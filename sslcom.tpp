@@ -708,6 +708,8 @@ int baseSSLCom<L4Proto>::certificate_status_ocsp_check(baseSSLCom* com) {
 
     auto& log = inet::ocsp::OcspFactory::log();
 
+    verify_origin_t origin {verify_origin_t::NONE};
+
     if(com && com->sslcom_target_cert && com->sslcom_target_issuer) {
 
         std::string name = "unknown_cx";
@@ -732,43 +734,42 @@ int baseSSLCom<L4Proto>::certificate_status_ocsp_check(baseSSLCom* com) {
 
         SSLFactory::expiring_verify_result *cached_result = nullptr;
 
-        // ocsp_result_cache - locked
         {
             std::lock_guard<std::recursive_mutex> l_(com->certstore()->verify_cache.getlock());
-
             cached_result = com->certstore()->verify_cache.get(cn);
-
-            if (cached_result != nullptr) {
-                res.revoked = cached_result->value().revoked;
-                str_status = str_cached;
-            } else {
-                res = inet::ocsp::ocsp_check_cert(com->sslcom_target_cert, com->sslcom_target_issuer);
-                str_status = str_fresh;
-            }
         }
 
-        _dia("[%s]: SSLCom::ocsp_explicit_check[%s]: ocsp is_revoked = %d)",name.c_str(),cn.c_str(), res.revoked);
+        if (cached_result != nullptr) {
+            res.revoked = cached_result->value().revoked;
+            str_status = str_cached;
+            origin = verify_origin_t::OCSP_CACHE;
+
+        } else {
+            res = inet::ocsp::ocsp_check_cert(com->sslcom_target_cert, com->sslcom_target_issuer);
+            str_status = str_fresh;
+            {
+                std::lock_guard<std::recursive_mutex> l_(com->certstore()->verify_cache.getlock());
+                certstore()->verify_cache.set(cn, SSLFactory::make_exp_ocsp_status(res.revoked, res.ttl));
+            }
+            origin = verify_origin_t::OCSP;
+        }
 
         com->ocsp_cert_is_revoked = res.revoked;
+
+
+        // logging block
+
+        _dia("[%s]: SSLCom::ocsp_explicit_check[%s]: ocsp is_revoked = %d)", name.c_str(), cn.c_str(), res.revoked);
         if(res.revoked > 0) {
-            _war("Connection from %s: certificate %s is revoked (%s OCSP))",name.c_str(),cn.c_str(),str_status);
+            _war("Connection from %s: certificate %s is revoked (%s OCSP))", name.c_str(), cn.c_str(), str_status);
         } else if (res.revoked == 0){
-            _dia("Connection from %s: certificate %s is valid (%s OCSP))",name.c_str(),cn.c_str(),str_status);
+            _dia("Connection from %s: certificate %s is valid (%s OCSP))", name.c_str(), cn.c_str(), str_status);
         } else {
-            /*< 0*/
             if(com->opt_ocsp_mode > 1) {
+                _war("Connection from %s: certificate %s revocation status is unknown (%s OCSP))",
+                                                                name.c_str(), cn.c_str(), str_status);
             }
-            _war("Connection from %s: certificate %s revocation status is unknown (%s OCSP))",name.c_str(),cn.c_str(),str_status);
         }
-
-
-        if(cached_result == nullptr) {
-
-            std::lock_guard<std::recursive_mutex> l_(com->certstore()->verify_cache.getlock());
-            // set cache for 3 minutes
-            certstore()->verify_cache.set(cn, SSLFactory::make_exp_ocsp_status(res.revoked, res.ttl));
-        }
-
 
         if(res.revoked < 0) {
 
@@ -793,8 +794,10 @@ int baseSSLCom<L4Proto>::certificate_status_ocsp_check(baseSSLCom* com) {
 
                     // we have crl cached, but it points to null (we indicate failed download)
                     if(!crl_struct) {
-                        _war("failed download was cached for crl: %s, waiting for expire",crl_printable.c_str());
+                        _war("failed download was cached for crl: %s, waiting for expire", crl_printable.c_str());
                     }
+
+                    origin = verify_origin_t::CRL_CACHE;
                 }
                 else {
                     _dia("crl not cached: %s",crl_printable.c_str());
@@ -870,17 +873,23 @@ int baseSSLCom<L4Proto>::certificate_status_ocsp_check(baseSSLCom* com) {
                 res.revoked = is_revoked_by_crl;
 
                 if(is_revoked_by_crl >= 0) {
+                    origin = verify_origin_t::CRL;
                     break;
                 }
             }
         }
     } else {
-        _err("ocsp_explicit_check__: failed call requirements: com 0x%x", com);
-        if(com)
+        if(com) {
             _err("ocsp_explicit_check__: failed call requirements: cert 0x%x, issuer 0x%x" , com->sslcom_target_cert, com->sslcom_target_issuer);
+        } else {
+            _err("ocsp_explicit_check__: failed call requirements: com 0x%x", com);
+        }
     }
 
     if(com) {
+
+        com->verify_origin(origin);
+
         if (res.revoked > 0) {
             com->verify_bitreset(VRF_OK);
             com->verify_bitset(VRF_REVOKED);
@@ -950,16 +959,38 @@ int baseSSLCom<L4Proto>::certificate_status_oob_check(baseSSLCom* com, int defau
     return default_action;
 }
 
+template <class L4Proto>
+std::string baseSSLCom<L4Proto>::verify_origin_str(verify_origin_t const& v) {
+    switch(v) {
+        case verify_origin_t::NONE:
+            return "none";
+        case verify_origin_t::OCSP_STAPLING:
+            return "ocsp stapling";
+        case verify_origin_t::OCSP:
+            return "ocsp";
+        case verify_origin_t::OCSP_CACHE:
+            return "ocsp cache";
+        case verify_origin_t::CRL:
+            return "crl";
+        case verify_origin_t::CRL_CACHE:
+            return "crl cache";
+
+
+        default:
+            return "<?>";
+    }
+}
+
 
 template <class L4Proto>
-std::pair<typename baseSSLCom<L4Proto>::staple_code, int> baseSSLCom<L4Proto>::check_revocation_stapling(std::string const& name, baseSSLCom* com, SSL* ssl) {
+std::pair<typename baseSSLCom<L4Proto>::staple_code_t, int> baseSSLCom<L4Proto>::check_revocation_stapling(std::string const& name, baseSSLCom* com, SSL* ssl) {
 
     auto log = logan::create("com.ssl.ocsp");
 
     const unsigned char *stapling_body = nullptr;
     int stapling_len = 0;
 
-    auto proc_status = staple_code::NOT_PROCESSED;
+    auto proc_status = staple_code_t::NOT_PROCESSED;
     int  ocsp_status = -1;
     int  ocsp_reason = -1;
 
@@ -982,7 +1013,7 @@ std::pair<typename baseSSLCom<L4Proto>::staple_code, int> baseSSLCom<L4Proto>::c
 
         com->opt_ocsp_enforce_in_verify = true;
 
-        proc_status = staple_code::MISSING_BODY;
+        proc_status = staple_code_t::MISSING_BODY;
         goto the_end;
     }
 
@@ -994,7 +1025,7 @@ std::pair<typename baseSSLCom<L4Proto>::staple_code, int> baseSSLCom<L4Proto>::c
 
         com->opt_ocsp_enforce_in_verify = true;
 
-        proc_status = staple_code::PARSING_FAILED;
+        proc_status = staple_code_t::PARSING_FAILED;
         goto the_end;
     }
 
@@ -1004,7 +1035,7 @@ std::pair<typename baseSSLCom<L4Proto>::staple_code, int> baseSSLCom<L4Proto>::c
 
         com->opt_ocsp_enforce_in_verify = true;
 
-        proc_status = staple_code::STATUS_NOK;
+        proc_status = staple_code_t::STATUS_NOK;
         goto the_end;
     }
 
@@ -1014,7 +1045,7 @@ std::pair<typename baseSSLCom<L4Proto>::staple_code, int> baseSSLCom<L4Proto>::c
 
         com->opt_ocsp_enforce_in_verify = true;
 
-        proc_status = staple_code::GET_BASIC_FAILED;
+        proc_status = staple_code_t::GET_BASIC_FAILED;
         goto the_end;
     }
 
@@ -1036,7 +1067,7 @@ std::pair<typename baseSSLCom<L4Proto>::staple_code, int> baseSSLCom<L4Proto>::c
             _err("[%s] OCSP stapling response failed verification",name.c_str());
         }
 
-        proc_status = staple_code::BASIC_VERIFY_FAILED;
+        proc_status = staple_code_t::BASIC_VERIFY_FAILED;
         goto the_end;
     }
 
@@ -1051,7 +1082,7 @@ std::pair<typename baseSSLCom<L4Proto>::staple_code, int> baseSSLCom<L4Proto>::c
 
         com->opt_ocsp_enforce_in_verify = true;
 
-        proc_status = staple_code::CERT_TO_ID_FAILED;
+        proc_status = staple_code_t::CERT_TO_ID_FAILED;
         goto the_end;
     }
 
@@ -1065,7 +1096,7 @@ std::pair<typename baseSSLCom<L4Proto>::staple_code, int> baseSSLCom<L4Proto>::c
 
         com->opt_ocsp_enforce_in_verify = true;
 
-        proc_status = staple_code::NO_FIND_STATUS;
+        proc_status = staple_code_t::NO_FIND_STATUS;
         goto the_end;
     }
 
@@ -1077,7 +1108,7 @@ std::pair<typename baseSSLCom<L4Proto>::staple_code, int> baseSSLCom<L4Proto>::c
 
         com->opt_ocsp_enforce_in_verify = true;
 
-        proc_status = staple_code::INVALID_TIME;
+        proc_status = staple_code_t::INVALID_TIME;
     }
 
     the_end:
@@ -1093,8 +1124,8 @@ std::pair<typename baseSSLCom<L4Proto>::staple_code, int> baseSSLCom<L4Proto>::c
 
     if(signers) sk_X509_free(signers);
 
-    if(proc_status == staple_code::NOT_PROCESSED) {
-        proc_status = staple_code::SUCCESS;
+    if(proc_status == staple_code_t::NOT_PROCESSED) {
+        proc_status = staple_code_t::SUCCESS;
     }
 
     _dia("[%s] OCSP status for server certificate: %s", name.c_str(), OCSP_cert_status_str(ocsp_status));
@@ -1166,12 +1197,14 @@ int baseSSLCom<L4Proto>::status_resp_callback(SSL* ssl, void* arg) {
 
     auto stap_result = check_revocation_stapling(name, com, ssl);
 
-    if(stap_result.first == staple_code::SUCCESS) {
+    if(stap_result.first == staple_code_t::SUCCESS) {
         com->verify_bitreset(VRF_OK);
 
         if (stap_result.second == V_OCSP_CERTSTATUS_GOOD) {
             _dia("[%s] OCSP status is good",name.c_str());
             com->verify_bitset(VRF_OK);
+            com->verify_origin(verify_origin_t::OCSP_STAPLING);
+
             com->ocsp_cert_is_revoked = 0;
             _dia("Connection from %s: certificate %s is valid (stapling OCSP))",name.c_str(),cn.c_str());
 
@@ -1182,6 +1215,8 @@ int baseSSLCom<L4Proto>::status_resp_callback(SSL* ssl, void* arg) {
 
             com->ocsp_cert_is_revoked = 1;
             com->verify_bitset(VRF_REVOKED);
+            com->verify_origin(verify_origin_t::OCSP_STAPLING);
+
             _war("Connection from %s: certificate %s is revoked (stapling OCSP), replacement=%d)", name.c_str(),
                        cn.c_str(),
                        com->opt_failed_certcheck_replacement);

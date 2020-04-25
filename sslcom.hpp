@@ -407,7 +407,7 @@ public:
     [[maybe_unused]] static int certificate_status_ocsp_check(baseSSLCom* com);
     [[maybe_unused]] static int certificate_status_oob_check(baseSSLCom* com, int required);
 
-    enum class staple_code {
+    enum class staple_code_t {
             NOT_PROCESSED,
             MISSING_BODY,
             PARSING_FAILED,
@@ -420,7 +420,21 @@ public:
             SUCCESS
         };
 
-    static std::pair<typename baseSSLCom<L4Proto>::staple_code, int> check_revocation_stapling(std::string const& name, baseSSLCom*, SSL* ssl);
+    enum class verify_origin_t {
+        NONE,
+        OCSP_STAPLING,
+        OCSP_CACHE,
+        OCSP,
+        CRL_CACHE,
+        CRL
+    };
+    verify_origin_t verify_origin_ {verify_origin_t::NONE};
+    [[nodiscard]] verify_origin_t verify_origin() const { return verify_origin_; }
+
+    void verify_origin(verify_origin_t v) { verify_origin_ = v; }
+    static std::string verify_origin_str(verify_origin_t const& v);
+
+    static std::pair<typename baseSSLCom<L4Proto>::staple_code_t, int> check_revocation_stapling(std::string const& name, baseSSLCom*, SSL* ssl);
     
     // unknown issuers
     bool opt_allow_unknown_issuer = false;
