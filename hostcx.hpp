@@ -246,7 +246,7 @@ public:
     typedef enum { INIT, ACCEPTED, CONNECTING, CONNECTED, IO, CLOSING, CLOSED } fsm_t;
 
     baseCom* com() const { return com_; }
-    inline void com(baseCom* c) { com_ = c; if(c != nullptr) {  com_->init(this); } else { _deb("baseHostCX:com: setting com_ to nullptr"); } };
+    void com(baseCom* c);
 
     inline Proxy* parent_proxy() const { return parent_proxy_; };
     inline unsigned char parent_flag() const { return parent_flag_; }

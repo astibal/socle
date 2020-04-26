@@ -131,6 +131,17 @@ baseHostCX::~baseHostCX() {
 }
 
 
+void baseHostCX::com(baseCom* c) {
+    if(com_) delete com_;
+    com_ = c;
+    if(c != nullptr) {
+        com_->init(this);
+    }
+    else {
+        _deb("baseHostCX:com: setting com_ to nullptr");
+    }
+}
+
 int baseHostCX::connect() {
 
     if(! com()) {
