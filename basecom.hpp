@@ -245,6 +245,13 @@ public:
             master()->poller.add(s,EPOLLIN); 
         } 
     };
+    inline void set_enforce(int s) {
+        _dia("basecom::set_enforce: called to add %d", s);
+        if (s > 0 ) {
+            master()->poller.enforce_in(s);
+        }
+    };
+
     inline void unset_monitor(int s) { 
         _dia("basecom::unset_monitor: called to remove %d",s);
         if (s > 0 ) { 

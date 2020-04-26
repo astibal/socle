@@ -16,7 +16,12 @@ int epoll::init() {
 }
 
 int epoll::wait(int timeout) {
-    _dum("epoll::wait: == begin, timeout %dms", timeout);
+
+    if(! enforce_in_set.empty()) {
+        _deb("epoll::wait: == begin, timeout %dms, enforce queued sockets ", timeout);
+    } else {
+        _dum("epoll::wait: == begin, timeout %dms", timeout);
+    }
     
     clear();
     
@@ -47,7 +52,7 @@ int epoll::wait(int timeout) {
 
             if(idle_round == 0) {
                 // moving _pre to idle_watched
-                if(idle_watched_pre.size())
+                if(! idle_watched_pre.empty())
                     _deb("epoll::wait: idle round %d, moving %d sockets to idle watch", idle_round, idle_watched_pre.size());
 
                 for (auto s: idle_watched_pre) {
@@ -57,7 +62,7 @@ int epoll::wait(int timeout) {
 
             } else {
                 // finally idle sockets
-                if(idle_watched.size())
+                if(! idle_watched.empty())
                     _dia("epoll::wait: idle round %d, %d sockets marked idle", idle_round, idle_watched.size());
 
                 for (auto s: idle_watched) {
@@ -98,17 +103,17 @@ int epoll::wait(int timeout) {
 
         if(eventset & EPOLLIN) {
             if (socket == hint_socket()) {
-                _dia("epoll::wait: hint triggered %d",socket );
+                _dia("epoll::wait: hint triggered %d", socket);
             }
             
-            _dia("epoll::wait: data received into socket %d",socket );
+            _dia("epoll::wait: data received into socket %d", socket);
 
             // add socket to in_set
             in_set.insert(socket);
             clear_idle_watch(socket);
         }
         else if(eventset & EPOLLOUT) {
-            _dia("epoll::wait: socket %d writable (auto_epollout_remove=%d)",socket,auto_epollout_remove);
+            _dia("epoll::wait: socket %d writable (auto_epollout_remove=%d)",socket , auto_epollout_remove);
             
             out_set.insert(socket);
             clear_idle_watch(socket);
@@ -118,11 +123,20 @@ int epoll::wait(int timeout) {
             }
 
         } else {
-            _dia("epoll::wait: uncaught event value %d",eventset);
+            _dia("epoll::wait: uncaught event value %d", eventset);
         }
     }
-   
-   _dum("epoll::wait: == end");
+    if(! enforce_in_set.empty()) {
+        _dia("epoll::wait: enforced sockets set active");
+        for(auto enforced_fd: enforce_in_set ) {
+            in_set.insert(enforced_fd);
+            _deb("epoll::wait: enforced socket %dr", enforced_fd);
+        }
+        enforce_in_set.clear();
+    }
+
+
+    _dum("epoll::wait: == end");
     return nfds;
 }
 
@@ -263,6 +277,14 @@ bool epoll::rescan_in(int socket) {
     return false;
 }
 
+bool epoll::enforce_in(int socket) {
+    if(socket > 0) {
+        enforce_in_set.insert(socket);
+    }
+
+    return true;
+}
+
 unsigned long epoll::cancel_rescan_in(int socket) {
     if(socket > 0) {
         return rescan_set_in.erase(socket);
@@ -348,7 +370,10 @@ unsigned long epoll::clear_idle_watch(int check) {
 
 void epoller::init_if_null()
 {
-    if (poller == nullptr) { 
+    if (poller == nullptr) {
+
+        _deb("creating a new poller instance");
+
         poller = new epoll(); 
         if (poller->init() < 0) {
             poller = nullptr;
@@ -402,6 +427,16 @@ bool epoller::rescan_in(int socket)
     
     return false;
 };
+
+bool epoller::enforce_in(int socket) {
+    init_if_null();
+
+    if(poller != nullptr) {
+        return poller->enforce_in(socket);
+    }
+
+    return false;
+}
 
 unsigned long epoller::cancel_rescan_in(int socket)
 {

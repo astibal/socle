@@ -37,6 +37,7 @@ struct epoll {
     bool auto_epollout_remove = true;
     set_type in_set;
     set_type out_set;
+    set_type enforce_in_set;
 
     // this set is used for sockets where ARE already some data, but we wait for more.
     // because of this, socket will be REMOVED from in_set (so avoiding CPU spikes when there are still not enough of data)
@@ -80,6 +81,7 @@ struct epoll {
     virtual bool modify(int socket, int mask);
     virtual bool del(int socket);
     virtual bool rescan_in(int socket);
+    virtual bool enforce_in(int socket);
     virtual bool rescan_out(int socket);
     virtual unsigned long cancel_rescan_in(int socket);
     virtual unsigned long cancel_rescan_out(int socket);
@@ -97,7 +99,6 @@ struct epoll {
     static loglevel log_level;
     logan_lite log = logan_lite("com.epoll");
 
-    mutable std::mutex lock_;
 };
 
 
@@ -138,6 +139,7 @@ struct epoller {
     virtual bool modify(int socket, int mask);
     virtual bool del(int socket);
     virtual bool rescan_in(int socket);
+    virtual bool enforce_in(int socket);
     virtual bool rescan_out(int socket);
     unsigned long cancel_rescan_in(int socket);
     unsigned long cancel_rescan_out(int socket);
