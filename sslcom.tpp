@@ -2585,6 +2585,9 @@ int baseSSLCom<L4Proto>::read (int _fd, void* _buf, size_t _n, int _flags )  {
             // => select|poll won't return this socket as in read_set == no reads anymore !!!
             // => we have to have mechanism which will enforce read in the next round
             forced_read(true);
+            master()->set_enforce(_fd);
+            _deb("SSLCom::read[%d]:  forcing new read (this com 0x%x, master 0x%x)", _fd, this, master());
+            _deb("SSLCom::read[%d]:  forcing new read (peer com 0x%x, peer master 0x%x)", _fd, peer(), peer()->master());
             break;
         }
 
