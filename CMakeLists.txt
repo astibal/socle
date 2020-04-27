@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 2.8)
 
+project(socle CXX)
+
 SET(SOCLE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 
 include_directories ("${SOCLE_DIR}")
