@@ -1940,7 +1940,6 @@ ret_handshake baseSSLCom<L4Proto>::handshake() {
         return ret_handshake::ERROR;
     }
 
-    ret_handshake XXXXto_ret = ret_handshake::AGAIN;
     int op_code = -1;
 
 
@@ -2351,8 +2350,6 @@ int baseSSLCom<L4Proto>::parse_peer_hello() {
 
     int ret = -1;
 
-    uint8_t content_type = 0;
-
     try {
 
         buffer& b = sslcom_peer_hello_buffer;
@@ -2392,6 +2389,7 @@ int baseSSLCom<L4Proto>::parse_peer_hello() {
                 curpos+=sizeof(unsigned char); //@10
                 unsigned char handshake_version_min = b.get_at<unsigned char>(curpos);
                 curpos+=sizeof(unsigned char); //@11
+                [[maybe_unused]]
                 unsigned int  handshake_unixtime = ntohl(b.get_at<unsigned char>(curpos));
                 curpos+=sizeof(unsigned int); //@15
 
@@ -2498,6 +2496,7 @@ unsigned short baseSSLCom<L4Proto>::parse_peer_hello_extensions(buffer& b, unsig
 
         /* server name*/
         case 0:
+            [[maybe_unused]]
             unsigned short sn_list_length = htons(b.get_at<unsigned short>(curpos));
             curpos+= sizeof(unsigned short);
             unsigned  char sn_type = b.get_at<unsigned char>(curpos);

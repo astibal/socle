@@ -36,7 +36,7 @@ namespace inet {
             int is_revoked = -1;
             if (issuer) {
                 EVP_PKEY *ikey = X509_get_pubkey(issuer); // must be freed
-                ASN1_INTEGER *serial = X509_get_serialNumber(x509); // must not be freed
+                [[maybe_unused]] ASN1_INTEGER *serial = X509_get_serialNumber(x509); // must not be freed
 
                 if (crl_file && ikey) {
                     if (X509_CRL_verify(crl_file, ikey)) {
@@ -943,7 +943,6 @@ namespace inet {
         }
 
         bool OcspQuery::run () {
-            auto& log = OcspFactory::log();
 
             switch (state_) {
                 case OcspQuery::ST_INIT:
