@@ -21,19 +21,6 @@
 #include <unordered_map>
 #include "buffer.hpp"
 
-
-unsigned long long stat_mempool_alloc = 0;
-unsigned long long stat_mempool_realloc = 0;
-unsigned long long stat_mempool_realloc_miss = 0;
-unsigned long long stat_mempool_realloc_fitting = 0;
-unsigned long long stat_mempool_free = 0;
-unsigned long long stat_mempool_free_miss = 0;
-
-unsigned long long stat_mempool_alloc_size = 0;
-unsigned long long stat_mempool_realloc_size = 0;
-unsigned long long stat_mempool_free_size = 0;
-
-
 #ifdef MEMPOOL_DEBUG
 const bool mem_chunk_t::trace_enabled = true;
 #else
@@ -103,9 +90,10 @@ mem_chunk_t memPool::acquire(std::size_t sz) {
 
     std::vector<mem_chunk_t>* mem_pool = pick_acq_set(sz);
 
-    std::lock_guard<std::mutex> g(lock);
     stat_acq++;
     stat_acq_size += sz;
+
+    std::lock_guard<std::mutex> g(lock);
 
     if (mem_pool->empty()) {
         mem_chunk_t new_entry = mem_chunk(sz);
@@ -187,10 +175,10 @@ void* mempool_alloc(size_t s) {
     {
         std::lock_guard<std::mutex> l(mpdata::lock());
         mpdata::map()[mch.ptr] = mch;
-
-        stat_mempool_alloc++;
-        stat_mempool_alloc_size += s;
     }
+
+    mp_stats::get().stat_mempool_alloc++;
+    mp_stats::get().stat_mempool_alloc_size += s;
 
     return mch.ptr;
 }
@@ -209,7 +197,7 @@ void* mempool_realloc(void* optr, size_t nsz) {
         if (i != mpdata::map().end()) {
             ptr_size = (*i).second.capacity;
         } else {
-            stat_mempool_realloc_miss++;
+            mp_stats::get().stat_mempool_realloc_miss++;
         }
 
     }
@@ -217,7 +205,7 @@ void* mempool_realloc(void* optr, size_t nsz) {
 
     // if realloc asks for actually already fitting size, return old one
     if(ptr_size >= nsz) {
-        stat_mempool_realloc_fitting++;
+        mp_stats::get().stat_mempool_realloc_fitting++;
         return optr;
     }
 
@@ -232,7 +220,7 @@ void* mempool_realloc(void* optr, size_t nsz) {
         if (i != mpdata::map().end()) {
             mpdata::map().erase(i);
         } else {
-            stat_mempool_realloc_miss++;
+            mp_stats::get().stat_mempool_realloc_miss++;
         }
 
         return nullptr;
@@ -252,8 +240,8 @@ void* mempool_realloc(void* optr, size_t nsz) {
             mpdata::map()[new_m.ptr] = new_m;
         }
 
-        stat_mempool_realloc++;
-        stat_mempool_realloc += (new_m.capacity - old_m.capacity);
+        mp_stats::get().stat_mempool_realloc++;
+        mp_stats::get().stat_mempool_realloc += (new_m.capacity - old_m.capacity);
 
         return static_cast<void*>(new_m.ptr);
     }
@@ -262,22 +250,24 @@ void* mempool_realloc(void* optr, size_t nsz) {
 
 void mempool_free(void* optr) {
 
-    std::lock_guard<std::mutex> l(mpdata::lock());
-
     size_t ptr_size = 0;
-    auto i = mpdata::map().find(optr);
-    if (i != mpdata::map().end()) {
+    {
+        std::lock_guard<std::mutex> l(mpdata::lock());
 
-        ptr_size = (*i).second.capacity;
-        mpdata::map().erase(i);
-    } else {
-        stat_mempool_free_miss++;
+        auto i = mpdata::map().find(optr);
+        if (i != mpdata::map().end()) {
+
+            ptr_size = (*i).second.capacity;
+            mpdata::map().erase(i);
+        } else {
+            mp_stats::get().stat_mempool_free_miss++;
+        }
+
+        memPool::pool().release(mem_chunk(static_cast<unsigned char *>(optr), ptr_size));
     }
 
-    stat_mempool_free++;
-    stat_mempool_free_size += ptr_size;
-
-    memPool::pool().release( mem_chunk(static_cast<unsigned char*>(optr), ptr_size) );
+    mp_stats::get().stat_mempool_free++;
+    mp_stats::get().stat_mempool_free_size += ptr_size;
 }
 
 

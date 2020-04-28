@@ -23,6 +23,7 @@
 #include <vector>
 #include <mutex>
 #include <unordered_map>
+#include <atomic>
 
 #include <execinfo.h>
 
@@ -143,20 +144,20 @@ public:
     mem_chunk_t acquire(std::size_t sz);
     void release(mem_chunk_t to_ret);
 
-    unsigned long long stat_acq;
-    unsigned long long stat_acq_size;
+    std::atomic<unsigned long long> stat_acq;
+    std::atomic<unsigned long long> stat_acq_size;
 
-    unsigned long long stat_ret;
-    unsigned long long stat_ret_size;
+    std::atomic<unsigned long long> stat_ret;
+    std::atomic<unsigned long long> stat_ret_size;
 
-    unsigned long long stat_alloc;
-    unsigned long long stat_alloc_size;
+    std::atomic<unsigned long long> stat_alloc;
+    std::atomic<unsigned long long> stat_alloc_size;
 
-    unsigned long long stat_free;
-    unsigned long long stat_free_size;
+    std::atomic<unsigned long long> stat_free;
+    std::atomic<unsigned long long> stat_free_size;
 
-    unsigned long long stat_out_free;
-    unsigned long long stat_out_free_size;
+    std::atomic<unsigned long long> stat_out_free;
+    std::atomic<unsigned long long> stat_out_free_size;
 
     long unsigned int mem_32_av() const { return static_cast<long unsigned int>(available_32.size()); };
     long unsigned int mem_64_av() const { return static_cast<long unsigned int>(available_64.size()); };
@@ -208,17 +209,28 @@ void* mempool_alloc(size_t, const char*, int);
 void* mempool_realloc(void*, size_t, const char*, int);
 void mempool_free(void*, const char*, int);
 
-extern unsigned long long stat_mempool_alloc;
 
-extern unsigned long long stat_mempool_realloc;
-extern unsigned long long stat_mempool_realloc_miss;
-extern unsigned long long stat_mempool_realloc_fitting;
+struct mp_stats {
 
-extern unsigned long long stat_mempool_free;
-extern unsigned long long stat_mempool_free_miss;
+    std::atomic<unsigned long long> stat_mempool_alloc;
 
-extern unsigned long long stat_mempool_alloc_size;
-extern unsigned long long stat_mempool_realloc_size;
-extern unsigned long long stat_mempool_free_size;
+    std::atomic<unsigned long long> stat_mempool_realloc;
+    std::atomic<unsigned long long> stat_mempool_realloc_miss;
+    std::atomic<unsigned long long> stat_mempool_realloc_fitting;
+
+    std::atomic<unsigned long long> stat_mempool_free;
+    std::atomic<unsigned long long> stat_mempool_free_miss;
+
+    std::atomic<unsigned long long> stat_mempool_alloc_size;
+    std::atomic<unsigned long long> stat_mempool_realloc_size;
+    std::atomic<unsigned long long> stat_mempool_free_size;
+
+    static mp_stats& get() { static mp_stats m; return m; }
+
+    mp_stats(mp_stats const&) = delete;
+    mp_stats& operator=(mp_stats const&) = delete;
+private:
+    mp_stats() = default;
+};
 
 #endif //__MEMPOOL_HPP__
