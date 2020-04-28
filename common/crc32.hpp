@@ -45,6 +45,12 @@
 
 #include <stdint.h>
 
-uint32_t socle_crc32(uint32_t, const void *, size_t );
+namespace socle::tools {
+
+    struct crc32 {
+        static uint32_t compute(uint32_t, const void *, size_t);
+        static uint32_t* tab();
+    };
+}
 
 #endif //__CRC32_HPP__

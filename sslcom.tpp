@@ -2607,7 +2607,7 @@ int baseSSLCom<L4Proto>::read (int _fd, void* _buf, size_t _n, int _flags )  {
 
                 _deb("SSLCom::read [%d]: %4d bytes read:(round %d) %s, %X", _fd, r, rounds,
                      (r == (signed int)_n) ? "(max)" : "(no-max)",
-                     debug_log_data_crc ? socle_crc32(0, _buf, r) : 0
+                     debug_log_data_crc ? socle::tools::crc32::compute(0, _buf, r) : 0
                     );
 
                 if(r > 0)
@@ -2820,7 +2820,7 @@ int baseSSLCom<L4Proto>::write (int _fd, const void* _buf, size_t _n, int _flags
             /* We wrote something*/
         case SSL_ERROR_NONE:
             _deb("SSLCom::write[%d]: %4d bytes written to the ssl socket %s, %X", _fd, r, r != (signed int)_n ? "(incomplete)" : "",
-                 debug_log_data_crc ? socle_crc32(0, _buf, r) : 0
+                 debug_log_data_crc ? socle::tools::crc32::compute(0, _buf, r) : 0
                 );
             is_problem = false;
 

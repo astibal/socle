@@ -481,7 +481,7 @@ int baseHostCX::read() {
 
         if(com()->debug_log_data_crc) {
             _deb("baseHostCX::read[%s]: after: buffer crc = %X", c_name(),
-                     socle_crc32(0, readbuf()->data(), readbuf()->size()));
+                     socle::tools::crc32::compute(0, readbuf()->data(), readbuf()->size()));
         }
 
     } else if (l == 0) {
@@ -581,7 +581,7 @@ int baseHostCX::write() {
 
         if(com()->debug_log_data_crc) {
             _deb("baseHostCX::write[%s]: after: buffer crc = %X", c_name(),
-                    socle_crc32(0, writebuf()->data(), writebuf()->size()));
+                    socle::tools::crc32::compute(0, writebuf()->data(), writebuf()->size()));
         }
 
         if(close_after_write() && writebuf()->size() == 0) {
