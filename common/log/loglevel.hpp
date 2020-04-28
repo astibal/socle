@@ -36,16 +36,16 @@ extern loglevelmore LOG_EXTOPIC;
 extern loglevelmore LOG_EXEXACT;
 
 
-class logger_level {
+class loglevel {
 
 public:
-    explicit logger_level(unsigned int l) : level_(l), topic_(0) {}
-    logger_level(unsigned int l, unsigned int t) : level_(l),topic_(t) {}
-    logger_level(logger_level& l, unsigned int t) : level_(l.level_), topic_(t) {}
-    logger_level(logger_level& l, unsigned int t, unsigned int f) : level_(l.level_), topic_(t), flags_(f) {}
-    logger_level(unsigned int l, unsigned int t,loglevelmore* a) : level_(l),topic_(t), adv_(a) {}
-    logger_level(logger_level& l, unsigned int t, loglevelmore* a) : level_(l.level_), topic_(t), adv_(a) {}
-    logger_level(logger_level& l, unsigned int t, loglevelmore* a, unsigned int f) : level_(l.level_), topic_(t), adv_(a), flags_(f) {}
+    explicit loglevel(unsigned int l) : level_(l), topic_(0) {}
+    loglevel(unsigned int l, unsigned int t) : level_(l), topic_(t) {}
+    loglevel(loglevel& l, unsigned int t) : level_(l.level_), topic_(t) {}
+    loglevel(loglevel& l, unsigned int t, unsigned int f) : level_(l.level_), topic_(t), flags_(f) {}
+    loglevel(unsigned int l, unsigned int t, loglevelmore* a) : level_(l), topic_(t), adv_(a) {}
+    loglevel(loglevel& l, unsigned int t, loglevelmore* a) : level_(l.level_), topic_(t), adv_(a) {}
+    loglevel(loglevel& l, unsigned int t, loglevelmore* a, unsigned int f) : level_(l.level_), topic_(t), adv_(a), flags_(f) {}
 
 
     [[nodiscard]] inline unsigned int level() const { return level_; }
@@ -77,7 +77,6 @@ private:
     std::string area_;
 };
 
-typedef struct logger_level loglevel;
 
 bool operator== (const loglevel& a, const loglevel& b);
 bool operator== (const loglevel& a, const unsigned int& b);
