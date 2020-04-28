@@ -44,15 +44,6 @@ unsigned long SSLFactory::def_sr_options = SSL_OP_NO_SSLv3+SSL_OP_NO_SSLv2;
 #pragma GCC diagnostic ignored "-Wwrite-strings"
 #pragma GCC diagnostic push
 
-constexpr unsigned int EXT_COUNT = 4;
-static struct entry ext_ent[EXT_COUNT] = {
-        { "basicConstraints",      "CA:FALSE" },
-        { "nsComment",           "\"Mitm generated certificate\"" },
-        { "subjectKeyIdentifier",  "hash" },
-        { "authorityKeyIdentifier","keyid,issuer:always" } //,
-        //{ "keyUsage",              "nonrepudiation,digitalSig nature,keyEncipherment" }
-};
-
 #pragma GCC diagnostic pop
 
 
@@ -1007,17 +998,19 @@ SSLFactory::X509_PAIR* SSLFactory::spoof(X509* cert_orig, bool self_sign, std::v
     
     // add x509v3 extensions as specified 
     X509V3_set_ctx(&ctx, ca_cert, cert, nullptr, nullptr, 0);
-    for (unsigned int i = 0; i < EXT_COUNT; i++) {
+    for (auto const& [ext_name, ext_value]: extensions()) {
 
         X509_EXTENSION * ext;
-        if (!(ext = X509V3_EXT_conf(nullptr, &ctx, ext_ent[i].key, ext_ent[i].value))) {
-            _war("SSLFactory::spoof[%x]: error on \"%s = %s\"",this,ext_ent[i].key, ext_ent[i].value);
-            _war("SSLFactory::spoof[%x]: error creating X509 extension object",this);
+        if (!(ext = X509V3_EXT_conf(nullptr, &ctx, ext_name.c_str(), ext_value.c_str()))) {
+            _war("SSLFactory::spoof[%x]: error on \"%s = %s\"", this, ext_name.c_str(), ext_value.c_str());
+            _war("SSLFactory::spoof[%x]: error creating X509 extension object", this);
+
+            X509_EXTENSION_free(ext);
             continue;
         }
         if (!X509_add_ext(cert, ext, -1)) {
-            _err("SSLFactory::spoof[%x]: error on \"%s = %s\"",this,ext_ent[i].key, ext_ent[i].value);
-            _err("SSLFactory::spoof[%x]: error adding X509 extension into certificate",this);
+            _err("SSLFactory::spoof[%x]: error on \"%s = %s\"", this, ext_name.c_str(), ext_value.c_str());
+            _err("SSLFactory::spoof[%x]: error adding X509 extension into certificate", this);
         }
         X509_EXTENSION_free(ext);
     }

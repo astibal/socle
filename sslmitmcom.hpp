@@ -23,14 +23,6 @@
 #include <sslcom.hpp>
 
 
-
-struct entry    {
-    char *key;
-    char *value;
-};
-
-
-
 struct SpoofOptions {
   bool self_signed = false; // set to true if we should deliberately make a mistake
   std::vector<std::string> sans;

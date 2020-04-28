@@ -228,6 +228,19 @@ public:
     }
 
     class CertParseException : public std::exception {};
+
+    static std::vector<std::pair<std::string,std::string>> const& extensions() {
+
+        static std::vector<std::pair<std::string,std::string>> r = {
+
+            std::make_pair("basicConstraints", "CA:FALSE"),
+            std::make_pair("nsComment", "\"Mitm generated certificate\""),
+            std::make_pair("subjectKeyIdentifier", "hash"),
+            std::make_pair("authorityKeyIdentifier", "keyid,issuer:always")
+        };
+
+        return r;
+    }
 };
 
 #endif //__SSLCERTSTORE_HPP__
