@@ -43,18 +43,18 @@
 #define LOG_FLRAW  0x00000001  // don't print out any dates, or additional data  on the line, just this message
 
 
-#define DEB_DO_(x) if(get_logger()->level() >= DEB) { (x); }
-#define LEV_(x) (get_logger()->level() >= (x) ? true : false )
-#define LEV get_logger()->level()
+#define DEB_DO_(x) if(LogOutput::get()->level() >= DEB) { (x); }
+#define LEV_(x) (LogOutput::get()->level() >= (x) ? true : false )
+#define LEV LogOutput::get()->level()
 
 #define O_LOG_(lev,x,...) \
-    if(get_logger()->level() >= (lev)) { \
-        get_logger()->log(lev,(x),__VA_ARGS__); \
+    if(LogOutput::get()->level() >= (lev)) { \
+        LogOutput::get()->log(lev,(x),__VA_ARGS__); \
     }
 
 #define O_LOGS_(lev,x) \
-    if(get_logger()->level() >= (lev)) { \
-        get_logger()->log(lev,(x)); \
+    if(LogOutput::get()->level() >= (lev)) { \
+        LogOutput::get()->log(lev,(x)); \
     }
 
 #define _FILE_ (strrchr(__FILE__, '/') ? strrchr(__FILE__, '/') + 1 : __FILE__)
@@ -63,35 +63,35 @@
 /* Define macros that log without any extra checks in the object */
 
 #define LOG_(lev,x,...) \
-    if(get_logger()->level() >= (lev)) { \
-        if( ( ( get_logger()->print_srcline() && get_logger()->level() > INF ) || get_logger()->print_srcline_always() ) \
+    if(LogOutput::get()->level() >= (lev)) { \
+        if( ( ( LogOutput::get()->print_srcline() && LogOutput::get()->level() > INF ) || LogOutput::get()->print_srcline_always() ) \
               && !flag_test((lev).flags(),LOG_FLRAW)) { \
-            get_logger()->log2(lev,_FILE_,__LINE__,(x),__VA_ARGS__); \
+            LogOutput::get()->log2(lev,_FILE_,__LINE__,(x),__VA_ARGS__); \
         } else { \
-            get_logger()->log(lev,(x),__VA_ARGS__); \
+            LogOutput::get()->log(lev,(x),__VA_ARGS__); \
         } \
     }
 
 #define LOGS_(lev,x) \
-    if(get_logger()->level() >= (lev)) { \
-        if( ( ( get_logger()->print_srcline() && get_logger()->level() > INF ) || get_logger()->print_srcline_always() ) \
+    if(LogOutput::get()->level() >= (lev)) { \
+        if( ( ( LogOutput::get()->print_srcline() && LogOutput::get()->level() > INF ) || LogOutput::get()->print_srcline_always() ) \
               && !flag_test((lev).flags(),LOG_FLRAW)) { \
-            get_logger()->log2(lev,_FILE_,__LINE__,(x)); \
+            LogOutput::get()->log2(lev,_FILE_,__LINE__,(x)); \
         } else { \
-            get_logger()->log(lev,(x)); \
+            LogOutput::get()->log(lev,(x)); \
         } \
     }
 
 #define T_LOG_(name,interval,lev,x,...) \
-    if(get_logger()->level() >= (lev)) { \
-        if(get_logger()->click_timer(name,interval)) { \
+    if(LogOutput::get()->level() >= (lev)) { \
+        if(LogOutput::get()->click_timer(name,interval)) { \
             LOG_(lev,x,__VA_ARGS__); \
         } \
     }
 
 #define T_LOGS_(name,interval,lev,x) \
-    if(get_logger()->level() >= (lev)) { \
-        if(get_logger()->click_timer(name,interval)) { \
+    if(LogOutput::get()->level() >= (lev)) { \
+        if(LogOutput::get()->click_timer(name,interval)) { \
             LOGS_(lev,x); \
         } \
     }
@@ -100,37 +100,37 @@
 /* Define macros that log in some cases also source file and line number enabling object log_level attribute check */
 
 #define L_LOG_(lev,x,...) \
-    if(log_level >= lev || get_logger()->level() >= lev) { \
-        if( ( ( get_logger()->print_srcline() && get_logger()->level() > INF ) || ( get_logger()->print_srcline() && log_level > INF ) || get_logger()->print_srcline_always() ) && !flag_test((lev).flags(),LOG_FLRAW)) { \
-            get_logger()->log2(lev,_FILE_,__LINE__,(x),__VA_ARGS__); \
+    if(log_level >= lev || LogOutput::get()->level() >= lev) { \
+        if( ( ( LogOutput::get()->print_srcline() && LogOutput::get()->level() > INF ) || ( LogOutput::get()->print_srcline() && log_level > INF ) || LogOutput::get()->print_srcline_always() ) && !flag_test((lev).flags(),LOG_FLRAW)) { \
+            LogOutput::get()->log2(lev,_FILE_,__LINE__,(x),__VA_ARGS__); \
         } else { \
-            get_logger()->log(lev,(x),__VA_ARGS__); \
+            LogOutput::get()->log(lev,(x),__VA_ARGS__); \
         } \
     }
 
 #define L_LOGS_(lev,x) \
-    if(log_level >= lev || get_logger()->level() >= lev) { \
-        if( ( ( get_logger()->print_srcline() && get_logger()->level() > INF ) || ( get_logger()->print_srcline() && log_level > INF ) || get_logger()->print_srcline_always() ) && !flag_test((lev).flags(),LOG_FLRAW)) { \
-            get_logger()->log2(lev,_FILE_,__LINE__,(x)); \
+    if(log_level >= lev || LogOutput::get()->level() >= lev) { \
+        if( ( ( LogOutput::get()->print_srcline() && LogOutput::get()->level() > INF ) || ( LogOutput::get()->print_srcline() && log_level > INF ) || LogOutput::get()->print_srcline_always() ) && !flag_test((lev).flags(),LOG_FLRAW)) { \
+            LogOutput::get()->log2(lev,_FILE_,__LINE__,(x)); \
         } else { \
-            get_logger()->log(lev,(x)); \
+            LogOutput::get()->log(lev,(x)); \
         } \
     }
 
 
 #define _T_L_LOG_(name,interval,lev,x,...) \
-    if(this->log_level >= lev || get_logger()->level() >= lev) { \
-        if( ( get_logger()->print_srcline() && get_logger()->level() > INF ) || ( get_logger()->print_srcline() && log_level > INF ) || get_logger()->print_srcline_always()) { \
-            if(get_logger()->click_timer(name,interval)) { \
+    if(this->log_level >= lev || LogOutput::get()->level() >= lev) { \
+        if( ( LogOutput::get()->print_srcline() && LogOutput::get()->level() > INF ) || ( LogOutput::get()->print_srcline() && log_level > INF ) || LogOutput::get()->print_srcline_always()) { \
+            if(LogOutput::get()->click_timer(name,interval)) { \
                 LOG_(lev,x,__VA_ARGS__); \
             } \
         }\
     }
 
 #define T_L_LOGS_(name,interval,lev,x) \
-    if(this->log_level >= lev || get_logger()->level() >= lev) { \
-        if( ( get_logger()->print_srcline() && get_logger()->level() > INF ) || ( get_logger()->print_srcline() && log_level > INF ) || get_logger()->print_srcline_always()) { \
-            if(get_logger()->click_timer(name,interval)) { \
+    if(this->log_level >= lev || LogOutput::get()->level() >= lev) { \
+        if( ( LogOutput::get()->print_srcline() && LogOutput::get()->level() > INF ) || ( LogOutput::get()->print_srcline() && log_level > INF ) || LogOutput::get()->print_srcline_always()) { \
+            if(LogOutput::get()->click_timer(name,interval)) { \
                 LOGS_(lev,x); \
             } \
         } \
@@ -140,55 +140,55 @@
 /* Define macros that log objects with hr() function */
 
 #define LN_LOG_(lev,x,...) \
-    if(this->get_this_log_level() >= lev || get_logger()->level() >= lev || this->log_level >= lev) { \
+    if(this->get_this_log_level() >= lev || LogOutput::get()->level() >= lev || this->log_level >= lev) { \
         if(                                     \
             (                                   \
-                ( get_logger()->print_srcline() &&  lev >= INF )   \
+                ( LogOutput::get()->print_srcline() &&  lev >= INF )   \
                 ||                          \
-                get_logger()->print_srcline_always()     \
+                LogOutput::get()->print_srcline_always()     \
             )                                            \
             &&                                           \
             !flag_test((lev).flags(),LOG_FLRAW)           \
           )                                              \
         { \
-            get_logger()->log2_w_name(lev,_FILE_,__LINE__,(hr()),(x),__VA_ARGS__); \
+            LogOutput::get()->log2_w_name(lev,_FILE_,__LINE__,(hr()),(x),__VA_ARGS__); \
         } else { \
-            get_logger()->log_w_name(lev,(hr()),(x),__VA_ARGS__); \
+            LogOutput::get()->log_w_name(lev,(hr()),(x),__VA_ARGS__); \
         } \
     }
 
 #define LN_LOGS_(lev,x) \
-    if(this->get_this_log_level() >= lev || get_logger()->level() >= lev || this->log_level() >= lev) { \
+    if(this->get_this_log_level() >= lev || LogOutput::get()->level() >= lev || this->log_level() >= lev) { \
         if(                                     \
             (                                   \
-                ( get_logger()->print_srcline() &&  lev >= INF )   \
+                ( LogOutput::get()->print_srcline() &&  lev >= INF )   \
                 ||                          \
-                get_logger()->print_srcline_always()     \
+                LogOutput::get()->print_srcline_always()     \
             )                                            \
             &&                                           \
             !flag_test((lev).flags(),LOG_FLRAW)           \
           )                                              \
         { \
-            get_logger()->log2_w_name(lev,_FILE_,__LINE__,(hr()),(x)); \
+            LogOutput::get()->log2_w_name(lev,_FILE_,__LINE__,(hr()),(x)); \
         } else { \
-            get_logger()->log_w_name(lev,(hr()),(x)); \
+            LogOutput::get()->log_w_name(lev,(hr()),(x)); \
         } \
     }
 
 
 #define T_LN_LOG_(name,interval,lev,x,...) \
-    if(this->get_this_log_level() >= lev || get_logger()->level() >= lev) { \
-        if( ( get_logger()->print_srcline() && get_logger()->level() > INF ) || ( get_logger()->print_srcline() && log_level() > INF ) || get_logger()->print_srcline_always()) { \
-            if(get_logger()->click_timer(name,interval)) { \
+    if(this->get_this_log_level() >= lev || LogOutput::get()->level() >= lev) { \
+        if( ( LogOutput::get()->print_srcline() && LogOutput::get()->level() > INF ) || ( gLogOutput::et_logger()->print_srcline() && log_level() > INF ) || LogOutput::get()->print_srcline_always()) { \
+            if(LogOutput::get()->click_timer(name,interval)) { \
                 LN_LOG_(lev,x,__VA_ARGS__); \
             } \
         }\
     }
 
 #define T_LN_LOGS_(name,interval,lev,x) \
-    if(this->get_this_log_level() >= lev || get_logger()->level() >= lev) { \
-        if( ( get_logger()->print_srcline() && get_logger()->level() > INF ) || ( get_logger()->print_srcline() && log_level() > INF ) || get_logger()->print_srcline_always())) { \
-            if(get_logger()->click_timer(name,interval)) { \
+    if(this->get_this_log_level() >= lev || LogOutput::get()->level() >= lev) { \
+        if( ( LogOutput::get()->print_srcline() && LogOutput::get()->level() > INF ) || ( LogOutput::get()->print_srcline() && log_level() > INF ) || LogOutput::get()->print_srcline_always())) { \
+            if(LogOutput::get()->click_timer(name,interval)) { \
                 LN_LOGS_(lev,x); \
             } \
         } \
@@ -393,8 +393,8 @@
 #define T_NONS___(n,i,x) T_LN_LOGS_(n,i,NON,(x))
 
 
-#define PERIOD_START(interval) get_logger()->periodic_start(interval);
-#define PERIOD_END get_logger()->periodic_end();
+#define PERIOD_START(interval) LogOutput::get()->periodic_start(interval);
+#define PERIOD_END LogOutput::get()->periodic_end();
 
 
 // takes argument of pointer to function which returns std::string, indicate object name.

@@ -63,7 +63,9 @@ struct logger_profile_syslog {
 
 class logger_profile {
 
-public:  
+public:
+
+    [[maybe_unused]]
     typedef enum { FILE=0, REMOTE_RAW=1, REMOTE_SYSLOG=3 } logger_type_t;
     logger_type_t logger_type = FILE;
     
@@ -155,13 +157,13 @@ public:
         else return target_name(0);
     }
 
-    inline unsigned int period() { return period_; }
-    inline void period(unsigned int p) { period_ = p; }
+    [[maybe_unused]] inline unsigned int period() { return period_; }
+    [[maybe_unused]] inline void period(unsigned int p) { period_ = p; }
 
     bool periodic_start(unsigned int s);
     bool periodic_end();
 
-    // any change in target profiles could imply adjusting internal logging level.
+     // any change in target profiles could imply adjusting internal logging level.
     // For example: having internal level set to 5 (NOTify), so is the file logging level.
     // Someone adds syslog and remote raw loggers, one from them set to 6 (INF).
     // Unless we change internal logging level, he will not see on remotes any INF messages, because
@@ -169,21 +171,30 @@ public:
     // This methods interates through targets and sets logging level to highest level used by targets.
     // @return log level difference, therefore negative if we decreased logging level, zero if unchanged,
     // positive if log level is raised.
-    loglevel adjust_level();
+     [[deprecated("internal logging level is not used anymore")]]
+     [[maybe_unused]]
+     loglevel adjust_level();
 };
 
 
-extern logger* lout_;
 
-extern logger* get_logger();
-extern logger* create_default_logger();
-extern void set_logger(logger*);
+class LogOutput {
 
-static const std::string level_table[] = {"None    ","Fatal   ","Critical","Error   ","Warning ","Notify  ",
-                                          "Informat","Diagnose","Debug   ","Dumpit  ","Extreme "};
+public:
+    static std::shared_ptr<logger> default_logger ();
 
-#pragma GCC diagnostic ignored "-Wformat-security"
-#pragma GCC diagnostic push
+    static LogOutput& instance() { static LogOutput l; return l; }
+    static std::shared_ptr<logger> get();
+    static void set(std::shared_ptr<logger>&& l);
+
+    static inline const std::string levels[] = {"None    ", "Fatal   ", "Critical", "Error   ", "Warning ", "Notify  ",
+                                                "Informat", "Diagnose", "Debug   ", "Dumpit  ", "Extreme "};
+private:
+
+    LogOutput() : lout_(default_logger()) {};
+    std::shared_ptr<logger> lout_;
+};
+
 
 template <class ... Args>
 void logger::log(loglevel l, const std::string& fmt,  Args ... args) {
@@ -203,12 +214,12 @@ void logger::log(loglevel l, const std::string& fmt,  Args ... args) {
     std::string str = string_format(fmt.c_str(), args...);
 
 
-    std::string desc = std::string(level_table[0]);
+    std::string desc = std::string(LogOutput::levels[0]);
 
-    if (l > sizeof(level_table)-1) {
-        desc = string_format("%d",l.level());
+    if (l > sizeof(LogOutput::LogOutput::levels) - 1) {
+        desc = string_format("%d", l.level());
     } else {
-        desc = level_table[l.level()];
+        desc = LogOutput::levels[l.level()];
     }
 
 
@@ -264,8 +275,5 @@ void logger::log2_w_name(loglevel l, const char* f, int li, std::string name, co
     std::string str = string_format(fmt.c_str(), args...);
     log(l,src_info+c_name+str);
 };
-
-#pragma GCC diagnostic pop
-
 
 #endif // LOGGER_HPP

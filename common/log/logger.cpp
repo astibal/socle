@@ -17,36 +17,25 @@
 */
 
 #include <iostream>
-#include <sstream>
 #include <string>
-
-#include <cstring>
-#include <cstdarg>
-#include <cstdio>
-#include <ctime>
-
 #include <mutex>
+#include <memory>
 
-#include "display.hpp"
-#include "log/logger.hpp"
-
-#include <ctime>
+#include <log/logger.hpp>
 #include <sys/socket.h>
 
-logger* lout_ = nullptr;
 
-logger* get_logger() {
-    if(lout_ == nullptr) { lout_ = create_default_logger(); }
-    return lout_;
-};
-
-logger* create_default_logger() {
-    return new logger();
+std::shared_ptr<logger> LogOutput::get() {
+    return instance().lout_;
 }
 
-void set_logger(logger* l) {
-    delete lout_;
-    lout_ = l;
+std::shared_ptr<logger> LogOutput::default_logger() {
+    static auto r = std::make_shared<logger>();
+    return r;
+}
+
+void LogOutput::set(std::shared_ptr<logger>&& l) {
+    instance().lout_ = l;
 }
 
 
@@ -226,6 +215,7 @@ bool logger::click_timer (const std::string &xname, int interval) {
 }
 
 // DEPRECATED: we don't need adjusting internal logging based on profiles anymore.
+[[maybe_unused]]
 loglevel logger::adjust_level() {
 
     loglevel curr_level = level();

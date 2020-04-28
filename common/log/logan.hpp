@@ -173,7 +173,7 @@ public:
             }
             ms << string_format(fmt, args...);
 
-            get_logger()->log(lev, ms.str());
+            LogOutput::get()->log(lev, ms.str());
         }
     }
 };
@@ -417,7 +417,7 @@ public:
             std::stringstream ms;
             ms << "[" << topic << "]: " << string_format(fmt, args...);
 
-            get_logger()->log(lev, ms.str());
+            LogOutput::get()->log(lev, ms.str());
         }
     }
 
