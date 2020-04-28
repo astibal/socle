@@ -42,48 +42,43 @@
 
 // Threading support
 
-#if defined (_POSIX_THREADS)
-    /* _POSIX_THREADS is normally defined in unistd.h if pthreads are available
-       on your platform. */
-//     #define MUTEX_TYPE pthread_mutex_t
-//     #define MUTEX_SETUP(x) pthread_mutex_init(&(x), NULL)
-//     #define MUTEX_CLEANUP(x) pthread_mutex_destroy(&(x))
-//     #define MUTEX_LOCK(x) pthread_mutex_lock(&(x))
-//     #define MUTEX_UNLOCK(x) pthread_mutex_unlock(&(x))
-//     #define THREAD_ID pthread_self( )
+struct CompatThreading {
+    #if defined (_POSIX_THREADS)
+    // POSIX_THREADS is normally defined in unistd.h if pthreads are available on your platform.
+    //
+    //     #define MUTEX_TYPE pthread_mutex_t
+    //     #define MUTEX_SETUP(x) pthread_mutex_init(&(x), NULL)
+    //     #define MUTEX_CLEANUP(x) pthread_mutex_destroy(&(x))
+    //     #define MUTEX_LOCK(x) pthread_mutex_lock(&(x))
+    //     #define MUTEX_UNLOCK(x) pthread_mutex_unlock(&(x))
+    //     #define THREAD_ID pthread_self( )
 
-    #define MUTEX_TYPE std::mutex
-    #define MUTEX_SETUP(x) 
-    #define MUTEX_CLEANUP(x) 
-    #define MUTEX_LOCK(x) x.lock()
-    #define MUTEX_UNLOCK(x) x.unlock()
-#else
+    using MUTEX_TYPE = std::mutex;
+
+    // This array will store all of the mutexes available to OpenSSL.
+    static MUTEX_TYPE*& mutex_buf() { static MUTEX_TYPE* ptr {nullptr}; return ptr; };
+
+    inline static void MUTEX_SETUP(MUTEX_TYPE& x) {};
+    inline static void MUTEX_CLEANUP(MUTEX_TYPE& x) {};
+    inline static void MUTEX_LOCK (MUTEX_TYPE& x) { x.lock(); };
+    inline static void MUTEX_UNLOCK(MUTEX_TYPE& x) { x.unlock(); }
+    #else
     #error You must define mutex operations appropriate for your platform!
-#endif
 
-#pragma GCC diagnostic ignored "-Wunused-variable"
-#pragma GCC diagnostic push
+    #endif
+    struct CRYPTO_dynlock_value {
+        MUTEX_TYPE mutex;
+    };
 
-#pragma GCC diagnostic ignored "-Wunused-function"
-#pragma GCC diagnostic push
+    static int THREAD_setup();
+    static int THREAD_cleanup ();
+    static void locking_function ( int mode, int n, const char * file, int line );
+    static unsigned long id_function ();
 
-/* This array will store all of the mutexes available to OpenSSL. */
-static MUTEX_TYPE* mutex_buf = nullptr;
-void locking_function ( int mode, int n, const char * file, int line );
-unsigned long id_function ();
-
-
-#pragma GCC diagnostic pop
-#pragma GCC diagnostic pop
-
-int THREAD_setup ();
-int THREAD_cleanup ();
-
-struct CRYPTO_dynlock_value
-{
-    MUTEX_TYPE mutex;
+    static CRYPTO_dynlock_value* dyn_create_function(const char *file, int line);
+    static void dyn_lock_function(int mode, CompatThreading::CRYPTO_dynlock_value *l, const char *file, int line);
+    static void dyn_destroy_function(CompatThreading::CRYPTO_dynlock_value *l, const char *file, int line);
 };
-
 
 extern int SSLCOM_CLIENTHELLO_TIMEOUT;
 extern int SSLCOM_READ_TIMEOUT;

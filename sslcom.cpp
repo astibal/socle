@@ -4,17 +4,17 @@ int SSLCOM_CLIENTHELLO_TIMEOUT = 3*1000; //in ms
 int SSLCOM_WRITE_TIMEOUT = 60*1000;      //in ms
 int SSLCOM_READ_TIMEOUT = 60*1000;      //in ms
 
-void locking_function ( int mode, int n, const char * file, int line )  {
+void CompatThreading::locking_function ( int mode, int n, const char * file, int line )  {
 
     if ( mode & CRYPTO_LOCK ) {
-        MUTEX_LOCK ( mutex_buf[n] );
+        MUTEX_LOCK ( mutex_buf()[n] );
 
         #ifdef MORE_LOGGING
             auto log = logan::create("com.ssl.threads");
             _dum("SSL threading: locked mutex %u for thread %u (%s:%d)",n,id_function(),file,line);
         #endif
     } else {
-        MUTEX_UNLOCK ( mutex_buf[n] );
+        MUTEX_UNLOCK ( mutex_buf()[n] );
 
         #ifdef MORE_LOGGING
             auto log = logan::create("com.ssl.threads");
@@ -23,10 +23,10 @@ void locking_function ( int mode, int n, const char * file, int line )  {
     }
 }
 
-unsigned long id_function ( void ) {
+unsigned long CompatThreading::id_function () {
 
-    std::hash<std::thread::id> h;
-    unsigned long id = ( unsigned long ) h(std::this_thread::get_id());
+    static thread_local std::hash<std::thread::id> h;
+    static thread_local unsigned long id = static_cast<unsigned long> (h(std::this_thread::get_id()));
 
     #ifdef MORE_LOGGING
         auto log = logan::create("com.ssl.threads");
@@ -36,21 +36,16 @@ unsigned long id_function ( void ) {
     return id;
 }
 
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-function"
 
-static struct CRYPTO_dynlock_value * dyn_create_function(const char *file, int line) {
+CompatThreading::CRYPTO_dynlock_value* CompatThreading::dyn_create_function(const char *file, int line) {
 
-    struct CRYPTO_dynlock_value *value = new CRYPTO_dynlock_value();
+    auto* value = new CRYPTO_dynlock_value();
 
-    if (!value)
-        return NULL;
-    
     MUTEX_SETUP(value->mutex);
     return value;
 }
 
-static void dyn_lock_function(int mode, struct CRYPTO_dynlock_value *l, const char *file, int line) {
+void CompatThreading::dyn_lock_function(int mode, CompatThreading::CRYPTO_dynlock_value *l, const char *file, int line) {
 
     if (mode & CRYPTO_LOCK)
         MUTEX_LOCK(l->mutex);
@@ -58,35 +53,31 @@ static void dyn_lock_function(int mode, struct CRYPTO_dynlock_value *l, const ch
         MUTEX_UNLOCK(l->mutex);
 }
 
-static void dyn_destroy_function(struct CRYPTO_dynlock_value *l,
-                                 const char *file, int line)  {
+void CompatThreading::dyn_destroy_function(CompatThreading::CRYPTO_dynlock_value *l, const char *file, int line)  {
     MUTEX_CLEANUP(l->mutex);
     free(l);
 }
 
-#pragma GCC diagnostic pop
-
-int THREAD_setup() {
+int CompatThreading::THREAD_setup() {
     auto log = logan::create("com.ssl.threads");
 
     #ifndef USE_OPENSSL11
-    int i;
-    mutex_buf = new MUTEX_TYPE[CRYPTO_num_locks()];
+    mutex_buf() = new MUTEX_TYPE[CRYPTO_num_locks()];
 
-    if ( !mutex_buf ) {
+    if ( !mutex_buf() ) {
         _fat("OpenSSL threading support: cannot allocate mutex buffer");
         return 0;
     }
     
-    for ( i = 0; i < CRYPTO_num_locks( ); i++ ) {
-        MUTEX_SETUP ( mutex_buf[i] );
+    for (int i = 0; i < CRYPTO_num_locks(); i++ ) {
+        MUTEX_SETUP ( CompatThreading::mutex_buf()[i] );
     }
     
-    CRYPTO_set_id_callback ( id_function );
-    CRYPTO_set_locking_callback ( locking_function );
-    CRYPTO_set_dynlock_create_callback(dyn_create_function);
-    CRYPTO_set_dynlock_lock_callback(dyn_lock_function);
-    CRYPTO_set_dynlock_destroy_callback(dyn_destroy_function);
+    CRYPTO_set_id_callback ( CompatThreading::id_function );
+    CRYPTO_set_locking_callback ( CompatThreading::locking_function );
+    CRYPTO_set_dynlock_create_callback( CompatThreading::dyn_create_function );
+    CRYPTO_set_dynlock_lock_callback( CompatThreading::dyn_lock_function );
+    CRYPTO_set_dynlock_destroy_callback( CompatThreading::dyn_destroy_function );
 
     _dia("OpenSSL threading support: enabled");
 
@@ -103,25 +94,25 @@ int THREAD_setup() {
     return 1;
 }
 
-int THREAD_cleanup() {
+int CompatThreading::THREAD_cleanup() {
 
     #ifndef USE_OPENSSL11
-    int i;
-    if ( !mutex_buf ) {
+
+    if ( !mutex_buf() ) {
         return 0;
     }
-    CRYPTO_set_id_callback ( NULL );
-    CRYPTO_set_locking_callback ( NULL );
-    CRYPTO_set_dynlock_create_callback(NULL);
-    CRYPTO_set_dynlock_lock_callback(NULL);
-    CRYPTO_set_dynlock_destroy_callback(NULL);
+    CRYPTO_set_id_callback (nullptr);
+    CRYPTO_set_locking_callback (nullptr);
+    CRYPTO_set_dynlock_create_callback(nullptr);
+    CRYPTO_set_dynlock_lock_callback(nullptr);
+    CRYPTO_set_dynlock_destroy_callback(nullptr);
 
-    for ( i = 0; i < CRYPTO_num_locks( ); i++ ) {
-        MUTEX_CLEANUP ( mutex_buf[i] );
+    for ( int i = 0; i < CRYPTO_num_locks( ); i++ ) {
+        MUTEX_CLEANUP ( mutex_buf()[i] );
     }
     
-    delete[] mutex_buf;
-    mutex_buf = NULL;
+    delete[] mutex_buf();
+    mutex_buf() = nullptr;
     #endif
 
     return 1;

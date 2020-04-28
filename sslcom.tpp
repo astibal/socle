@@ -106,8 +106,8 @@ void baseSSLCom<L4Proto>::static_init() {
     _deb("SSL: Static INIT");
 
     // call openssl threads support - only once from all threads!
-    std::call_once (baseSSLCom::openssl_thread_setup_done ,THREAD_setup);
-    std::call_once (baseSSLCom::certstore_setup_done ,baseSSLCom::certstore_setup);
+    std::call_once(baseSSLCom::openssl_thread_setup_done , CompatThreading::THREAD_setup);
+    std::call_once(baseSSLCom::certstore_setup_done , baseSSLCom::certstore_setup);
 }
 
 
