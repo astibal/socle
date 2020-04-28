@@ -10,8 +10,8 @@ int epoll::init() {
     if (fd == -1) {
         _err("epoll::init:%x: epoll_create failed! errno %d",this,errno);
     }
-    ftime(&rescan_timer);
-    
+    rescan_timer = std::chrono::high_resolution_clock::now();
+
     return fd;
 }
 
@@ -263,7 +263,7 @@ bool epoll::rescan_in(int socket) {
         
         // re-init timer, otherwise let it be
         if(rescan_set_in.empty()) {
-            ftime(&rescan_timer);
+            rescan_timer = std::chrono::high_resolution_clock::now();
         }
         
         auto it = rescan_set_in.find(socket);
@@ -302,7 +302,7 @@ bool epoll::rescan_out(int socket) {
         
         // re-init timer, otherwise let it be
         if(rescan_set_out.empty()) {
-            ftime(&rescan_timer);
+            rescan_timer = std::chrono::high_resolution_clock::now();
         }
         
         auto it = rescan_set_out.find(socket);
@@ -327,12 +327,12 @@ unsigned long epoll::cancel_rescan_out(int socket) {
 
 bool epoll::click_timer_now () {
 
-    timeb now;
-    ftime(&now);
+    auto now = std::chrono::high_resolution_clock::now();
+
     
-    int ms_diff = (int) (1000.0 * (now.time - rescan_timer.time) + (now.millitm - rescan_timer.millitm));
+    auto ms_diff = std::chrono::duration_cast<std::chrono::milliseconds>(now - rescan_timer).count();
     if(ms_diff > baseCom::rescan_poll_multiplier*baseCom::poll_msec) {
-        ftime(&rescan_timer);
+        rescan_timer = now;
         _ext("epoll::click_timer_now: diff = %d",ms_diff);
 
         idle_counter += ms_diff;

@@ -44,7 +44,7 @@ struct epoll {
     // but those sockets will be added latest after time set in @rescan_timeout microseconds.
     set_type rescan_set_in;
     set_type rescan_set_out;
-    struct timeb rescan_timer;
+    std::chrono::high_resolution_clock::time_point rescan_timer {};
 
     bool in_read_set(int check);
     bool in_write_set(int check);
