@@ -190,12 +190,12 @@ void logger::log(loglevel l, const std::string& fmt,  Args ... args) {
 
 
     auto now = std::chrono::system_clock::now();
-    auto millisecs=
-            std::chrono::duration_cast<std::chrono::milliseconds>(
+    auto usec_total=
+            std::chrono::duration_cast<std::chrono::microseconds>(
                     now.time_since_epoch()
             );
-  //auto seconds = millisecs.count()/1000;
-    auto usec   = (millisecs.count()%1000)*1000;
+  
+    auto usec   = (usec_total.count() % (1000 * 1000));
 
     auto tt = std::chrono::system_clock::to_time_t(now);
     auto tm = *std::localtime(&tt);
