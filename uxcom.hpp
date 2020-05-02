@@ -37,7 +37,7 @@
 #include <display.hpp>
 #include <tcpcom.hpp>
 
-class UxCom : public virtual TCPCom {
+class UxCom : public TCPCom {
 public:
     UxCom(): TCPCom() {
         l3_proto(AF_UNIX);
