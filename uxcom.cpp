@@ -18,6 +18,7 @@
 
 #include <uxcom.hpp>
 
+UxCom::~UxCom() = default;
 
 // obviously, port is ignored
 int UxCom::connect(const char* host, const char* noop_port) {

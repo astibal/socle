@@ -52,7 +52,7 @@ public:
 
         log.sub_area("com.unix");
     };
-    ~UxCom() override = default;
+    ~UxCom() override;
 
     baseCom* replicate() override { return new UxCom(); };
     
