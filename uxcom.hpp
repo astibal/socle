@@ -30,7 +30,6 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <fcntl.h>
-#include <time.h>
 #include <unistd.h>
 
 #include <log/logger.hpp>
@@ -53,17 +52,18 @@ public:
 
         log.sub_area("com.unix");
     };
-    
-    virtual baseCom* replicate() { return new UxCom(); };
+    ~UxCom() override = default;
+
+    baseCom* replicate() override { return new UxCom(); };
     
     int connect(const char* host, const char* port) override;
     int bind(unsigned short port) final;  //this bind is deprecated, returning always -1. Use bind(const char*).
-    virtual int bind(const char* name);
+    int bind(const char* name) override;
     
     DECLARE_C_NAME("UxCom")
     DECLARE_DEF_TO_STRING
 
-    virtual std::string shortname() const { return std::string("ux"); }
+    std::string shortname() const override { return std::string("ux"); }
 };
 
 #endif

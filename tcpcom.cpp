@@ -41,7 +41,7 @@ int TCPCom::connect(const char* host, const char* port) {
 
     gai = getaddrinfo(host, port, &hints, &gai_result);
     if (gai != 0) {
-        _deb("TCPCom::connect[%s:%s]: getaddrinfo: %s",host,port,gai_strerror(gai));
+        _deb("TCPCom::connect[%s:%s]: getaddrinfo: %s", host, port, gai_strerror(gai));
         return -2;
     }
 
@@ -51,7 +51,7 @@ int TCPCom::connect(const char* host, const char* port) {
     and) try the next address. */
 
     for (rp = gai_result; rp != nullptr; rp = rp->ai_next) {
-        _deb("TCPCom::connect[%s:%s]: gai info found",host,port);
+        _deb("TCPCom::connect[%s:%s]: gai info found", host, port);
 
         sfd = ::socket(rp->ai_family, rp->ai_socktype,
                     rp->ai_protocol);
@@ -60,12 +60,12 @@ int TCPCom::connect(const char* host, const char* port) {
         // Keep it here: would be good if we can do something like this in the future
         
         if(nonlocal_src()) {
-            _deb("TCPCom::connect[%s:%s]: about to name socket[%d] after: %s:%d",host,port,sfd,nonlocal_src_host().c_str(),nonlocal_src_port());
-            int bind_status = namesocket(sfd,nonlocal_src_host(),nonlocal_src_port(),l3_proto());
+            _deb("TCPCom::connect[%s:%s]: about to name socket[%d] after: %s:%d", host, port, sfd, nonlocal_src_host().c_str(), nonlocal_src_port());
+            int bind_status = namesocket(sfd, nonlocal_src_host(), nonlocal_src_port(), l3_proto());
             if (bind_status != 0) {
-                    _war("cannot bind this %s socket to %s:%d: %s", inet_family_str(l3_proto()).c_str(), nonlocal_src_host().c_str(), nonlocal_src_port(),strerror(bind_status));
+                    _war("cannot bind this %s socket to %s:%d: %s", inet_family_str(l3_proto()).c_str(), nonlocal_src_host().c_str(), nonlocal_src_port(), strerror(bind_status));
             } else {
-                _dia("TCPCom::connect[%s:%s]: socket[%d] transparency for %s:%d OK",host,port,sfd,nonlocal_src_host().c_str(),nonlocal_src_port());
+                _dia("TCPCom::connect[%s:%s]: socket[%d] transparency for %s:%d OK", host, port, sfd, nonlocal_src_host().c_str(), nonlocal_src_port());
             }
         }
 
@@ -73,7 +73,7 @@ int TCPCom::connect(const char* host, const char* port) {
         
         
         if (sfd == -1) {
-            _deb("TCPCom::connect[%s:%s]: socket[%d]: failed to create socket",host,port,sfd);
+            _deb("TCPCom::connect[%s:%s]: socket[%d]: failed to create socket", host, port, sfd);
             continue;
         }
         
@@ -83,7 +83,7 @@ int TCPCom::connect(const char* host, const char* port) {
             if (::connect(sfd, rp->ai_addr, rp->ai_addrlen) < 0) {
                 if ( errno == EINPROGRESS ) {
 
-                    _deb("TCPCom::connect[%s:%s]: socket[%d]: connnect errno: EINPROGRESS",host,port,sfd);
+                    _deb("TCPCom::connect[%s:%s]: socket[%d]: connnect errno: EINPROGRESS", host, port, sfd);
                     break;
                     
                     
@@ -91,7 +91,7 @@ int TCPCom::connect(const char* host, const char* port) {
                     close(sfd);
                     sfd = 0;
 
-                    _not("TCPCom::connect[%s:%s]: socket[%d]: connnect errno: %s",host,port,sfd,strerror(errno));
+                    _not("TCPCom::connect[%s:%s]: socket[%d]: connnect errno: %s", host, port, sfd, strerror(errno));
                 }
 
                 _dum("new attempt, socket reset");
@@ -108,11 +108,11 @@ int TCPCom::connect(const char* host, const char* port) {
 
     
     if(sfd == 0) {
-        _err("TCPCom::connect[%s:%s]: socket[%d]: connect failed",host,port,sfd);
+        _err("TCPCom::connect[%s:%s]: socket[%d]: connect failed", host, port, sfd);
     }
     
     if (rp == nullptr) {
-        _err("TCPCom::connect[%s:%s]: socket[%d]: connect failed",host,port,sfd);
+        _err("TCPCom::connect[%s:%s]: socket[%d]: connect failed", host, port, sfd);
         freeaddrinfo(gai_result);  //coverity: 1408023
         return -2;
     }
@@ -163,7 +163,7 @@ int TCPCom::bind(unsigned short port) {
 
 
 int TCPCom::accept ( int sockfd, sockaddr* addr, socklen_t* addrlen_ ) {
-    int news = ::accept(sockfd,addr,addrlen_);
+    int news = ::accept(sockfd, addr, addrlen_);
     on_new_socket(news);
 
     return news;
@@ -194,26 +194,26 @@ bool TCPCom::is_connected(int s) {
     if ( r_getsockopt == 0 ) {
                                 
         if(error_code != 0) {
-                _deb("TCPCom::is_connected[%d]: getsockopt errno %d = %s",s,error_code,strerror_r(error_code,str_err,256));
+                _deb("TCPCom::is_connected[%d]: getsockopt errno %d = %s", s, error_code, strerror_r(error_code, str_err, 256));
         }
         else {
-                _dum("TCPCom::is_connected[%d]: getsockopt errno %d = %s",s,error_code,strerror_r(error_code,str_err,256));
+                _dum("TCPCom::is_connected[%d]: getsockopt errno %d = %s", s, error_code, strerror_r(error_code, str_err, 256));
         }
         
         if(error_code == EINPROGRESS) return false;
 
         if(*log.level() >= DEB) {
             if(master()->poller.in_write_set(s)) {
-                _deb("TCP::is_connected[%d]: writable",s);
+                _deb("TCP::is_connected[%d]: writable", s);
             } else {
-                _deb("TCP::is_connected[%d]: not writable",s);
+                _deb("TCP::is_connected[%d]: not writable", s);
             }
         }
 
         return true;
 
     } else {
-        _dia("TCPCom::is_connected[%d]: getsockopt failed, returned %d = %s",s,r_getsockopt,strerror_r(r_getsockopt,str_err,256));
+        _dia("TCPCom::is_connected[%d]: getsockopt failed, returned %d = %s", s, r_getsockopt, strerror_r(r_getsockopt, str_err, 256));
         return false;
     } 
 }
@@ -223,7 +223,7 @@ bool TCPCom::com_status() {
     
     if(baseCom::com_status()) {
         bool r = is_connected(socket());
-        _deb("TCPCom::com_status: returning %d",r);
+        _deb("TCPCom::com_status: returning %d", r);
         return r;
     }
     

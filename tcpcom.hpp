@@ -42,6 +42,7 @@ public:
         l4_proto(SOCK_STREAM);
         log.sub_area("com.tcp");
     };
+    ~TCPCom() override = default;
     
     void init(baseHostCX* owner) override;
     baseCom* replicate() override { return new TCPCom(); };
@@ -51,10 +52,10 @@ public:
     int bind(const char* _path) override { return -1; };
     int accept (int sockfd, sockaddr* addr, socklen_t* addrlen_) override;
     
-    int read(int _fd, void* _buf, size_t _n, int _flags) override { return ::recv(_fd,_buf,_n,_flags); };
-    int peek(int _fd, void* _buf, size_t _n, int _flags) override { return read(_fd,_buf,_n, _flags | MSG_PEEK );};
+    int read(int _fd, void* _buf, size_t _n, int _flags) override { return ::recv(_fd, _buf, _n, _flags); };
+    int peek(int _fd, void* _buf, size_t _n, int _flags) override { return read(_fd, _buf, _n, _flags | MSG_PEEK );};
     int write(int _fd, const void* _buf, size_t _n, int _flags) override {
-        int r = ::send(_fd,_buf,_n,_flags);
+        int r = ::send(_fd, _buf, _n, _flags);
         if(r < 0) {
             if(errno == EAGAIN || errno == EWOULDBLOCK) {
                 return 0;
@@ -63,9 +64,9 @@ public:
         return r;
     };
     void shutdown(int _fd) override {
-        int r = ::shutdown(_fd,SHUT_RDWR);
+        int r = ::shutdown(_fd, SHUT_RDWR);
         if(r > 0)
-            _dia("%s::shutdown[%d]: %s",name().c_str(),_fd,string_error().c_str());
+            _dia("%s::shutdown[%d]: %s", name().c_str(), _fd, string_error().c_str());
     };
     
     void cleanup() override {};

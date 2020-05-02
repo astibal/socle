@@ -23,32 +23,28 @@
 int UxCom::connect(const char* host, const char* noop_port) {
 
     const char* port = "";
-    int sfd = -1;
-
-    
-    sfd = ::socket(connect_sock_family, connect_sock_type, 0);
-
+    int sfd = ::socket(connect_sock_family, connect_sock_type, 0);
 
     if (sfd == -1) {
-        _deb("UxCom::connect[%s:%s]: socket[%d]: failed to create socket",host,port,sfd);
+        _deb("UxCom::connect[%s:%s]: socket[%d]: failed to create socket", host, port, sfd);
         return sfd;
     }
 
-    struct sockaddr_un server;
+    sockaddr_un server{0};
     server.sun_family = connect_sock_family;
-    strcpy(server.sun_path,host);
+    strcpy(server.sun_path, host);
     
     if (not GLOBAL_IO_BLOCKING()) {
         unblock(sfd);
 
         if (::connect(sfd, (struct sockaddr *) &server, sizeof(struct sockaddr_un)) < 0) {
             if ( errno == EINPROGRESS ) {
-                _deb("UxCom::connect[%s:%s]: socket[%d]: connnect errno: EINPROGRESS",host,port,sfd);
+                _deb("UxCom::connect[%s:%s]: socket[%d]: connnect errno: EINPROGRESS", host, port, sfd);
                 
             } else {
                 close(sfd);
                 sfd = 0;
-                _not("UxCom::connect[%s:%s]: socket[%d]: connnect errno: %s",host,port,sfd,strerror(errno));
+                _not("UxCom::connect[%s:%s]: socket[%d]: connnect errno: %s", host, port, sfd, strerror(errno));
             }
 
         }
@@ -61,24 +57,24 @@ int UxCom::connect(const char* host, const char* noop_port) {
     }
 
     if(sfd == 0) {
-        _err("UxCom::connect[%s:%s]: socket[%d]: connect failed",host,port,sfd);
+        _err("UxCom::connect[%s:%s]: socket[%d]: connect failed", host, port, sfd);
     } else {
-        _dum("UxCom::connect[%s:%s]: socket[%d]: connect ok",host,port,sfd);
+        _dum("UxCom::connect[%s:%s]: socket[%d]: connect ok", host, port, sfd);
     }
 
     return socket(sfd);
 
-};
+}
 
 int UxCom::bind(short unsigned int port) {
-    _err("UxCom::bind(int): bind failed, cannot bind to any port number",port);
+    _err("UxCom::bind(int): bind failed, cannot bind to any port number", port);
     return -1;
 }
 
 int UxCom::bind(const char* name) {
     int s;
 
-    struct sockaddr_un server;
+    sockaddr_un server{0};
     server.sun_family = bind_sock_family;
     strcpy(server.sun_path, name);
 
@@ -99,6 +95,6 @@ int UxCom::bind(const char* name) {
     }
     
     return s;
-};  
+}
 
 
