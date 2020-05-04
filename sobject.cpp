@@ -44,25 +44,28 @@ std::string sobject_info::to_string(int verbosity) const {
 }
 
 sobject::sobject() {
-    std::lock_guard<std::recursive_mutex> l_(db().getlock());
-
     static const uint64_t id_start = 0xCABA1ACABA1A;
     static const uint64_t id_key =   0x3453ABC3450F;
-    static uint64_t id_current = id_start;
+    static std::atomic<uint64_t> id_current = id_start;
 
     oid_ = id_key ^ id_current++;
 
-    oid_db().set(oid_, this);
-    db().set(this,new sobject_info());
+    {
+        std::scoped_lock<std::recursive_mutex> l_(sobjectDB::getlock());
+        sobjectDB::oid_db()[oid_] = this;
+        sobjectDB::db()[this] = new sobject_info();
+    }
     mtr_created().update(1);
 }
 
 
 sobject::~sobject() {
-    std::lock_guard<std::recursive_mutex> l_(db().getlock());
 
-    oid_db().erase(oid());
-    db().erase(this);
+    {
+        std::scoped_lock<std::recursive_mutex> l_(sobjectDB::getlock());
+        sobjectDB::oid_db().erase(oid());
+        sobjectDB::db().erase(this);
+    }
     mtr_deleted().update(1);
 }
 
@@ -74,12 +77,13 @@ std::string sobjectDB::str_list(const char* class_criteria, const char* delimite
 
     auto& log = sobjectDB::get().log;
 
-    std::lock_guard<std::recursive_mutex> l_(db().getlock());
-    
+
     if(class_criteria)
         criteria = class_criteria;
-    
-    for(auto it: db().cache()) {
+
+    std::scoped_lock<std::recursive_mutex> l_(getlock());
+
+    for(auto it: db()) {
         sobject*       ptr = it.first;
 
         if(!ptr) continue;
@@ -108,7 +112,7 @@ std::string sobjectDB::str_list(const char* class_criteria, const char* delimite
         
         
         if(matched) {
-            sobject_info*  si = it.second;
+            auto si = it.second;
             std::string obj_string = ptr->to_string(verbosity);
             
             if(content_criteria) {
@@ -137,33 +141,34 @@ std::string sobjectDB::str_stats(const char* criteria) {
     auto& log = sobjectDB::get().log;
 
     std::stringstream ret;
-    std::lock_guard<std::recursive_mutex> l_(db().getlock());
-
     unsigned long object_counter = 0;
     
     unsigned int youngest_age = -1;
     unsigned int oldest_age = -1;
     float sum_age = 0.0;
-    
-    for(auto it: db().cache()) {
-        sobject*       ptr = it.first;
 
-        if(! ptr) {
-            continue;
-        }
-        _deb("comparing classname: %s and %s",ptr->c_class_name(), criteria);
-        if( criteria == nullptr || ptr->class_name() == criteria ) {
-            sobject_info*  si = it.second;
-            object_counter++;
-            
-            if(si != nullptr) {
-                unsigned int a = si->age();
-                sum_age += static_cast<float>(a);
-                
-                if(a > oldest_age) oldest_age = a;
-                if(a < youngest_age || youngest_age < 0) youngest_age = a;
+    {
+        std::scoped_lock<std::recursive_mutex> l_(getlock());
+        for (auto it: db()) {
+            sobject *ptr = it.first;
+
+            if (!ptr) {
+                continue;
             }
-            
+            _deb("comparing classname: %s and %s", ptr->c_class_name(), criteria);
+            if (criteria == nullptr || ptr->class_name() == criteria) {
+                auto si = it.second;
+                object_counter++;
+
+                if (si != nullptr) {
+                    unsigned int a = si->age();
+                    sum_age += static_cast<float>(a);
+
+                    if (a > oldest_age) oldest_age = a;
+                    if (a < youngest_age || youngest_age < 0) youngest_age = a;
+                }
+
+            }
         }
     }
 
@@ -177,7 +182,11 @@ std::string sobjectDB::str_stats(const char* criteria) {
     ret << "Database contains: "<< object_counter << " matching entries (" << ( criteria ? criteria : "*" ) << "), oldest " << static_cast<int>(oldest_age) << "s, ";
     ret << "youngest age "<< youngest_age << "s, average age is "<< avg_age << "s.";
     ret << "\n";
-    ret << "Full DB size: " << db().cache().size() << " full OID DB size: " << oid_db().cache().size();
+
+    {
+        std::scoped_lock<std::recursive_mutex> l_(getlock());
+        ret << "Full DB size: " << db().size() << " full OID DB size: " << oid_db().size();
+    }
     return ret.str();
 }
 
@@ -186,10 +195,8 @@ int sobjectDB::ask_destroy(void* ptr) {
     
     int ret = -1;
 
-    std::lock_guard<std::recursive_mutex> l_(sobjectDB::db().getlock());
-    
-    auto it = db().cache().find((sobject*)ptr);
-    if(it != db().cache().end()) {
+    auto it = db().find((sobject*)ptr);
+    if(it != db().end()) {
         ret = 0;
         if(it->first->ask_destroy()) {
             ret = 1;

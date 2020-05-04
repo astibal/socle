@@ -91,7 +91,7 @@ public:
         return sz;
     };
 
-    std::ofstream* get_ofstream(std::string const& fnm, bool create = true) {
+    std::shared_ptr<std::ofstream> get_ofstream(std::string const& fnm, bool create = true) {
 
         std::scoped_lock<std::recursive_mutex> l_(ofstream_pool.getlock());
 
@@ -117,8 +117,8 @@ public:
             auto entry = ofstream_pool.cache().find(fnm);
             if(entry != ofstream_pool.cache().end()) {
 
-                auto* exo = entry->second;
-                _deb("new ofstream entry: 0x%x", exo);
+                auto exo = entry->second;
+                _deb("new ofstream entry: 0x%x", exo.get());
 
             } else {
 
@@ -165,7 +165,7 @@ public:
     // trafLog compatible API
     bool open(std::string const& fnm) override {
 
-        auto* o = get_ofstream(fnm);
+        auto o = get_ofstream(fnm);
 
         return o != nullptr;
     }

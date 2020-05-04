@@ -732,14 +732,9 @@ int baseSSLCom<L4Proto>::certificate_status_ocsp_check(baseSSLCom* com) {
         const char* str_status = "unknown";
 
 
-        SSLFactory::expiring_verify_result *cached_result = nullptr;
+        auto cached_result = com->certstore()->verify_cache.get(cn);;
 
-        {
-            std::lock_guard<std::recursive_mutex> l_(com->certstore()->verify_cache.getlock());
-            cached_result = com->certstore()->verify_cache.get(cn);
-        }
-
-        if (cached_result != nullptr) {
+        if (cached_result) {
             res.revoked = cached_result->value().revoked;
             str_status = str_cached;
             origin = verify_origin_t::OCSP_CACHE;
@@ -777,7 +772,6 @@ int baseSSLCom<L4Proto>::certificate_status_ocsp_check(baseSSLCom* com) {
 
             std::vector<std::string> crls = inet::crl::crl_urls(com->sslcom_target_cert);
 
-            SSLFactory::expiring_crl* crl_cache_entry = nullptr;
             X509_CRL* crl_struct = nullptr;
 
 
@@ -785,10 +779,10 @@ int baseSSLCom<L4Proto>::certificate_status_ocsp_check(baseSSLCom* com) {
             for(auto crl_url: crls) {
 
                 std::string crl_printable = printable(crl_url);
-                crl_cache_entry = certstore()->crl_cache.get(crl_url);
+                auto crl_cache_entry = certstore()->crl_cache.get(crl_url);
 
                 if(crl_cache_entry != nullptr) {
-                    crl_struct = crl_cache_entry->value()->ptr;
+                    auto crl_struct = crl_cache_entry->value()->ptr;
                     _dia("found cached crl: %s",crl_printable.c_str());
                     str_status = str_cached;
 
@@ -2174,7 +2168,7 @@ bool baseSSLCom<L4Proto>::load_session_if_needed() {
 
         std::lock_guard<std::recursive_mutex> l_(certstore()->session_cache.getlock());
 
-        session_holder* h = certstore()->session_cache.get(key);
+        auto h = certstore()->session_cache.get(key);
         
         if(h != nullptr) {
             _dia("ticketing: key %s:target server TLS ticket found!",key.c_str());

@@ -45,7 +45,7 @@ struct expiring {
     time_t& expired_at() { return expired_at_; };
 
     virtual bool expired() { return (this->expired_at_ <= ::time(nullptr)); }
-    static bool is_expired(expiring<T> *ptr) {  return ptr->expired(); }
+    static bool is_expired(std::shared_ptr<expiring<T>>& ptr) {  return ptr->expired(); }
 
 private:
     T value_{0};
@@ -86,57 +86,33 @@ public:
         log = logan::create("socle.ptrcache");
 
     }
-    ptr_cache(const char* n, unsigned int max_size, bool auto_delete, bool (*fn_exp)(T*) = nullptr ): auto_delete_(auto_delete), max_size_(max_size) {
+    ptr_cache(const char* n, unsigned int max_size, bool auto_delete, bool (*fn_exp)(std::shared_ptr<T>&) = nullptr ): auto_delete_(auto_delete), max_size_(max_size) {
         name(n);
         expiration_check(fn_exp);
         log = logan::create("socle.ptrcache");
     }
-    virtual ~ptr_cache() { clear(); if(default_value_ != nullptr && auto_delete_) { delete default_value_; }; }
-
-
-    void invalidate() {
-        std::lock_guard<std::recursive_mutex> l(lock_);
-        
-        for(auto it = cache().begin(); it != cache().end() ; ++ it) {
-            T*& ptr = it->second;
-            if(auto_delete()) {
-                delete ptr;
-            }
-            ptr = default_value();
-        }
-    }
+    virtual ~ptr_cache() = default;
 
     void clear() {
         std::lock_guard<std::recursive_mutex> l(lock_);
-        
-        if(auto_delete()) {
-            invalidate();
-        }
-            
+
         cache().clear();
         items_.clear();
     }
 
-    mp::unordered_map<K,T*>& cache() { return cache_; }
+    mp::unordered_map<K,std::shared_ptr<T>>& cache() { return cache_; }
     mp::deque<K> const& items() { return items_; };
 
-    bool auto_delete() const { return auto_delete_; }
-    void auto_delete(bool b) { auto_delete_ = b; }
-
-    T*   default_value() const { return default_value_; }
-    void default_value(T* d) const { if(default_value_ != nullptr && auto_delete_) { delete default_value_; }; default_value_ = d; }
-    
+    std::shared_ptr<T>   default_value() const { return default_value_; }
     int max_size() const { return max_size_; }
 
     unsigned int opportunistic_removal() const { return opportunistic_removal_; };
-    void opportunistic_removal(unsigned int oppo) { opportunistic_removal_ = oppo; };
     
     bool erase(K k) {
         std::lock_guard<std::recursive_mutex> l(lock_);
         auto it = cache().find(k);
         if(it != cache().end()) {
             _deb("ptr_cache::erase[%s]: erase: key found ", c_name());
-            set(k,nullptr);
             cache().erase(k);
             _dia("ptr_cache::erase[%s]: erase: key erased", c_name());
             
@@ -147,8 +123,8 @@ public:
         
         return false;
     }
-    
-    T* get(K k) {
+
+    std::shared_ptr<T> get(K k) {
         std::lock_guard<std::recursive_mutex> l(lock_);
         auto it = cache().find(k);
         if(it == cache().end()) {
@@ -164,35 +140,22 @@ public:
         
         return it->second;
     }
-    
-    // set the key->value. Return true if other value had been replaced.
+
     bool set(const K k, T* v) {
+        std::shared_ptr<T> p(v);
+        return set(k, p);
+    }
+
+    // set the key->value. Return true if other value had been replaced.
+    bool set(const K k, std::shared_ptr<T> v) {
         std::lock_guard<std::recursive_mutex> l(lock_);
         bool ret = false;
         
         auto it = cache().find(k);
         if(it != cache().end()) {
             _dia("ptr_cache::set[%s]: existing entry found", c_name());
-            T*& ptr = it->second;
+            auto& ptr = it->second;
             ret = true;
-            
-            if(ptr != nullptr) {
-                if(auto_delete() && ptr != v) {
-                    _deb("ptr_cache::set[%s]: autodelete set and entry new value is different -- deleting.", c_name());
-                    delete ptr;
-                } else {
-                    _deb("ptr_cache::set[%s]: not deleting existing object:", c_name());
-                    if(!auto_delete()) {
-                        _deb("     autodelete not set");
-                    }
-                    if(ptr == v) {
-                        _deb("     values are the same");
-                    }
-                }
-            } else {
-                _err("ptr_cache::set[%s]: existing entry is nullptr", c_name());
-            }
-            
             ptr = v;
         } else {
             _dia("ptr_cache::set[%s]: new entry added", c_name());
@@ -201,7 +164,7 @@ public:
             if(max_size_ > 0) {
                 _deb("ptr_cache::set[%s]: current size %d/%d", c_name(), items_.size(), max_size_);
 
-                while( items_.size() > max_size_) {
+                while( items_.size() >= max_size_) {
                     _deb("ptr_cache::set[%s]: max size reached!", c_name());
                     K to_delete = items_.front();
                     
@@ -225,7 +188,7 @@ public:
         return ret;
     }
     
-    void expiration_check(bool (*fn_expired_check_ptr)(T*)) { fn_expired_check = fn_expired_check_ptr; };
+    void expiration_check(bool (*fn_expired_check_ptr)(std::shared_ptr<T>&)) { fn_expired_check = fn_expired_check_ptr; };
     std::recursive_mutex& getlock() { return lock_; }
 
 private:
@@ -235,11 +198,11 @@ private:
 
     mp::deque<K> items_;
     
-    T* default_value_ = nullptr;
-    mp::unordered_map<K,T*> cache_;
+    std::shared_ptr<T> default_value_{nullptr};
+    mp::unordered_map<K,std::shared_ptr<T>> cache_;
     mutable std::recursive_mutex lock_;
     
-    bool (*fn_expired_check)(T*) = nullptr;
+    bool (*fn_expired_check)(std::shared_ptr<T>&) = nullptr;
 
     logan_lite log;
 
