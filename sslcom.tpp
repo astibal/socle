@@ -841,7 +841,7 @@ int baseSSLCom<L4Proto>::certificate_status_ocsp_check(baseSSLCom* com) {
                             com->sslcom_target_cert,
                             com->sslcom_target_issuer,
                             crl_struct,
-                            com->certstore()->default_client_ca_path().c_str());
+                            com->certstore()->ca_path().c_str());
                     _dia("CRL 0x%x trusted = %d", crl_struct, crl_trust);
 
                     if(crl_trust == 0) {

@@ -100,6 +100,12 @@ public:
     static expiring_crl* make_expiring_crl(X509_CRL* crl)
                                 { return new SSLFactory::expiring_crl(new crl_holder(crl), ssl_crl_status_ttl); }
 
+    // default path for CA trust-store. It's marked as CL, since CL side will use it (sx -> real server)
+    static std::string& ca_path() { static std::string ca_path; return ca_path; };
+
+    // path for smithproxy own PKI authority and certificates
+    static std::string& certs_path() { static std::string certs_path = "./certs/"; return certs_path; };
+    static std::string& certs_password() { static std::string certs_password = "password"; return certs_password; };
 
 private:
     
@@ -118,16 +124,10 @@ private:
     SSL_CTX*  def_cl_ctx = nullptr;   // default client ctx
     SSL_CTX*  def_dtls_cl_ctx = nullptr;   // default client ctx for DTLS
 
-    // default path for CA trust-store. It's marked as CL, since CL side will use it (sx -> real server)
-    static std::string def_cl_capath;
-
-    // path for smithproxy own PKI authority and certificates
-    static std::string certs_path;
-    static std::string certs_password;
-
     static unsigned long def_cl_options;
     static unsigned long def_sr_options;
 
+    [[maybe_unused]]
     static int password_callback(char* buf, int size, int rwflag, void*u);
 private:
 
@@ -180,9 +180,6 @@ public:
     [[nodiscard]] inline SSL_CTX* default_dtls_server_cx() const  { return def_dtls_sr_ctx; }
     [[nodiscard]] inline SSL_CTX* default_dtls_client_cx() const  { return def_dtls_cl_ctx; }
 
-    static std::string& default_client_ca_path() { return def_cl_capath; }
-    static std::string& default_cert_path() { return certs_path; }
-    static std::string& default_cert_password() { return certs_password; }
 
     // our killer feature here
     [[nodiscard]] // discarding result will leak memory
@@ -190,14 +187,15 @@ public:
      
     static int convert_ASN1TIME(ASN1_TIME*, char*, size_t);
     static std::string print_cert(X509* cert, int indent=4);
-    static std::string print_cn(X509*);
-    static std::string print_issuer(X509* x);
-    static std::string print_not_after(X509* x);
-    static std::string print_not_before(X509* x);
-    static std::vector<std::string> get_sans(X509* x);
-    static std::string get_sans_csv(X509* x);
-    static std::string fingerprint(X509 *cert);
-    static std::string print_ASN1_OCTET_STRING(ASN1_OCTET_STRING*);
+
+    [[maybe_unused]] static std::string print_cn(X509*);
+    [[maybe_unused]] static std::string print_issuer(X509* x);
+    [[maybe_unused]] static std::string print_not_after(X509* x);
+    [[maybe_unused]] static std::string print_not_before(X509* x);
+    [[maybe_unused]] static std::vector<std::string> get_sans(X509* x);
+    [[maybe_unused]] static std::string get_sans_csv(X509* x);
+    [[maybe_unused]] static std::string fingerprint(X509 *cert);
+    [[maybe_unused]] static std::string print_ASN1_OCTET_STRING(ASN1_OCTET_STRING*);
 
 
     static std::string make_store_key(X509* cert_orig, const SpoofOptions& spo);
@@ -207,7 +205,7 @@ public:
 
     std::optional<SSLFactory::X509_PAIR*> find(std::string const& subject) const;
     std::optional<std::string> find_subject_by_fqdn(std::string const& fqdn) const;
-    void erase(std::string& subject);
+    bool erase(const std::string &subject);
      
 
     // static members must be public

@@ -26,9 +26,6 @@
 
 #include <openssl/ssl.h>
 
-std::string SSLFactory::certs_path = "./certs/";
-std::string SSLFactory::certs_password = "password";
-std::string SSLFactory::def_cl_capath;
 
 
 int SSLFactory::ssl_crl_status_ttl  = 86400;
@@ -78,7 +75,7 @@ bool SSLFactory::load() {
         X509_STORE_free(trust_store_);
     }
     trust_store_ = X509_STORE_new();
-    if(X509_STORE_load_locations(trust_store_, nullptr, def_cl_capath.c_str()) == 0)  {
+    if(X509_STORE_load_locations(trust_store_, nullptr, ca_path().c_str()) == 0)  {
         _err("cannot load trusted store.");
     }
 
@@ -100,7 +97,7 @@ int SSLFactory::password_callback(char* buf, int size, int rwflag, void* u) {
 bool SSLFactory::load_ca_cert() {
 
     auto log = get_log();
-    std::string cer = certs_path + CA_CERTF;
+    std::string cer = certs_path() + CA_CERTF;
 
     FILE *fp_crt = fopen(cer.c_str(), "r");
     FILE *fp_key = nullptr;
@@ -110,7 +107,7 @@ bool SSLFactory::load_ca_cert() {
         return false;
     }
     
-    std::string key = certs_path + CA_KEYF;
+    std::string key = certs_path() + CA_KEYF;
     fp_key = fopen(key.c_str(), "r");
     
     if (!fp_key) {
@@ -132,7 +129,7 @@ bool SSLFactory::load_ca_cert() {
         }
 
         ca_cert = PEM_read_X509(fp_crt, nullptr, nullptr, nullptr);
-        ca_key = PEM_read_PrivateKey(fp_key, nullptr, nullptr, (void *) certs_password.c_str());
+        ca_key = PEM_read_PrivateKey(fp_key, nullptr, nullptr, (void *) certs_password().c_str());
     }
 
     fclose(fp_crt);
@@ -144,7 +141,7 @@ bool SSLFactory::load_ca_cert() {
 bool SSLFactory::load_def_cl_cert() {
 
     auto log = get_log();
-    std::string cer = certs_path + CL_CERTF;
+    std::string cer = certs_path() + CL_CERTF;
     
     FILE *fp_crt = fopen(cer.c_str(), "r");
     FILE *fp_key = nullptr;
@@ -154,7 +151,7 @@ bool SSLFactory::load_def_cl_cert() {
         return false;
     }
     
-    std::string key = certs_path + CL_KEYF; 
+    std::string key = certs_path() + CL_KEYF;
     fp_key = fopen(key.c_str(), "r");
     
     if (!fp_key) {
@@ -179,7 +176,7 @@ bool SSLFactory::load_def_cl_cert() {
 bool SSLFactory::load_def_sr_cert() {
 
     auto log = get_log();
-    std::string cer = certs_path + SR_CERTF;
+    std::string cer = certs_path() + SR_CERTF;
     
     FILE *fp_crt = fopen(cer.c_str(), "r");
     FILE *fp_key = nullptr;
@@ -189,7 +186,7 @@ bool SSLFactory::load_def_sr_cert() {
         return false;
     }
     
-    std::string key = certs_path + SR_KEYF;
+    std::string key = certs_path() + SR_KEYF;
     fp_key = fopen(key.c_str(), "r");
     
     if (!fp_key) {
@@ -359,8 +356,8 @@ SSLFactory& SSLFactory::init () {
 
     _dia("SSLFactory::init: default ssl client context: ok");
 
-    if(fac.def_cl_capath.size() > 0) {
-        int r = SSL_CTX_load_verify_locations(fac.def_cl_ctx, nullptr, def_cl_capath.c_str());
+    if(! ca_path().empty()) {
+        int r = SSL_CTX_load_verify_locations(fac.def_cl_ctx, nullptr, ca_path().c_str());
         _deb("SSLFactory::init: loading default certification store: %s", r > 0 ? "ok" : "failed");
 
         if(r <= 0) {
@@ -589,7 +586,7 @@ std::optional<std::string> SSLFactory::find_subject_by_fqdn(std::string const& f
             _deb("SSLFactory::find_subject_by_fqdn[%x]: wildcard NOT cached '%s'", this, wildcard_fqdn.c_str());
         } else {
             _deb("SSLFactory::find_subject_by_fqdn[%x]: found cached wildcard '%s'", this, fqdn.c_str());
-            return std::optional((*entry).first);;
+            return std::optional((*entry).first);
         }
     }
 
@@ -599,7 +596,7 @@ std::optional<std::string> SSLFactory::find_subject_by_fqdn(std::string const& f
 //don't call erase for now, it can delete cert/key while being used by different threads!!!
 //FIXME: either duplicates should be returned, or each pair should contain some reference checking/delete flag to kill themselves
 
-void SSLFactory::erase(std::string& subject) {
+bool SSLFactory::erase(const std::string &subject) {
 
     bool op_status = true;
     auto log = get_log();
@@ -625,7 +622,7 @@ void SSLFactory::erase(std::string& subject) {
         _err("failed removing certificate '%s' from cache", subject.c_str());
     }
     
-    
+    return op_status;
 }
 
 int add_ext(STACK_OF(X509_EXTENSION) *sk, int nid, char *value) {
@@ -678,8 +675,8 @@ std::vector<std::string> SSLFactory::get_sans(X509* x) {
                     if(alt) {
 
                         int alt_len = sk_GENERAL_NAME_num(alt);
-                        for (int i = 0; i < alt_len; i++) {
-                            GENERAL_NAME *gn = sk_GENERAL_NAME_value(alt, i);
+                        for (int gn_i = 0; gn_i < alt_len; gn_i++) {
+                            GENERAL_NAME *gn = sk_GENERAL_NAME_value(alt, gn_i);
 
                             int name_type = 0;
 
@@ -745,10 +742,10 @@ SSLFactory::X509_PAIR* SSLFactory::spoof(X509* cert_orig, bool self_sign, std::v
     if(self_sign) {
       _dia("SSLFactory::spoof[%x]: about to spoof certificate (self-signed)!",this);
     }
-    if(additional_sans != nullptr && additional_sans->size() > 0) {
+    if(additional_sans != nullptr && ! additional_sans->empty()) {
         _dia("SSLFactory::spoof[%x]: about to spoof certificate (+sans):",this);
         std::vector<std::string>& sans = *additional_sans;
-        for (auto san: sans) {
+        for (auto const& san: sans) {
             _dia("SSLFactory::spoof[%x]:  SAN: %s",this, san.c_str());
         }
     }
@@ -803,7 +800,7 @@ SSLFactory::X509_PAIR* SSLFactory::spoof(X509* cert_orig, bool self_sign, std::v
     std::string san_add;
     if(additional_sans != nullptr) {
         std::vector<std::string>& as = *additional_sans;
-        if(as.size() > 0) {
+        if(! as.empty()) {
             san_add = string_csv(as);
             _dia("SSLFactory::spoof[%x]: additional sans = '%s'",this,san_add.c_str());
         }
