@@ -124,6 +124,11 @@ public:
         return false;
     }
 
+    // shortcut to erase cache iterator
+    typename std::unordered_map<std::string, std::shared_ptr<T>>::iterator erase(typename std::unordered_map<std::string, std::shared_ptr<T>>::iterator& i) {
+        return cache().erase(i);
+    }
+
     std::shared_ptr<T> get(K k) {
         std::lock_guard<std::recursive_mutex> l(lock_);
         auto it = cache().find(k);
