@@ -22,10 +22,11 @@
 
 #include <iostream>
 #include <string>
-#include <sys/socket.h>
-#include <time.h>
-#include <unistd.h>
 #include <vector>
+#include <ctime>
+
+#include <sys/socket.h>
+#include <unistd.h>
 
 #include <log/logger.hpp>
 #include <hostcx.hpp>
@@ -52,20 +53,22 @@ protected:
     struct proxy_state {
         bool dead_ = false;
 
-        bool error_on_read = false;
-        bool error_on_write = false;
+        bool error_on_left_read = false;
+        bool error_on_right_read = false;
+        bool error_on_left_write = false;
+        bool error_on_right_write = false;
 
         // when writing didn't write all data in writebuf
         bool write_left_neck_ = false;
         bool write_right_neck_ = false;
 
-        inline bool dead() const { return dead_; }
+        [[nodiscard]] inline bool dead() const { return dead_; }
         inline void dead(bool d) { dead_ = d; /* might be handy sometimes. if(dead_) { _inf("dead bt: %s",bt().c_str()); } */ }
 
-        inline bool write_left_bottleneck() const { return  write_left_neck_; }
+        [[nodiscard]] inline bool write_left_bottleneck() const { return  write_left_neck_; }
         void write_left_bottleneck(bool n) { write_left_neck_ = n; }
 
-        inline bool write_right_bottleneck() const { return  write_right_neck_; }
+        [[nodiscard]] inline bool write_right_bottleneck() const { return  write_right_neck_; }
         void write_right_bottleneck(bool n) { write_right_neck_ = n; }
     };
 
@@ -99,10 +102,14 @@ protected:
 
 
     struct metering {
-        unsigned int last_read = 0;
-        unsigned int last_write = 0;
+        int last_read = 0;
+        int last_write = 0;
+        int counter_proxy_handler = 0;
+        int counter_generic_handler = 0;
+        int counter_back_handler = 0;
+        int counter_hint_handler = 0;
     };
-    metering meters;
+    metering stats_;
 
     unsigned int handle_last_status;
         
@@ -125,8 +132,7 @@ public:
     static const unsigned int DIE_RIGHT_EMPTY = 1;
     
     baseCom* com_;
-    baseCom* com() { return com_; };
-    baseCom const* com() const { return com_; };
+    baseCom* com() const { return com_; };
 
     explicit baseProxy(baseCom* c);
     ~baseProxy() override;
@@ -158,11 +164,11 @@ public:
     std::vector<baseHostCX*>& rs() { return right_sockets; }
     std::vector<baseHostCX*>& lbs() { return left_bind_sockets; }
     std::vector<baseHostCX*>& rbs() { return right_bind_sockets; }
-    std::vector<baseHostCX*>& lpc() { return left_pc_cx; }
-    std::vector<baseHostCX*>& rpc() { return right_pc_cx; }
     std::vector<baseHostCX*>& lda() { return left_delayed_accepts; }
     std::vector<baseHostCX*>& rda() { return right_delayed_accepts; }
 
+    [[maybe_unused]] std::vector<baseHostCX*>& lpc() { return left_pc_cx; }
+    [[maybe_unused]] std::vector<baseHostCX*>& rpc() { return right_pc_cx; }
 
     inline bool new_raw() const { return new_raw_; }
     inline void new_raw(bool r) { new_raw_ = r; } 	
