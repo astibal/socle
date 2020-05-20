@@ -443,7 +443,7 @@ private:                                                       \
 
 #define DECLARE_C_NAME(string_name)     \
 private:                                \
-    std::string name_ = string_name;   \
+    static inline std::string name_ = string_name;   \
 public:                                             \
     virtual std::string const& name() const  { return this->name_; }          \
     virtual const char* c_name() const { return this->name_.c_str(); }; \
