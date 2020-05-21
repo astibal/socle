@@ -143,8 +143,8 @@ std::string sobjectDB::str_stats(const char* criteria) {
     std::stringstream ret;
     unsigned long object_counter = 0;
     
-    unsigned int youngest_age = -1;
-    unsigned int oldest_age = -1;
+    unsigned int youngest_age = 0;
+    unsigned int oldest_age = 0;
     float sum_age = 0.0;
 
     {
@@ -178,6 +178,8 @@ std::string sobjectDB::str_stats(const char* criteria) {
     
     ret << "Performance: " << socle::sobject::mtr_created().get() << " new objects per second, "
                            << socle::sobject::mtr_deleted().get() << " deleted objects per second.\n";
+
+    ret << "Totals: " << sobject::mtr_created().total() << " objects created," << sobject::mtr_deleted().total() << " deleted";
 
     ret << "Database contains: "<< object_counter << " matching entries (" << ( criteria ? criteria : "*" ) << "), oldest " << static_cast<int>(oldest_age) << "s, ";
     ret << "youngest age "<< youngest_age << "s, average age is "<< avg_age << "s.";
