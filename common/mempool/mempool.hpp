@@ -116,6 +116,8 @@ class memPool {
     std::size_t sz5k;
     std::size_t sz10k;
     std::size_t sz20k;
+    std::size_t sz35k;
+    std::size_t sz50k;
 
     std::vector<mem_chunk_t>* pick_acq_set(ssize_t s);
     std::vector<mem_chunk_t>* pick_ret_set(ssize_t s);
@@ -128,7 +130,9 @@ class memPool {
     std::vector<mem_chunk_t> available_5k;
     std::vector<mem_chunk_t> available_10k;
     std::vector<mem_chunk_t> available_20k;
-    std::vector<mem_chunk_t> available_big; // will be empty initially
+    std::vector<mem_chunk_t> available_35k;
+    std::vector<mem_chunk_t> available_50k;
+//    std::vector<mem_chunk_t> available_big; // will be empty initially
 
     memPool(std::size_t sz256, std::size_t sz1k, std::size_t sz5k, std::size_t sz10k, std::size_t sz20k);
 
@@ -167,7 +171,9 @@ public:
     long unsigned int mem_5k_av() const { return static_cast<long unsigned int>(available_5k.size()); };
     long unsigned int mem_10k_av() const { return static_cast<long unsigned int>(available_10k.size()); };
     long unsigned int mem_20k_av() const { return static_cast<long unsigned int>(available_20k.size()); };
-    long unsigned int mem_big_av() const { return static_cast<long unsigned int>(available_big.size()); };
+    long unsigned int mem_35k_av() const { return static_cast<long unsigned int>(available_35k.size()); };
+    long unsigned int mem_50k_av() const { return static_cast<long unsigned int>(available_50k.size()); };
+//    long unsigned int mem_big_av() const { return static_cast<long unsigned int>(available_big.size()); };
 
 
     long unsigned int mem_32_sz() const { return static_cast<long unsigned int>(sz32); };
@@ -178,6 +184,9 @@ public:
     long unsigned int mem_5k_sz() const { return static_cast<long unsigned int>(sz5k); };
     long unsigned int mem_10k_sz() const { return static_cast<long unsigned int>(sz10k); };
     long unsigned int mem_20k_sz() const { return static_cast<long unsigned int>(sz20k); };
+    long unsigned int mem_35k_sz() const { return static_cast<long unsigned int>(sz35k); };
+    long unsigned int mem_50k_sz() const { return static_cast<long unsigned int>(sz50k); };
+
 
     std::mutex lock;
 };

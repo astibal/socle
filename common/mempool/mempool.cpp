@@ -63,6 +63,8 @@ void memPool::extend(std::size_t n_sz256, std::size_t n_sz1k, std::size_t n_sz5k
     sz5k  += n_sz5k;
     sz10k += n_sz10k;
     sz20k += n_sz20k;
+    sz35k += n_sz20k;
+    sz50k += n_sz20k;
 
     for(unsigned int i = 0; i < sz256 ; i++) {
         for (int j = 0; j < 10 ; j++) available_32.emplace_back(32);
@@ -82,6 +84,13 @@ void memPool::extend(std::size_t n_sz256, std::size_t n_sz1k, std::size_t n_sz5k
     for(unsigned int i = 0; i < sz20k ; i++) {
         available_20k.emplace_back(20*1024);
     }
+    for(unsigned int i = 0; i < sz35k ; i++) {
+        available_35k.emplace_back(35 * 1024);
+    }
+    for(unsigned int i = 0; i < sz50k ; i++) {
+        available_50k.emplace_back(50 * 1024);
+    }
+
 }
 
 mem_chunk_t memPool::acquire(std::size_t sz) {
@@ -153,7 +162,9 @@ void memPool::release(mem_chunk_t to_ret){
 }
 
 std::vector<mem_chunk_t>* memPool::pick_acq_set(ssize_t s) {
-    if      (s > 20 * 1024) return &available_big;
+    if      (s > 50 * 1024) return nullptr;
+    else if (s > 35 * 1024) return &available_50k;
+    else if (s > 20 * 1024) return &available_35k;
     else if (s > 10 * 1024) return &available_20k;
     else if (s >  5 * 1024) return &available_10k;
     else if (s >  1 * 1024) return &available_5k;
@@ -165,7 +176,9 @@ std::vector<mem_chunk_t>* memPool::pick_acq_set(ssize_t s) {
 }
 
 std::vector<mem_chunk_t>* memPool::pick_ret_set(ssize_t s) {
-    if      (s == 20 * 1024) return  available_20k.size() < sz20k ? &available_20k : nullptr;
+    if      (s == 50 * 1024) return  available_50k.size() < sz20k ? &available_50k : nullptr;
+    else if (s == 35 * 1024) return  available_35k.size() < sz20k ? &available_35k : nullptr;
+    else if (s == 20 * 1024) return  available_20k.size() < sz20k ? &available_20k : nullptr;
     else if (s == 10 * 1024) return  available_10k.size() < sz10k ? &available_10k : nullptr;
     else if (s ==  5 * 1024) return  available_5k.size() < sz5k ? &available_5k : nullptr;
     else if (s ==  1 * 1024) return  available_1k.size() < sz1k ? &available_1k : nullptr;
