@@ -262,9 +262,9 @@ void mempool_free(void* optr) {
         } else {
             mp_stats::get().stat_mempool_free_miss++;
         }
-
-        memPool::pool().release(mem_chunk(static_cast<unsigned char *>(optr), ptr_size));
     }
+
+    memPool::pool().release(mem_chunk(static_cast<unsigned char *>(optr), ptr_size));
 
     mp_stats::get().stat_mempool_free++;
     mp_stats::get().stat_mempool_free_size += ptr_size;
