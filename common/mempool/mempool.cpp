@@ -93,16 +93,31 @@ mem_chunk_t memPool::acquire(std::size_t sz) {
     stat_acq++;
     stat_acq_size += sz;
 
-    std::lock_guard<std::mutex> g(lock);
+    // shall we use standard heap for some reason?
+    bool fallback_to_heap = false;
 
-    if (mem_pool->empty()) {
-        mem_chunk_t new_entry = mem_chunk(sz);
+    if(!mem_pool) {
+
+        // no mempool available  - fallback
+        fallback_to_heap = true;
+    } else {
+
+        // mempool is available, but empty!
+        if(mem_pool->empty()) {
+            fallback_to_heap = true;
+        }
+    }
+
+    if (fallback_to_heap) {
+        auto new_entry = mem_chunk(sz);
         stat_alloc++;
         stat_alloc_size += sz;
 
         new_entry.in_pool = false;
         return new_entry;
     } else {
+        std::lock_guard<std::mutex> g(lock);
+
         mem_chunk_t free_entry = mem_pool->back();
         mem_pool->pop_back();
 
