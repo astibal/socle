@@ -48,18 +48,6 @@
 #include <internet.hpp>
 #include "hostcx.hpp"
 
-template <class L4Proto> std::once_flag baseSSLCom<L4Proto>::openssl_thread_setup_done;
-template <class L4Proto> std::once_flag baseSSLCom<L4Proto>::certstore_setup_done;
-template <class L4Proto> SSLFactory*  baseSSLCom<L4Proto>::sslcom_certstore_;
-
-template <class L4Proto> int baseSSLCom<L4Proto>::sslcom_ssl_extdata_index = -1;
-
-template <class L4Proto> int baseSSLCom<L4Proto>::counter_ssl_connect = 0;
-template <class L4Proto> int baseSSLCom<L4Proto>::counter_ssl_accept = 0;
-
-template <class L4Proto> std::string baseSSLCom<L4Proto>::ci_def_filter = "HIGH RC4 !aNULL !eNULL !LOW !3DES !MD5 !EXP !DSS !PSK !SRP !kECDH !CAMELLIA !IDEA !SEED @STRENGTH";
-
-
 inline void set_timer_now(struct timeval* t) {
     gettimeofday(t,nullptr);
 }
@@ -95,7 +83,7 @@ std::string baseSSLCom<L4Proto>::flags_str()
 
 template <class L4Proto>
 void baseSSLCom<L4Proto>::certstore_setup() {
-    baseSSLCom::certstore(& SSLFactory::init());
+    baseSSLCom::factory(&SSLFactory::init());
 }
 
 template <class L4Proto>
@@ -732,7 +720,7 @@ int baseSSLCom<L4Proto>::certificate_status_ocsp_check(baseSSLCom* com) {
         const char* str_status = "unknown";
 
 
-        auto cached_result = com->certstore()->verify_cache.get(cn);;
+        auto cached_result = com->factory()->verify_cache.get(cn);;
 
         if (cached_result) {
             res.revoked = cached_result->value().revoked;
@@ -743,8 +731,8 @@ int baseSSLCom<L4Proto>::certificate_status_ocsp_check(baseSSLCom* com) {
             res = inet::ocsp::ocsp_check_cert(com->sslcom_target_cert, com->sslcom_target_issuer);
             str_status = str_fresh;
             {
-                std::lock_guard<std::recursive_mutex> l_(com->certstore()->verify_cache.getlock());
-                certstore()->verify_cache.set(cn, SSLFactory::make_exp_ocsp_status(res.revoked, res.ttl));
+                std::lock_guard<std::recursive_mutex> l_(com->factory()->verify_cache.getlock());
+                factory()->verify_cache.set(cn, SSLFactory::make_exp_ocsp_status(res.revoked, res.ttl));
             }
             origin = verify_origin_t::OCSP;
         }
@@ -775,11 +763,11 @@ int baseSSLCom<L4Proto>::certificate_status_ocsp_check(baseSSLCom* com) {
             X509_CRL* crl_struct = nullptr;
 
 
-            std::lock_guard<std::recursive_mutex> l_(com->certstore()->crl_cache.getlock());
+            std::lock_guard<std::recursive_mutex> l_(com->factory()->crl_cache.getlock());
             for(auto crl_url: crls) {
 
                 std::string crl_printable = printable(crl_url);
-                auto crl_cache_entry = certstore()->crl_cache.get(crl_url);
+                auto crl_cache_entry = factory()->crl_cache.get(crl_url);
 
                 if(crl_cache_entry != nullptr) {
                     auto crl_struct = crl_cache_entry->value()->ptr;
@@ -822,12 +810,12 @@ int baseSSLCom<L4Proto>::certificate_status_ocsp_check(baseSSLCom* com) {
                         if(crl_struct) {
 
                             _dia("Caching CRL 0x%x", crl_struct);
-                            certstore()->crl_cache.set(crl_url.c_str(),SSLFactory::make_expiring_crl(crl_struct));
+                            factory()->crl_cache.set(crl_url.c_str(), SSLFactory::make_expiring_crl(crl_struct));
                             // but because we are locked, we are happy to overwrite it!
                         }
                     } else {
                         _war("downloading CRL from %s failed.",crl_printable.c_str());
-                        certstore()->crl_cache.set(crl_url.c_str(),SSLFactory::make_expiring_crl(nullptr));
+                        factory()->crl_cache.set(crl_url.c_str(), SSLFactory::make_expiring_crl(nullptr));
                     }
 
                 }
@@ -841,7 +829,7 @@ int baseSSLCom<L4Proto>::certificate_status_ocsp_check(baseSSLCom* com) {
                             com->sslcom_target_cert,
                             com->sslcom_target_issuer,
                             crl_struct,
-                            com->certstore()->ca_path().c_str());
+                            com->factory()->ca_path().c_str());
                     _dia("CRL 0x%x trusted = %d", crl_struct, crl_trust);
 
                     if(crl_trust == 0) {
@@ -1045,7 +1033,7 @@ std::pair<typename baseSSLCom<L4Proto>::staple_code_t, int> baseSSLCom<L4Proto>:
 
     signers = sk_X509_new_null();
     sk_X509_push(signers, com->sslcom_target_issuer);
-    ocsp_status = OCSP_basic_verify(basic_response, signers , com->certstore()->trust_store() , 0);
+    ocsp_status = OCSP_basic_verify(basic_response, signers , com->factory()->trust_store() , 0);
 
     if (ocsp_status <= 0) {
 
@@ -1326,9 +1314,9 @@ void baseSSLCom<L4Proto>::init_ssl_callbacks() {
 
         if(opt_ocsp_stapling_enabled || opt_ocsp_mode > 0) {
 
-            if(certstore()->trust_store() != nullptr) {
+            if(factory()->trust_store() != nullptr) {
 
-                std::lock_guard<std::recursive_mutex> l_(certstore()->lock());
+                std::lock_guard<std::recursive_mutex> l_(factory()->lock());
 
                 _dia("[%s]: OCSP stapling enabled, mode %d", hr().c_str(), opt_ocsp_stapling_mode);
                 SSL_set_tlsext_status_type(sslcom_ssl, TLSEXT_STATUSTYPE_ocsp);
@@ -1355,16 +1343,16 @@ void baseSSLCom<L4Proto>::init_client() {
 
     if(l4_proto() == SOCK_STREAM) {
 
-        std::lock_guard<std::recursive_mutex> l_(certstore()->lock());
+        std::lock_guard<std::recursive_mutex> l_(factory()->lock());
 
-        sslcom_ctx = certstore()->default_tls_client_cx();
+        sslcom_ctx = factory()->default_tls_client_cx();
         sslcom_ssl = SSL_new(sslcom_ctx);
     } else 
     if(l4_proto() == SOCK_DGRAM) {
 
-        std::lock_guard<std::recursive_mutex> l_(certstore()->lock());
+        std::lock_guard<std::recursive_mutex> l_(factory()->lock());
 
-        sslcom_ctx = certstore()->default_dtls_client_cx();
+        sslcom_ctx = factory()->default_dtls_client_cx();
         sslcom_ssl = SSL_new(sslcom_ctx);
     }
     
@@ -1427,16 +1415,16 @@ void baseSSLCom<L4Proto>::init_server() {
     
     if(l4_proto() == SOCK_STREAM) {
 
-        std::lock_guard<std::recursive_mutex> l_(certstore()->lock());
+        std::lock_guard<std::recursive_mutex> l_(factory()->lock());
 
-        sslcom_ctx = certstore()->default_tls_server_cx();
+        sslcom_ctx = factory()->default_tls_server_cx();
         sslcom_ssl = SSL_new(sslcom_ctx);
     } else
     if(l4_proto() == SOCK_DGRAM) {
 
-        std::lock_guard<std::recursive_mutex> l_(certstore()->lock());
+        std::lock_guard<std::recursive_mutex> l_(factory()->lock());
 
-        sslcom_ctx = certstore()->default_dtls_server_cx();
+        sslcom_ctx = factory()->default_dtls_server_cx();
         sslcom_ssl = SSL_new(sslcom_ctx);
         SSL_set_options(sslcom_ssl, SSL_OP_COOKIE_EXCHANGE);
     }
@@ -2068,7 +2056,7 @@ template <class L4Proto>
 bool baseSSLCom<L4Proto>::store_session_if_needed() {
     bool ret = false;
     
-    if(!is_server() && certstore() && owner_cx() && !opt_right_no_tickets) {
+    if(!is_server() && factory() && owner_cx() && !opt_right_no_tickets) {
         std::string sni;
         
         if(sslcom_peer_hello_sni().length() > 0)
@@ -2086,7 +2074,7 @@ bool baseSSLCom<L4Proto>::store_session_if_needed() {
 
             if(verify_bitcheck(VRF_OK)) {
 
-                std::lock_guard<std::recursive_mutex> l_( certstore()->session_cache.getlock() );
+                std::lock_guard<std::recursive_mutex> l_(factory()->session_cache.getlock() );
 
 #if defined USE_OPENSSL111
                 if(SSL_SESSION_is_resumable(SSL_get0_session(sslcom_ssl))) {
@@ -2094,9 +2082,9 @@ bool baseSSLCom<L4Proto>::store_session_if_needed() {
 
                     // only resumable, crystal OK sessions will be trusted for resumption
                     if(verify_get() == VRF_OK) {
-                        certstore()->session_cache.set(key, new session_holder(SSL_get1_session(sslcom_ssl)));
+                        factory()->session_cache.set(key, new session_holder(SSL_get1_session(sslcom_ssl)));
                         _dia("ticketing: key %s: keying material stored, cache size = %d", key.c_str(),
-                             certstore()->session_cache.cache().size());
+                             factory()->session_cache.cache().size());
                     } else {
 
                         std::string ext_str;
@@ -2153,7 +2141,7 @@ bool baseSSLCom<L4Proto>::load_session_if_needed() {
 
     bool ret = false;
     
-    if(!is_server() && certstore() && owner_cx() && !opt_right_no_tickets) {
+    if(!is_server() && factory() && owner_cx() && !opt_right_no_tickets) {
         std::string sni;
         
         if(sslcom_peer_hello_sni().length() > 0)
@@ -2166,9 +2154,9 @@ bool baseSSLCom<L4Proto>::load_session_if_needed() {
             key = string_format("%s:%s",owner_cx()->host().c_str(),owner_cx()->port().c_str());
         }
 
-        std::lock_guard<std::recursive_mutex> l_(certstore()->session_cache.getlock());
+        std::lock_guard<std::recursive_mutex> l_(factory()->session_cache.getlock());
 
-        auto h = certstore()->session_cache.get(key);
+        auto h = factory()->session_cache.get(key);
         
         if(h != nullptr) {
             _dia("ticketing: key %s:target server TLS ticket found!",key.c_str());
@@ -2250,16 +2238,16 @@ bool baseSSLCom<L4Proto>::waiting_peer_hello() {
 
                     if(sslcom_peer_hello_sni_.size() > 0) {
 
-                        std::lock_guard<std::recursive_mutex> l_(certstore()->lock());
+                        std::lock_guard<std::recursive_mutex> l_(factory()->lock());
 
-                        auto res_subj = certstore()->find_subject_by_fqdn(sslcom_peer_hello_sni_);
+                        auto res_subj = factory()->find_subject_by_fqdn(sslcom_peer_hello_sni_);
                         if(res_subj.has_value()) {
                             _dia("SSLCom::waiting_peer_hello: peer's SNI found in subject cache: '%s'", res_subj.value().c_str());
                             if(! enforce_peer_cert_from_cache(res_subj.value() )) {
                                 _dia("SSLCom::waiting_peer_hello: fallback to slow-path");
                             }
                         } else {
-                            _dia("Peer's SNI NOT found in certstore, no shortcuts possible.");
+                            _dia("Peer's SNI NOT found in factory, no shortcuts possible.");
                         }
                     }
 
@@ -2306,9 +2294,9 @@ bool baseSSLCom<L4Proto>::enforce_peer_cert_from_cache(std::string & subj) {
         if(peer()->owner_cx() != nullptr) {
             _dia("SSLCom::enforce_peer_cert_from_cache: about to force peer's side to use cached certificate");
 
-            std::lock_guard<std::recursive_mutex> l_(certstore()->lock());
+            std::lock_guard<std::recursive_mutex> l_(factory()->lock());
 
-            auto* parek = certstore()->find(subj).value_or(nullptr);
+            auto* parek = factory()->find(subj).value_or(nullptr);
             if (parek != nullptr) {
                 _dia("Found cached certificate %s based on fqdn search.",subj.c_str());
                 baseSSLCom* p = dynamic_cast<baseSSLCom*>(peer());

@@ -314,7 +314,7 @@ SSL_CTX* SSLFactory::server_dtls_ctx_setup(EVP_PKEY* priv, X509* cert, const cha
     }
 
     ciphers == nullptr ? SSL_CTX_set_cipher_list(ctx,"ALL:!ADH:!LOW:!EXP:!MD5:@STRENGTH") : SSL_CTX_set_cipher_list(ctx,ciphers);
-    //SSL_CTX_set_options(ctx,certstore()->def_sr_options);
+    //SSL_CTX_set_options(ctx,factory()->def_sr_options);
     SSL_CTX_set_session_cache_mode(ctx, SSL_SESS_CACHE_NO_INTERNAL);
 
     _deb("SSLCom::server_dtls_ctx_setup: loading default key/cert");
@@ -382,29 +382,41 @@ void SSLFactory::destroy() {
     std::lock_guard<std::recursive_mutex> l_(lock());
     auto log = get_log();
 
-    if(ca_cert != nullptr) X509_free(ca_cert);
-    if(ca_key != nullptr) EVP_PKEY_free(ca_key);
+    if(ca_cert) {
+        X509_free(ca_cert);
+        ca_cert = nullptr;
+    }
+    if(ca_key) {
+        EVP_PKEY_free(ca_key);
+        ca_key = nullptr;
+    }
     
-    if(def_cl_cert != nullptr) X509_free(def_cl_cert);
-    if(def_cl_key != nullptr) EVP_PKEY_free(def_cl_key);
-    
-    if(def_sr_cert != nullptr) X509_free(def_sr_cert);
-    if(def_sr_key != nullptr) EVP_PKEY_free(def_sr_key);
+    if(def_cl_cert) {
+        X509_free(def_cl_cert);
+        def_cl_cert = nullptr;
+    }
 
-    for (auto i: cache_) {
-        std::string key = i.first;
-        X509_PAIR*  parek = i.second;
-        
-        _deb("SSLFactory::destroy cache: %s",key.c_str());
+    if(def_cl_key) {
+        EVP_PKEY_free(def_cl_key);
+        def_cl_key = nullptr;
+    }
+    
+    if(def_sr_cert) {
+        X509_free(def_sr_cert);
+        def_sr_cert = nullptr;
+    }
+    if(def_sr_key) {
+        EVP_PKEY_free(def_sr_key);
+        def_cl_key = nullptr;
+    }
+
+    for (auto const& [ key, parek ]: cache_) {
+
+        _deb("SSLFactory::destroy cache: %s", key.c_str());
+
         EVP_PKEY_free(parek->first);
-        
-        X509* cert = parek->second;
-//         STACK_OF(X509_EXTENSION) *exts = cert->cert_info->extensions;
-//         sk_X509_EXTENSION_free(exts);
+        X509_free(parek->second);
 
-//        Causes some mysterious locks:
-//        _deb("SSLFactory::destroy cache: %s - cert",key.c_str());
-        X509_free(cert);
         delete parek;
     }
     

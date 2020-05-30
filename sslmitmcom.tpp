@@ -204,13 +204,13 @@ bool baseSSLMitmCom<SSLProto>::spoof_cert(X509* cert_orig, SpoofOptions& spo) {
     // X509_NAME_get_text_by_NID(X509_get_subject_name(cert_orig),NID_commonName, tmp,512);
     // std::string cn(tmp);
 
-    std::scoped_lock<std::recursive_mutex> l_(this->certstore()->lock());
+    std::scoped_lock<std::recursive_mutex> l_(this->factory()->lock());
 
     std::string store_key = SSLFactory::make_store_key(cert_orig, spo);
 
-    auto* parek = this->certstore()->find(store_key).value_or(nullptr);
+    auto* parek = this->factory()->find(store_key).value_or(nullptr);
     if (parek) {
-        _dia("SSLMitmCom::spoof_cert[%x]: certstore hit for '%s'", this, store_key.c_str());
+        _dia("SSLMitmCom::spoof_cert[%x]: factory hit for '%s'", this, store_key.c_str());
         this->sslcom_pref_cert = parek->second;
         this->sslcom_pref_key = parek->first;
         
@@ -218,11 +218,11 @@ bool baseSSLMitmCom<SSLProto>::spoof_cert(X509* cert_orig, SpoofOptions& spo) {
     } 
     else {
     
-        _dia("SSLMitmCom::spoof_cert[%x]: NOT in my certstore '%s'", this, store_key.c_str());
+        _dia("SSLMitmCom::spoof_cert[%x]: NOT in my factory '%s'", this, store_key.c_str());
         
-        auto* parek = this->certstore()->spoof(cert_orig, spo.self_signed, &spo.sans);
+        auto* parek = this->factory()->spoof(cert_orig, spo.self_signed, &spo.sans);
         if(!parek) {
-            _war("SSLMitmCom::spoof_cert[%x]: certstore failed to spoof '%d' - default will be used", this, store_key.c_str());
+            _war("SSLMitmCom::spoof_cert[%x]: factory failed to spoof '%d' - default will be used", this, store_key.c_str());
             return false;
         } 
         else {
@@ -237,7 +237,7 @@ bool baseSSLMitmCom<SSLProto>::spoof_cert(X509* cert_orig, SpoofOptions& spo) {
 #endif //USE_OPENSSL11
         }
         
-        if (! this->certstore()->add(store_key, parek)) {
+        if (! this->factory()->add(store_key, parek)) {
             _dia("SSLMitmCom::spoof_cert[%x]: spoof was successful, but cache add failed for %s", this, store_key.c_str());
             return true;
         }

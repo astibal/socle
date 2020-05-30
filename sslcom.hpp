@@ -124,7 +124,7 @@ protected:
 	BIO*	 sslcom_sbio = nullptr;
     
     //SSL external data offset, used by openssl callbacks
-    static int sslcom_ssl_extdata_index;
+    static inline int sslcom_ssl_extdata_index {-1};
     
     //preferred key/cert pair to be loaded, instead of default one
     X509*     sslcom_pref_cert = nullptr;
@@ -235,20 +235,21 @@ private:
     bool sslcom_refcount_incremented_ = false;
 public:    
     // debug counters
-    static int counter_ssl_connect;
-    static int counter_ssl_accept;
+    static inline int counter_ssl_connect {0};
+    static inline int counter_ssl_accept {0};
     
     //threading once flag to init essential SSL hooks and locks.
-    static std::once_flag openssl_thread_setup_done;
+    static inline std::once_flag openssl_thread_setup_done;
     
-    // certificate store common across all SSCom instances
-    static SSLFactory* sslcom_certstore_;
-    // init certstore and default CTX
+    // init factory and default CTX
     static void certstore_setup();
-    static std::once_flag certstore_setup_done;    
+    static inline std::once_flag certstore_setup_done;
 
-    static SSLFactory* certstore() { return sslcom_certstore_; };
-    static void certstore(SSLFactory* c) { delete sslcom_certstore_; sslcom_certstore_ = c; };
+
+    // certificate store common across all SSCom instances
+    static inline SSLFactory* factory_ {nullptr};
+    static SSLFactory* factory() { return factory_; };
+    static void factory(SSLFactory* c) { delete factory_; factory_ = c; };
 	
     //called just once
 	void static_init() override;
@@ -375,7 +376,8 @@ public:
     bool opt_bypass = false;
     bool bypass_me_and_peer();
     
-    static std::string ci_def_filter;
+    static inline const char* ci_def_filter
+        = "HIGH RC4 !aNULL !eNULL !LOW !3DES !MD5 !EXP !DSS !PSK !SRP !kECDH !CAMELLIA !IDEA !SEED @STRENGTH";
     
     bool opt_left_kex_dh = true;       // enable/disable pfs (DHE and ECDHE suites)
     bool opt_left_kex_rsa = true;      // enable also kRSA
