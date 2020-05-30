@@ -23,6 +23,7 @@
 #include <log/loglevel.hpp>
 #include <log/logger.hpp>
 #include <mpstd.hpp>
+#include <utility>
 
 #ifdef BUILD_RELEASE
 #define  xext(x)  if(false) (x).ext
@@ -97,16 +98,20 @@ public:
     friend class logan;
 
     logan_lite() = default;
-    logan_lite(const std::string& str) : topic_(str) {};
+    explicit logan_lite(std::string str) : topic_(std::move(str)) {};
     logan_lite(logan_lite const& r) {
         topic_  = r.topic_;
         prefix_ = r.prefix_;
         my_loglevel = r.my_loglevel;
-    };
-    void operator=(logan_lite const& r) {
+    }
+    logan_lite& operator=(logan_lite const& r) {
         topic_  = r.topic_;
         prefix_ = r.prefix_;
+
+        // even if my_loglevel can be non-null, we don't own it, so don't delete it here
         my_loglevel = r.my_loglevel;
+
+        return *this;
     }
 
     virtual std::string topic() const { return topic_; }
@@ -411,7 +416,7 @@ public:
     template<class ... Args>
     static void log(loglevel const& lev, const std::string& topic, const char* fmt, Args ... args) {
 
-        auto* topic_lev = get()[topic];
+        auto topic_lev = get()[topic];
 
         if( *topic_lev >= lev) {
             std::stringstream ms;
