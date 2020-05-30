@@ -21,13 +21,6 @@
 #include <unordered_map>
 #include "buffer.hpp"
 
-#ifdef MEMPOOL_DEBUG
-const bool mem_chunk_t::trace_enabled = true;
-#else
-const bool mem_chunk_t::trace_enabled = false;
-#endif
-
-
 
 memPool::memPool(std::size_t sz256, std::size_t sz1k, std::size_t sz5k, std::size_t sz10k, std::size_t sz20k):
         sz32(0), sz64(0), sz128(0), sz256(0), sz1k(0), sz5k(0), sz10k(0), sz20k(0)
@@ -123,6 +116,21 @@ mem_chunk_t memPool::acquire(std::size_t sz) {
         stat_alloc_size += sz;
 
         new_entry.in_pool = false;
+        new_entry.pool_type = mem_chunk::type::HEAP;
+
+        #ifdef MEMPOOL_DEBUG
+        if(mem_chunk::trace_enabled) {
+            new_entry.set_trace();
+
+
+            // for tracking purposes only - add this chunk to map!
+            {
+                std::lock_guard<std::mutex> l(mpdata::lock());
+                mpdata::map()[new_entry.ptr] = new_entry;
+            }
+        }
+        #endif
+
         return new_entry;
     } else {
         std::lock_guard<std::mutex> g(lock);
@@ -131,6 +139,20 @@ mem_chunk_t memPool::acquire(std::size_t sz) {
         mem_pool->pop_back();
 
         free_entry.in_pool = false;
+        free_entry.pool_type = mem_chunk::type::POOL;
+
+
+        #ifdef MEMPOOL_DEBUG
+        if(mem_chunk::trace_enabled) {
+            free_entry.set_trace();
+
+            // for tracking purposes only - add this chunk to map!
+            {
+                std::lock_guard<std::mutex> l(mpdata::lock());
+                mpdata::map()[free_entry.ptr] = free_entry;
+            }
+        }
+        #endif
 
         return free_entry;
     }
@@ -146,7 +168,7 @@ void memPool::release(mem_chunk_t to_ret){
     std::vector<mem_chunk_t>* mem_pool = pick_ret_set(to_ret.capacity);
 
 
-    if(!mem_pool) {
+    if(!mem_pool || to_ret.pool_type == mem_chunk::type::HEAP) {
         stat_out_free++;
         stat_out_free_size += to_ret.capacity;
 
@@ -158,6 +180,19 @@ void memPool::release(mem_chunk_t to_ret){
         to_ret.in_pool = true;
         std::lock_guard<std::mutex> g(lock);
         mem_pool->push_back(to_ret);
+
+
+        #ifdef MEMPOOL_DEBUG
+
+        std::lock_guard<std::mutex> l(mpdata::lock());
+        if(mem_chunk::trace_enabled) {
+            auto i = mpdata::map().find(to_ret.ptr);
+            if (i != mpdata::map().end()) {
+                mpdata::map().erase(i);
+            }
+        }
+
+        #endif
     }
 }
 
@@ -196,9 +231,6 @@ void* mempool_alloc(size_t s) {
         return malloc(s);
 
     mem_chunk_t mch = memPool::pool().acquire(s);
-
-    if(mem_chunk::trace_enabled)
-            mch.set_trace();
 
     {
         std::lock_guard<std::mutex> l(mpdata::lock());

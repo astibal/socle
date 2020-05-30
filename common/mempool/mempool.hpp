@@ -52,7 +52,18 @@ typedef struct mem_chunk
     std::size_t  capacity;
     bool in_pool = false; // set this flag to indicate if the allocation is in pool => allocated, but not used.
 
-    static const bool trace_enabled;
+    enum class pool_type_t { POOL, HEAP };
+    using type = pool_type_t;
+    type pool_type = type::POOL;
+
+#ifdef MEMPOOL_DEBUG
+    static inline const bool trace_enabled = true;
+#else
+    static inline const bool trace_enabled = false;
+#endif
+
+
+
 #ifdef MEMPOOL_DEBUG
 
     #define MEM_CHUNK_TRACE_SZ 64
@@ -135,6 +146,28 @@ class memPool {
 //    std::vector<mem_chunk_t> available_big; // will be empty initially
 
     memPool(std::size_t sz256, std::size_t sz1k, std::size_t sz5k, std::size_t sz10k, std::size_t sz20k);
+    ~memPool() noexcept {
+
+        auto chunk_deleter = [](mem_chunk& m) { delete[] m.ptr; m.ptr = nullptr; };
+        auto pool_deleter = [](auto& pool, auto chunk_deleter) {
+            std::for_each(pool.begin(), pool.end(), chunk_deleter );
+            pool.clear();
+        };
+
+        try {
+            pool_deleter(available_32, chunk_deleter);
+            pool_deleter(available_64, chunk_deleter);
+            pool_deleter(available_128, chunk_deleter);
+            pool_deleter(available_256, chunk_deleter);
+            pool_deleter(available_5k, chunk_deleter);
+            pool_deleter(available_10k, chunk_deleter);
+            pool_deleter(available_20k, chunk_deleter);
+            pool_deleter(available_35k, chunk_deleter);
+            pool_deleter(available_50k, chunk_deleter);
+        } catch (std::exception const& e) {
+            std::cerr << "exception in ~memPool(): " <<  e.what() << std::endl;
+        }
+    }
 
 public:
 
