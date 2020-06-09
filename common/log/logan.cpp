@@ -21,9 +21,18 @@
 #include <mutex>
 
 loglevel* logan_lite::level() const {
-    std::scoped_lock<std::mutex> l(lock_);
 
-    if(! my_loglevel) {
+    bool is_cached = true;
+    {
+        auto sha_ = std::shared_lock(lock_);
+
+        if(! my_loglevel) {
+            is_cached = false;
+        }
+    }
+
+    if(!is_cached) {
+        auto uni_ = std::unique_lock(lock_);
         my_loglevel = logan::get()[topic_];
     }
 
@@ -31,6 +40,7 @@ loglevel* logan_lite::level() const {
 }
 
 void logan_lite::level(loglevel l) {
+    auto l_ = std::unique_lock(lock_);
 
     if(!my_loglevel) {
         my_loglevel = logan::get()[topic_];

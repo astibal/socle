@@ -171,19 +171,22 @@ void baseProxy::left_shutdown() {
 	for(auto* ii: left_pc_cx)          { ii->shutdown(); };
     for(auto* ii: left_delayed_accepts) { ii->shutdown(); };
 
+    std::vector<baseHostCX*> delit(2);
 
-    for(auto* ii: left_bind_sockets) { delete ii; }
+    for(auto* ii: left_bind_sockets) { delit.push_back(ii); }
     left_bind_sockets.clear();
 
-    for(auto* ii: left_sockets) {  delete ii; }
+    for(auto* ii: left_sockets) {  delit.push_back(ii); }
     left_sockets.clear();
 
-    for(auto* ii: left_pc_cx) {  delete ii; }
+    for(auto* ii: left_pc_cx) {  delit.push_back(ii); }
     left_pc_cx.clear();
 
-    for(auto* ii: left_delayed_accepts) { delete ii; }
-    left_delayed_accepts.clear();       
-    
+    for(auto* ii: left_delayed_accepts) { delit.push_back(ii); }
+    left_delayed_accepts.clear();
+
+    std::for_each(delit.begin(), delit.end(), [](auto i) {delete i;});
+
  	_deb("baseProxy::left_shutdown: bind=%d(delayed=%d), sock=%d, perm=%d", lb, ld, ls, lp);
 }
 
@@ -201,18 +204,24 @@ void baseProxy::right_shutdown() {
     for(auto ii: right_delayed_accepts) { ii->shutdown(); };
 
 
-    for(auto ii: right_bind_sockets) {  delete ii; };
+
+    std::vector<baseHostCX*> delit(2);
+
+    for(auto ii: right_bind_sockets) { delit.push_back(ii); }
     right_bind_sockets.clear();
 
-    for(auto ii: right_sockets) {  delete ii; };
+    for(auto ii: right_sockets) {  delit.push_back(ii); }
     right_sockets.clear();
 
-    for(auto ii: right_pc_cx) { delete ii; };
+    for(auto ii: right_pc_cx) { delit.push_back(ii); }
     right_pc_cx.clear();
 
-    for(auto ii: right_delayed_accepts) {  delete ii; };
+    for(auto ii: right_delayed_accepts) {  delit.push_back(ii); }
     right_delayed_accepts.clear();      
-    
+
+
+    std::for_each(delit.begin(), delit.end(), [](auto i) {delete i;});
+
     
 	_deb("baseProxy::right_shutdown: bind=%d(delayed=%d), sock=%d, perm=%d", rb, rd, rs, rp);
 }

@@ -38,9 +38,11 @@ int MasterProxy::prepare_sockets(baseCom* xcom)
     return r;
 }
 
-bool MasterProxy::run_timers (void)
+bool MasterProxy::run_timers()
 {
     if(baseProxy::run_timers()) {
+
+        auto delit_list = std::vector<baseProxy*>();
 
         for(auto i = proxies().cbegin(); i != proxies().end(); ) {
 
@@ -52,7 +54,7 @@ bool MasterProxy::run_timers (void)
             }
 
             if(p->state().dead()) {
-                delete p;
+                delit_list.push_back(*i);
                 i = proxies().erase(i);
                 continue;
             } else {
@@ -61,6 +63,9 @@ bool MasterProxy::run_timers (void)
 
             ++i;
         }
+
+        // delete proxies after their removal from the list - avoid data races iterating proxies list
+        std::for_each(delit_list.begin(), delit_list.end(), [](auto dead_beef) { delete dead_beef; });
 
         return true;
     }

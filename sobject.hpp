@@ -25,6 +25,8 @@
 #include <log/logger.hpp>
 #include <ptr_cache.hpp>
 #include <display.hpp>
+#include <mutex>
+#include <shared_mutex>
 
 namespace socle {
 
@@ -50,7 +52,7 @@ struct sobject_info {
     unsigned int age() const { return time(nullptr) - created_; }
 
     std::string to_string(int verbosity=iINF) const;
-    virtual ~sobject_info() { if(bt_) delete bt_; };
+    virtual ~sobject_info() { delete bt_; };
     
     DECLARE_C_NAME("sobject_info");
     DECLARE_LOGGING(to_string);
@@ -62,19 +64,20 @@ protected:
 struct meter {
 
 private:
-    unsigned long total_{};
+    std::atomic_long total_{};
 
-    unsigned long prev_counter_{};
-    unsigned long curr_counter_{};
+    std::atomic_long prev_counter_{};
+    std::atomic_long  curr_counter_{};
 
     constexpr static int scoreboard_sz = 3;
-    unsigned long scoreboard[scoreboard_sz] = {0};
+    std::atomic_long scoreboard[scoreboard_sz] = {0};
 
     std::chrono::system_clock::time_point last_update{};
-    unsigned int interval_{1};
+    std::atomic_int  interval_{1};
 
-    unsigned int cnt_updates = 0;       // count no. of updates and shorten avg division if smaller than ( 2 + scoreboard_sz)
+    std::atomic_int cnt_updates = 0;       // count no. of updates and shorten avg division if smaller than ( 2 + scoreboard_sz)
 
+    mutable std::shared_mutex _chrono_lock;
 public:
 
     explicit meter(int interval=1): interval_(interval) { last_update = std::chrono::system_clock::now(); };
@@ -86,7 +89,8 @@ public:
     void push_score(unsigned long val) {
 
         for(int i =  scoreboard_sz - 1 ; i > 0; i--) {
-            scoreboard[i] = scoreboard[i-1];
+            unsigned long temp = scoreboard[i-1];
+            scoreboard[i] = temp;
         }
         scoreboard[0] = val;
     }
@@ -162,7 +166,7 @@ protected:
 class sobject : public base_sobject {
 
 public:
-    typedef uint64_t oid_type;
+    using oid_type = uint64_t ;
 
 private:
     oid_type oid_;
@@ -170,7 +174,7 @@ private:
 public:
     sobject();
     virtual ~sobject();
-    inline oid_type oid() const { return oid_; };
+    inline oid_type oid() const noexcept { return oid_; };
 
     // ask kindly to stop use this object (for example, user implementation could set error indicator, etc. )
     virtual bool ask_destroy() = 0;
@@ -198,7 +202,7 @@ class spointer {
         explicit spointer(T* ptr): pointer_(ptr) {};
         virtual ~spointer() { delete pointer_; }
 
-        unsigned int usage() const { return count_; }
+        unsigned int usage() const { return count_.load(); }
 
         bool valid() const { return (pointer_ != nullptr); }
         void invalidate() { delete pointer_; pointer_ = nullptr; count_=0; }
@@ -212,10 +216,17 @@ class spointer {
         spointer(const spointer&) = delete;
     private:
         T* pointer_ = nullptr;
-        unsigned int count_ = 0;
+        std::atomic_int32_t count_ = 0;
         
         inline void use() { count_++; };
-        inline void unuse() { if(count_>0) count_--; };
+        inline void unuse() {
+            if(count_> 0) count_--;
+
+            // fight data race in previous test
+            if(count_ < 0) {
+                count_ = 0;
+            }
+        };
         
     friend class sref<T>;
 };

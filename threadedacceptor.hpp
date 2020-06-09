@@ -84,8 +84,8 @@ public:
 	int handle_sockets_once(baseCom*) override;
     void on_run_round() override;
 
-    static int& workers_total() {
-        static int workers_total_ = 2;
+    static std::atomic_int& workers_total() {
+        static std::atomic_int workers_total_ = 2;
         return workers_total_;
     };
 };

@@ -36,6 +36,8 @@
 template<class Worker, class SubWorker>
 class ThreadedReceiver : public baseProxy {
 public:
+
+    using buffer_guard = locked_guard<lockbuffer>;
     using proxy_type_t = threadedProxyWorker::proxy_type_t;
     inline proxy_type_t proxy_type() const { return proxy_type_; }
 
@@ -130,6 +132,12 @@ public:
 };
 
 
+class ReceiverProxyError : public std::runtime_error {
+public:
+    explicit ReceiverProxyError(const char* w) : std::runtime_error(w) {};
+};
+
+
 template<class SubWorker>
 class ThreadedReceiverProxy : public threadedProxyWorker, public MasterProxy {
 public:
@@ -140,8 +148,8 @@ public:
     int handle_sockets_once(baseCom*) override;
     void on_run_round() override;
 
-    static int& workers_total() {
-        static int workers_total_ = 2;
+    static std::atomic_int& workers_total() {
+        static std::atomic_int workers_total_ = 2;
         return workers_total_;
     };
 };

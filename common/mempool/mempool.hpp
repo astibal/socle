@@ -171,6 +171,10 @@ class memPool {
 
 public:
 
+    // indicate to not use any allocation functions which are not safe!
+    // resource requests will fail and releases do nothing.
+    std::atomic_bool bailing = false;
+
     static memPool& pool() {
         static memPool m = memPool(5000,10000,10000,1000,800);
         return m;

@@ -168,7 +168,8 @@ namespace socle {
 
 class baseHostCX : public Host
 {
-    
+    using buffer_guard = locked_guard<lockbuffer>;
+
 	/* Basic elements */
 	
 	mutable std::string name__;      //!< human friendly name

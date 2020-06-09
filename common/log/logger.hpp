@@ -88,8 +88,12 @@ public:
 
 
     // where to log?
-    std::list<std::ostream*> targets_;
-    std::list<int> remote_targets_;
+
+    using ostream_list_t = std::list<std::pair<std::ostream*, std::mutex*>>;
+    ostream_list_t targets_;
+
+    using fd_list_t = std::list<std::pair<int, std::mutex*>>;
+    fd_list_t remote_targets_;
 };
 
 // inherit default setting from logger_profile
@@ -122,15 +126,18 @@ public:
     bool click_timer (const std::string &xname, int interval);
 
 
-    std::list<std::ostream*>& targets() { return targets_; }
-    void targets(std::string name, std::ostream* o) { targets_.push_back(o); target_names_[(uint64_t)o] = name; }
+    logger_profile::ostream_list_t& targets() { return targets_; }
+    void targets(std::string name, std::ostream* o) { targets_.emplace_back(o, new std::mutex()); target_names_[(uint64_t)o] = name; }
 
-    std::list<int>& remote_targets() { return remote_targets_; }
-    void remote_targets(std::string name, int s) { remote_targets_.push_back(s); target_names_[s] = name; }
+    logger_profile::fd_list_t& remote_targets() { return remote_targets_; }
+    void remote_targets(std::string name, int s) { remote_targets_.emplace_back(s, new std::mutex()); target_names_[s] = name; }
 
     virtual int write_log(loglevel level, std::string& sss);
 
     bool should_log_topic(loglevel& writer, loglevel& msg);
+
+    template <class ... Args>
+    void log_simple(const char* str);
 
     template <class ... Args>
     void log(loglevel l, const std::string& fmt, Args ... args);
@@ -195,6 +202,10 @@ private:
     std::shared_ptr<logger> lout_;
 };
 
+template <class ... Args>
+void logger::log_simple(const char* str) {
+    std::cerr << str << std::endl;
+}
 
 template <class ... Args>
 void logger::log(loglevel l, const std::string& fmt,  Args ... args) {
@@ -209,7 +220,14 @@ void logger::log(loglevel l, const std::string& fmt,  Args ... args) {
     auto usec   = (usec_total.count() % (1000 * 1000));
 
     auto tt = std::chrono::system_clock::to_time_t(now);
-    auto tm = *std::localtime(&tt);
+
+
+    // protect thread-unsafe function  (it returns pointer to its internal state)
+    auto get_tm = [&tt]() -> auto {
+        static std::mutex m;
+        auto l_ = std::scoped_lock(m);
+        return *std::localtime(&tt);
+    };
 
     std::string str = string_format(fmt.c_str(), args...);
 
@@ -229,7 +247,8 @@ void logger::log(loglevel l, const std::string& fmt,  Args ... args) {
         ss << str;
     }
     else {
-        ss << std::put_time(&tm, "%y-%m-%d %H:%M:%S") << "." << string_format("%06d", usec) << " <";
+        auto tm = get_tm();
+        ss << std::put_time( &tm, "%y-%m-%d %H:%M:%S") << "." << string_format("%06d", usec) << " <";
         ss << std::hex << std::this_thread::get_id() << "> " << desc << " - " << str;
     }
 

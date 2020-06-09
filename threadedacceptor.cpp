@@ -117,7 +117,7 @@ int ThreadedAcceptor<Worker,SubWorker>::create_workers(int count) {
 
 	for( unsigned int i = 0; i < nthreads; i++) {
 
-		Worker *w = new Worker(this->com()->replicate(),i, proxy_type_);
+		auto *w = new Worker(this->com()->replicate(),i, proxy_type_);
 		w->com()->nonlocal_dst(this->com()->nonlocal_dst());
 		w->parent(this);
         w->pollroot(true);
@@ -135,14 +135,14 @@ int ThreadedAcceptor<Worker,SubWorker>::create_workers(int count) {
 
 
 template<class Worker, class SubWorker>
-int ThreadedAcceptor<Worker,SubWorker>::run(void) {
+int ThreadedAcceptor<Worker,SubWorker>::run() {
 	
     pollroot(true);
 	create_workers(worker_count_preference());
 	
 	for( unsigned int i = 0; i < tasks_.size() ; i++) {
 		auto& thread_worker = tasks_[i];
-		std::thread* ptr = new std::thread(&Worker::run, thread_worker.second);
+		auto* ptr = new std::thread(&Worker::run, thread_worker.second);
 		_dia("ThreadedAcceptor::run: started new thread[%d]: ptr=%x, thread_id=%d",i,ptr,ptr->get_id());
         thread_worker.first = ptr;
 	}

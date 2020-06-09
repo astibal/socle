@@ -52,9 +52,7 @@ protected:
     bool        attached_ = false;
 
     static logan_lite& get_log() {
-        static logan_lite l;
-        l.topic("internal.shm");
-
+        static logan_lite l("internal.shm");
         return l;
     }
     

@@ -24,6 +24,7 @@
 #include <log/logger.hpp>
 #include <mpstd.hpp>
 #include <utility>
+#include <shared_mutex>
 
 #ifdef BUILD_RELEASE
 #define  xext(x)  if(false) (x).ext
@@ -57,6 +58,7 @@
 #define  _cri  if(*log.level() >= CRI) log.cri
 #define  _fat  if(*log.level() >= FAT) log.fat
 
+#define  _cons  LogOutput::get()->log_simple
 
 class baseLoganMate {
 public:
@@ -84,7 +86,7 @@ class logan;
 class logan_lite {
 
 protected:
-    mutable std::mutex lock_;
+    mutable std::shared_mutex lock_;
     mutable loglevel* my_loglevel = nullptr;
 
     // loging name in catalogue
@@ -105,6 +107,8 @@ public:
         my_loglevel = r.my_loglevel;
     }
     logan_lite& operator=(logan_lite const& r) {
+        auto l_ = std::unique_lock(lock_);
+
         topic_  = r.topic_;
         prefix_ = r.prefix_;
 
@@ -114,11 +118,25 @@ public:
         return *this;
     }
 
-    virtual std::string topic() const { return topic_; }
-    virtual        void topic(std::string s) { topic_ = s; }
+    virtual std::string topic() const {
+        auto l_ = std::shared_lock(lock_);
+        return topic_;
+    }
+    virtual void topic(std::string s) {
+        auto l_ = std::unique_lock(lock_);
+        topic_ = s;
+    }
 
-    virtual std::string prefix() const { return prefix_; }
-    virtual        void prefix(std::string s) { prefix_ = s; }
+
+    virtual std::string prefix() const {
+        auto l_ = std::shared_lock(lock_);
+        return prefix_;
+    }
+    virtual void prefix(std::string s) {
+        auto l_ = std::unique_lock(lock_);
+        prefix_ = s;
+    }
+
 
     virtual loglevel* level() const;
     virtual void     level(loglevel l);
@@ -250,7 +268,7 @@ private:
 
 class logan_tracer : public logan_lite {
 public:
-    explicit logan_tracer() : logan_lite(), start_(std::chrono::high_resolution_clock::now()) {}
+    explicit logan_tracer() : logan_lite("tracer"), start_(std::chrono::high_resolution_clock::now()) {}
 
     typedef std::vector<std::pair<long, std::string>> usec_msg_tupples;
     usec_msg_tupples& records() { return records_; }
@@ -447,7 +465,7 @@ loglevel* logan_attached<T>::level() const {
     }
 
     if( ! area().empty() ) {
-        std::scoped_lock<std::mutex> l(lock_);
+        std::unique_lock l(lock_);
 
         if(! my_area_loglevel) {
             my_area_loglevel = logan::get()[area()];
@@ -488,26 +506,28 @@ loglevel* logan_attached<T>::level() const {
 
 template <class T>
 void logan_attached<T>::level(loglevel l) {
+    auto l_ = std::unique_lock(lock_);
     if(ptr_)
         ptr_->log_level_ref() = l;
 }
 
 template <class T>
 void logan_attached<T>::this_level(loglevel l) {
+    auto l_ = std::unique_lock(lock_);
     if(ptr_)
         ptr_->get_this_log_level() = l;
 }
 
 template <class T>
 void logan_attached<T>::area(const std::string& ref) {
+    auto l_ = std::unique_lock(lock_);
 
     if(area() == ref) return;
 
     area_ = ref;
 
-    if(logan::get().topic_db_.find(area_) == logan::get().topic_db_.end()) {
-
-        // set area logging level
+//    if(logan::get().topic_db_.find(area_) == logan::get().topic_db_.end()) {
+      if(! my_area_loglevel) {
         my_area_loglevel = logan::get()[area_];
     }
 }

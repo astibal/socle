@@ -88,7 +88,7 @@ void memPool::extend(std::size_t n_sz256, std::size_t n_sz1k, std::size_t n_sz5k
 
 mem_chunk_t memPool::acquire(std::size_t sz) {
 
-    if(sz == 0) return mem_chunk_t(nullptr, 0);
+    if(sz == 0 || bailing.load()) return mem_chunk_t(nullptr, 0);
 
     std::vector<mem_chunk_t>* mem_pool = pick_acq_set(sz);
 
@@ -103,6 +103,8 @@ mem_chunk_t memPool::acquire(std::size_t sz) {
         // no mempool available  - fallback
         fallback_to_heap = true;
     } else {
+
+        std::lock_guard<std::mutex> g(lock);
 
         // mempool is available, but empty!
         if(mem_pool->empty()) {
@@ -165,6 +167,8 @@ void memPool::release(mem_chunk_t to_ret){
         return;
     }
 
+    if(bailing.load()) return;
+
     std::vector<mem_chunk_t>* mem_pool = pick_ret_set(to_ret.capacity);
 
 
@@ -211,6 +215,8 @@ std::vector<mem_chunk_t>* memPool::pick_acq_set(ssize_t s) {
 }
 
 std::vector<mem_chunk_t>* memPool::pick_ret_set(ssize_t s) {
+
+    std::lock_guard<std::mutex> g(lock);
     if      (s == 50 * 1024) return  available_50k.size() < sz20k ? &available_50k : nullptr;
     else if (s == 35 * 1024) return  available_35k.size() < sz20k ? &available_35k : nullptr;
     else if (s == 20 * 1024) return  available_20k.size() < sz20k ? &available_20k : nullptr;
@@ -232,13 +238,15 @@ void* mempool_alloc(size_t s) {
 
     mem_chunk_t mch = memPool::pool().acquire(s);
 
-    {
-        std::lock_guard<std::mutex> l(mpdata::lock());
-        mpdata::map()[mch.ptr] = mch;
-    }
+    if(mch.ptr) {
+        {
+            std::lock_guard<std::mutex> l(mpdata::lock());
+            mpdata::map()[mch.ptr] = mch;
+        }
 
-    mp_stats::get().stat_mempool_alloc++;
-    mp_stats::get().stat_mempool_alloc_size += s;
+        mp_stats::get().stat_mempool_alloc++;
+        mp_stats::get().stat_mempool_alloc_size += s;
+    }
 
     return mch.ptr;
 }

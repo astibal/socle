@@ -27,13 +27,15 @@
 class lockbuffer : public buffer, public lockable
 {
 public:
+    using buffer_guard = locked_guard<lockbuffer>;
+
     explicit lockbuffer (size_type size = 0) : buffer(size) {};
     lockbuffer (size_type s, size_type c) : buffer(s,c) {};
     lockbuffer (const void* data, size_type size) : buffer(data,size) {};
     lockbuffer (const void* data, size_type size, size_type capacity) : buffer(data, size, capacity) {};
     lockbuffer (void* data, size_type size, size_type capacity, bool assume_ownership) : buffer(data,size,capacity,assume_ownership) {};
           
-    virtual ~lockbuffer() {};
+    virtual ~lockbuffer() = default;
     
     lockbuffer& operator= (const lockbuffer& x);
 };
@@ -44,6 +46,6 @@ inline lockbuffer& lockbuffer::operator= (const lockbuffer& x)
     return *this;
 }
 
-typedef locked_guard<lockbuffer>  buffer_guard;
+
 
 #endif

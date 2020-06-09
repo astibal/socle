@@ -48,10 +48,9 @@ sobject::sobject() {
     static const uint64_t id_key =   0x3453ABC3450F;
     static std::atomic<uint64_t> id_current = id_start;
 
-    oid_ = id_key ^ id_current++;
-
     {
         std::scoped_lock<std::recursive_mutex> l_(sobjectDB::getlock());
+        oid_ = id_key ^ id_current++;
         sobjectDB::oid_db()[oid_] = this;
         sobjectDB::db()[this] = new sobject_info();
     }
@@ -83,8 +82,7 @@ std::string sobjectDB::str_list(const char* class_criteria, const char* delimite
 
     std::scoped_lock<std::recursive_mutex> l_(getlock());
 
-    for(auto it: db()) {
-        sobject*       ptr = it.first;
+    for(auto [ptr, info] : db()) {
 
         if(!ptr) continue;
         
@@ -112,7 +110,6 @@ std::string sobjectDB::str_list(const char* class_criteria, const char* delimite
         
         
         if(matched) {
-            auto si = it.second;
             std::string obj_string = ptr->to_string(verbosity);
             
             if(content_criteria) {
@@ -123,8 +120,8 @@ std::string sobjectDB::str_list(const char* class_criteria, const char* delimite
 
             if(verbosity >= DEB) {
                 ret << "\n";
-                if(si != nullptr) 
-                    ret << si->to_string(verbosity);
+                if(info != nullptr)
+                    ret << info->to_string(verbosity);
             }
             
             (delimiter == nullptr) ? ret << "\n" : ret << delimiter;
@@ -215,13 +212,22 @@ long unsigned int meter::update(unsigned long val) {
     total_ += val;
     cnt_updates ++;
 
-    if( now - last_update > std::chrono::seconds(interval_)) {
+    std::chrono::system_clock::time_point last_update_copy;
+    {
+        auto l_ = std::shared_lock(_chrono_lock);
+        last_update_copy = last_update;
+    }
 
-        int missed_scores = (now - last_update)/std::chrono::seconds(interval_);
+    if( now - last_update_copy > std::chrono::seconds(interval_)) {
+
+        int missed_scores = (now - last_update_copy)/std::chrono::seconds(interval_);
         if(missed_scores > scoreboard_sz) missed_scores = scoreboard_sz;
 
-        // threshold is reached => counter contains all bytes in previous second
-        last_update = now;
+        {
+            auto l_ = std::unique_lock(_chrono_lock);
+            // threshold is reached => counter contains all bytes in previous second
+            last_update = now;
+        }
 
         push_score(prev_counter_);
 
@@ -230,7 +236,8 @@ long unsigned int meter::update(unsigned long val) {
             push_score(0);
         }
 
-        prev_counter_  = curr_counter_;
+        unsigned long temp = curr_counter_;
+        prev_counter_  = temp;
         
         curr_counter_ = val;
         
@@ -246,9 +253,12 @@ unsigned long meter::get() const {
 
     auto now = std::chrono::system_clock::now();
 
-    if( now > last_update + (1 + scoreboard_sz) * std::chrono::seconds(interval_)) {
-        // not updated for a while
-        return 0;
+    {
+        auto l_ = std::shared_lock(_chrono_lock);
+        if (now > last_update + (1 + scoreboard_sz) * std::chrono::seconds(interval_)) {
+            // not updated for a while
+            return 0;
+        }
     }
 
     unsigned long divisor = (1+scoreboard_sz )*interval_;

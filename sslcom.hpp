@@ -235,8 +235,8 @@ private:
     bool sslcom_refcount_incremented_ = false;
 public:    
     // debug counters
-    static inline int counter_ssl_connect {0};
-    static inline int counter_ssl_accept {0};
+    static inline std::atomic_int counter_ssl_connect {0};
+    static inline std::atomic_int counter_ssl_accept {0};
     
     //threading once flag to init essential SSL hooks and locks.
     static inline std::once_flag openssl_thread_setup_done;

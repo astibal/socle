@@ -21,37 +21,26 @@
 
 #include <mutex>
 
-class lockable {
-public:
-    virtual ~lockable() { lock_.unlock(); };
-    void lock() const { lock_.lock(); }
-    void unlock() const { lock_.unlock(); }
-
-protected:
-    mutable std::recursive_mutex lock_;
-};
-
-template <class T>
-class locked_ptr : public lockable {
-public:
-    locked_ptr<T>(T* ref) { object_ = ref; }
-    
-    T* acquire() { lock(); return object_; }
-    void release() { unlock(); }
-    T* operator ->() { return object_; };
-    
-protected:
-    T* object_ = nullptr;
-};
-
 template <class T>
 class locked_guard {
 public:
-    locked_guard<T>(T& ref): ref_(&ref) { ref_->lock(); } ;
-    locked_guard<T>(T* ref): ref_(ref) { ref_->lock(); } ;
-    virtual ~locked_guard<T>() { ref_->unlock(); };
+    explicit locked_guard<T>(T& ref): ref_(&ref) { ref_->_lock(); } ;
+    explicit locked_guard<T>(T* ref): ref_(ref) { ref_->_lock(); } ;
+    virtual ~locked_guard<T>() { ref_->_unlock(); };
 protected:
     T* ref_;
 };
+
+class lockable {
+public:
+    virtual ~lockable() = default;
+
+    void _lock() const { lock_.lock(); }
+    void _unlock() const { lock_.unlock(); }
+
+    friend class locked_guard<lockable>;
+    mutable std::recursive_mutex lock_;
+};
+
 
 #endif
