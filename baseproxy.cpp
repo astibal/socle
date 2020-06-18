@@ -1101,170 +1101,195 @@ void baseProxy::on_right_new(baseHostCX* cx) {
 }
 
 
-// Infinite loop ... 
+int baseProxy::run_poll() {
+
+    // normally we don't need to re-run, there are data still waiting which won't trigger epoll
+    int should_rerun = 0;
+
+    int counter_curr_proxy_handler = 0;
+    int counter_curr_generic_handler = 0;
+    int counter_curr_back_handler = 0;
+    int counter_curr_hint_handler = 0;
+
+    int counter_fence_fail = 0;
+
+    std::vector<int> back_in_set;
+
+    // std::set<int>& sets[] = { com()->poller.poller->in_set, com()->poller.poller->out_set };
+    std::vector<epoll::set_type*> sets;
+    sets.push_back(&com()->poller.poller->in_set);
+    sets.push_back(&com()->poller.poller->out_set);
+    sets.push_back(&com()->poller.poller->idle_set);
+
+    std::vector<std::string> setname = { "inset", "outset", "idleset" };
+    int name_iter = 0;
+
+    bool virt_global_hack = false;
+    epoll::set_type udp_in_set;
+
+    auto* uc = dynamic_cast<UDPCom*>(com()->master());
+    if(uc) {
+
+        //_inf("adding virtual sockets");
+        {
+            std::scoped_lock<std::recursive_mutex> m(UDPCom::lock);
+            udp_in_set = UDPCom::in_virt_set;
+        }
+
+        sets.push_back(&udp_in_set);
+        setname.emplace_back("inset_virt");
+    }
+
+    for (epoll::set_type * current_set: sets) {
+
+        for (auto s: *current_set) {
+            //FIXME
+            _deb("baseProxy::run: %s socket %d ", setname.at(name_iter).c_str(), s);
+            epoll_handler* p_handler = com()->poller.get_handler(s);
+
+            if(p_handler != nullptr) {
+
+                auto seg = p_handler->fence__;
+                _ext("baseProxy::run: socket %d has registered handler 0x%x (fence %x)", s, p_handler, seg);
+
+                if(seg != HANDLER_FENCE) {
+                    _err("baseProxy::run: socket %d magic fence doesn't match!!", s);
+                    counter_fence_fail++;
+
+                } else {
+
+                    // Try if handler is a proxy object. If so, call different method.
+                    // This design is intentional, to separate meaning of "handling socket"
+                    // by proxy (which might be killed and terminated)
+                    // and generic "event handler".
+
+                    auto* proxy = dynamic_cast<baseProxy*>(p_handler);
+                    if(proxy != nullptr) {
+                        _ext("baseProxy::run: socket %d has baseProxy handler!!", s);
+
+                        // call poller-carried proxy handler!
+                        proxy->handle_sockets_once(com());
+                        if(proxy->state().dead()) {
+                            proxy->shutdown();
+                            _dia("Proxy 0x%x has been shutdown.", proxy);
+                        }
+
+                        counter_curr_proxy_handler++;
+
+                    } else {
+
+                        _ext("baseProxy::run: socket %d has generic handler", s);
+                        p_handler->handle_event(com());
+                        counter_curr_generic_handler++;
+                    }
+                }
+
+            } else {
+
+                //FIXME: report virtual sockets too, in the future
+
+                _deb("baseProxy::run: socket %d has NO handler!!",s);
+
+                // all real sockets without ANY handler should be re-inserted
+                if(s > 0) {
+                    back_in_set.push_back(s);
+                }
+
+                if (com()->poller.poller) {
+                    if(s != com()->poller.poller->hint_socket()) {
+                        if(s < 0) {
+                            _ext("virtual socket %d has null handler", s);
+                            virt_global_hack = true;
+                        }else {
+                            _err("baseProxy::run: socket %d has registered NULL handler, removing", s);
+                            com()->poller.poller->del(s);
+                        }
+                    } else {
+                        // hint file descriptor don't have handler
+                        _deb("baseProxy::run: socket %d is hint socket, running proxy socket handler", s);
+                        handle_sockets_once(com());
+                        counter_curr_hint_handler++;
+                    }
+                } else {
+                    _err("com()->poller.poller is null!");
+                }
+            }
+        }
+
+        name_iter++;
+    }
+
+    // clear in_set, so already handled sockets are excluded
+    com()->poller.poller->in_set.clear();
+
+    // add back sockets which don't have handler - generally it should be just few sockets!
+
+    if(!back_in_set.empty())  _deb("%d sockets in back_in_set re-added to in_set", back_in_set.size());
+
+    for(int a: back_in_set) {
+        counter_curr_back_handler++;
+
+        com()->poller.poller->in_set.insert(a);
+    }
+
+    run_timers();
+
+    if(virt_global_hack) {
+        handle_sockets_once(com());
+    }
+
+    if(counter_curr_proxy_handler || counter_curr_generic_handler || counter_curr_back_handler) {
+        _dia("baseProxy::run: 0x%x called handlers - proxy: %d/%d, gen: %d/%d, back-ins: %d%d, hint: %d/%d",
+             this,
+             stats_.counter_proxy_handler, counter_curr_proxy_handler, stats_.counter_generic_handler, counter_curr_generic_handler,
+             stats_.counter_back_handler, counter_curr_back_handler, stats_.counter_hint_handler, counter_curr_hint_handler);
+
+        stats_.counter_proxy_handler += counter_curr_proxy_handler;
+        stats_.counter_generic_handler += counter_curr_generic_handler;
+        stats_.counter_back_handler += counter_curr_back_handler;
+
+    }
+
+    stats_.counter_hint_handler += counter_curr_hint_handler;
+
+
+    if (virt_global_hack) {
+        if(!udp_in_set.empty()) {
+            _deb("baseProxy::run: virtual hack, virtuals: %d", udp_in_set.size());
+
+            // keeping for debugs
+            // _cons(string_format("baseProxy::run: virtual hack, virtuals: %d", udp_in_set.size()).c_str());
+
+            should_rerun = 1;
+        }
+    }
+    if (counter_fence_fail) _err("baseProxy::run: fence failures: %d", counter_fence_fail);
+
+    return should_rerun;
+
+}
 
 int baseProxy::run() {
     
     while(! state().dead() ) {
         
         if(pollroot()) {
-            
+
             _ext("baseProxy::run: preparing sockets");
             int s_max = prepare_sockets(com());
             _ext("baseProxy::run: sockets prepared");
             if (s_max) {
                 com()->poll();
             }
-            
-            int counter_curr_proxy_handler = 0;
-            int counter_curr_generic_handler = 0;
-            int counter_curr_back_handler = 0;
-            int counter_curr_hint_handler = 0;
 
-            int counter_fence_fail = 0;
-
-            std::vector<int> back_in_set;
-            
-            // std::set<int>& sets[] = { com()->poller.poller->in_set, com()->poller.poller->out_set };
-            std::vector<epoll::set_type*> sets;
-            sets.push_back(&com()->poller.poller->in_set);
-            sets.push_back(&com()->poller.poller->out_set);
-            sets.push_back(&com()->poller.poller->idle_set);
-            
-            std::vector<std::string> setname = { "inset", "outset", "idleset" };
-            int name_iter = 0;
-
-            bool virt_global_hack = false;
-            epoll::set_type udp_in_set;
-            
-            auto* uc = dynamic_cast<UDPCom*>(com()->master());
-            if(uc) {
-                
-                //_inf("adding virtual sockets");
-                {
-                    std::scoped_lock<std::recursive_mutex> m(UDPCom::lock);
-                    udp_in_set = UDPCom::in_virt_set;
-                }
-                
-                sets.push_back(&udp_in_set);
-                setname.emplace_back("inset_virt");
-            }
-            
-            for (epoll::set_type * current_set: sets) {
-                 
-                for (auto s: *current_set) {
-                    //FIXME
-                    _deb("baseProxy::run: %s socket %d ", setname.at(name_iter).c_str(), s);
-                    epoll_handler* p_handler = com()->poller.get_handler(s);
-                    
-                    if(p_handler != nullptr) {
-
-                        auto seg = p_handler->fence__;
-                        _ext("baseProxy::run: socket %d has registered handler 0x%x (fence %x)", s, p_handler, seg);
-                        
-                        if(seg != HANDLER_FENCE) {
-                            _err("baseProxy::run: socket %d magic fence doesn't match!!", s);
-                            counter_fence_fail++;
-
-                        } else {
-
-                            // Try if handler is a proxy object. If so, call different method.
-                            // This design is intentional, to separate meaning of "handling socket"
-                            // by proxy (which might be killed and terminated)
-                            // and generic "event handler".
-
-                            auto* proxy = dynamic_cast<baseProxy*>(p_handler);
-                            if(proxy != nullptr) {
-                                _ext("baseProxy::run: socket %d has baseProxy handler!!", s);
-                                
-                                // call poller-carried proxy handler!
-                                proxy->handle_sockets_once(com());
-                                if(proxy->state().dead()) {
-                                    proxy->shutdown();
-                                    _dia("Proxy 0x%x has been shutdown.", proxy);
-                                }
-                                
-                                counter_curr_proxy_handler++;
-                                
-                            } else {
-
-                                _ext("baseProxy::run: socket %d has generic handler", s);
-                                p_handler->handle_event(com());
-                                counter_curr_generic_handler++;
-                            }
-                        }
-                        
-                    } else {
-                        
-                        //FIXME: report virtual sockets too, in the future
-                        
-                        _deb("baseProxy::run: socket %d has NO handler!!",s);
-
-                        // all real sockets without ANY handler should be re-inserted
-                        if(s > 0) {
-                            back_in_set.push_back(s);
-                        }
-                        
-                        if (com()->poller.poller) {
-                            if(s != com()->poller.poller->hint_socket()) {
-                                if(s < 0) {
-                                    _ext("virtual socket %d has null handler", s);
-                                    virt_global_hack = true;
-                                }else {
-                                    _err("baseProxy::run: socket %d has registered NULL handler, removing", s);
-                                    com()->poller.poller->del(s);
-                                }
-                            } else {
-                                // hint file descriptor don't have handler
-                                _deb("baseProxy::run: socket %d is hint socket, running proxy socket handler", s);
-                                handle_sockets_once(com());
-                                counter_curr_hint_handler++;
-                            }
-                        } else {
-                            _err("com()->poller.poller is null!");                        
-                        }
-                    }
-                }
-                
-                name_iter++;
-            }
-            
-            // clear in_set, so already handled sockets are excluded
-            com()->poller.poller->in_set.clear();
-            
-            // add back sockets which don't have handler - generally it should be just few sockets!
-
-            if(!back_in_set.empty())  _deb("%d sockets in back_in_set re-added to in_set", back_in_set.size());
-
-            for(int a: back_in_set) {
-                counter_curr_back_handler++;
-                
-                com()->poller.poller->in_set.insert(a);
-            }
-            
-            run_timers();
-            
-            if(virt_global_hack) {
-                handle_sockets_once(com());
-            }
-            
-            if(counter_curr_proxy_handler || counter_curr_generic_handler || counter_curr_back_handler) {
-                _dia("baseProxy::run: 0x%x called handlers - proxy: %d/%d, gen: %d/%d, back-ins: %d%d, hint: %d/%d",
-                     this,
-                     stats_.counter_proxy_handler, counter_curr_proxy_handler, stats_.counter_generic_handler, counter_curr_generic_handler,
-                     stats_.counter_back_handler, counter_curr_back_handler, stats_.counter_hint_handler, counter_curr_hint_handler);
-
-                stats_.counter_proxy_handler += counter_curr_proxy_handler;
-                stats_.counter_generic_handler += counter_curr_generic_handler;
-                stats_.counter_back_handler += counter_curr_back_handler;
-
-            }
-
-            stats_.counter_hint_handler += counter_curr_hint_handler;
-
-
-            if (virt_global_hack && !udp_in_set.empty())  _deb("baseProxy::run: virtual hack, virtuals: %d", udp_in_set.size());
-            if (counter_fence_fail) _err("baseProxy::run: fence failures: %d", counter_fence_fail);
+            // FIXME: we currently ignore should_rerun:
+            //  virtual udp set would trigger loop run on all threads when there are data for single one
+            //  which is a bit expensive.
+            //  This needs to be solved in the future.
+            //
+            //  DNS is ok except because its query-response nature. There are few corner-cases
+            //  ie with curl, shooting two DNS queries for happy-eyeballs at once.
+            run_poll();
         }
 
         on_run_round();

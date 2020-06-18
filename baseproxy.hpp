@@ -197,6 +197,9 @@ public:
     void shutdown() override;
 
     int run() override;
+    int run_poll();                           // handle proxy after poll(), so it's only called if proxy is pollroot.
+                                              // Returns non-zero if it should be immediately re-run.
+
     virtual void on_run_round() {};           // called at the end of single proxy run() cycle
     int prepare_sockets(baseCom*) override;   // which Com should be set: typically it should be the parent's proxy's Com
     
