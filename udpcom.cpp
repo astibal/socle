@@ -339,13 +339,18 @@ bool UDPCom::in_readset(int s) {
             return baseCom::in_readset(record.socket);
         }
         
-        buffer_guard bg(record.rx);
-        
-        if(! record.rx.empty()) {
-            _deb("UDPCom::in_readset[%d]: record found, data size %dB",s,record.rx.size());
+        auto l_ = std::scoped_lock(record.rx_queue_lock);
+
+        int elem = 0;
+        int elem_bytes = 0;
+        for(auto const& r: record.rx_queue) {
+            if (!r.empty()) {
+                elem_bytes += r.size();
+                _deb("UDPCom::in_readset[%d]: record found, data size %dB at pos #%d", s, r.size(), elem);
+            }
         }
         
-        return (! record.rx.empty());
+        return (elem_bytes > 0);
         
     } else {
         _ext("UDPCom::in_readset[%d]: record NOT found",s);
@@ -418,53 +423,87 @@ int UDPCom::read_from_pool(int _fd, void* _buf, size_t _n, int _flags) {
             return recv(record.socket, _buf, _n, _flags);
         }
         
-        buffer_guard bg(record.rx);
+        auto dl_ = std::scoped_lock(record.rx_queue_lock);
         
-        if(record.rx.empty()) {
-//            return ::recv(record.socket,__buf,__n,__flags);
-        } else {
-        
-            
-            int to_copy = _n;
-            if(record.rx.size() <= _n) {
-                to_copy = record.rx.size();
-            }
-            
-            memcpy(_buf, record.rx.data(), to_copy);
+        if(! record.empty()) {
 
-            if(! (_flags & MSG_PEEK)) {
-                record.rx.flush(to_copy);
-                _dia("UDPCom::read_from_pool[%d]: retrieved %d bytes from receive pool, in buffer left %d bytes", _fd, to_copy, record.rx.size());
-                
-                if(record.rx.empty()) {
-                    if( record.cx && record.cx->com()) {
-                        auto* m = dynamic_cast<DatagramCom*>(record.cx->com()->master());
-                        if(m) {
 
-                            int rem_count = 0;
-                            {
-                                std::lock_guard<std::recursive_mutex> l_ (UDPCom::lock);
-                                rem_count = UDPCom::in_virt_set.erase(_fd);
+            int copied = 0;
+
+            int elem_index = -1;
+            for(auto& queue_elem : record.rx_queue) {
+                elem_index++;
+
+                _dia("UDPCom::read_from_pool[%d]: pool entry %d", _fd, elem_index);
+
+                int elem_size = queue_elem.size();
+                if(elem_size <= 0) continue;
+
+                int to_copy = std::min<int>(_n, elem_size);
+
+                memcpy(_buf, queue_elem.data(), to_copy);
+                copied += to_copy;
+                _cons(string_format("read_from_pool: copying %dB from buffer of size %d", to_copy, elem_size).c_str());
+
+                if(! (_flags & MSG_PEEK)) {
+
+                    queue_elem.flush(to_copy);
+                    _dia("UDPCom::read_from_pool[%d]: retrieved %d bytes from receive pool, in buffer left %d bytes", _fd, copied, queue_elem.size());
+
+                    if(copied >= elem_size) {
+                        if( record.cx && record.cx->com()) {
+                            auto* m = dynamic_cast<DatagramCom*>(record.cx->com()->master());
+                            if(m) {
+
+                                int rem_count = 0;
+                                {
+                                    auto ul_ = std::scoped_lock(UDPCom::lock);
+                                    rem_count = UDPCom::in_virt_set.erase(_fd);
+                                }
+
+                                if(rem_count > 0) {
+                                    _dia("buffer read to zero, erased %d entries in in_virt_set", rem_count);
+                                }
+
+                            } else {
+                                _dia("cannot erase %d  from in_virt_set: 's com master is not DataGramCom", _fd);
                             }
-
-                            if(rem_count > 0) {
-                                _dia("buffer read to zero, erased %d entries in in_virt_set", rem_count);
-                            }
-
                         } else {
-                            _dia("cannot erase %d  from in_virt_set: 's com master is not DataGramCom", _fd);
+                            _dia("cannot erase %d  from in_virt_set: cx=0x%x cx->com=0x%x", _fd, record.cx, record.cx ? record.cx->com() : nullptr);
                         }
-                    } else {
-                        _dia("cannot erase %d  from in_virt_set: cx=0x%x cx->com=0x%x", _fd, record.cx, record.cx ? record.cx->com() : nullptr);
                     }
-                } 
-                
-            } else {
-                _dia("UDPCom::read_from_pool[%x]: peek %d bytes from receive pool, in buffer is %d bytes", _fd, to_copy, record.rx.size());
+
+                } else {
+                    _dia("UDPCom::read_from_pool[%x]: peek %d bytes from receive pool, in buffer is %d bytes", _fd, copied, queue_elem.size());
+                }
+
+                // perform only one read to 'packetized' behaviour
+                break;
             }
 
-            
-            return to_copy;
+            // because we did not necessarily traversed all entries, we need to make sure there is nothing left
+            // if more data, we *must* add it back to in_set - expect timeouts and delays otherwise.
+
+            int bytes_left = 0;
+            int elems_left = 0;
+            for(auto& queue_elem : record.rx_queue) {
+                if(! queue_elem.empty()) {
+                    bytes_left += queue_elem.size();
+                    elems_left++;
+                }
+            }
+
+            // keeping for debug
+            //_cons(string_format("read_from_pool: %dB in %d entries has been left behind", bytes_left, elems_left).c_str());
+            if(bytes_left > 0) {
+
+                //_cons(string_format("adding %d to inset", _fd).c_str());
+                auto ul_ = std::scoped_lock(UDPCom::lock);
+                UDPCom::in_virt_set.insert(_fd);
+            }
+
+
+            return copied;
         }
     } else {
         return 0; // return hard error, terminate

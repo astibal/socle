@@ -277,7 +277,7 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
             std::lock_guard<std::recursive_mutex> l(DatagramCom::lock);
             
             Datagram dgram;
-            struct Datagram& d = dgram;
+            struct Datagram& new_dgram = dgram;
             auto it = DatagramCom::datagrams_received.find(session_key);
             bool clashed = false;
             baseHostCX* clashed_cx = nullptr;
@@ -288,12 +288,12 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
                 _deb("ThreadedReceiver::on_left_new_raw[%d]: inserting new session key in storage: %d",sock, session_key);
 
                 clash:
-                
-                d.src = from;
-                d.dst = orig;
-                d.rx.size(0);
-                d.socket = sock;
-                com()->unblock(d.socket);
+
+                new_dgram.src = from;
+                new_dgram.dst = orig;
+                //d.rx.size(0);
+                new_dgram.socket = sock;
+                com()->unblock(new_dgram.socket);
                 
                 std::string str_src_host; unsigned short sport;
                 int src_family = inet_ss_address_unpack(&from,&str_src_host,&sport);
@@ -307,28 +307,28 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
                     if(dst_family == AF_INET) {
 
                         int n = 1;
-                        if(0 != ::setsockopt(d.socket, SOL_SOCKET, SO_REUSEADDR, &n, sizeof(int))) {
-                            _err("cannot set socket %d option SO_REUSEADDR", d.socket);
+                        if(0 != ::setsockopt(new_dgram.socket, SOL_SOCKET, SO_REUSEADDR, &n, sizeof(int))) {
+                            _err("cannot set socket %d option SO_REUSEADDR", new_dgram.socket);
                         }
                         n = 1;
 
-                        if(0 != ::setsockopt(d.socket, SOL_IP,IP_RECVORIGDSTADDR, &n, sizeof(int))) {
-                            _err("cannot set socket %d option IP_RECVORIGDSTADDR", d.socket);
+                        if(0 != ::setsockopt(new_dgram.socket, SOL_IP, IP_RECVORIGDSTADDR, &n, sizeof(int))) {
+                            _err("cannot set socket %d option IP_RECVORIGDSTADDR", new_dgram.socket);
                         }
                         n = 1;
 
-                        if(0 != ::setsockopt(d.socket, SOL_IP, SO_BROADCAST, &n, sizeof(int))) {
-                            _err("cannot set socket %d option SO_BROADCAST", d.socket);
+                        if(0 != ::setsockopt(new_dgram.socket, SOL_IP, SO_BROADCAST, &n, sizeof(int))) {
+                            _err("cannot set socket %d option SO_BROADCAST", new_dgram.socket);
                         }
                         n = 1;
 
-                        if(0 != ::setsockopt(d.socket, SOL_IP, IP_TRANSPARENT, &n, sizeof(int))) {
-                            _err("cannot set socket %d option IP_TRANSPARENT", d.socket);
+                        if(0 != ::setsockopt(new_dgram.socket, SOL_IP, IP_TRANSPARENT, &n, sizeof(int))) {
+                            _err("cannot set socket %d option IP_TRANSPARENT", new_dgram.socket);
                         }
                         n = 1;
 
-                        if(0 != ::setsockopt(d.socket, SOL_IPV6, IPV6_TRANSPARENT, &n, sizeof(int))) {
-                            _err("cannot set socket %d option IPV6_TRANSPARENT", d.socket);
+                        if(0 != ::setsockopt(new_dgram.socket, SOL_IPV6, IPV6_TRANSPARENT, &n, sizeof(int))) {
+                            _err("cannot set socket %d option IPV6_TRANSPARENT", new_dgram.socket);
                         }
                         n = 1;
                         
@@ -362,18 +362,18 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
                         ss_dst.sin_port = htons(dport);
                         ss_dst.sin_family = AF_INET;
                         
-                        ret_bin = ::bind (d.socket, (sockaddr*)&ss_dst, sizeof (struct sockaddr_in));
+                        ret_bin = ::bind (new_dgram.socket, (sockaddr*)&ss_dst, sizeof (struct sockaddr_in));
                         if(ret_bin != 0) _dia("ipv4 transparenting: bind error: %s",string_error().c_str()); // bind is not succeeding with already bound socket ... => this will create empbryonic connection
-                        ret_con = ::connect(d.socket,(sockaddr*)&ss_src,sizeof (struct sockaddr_in));
+                        ret_con = ::connect(new_dgram.socket, (sockaddr*)&ss_src, sizeof (struct sockaddr_in));
                         if(ret_con != 0) _err("ipv4 transparenting: connect error: %s",string_error().c_str());
                         
                     } else {
 
                         int n = 1;
-                        ::setsockopt(d.socket, SOL_SOCKET, SO_REUSEADDR, &n, sizeof(int)); n = 1;
-                        ::setsockopt(d.socket, SOL_IP, SO_BROADCAST, &n, sizeof(int)); n = 1;
-                        ::setsockopt(d.socket, SOL_IP,IPV6_RECVORIGDSTADDR, &n, sizeof(int)); n = 1;
-                        ::setsockopt(d.socket, SOL_IPV6, IPV6_TRANSPARENT, &n, sizeof(int));
+                        ::setsockopt(new_dgram.socket, SOL_SOCKET, SO_REUSEADDR, &n, sizeof(int)); n = 1;
+                        ::setsockopt(new_dgram.socket, SOL_IP, SO_BROADCAST, &n, sizeof(int)); n = 1;
+                        ::setsockopt(new_dgram.socket, SOL_IP, IPV6_RECVORIGDSTADDR, &n, sizeof(int)); n = 1;
+                        ::setsockopt(new_dgram.socket, SOL_IPV6, IPV6_TRANSPARENT, &n, sizeof(int));
 
                         sockaddr_storage ss_src{0};
                         sockaddr_storage ss_dst{0};
@@ -381,18 +381,18 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
                         inet_pton(AF_INET6,str_src_host.c_str(),&ss_src); ss_src.ss_family=AF_INET6; ((sockaddr_in6*)&ss_src)->sin6_port = htons(sport);
                         inet_pton(AF_INET6,str_dst_host.c_str(),&ss_dst); ss_dst.ss_family=AF_INET6; ((sockaddr_in6*)&ss_dst)->sin6_port = htons(dport);
 
-                        ret_bin = ::bind (d.socket, (struct sockaddr*)&(d.dst), sizeof (struct sockaddr_storage));
+                        ret_bin = ::bind (new_dgram.socket, (struct sockaddr*)&(new_dgram.dst), sizeof (struct sockaddr_storage));
                         if(ret_bin != 0) _dia("ipv6 transparency: bind error: %s",string_error().c_str()); // bind is not succeeding with already bound socket ... => this will create empbryonic connection
-                        ret_con = ::connect(d.socket,(struct sockaddr*)&(d.src),sizeof (struct sockaddr_storage));
+                        ret_con = ::connect(new_dgram.socket, (struct sockaddr*)&(new_dgram.src), sizeof (struct sockaddr_storage));
                         if(ret_con != 0) _err("ipv6 transparency: connect error: %s",string_error().c_str());
                     }
 
                 }
 
                 _dia("ThreadedReceiver::on_left_new_raw[new %d]: datagram from: %s/%s:%u to %s/%s:%u",
-                            d.socket, 
-                            inet_family_str(src_family).c_str(),str_src_host.c_str(), sport,
-                            inet_family_str(dst_family).c_str(),str_dst_host.c_str(), dport
+                     new_dgram.socket,
+                     inet_family_str(src_family).c_str(), str_src_host.c_str(), sport,
+                     inet_family_str(dst_family).c_str(), str_dst_host.c_str(), dport
                             );            
                 
                 if(use_virtual_socket) {
@@ -406,18 +406,18 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
                 if(ret_con == 0) {
                     // if bind succeeded, we have full back-channel socket to the client/client_port_
                     if(ret_bin == 0) {
-                        d.embryonic = false;
+                        new_dgram.embryonic = false;
                     }
                     
                     // d.socket is now connected to originator!
-                    com()->unblock(d.socket);
-                    d.real_socket = true;
+                    com()->unblock(new_dgram.socket);
+                    new_dgram.real_socket = true;
 
 
                     // for now, don't monitor this rebuilt socket. It should be handled by new proxy object later.
-                    com()->master()->unset_monitor(d.socket);
+                    com()->master()->unset_monitor(new_dgram.socket);
                     // also remove this proxy as handler
-                    com()->set_poll_handler(d.socket,nullptr);
+                    com()->set_poll_handler(new_dgram.socket, nullptr);
                     
                     for (auto bound_cx: left_bind_sockets) {
                         bound_cx->remove_socket();
@@ -433,13 +433,26 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
                     
                     // append data only if socket is virtual
                     len = recv(sock, recv_buf_,len,0);
-                    
-                    buffer_guard bg(d.rx);
-                    d.rx.append(recv_buf_,len);
+
+                    auto l_ = std::scoped_lock(new_dgram.rx_queue_lock);
+
+                    bool success = false;
+                    for(auto& elem: new_dgram.rx_queue) {
+                        if(elem.empty()) {
+                            elem.append(recv_buf_, len);
+                            success = true;
+                            break;
+                        }
+                    }
+
+                    if(! success) {
+                        _deb("ThreadedReceiver::on_left_new_raw[%d]: key %d - queue full, dropped %d bytes",sock, session_key, len);
+                        _cons("udp dropping bytes");
+                    }
                 }
                 
                 
-                DatagramCom::datagrams_received[session_key] = d;
+                DatagramCom::datagrams_received[session_key] = new_dgram;
                 Datagram& n_it = DatagramCom::datagrams_received[session_key];
                 
                 
@@ -456,9 +469,9 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
                 }
                 
                 if(clashed) {
-                    _dia("ThreadedReceiver::on_left_new_raw[%d]: re-inserting clashed session key in storage: key=%d, bytes=%d",sock, session_key,n_it.rx.size());
+                    _dia("ThreadedReceiver::on_left_new_raw[%d]: re-inserting clashed session key in storage: key=%d, bytes=%d",sock, session_key, len);
                 } else {
-                    _dia("ThreadedReceiver::on_left_new_raw[%d]: inserting new session key in storage: key=%d, bytes=%d",sock, session_key,n_it.rx.size());
+                    _dia("ThreadedReceiver::on_left_new_raw[%d]: inserting new session key in storage: key=%d, bytes=%d",sock, session_key, len);
                 }
                 push(session_key);
             }
@@ -490,23 +503,37 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
                 }
                 
                 
-                buffer_guard bg(o_it.rx);
-                
-                if(! o_it.rx.empty()) {
+                auto bl_ = std::scoped_lock(o_it.rx_queue_lock);
+
+                auto queue_bytes = o_it.queue_bytes();
+
+                if(queue_bytes > 0) {
                     // If there are data, we apparently can't catch up with the speed.
                     // replace current data. Application is not interested in old UDP datagrams.
-                    _dia("ThreadedReceiver::on_left_new_raw[%d]: key %d: dropped %dB of non-proxied data",sock, session_key,o_it.rx.size());
-                    _deb("                              data for key %d\n%s",session_key,hex_dump(o_it.rx,4).c_str());
+                    _dia("ThreadedReceiver::on_left_new_raw[%d]: key %d: already queued %dB of data",sock, session_key, queue_bytes);
+
+                    // no need to iterate current queue and dump it atm
+                    //_deb("                              data for key %d\n%s",session_key,hex_dump(o_it.rx,4).c_str());
                 }
                     
                 
                 
                 len = recv(sock, recv_buf_,len,0);
                 
+
+                auto& picked_buffer = [&o_it]() -> buffer& {
+                    auto& fallback = o_it.rx_queue.back();
+
+                    for(auto& r: o_it.rx_queue) {
+                        if(r.empty()) {
+                            return r;
+                        }
+                    }
+                    return fallback;
+                }();
                 
-                
-                o_it.rx.size(0);
-                o_it.rx.append(recv_buf_,len);
+                picked_buffer.size(0);
+                picked_buffer.append(recv_buf_,len);
                 
                 if(o_it.cx) {
                     baseCom* com = o_it.cx->com();
@@ -529,9 +556,9 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
                 UDPCom* uc = dynamic_cast<UDPCom*>(com()->master());
                 uc->in_virt_set.insert(session_key);*/
                     
-                _deb("                          NEW data for key %d\n%s",session_key,hex_dump(o_it.rx,4).c_str());
+                _deb("                          NEW data for key %d\n%s",session_key,hex_dump(picked_buffer,4).c_str());
                 
-                _dia("ThreadedReceiver::on_left_new_raw[%d]: existing key %d: %dB data buffered",sock, session_key,o_it.rx.size());
+                _dia("ThreadedReceiver::on_left_new_raw[%d]: existing key %d: %dB data buffered",sock, session_key,picked_buffer.size());
             }
         }
     } while(::recv(sock, dummy_buffer,32,O_NONBLOCK|MSG_PEEK) > 0);
@@ -718,7 +745,7 @@ int ThreadedReceiverProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
 
                     _deb("Record dump: cx=0x%x dst=%s embryonic=%d real_socket=%d reuse=%d rx_size=0x%x socket=%d src=%s",
                          record.cx, inet_ss_str(&record.dst).c_str(), record.embryonic, record.real_socket,
-                         record.reuse, record.rx.size(), record.socket, inet_ss_str(&record.src).c_str());
+                         record.reuse, record.queue_bytes_l(), record.socket, inet_ss_str(&record.src).c_str());
 
                     if (!_is_reuse) {
                         try {

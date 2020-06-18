@@ -20,6 +20,7 @@
 # define UDPCOM_HPP
 
 #include <string>
+#include <array>
 #include <cstring>
 #include <ctime>
 #include <csignal>
@@ -45,9 +46,65 @@
 
 
 struct Datagram {
-    sockaddr_storage dst;
-    sockaddr_storage src;
-    lockbuffer rx;
+
+    Datagram() = default;
+
+    Datagram(Datagram const& r) {
+        dst = r.dst;
+        src = r.src;
+        socket = r.socket;
+        real_socket = r.real_socket;
+        embryonic = r.embryonic;
+        reuse = r.reuse;
+        cx = r.cx;
+        rx_queue = r.rx_queue;
+    }
+
+    Datagram& operator=(Datagram const& r) {
+
+        dst = r.dst;
+        src = r.src;
+        socket = r.socket;
+        real_socket = r.real_socket;
+        embryonic = r.embryonic;
+        reuse = r.reuse;
+        cx = r.cx;
+        rx_queue = r.rx_queue;
+
+        return *this;
+    }
+
+    sockaddr_storage dst{0};
+    sockaddr_storage src{0};
+
+    mutable std::mutex rx_queue_lock;
+    std::array<buffer,5> rx_queue;
+
+    inline int queue_bytes() const {
+        int elem_bytes = 0;
+        for(auto const& r: rx_queue) {
+            if (!r.empty()) {
+                elem_bytes += r.size();
+            }
+        }
+
+        return elem_bytes;
+    }
+
+    int queue_bytes_l() const {
+        auto l_ = std::scoped_lock(rx_queue_lock);
+        return queue_bytes();
+    }
+
+    inline bool empty() const {
+        return (queue_bytes() == 0);
+    }
+
+    inline bool empty_l() const {
+        return (queue_bytes_l() == 0);
+    }
+
+
     int socket;
     bool real_socket = false;   // indicate if inbound connection was suceessfully bound, so we can use
                                 // real socket instead of virtual.
