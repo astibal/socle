@@ -378,8 +378,11 @@ public:
 	}
 
 	int read();
+	int io_read(void* where, size_t len, int flags);
+
 	int process_() { return process(); };
 	int write();
+	int io_write(unsigned char* data, size_t tx_size, int flags);
 	
 	
 	//overide this, and return number of bytes to be possible to passed to application/another hostcx

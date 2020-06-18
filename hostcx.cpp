@@ -336,6 +336,11 @@ bool baseHostCX::reconnect(int delay) {
     return false;
 }
 
+
+int baseHostCX::io_read(void* where, size_t len, int flags = 0) {
+    return com()->read(socket(), where, len, flags);
+}
+
 int baseHostCX::read() {
 
     if(io_disabled()) {
@@ -391,7 +396,7 @@ int baseHostCX::read() {
 
 
         //read on last position in buffer
-        int cur_l = com()->read(socket(), cur_read_ptr, cur_read_max, 0);
+        int cur_l = io_read(cur_read_ptr, cur_read_max);
 
         // no data to read!
         if(cur_l < 0) {
@@ -503,6 +508,10 @@ void baseHostCX::pre_read() {
 void baseHostCX::post_read() {
 }
 
+int baseHostCX::io_write(unsigned char* data, size_t tx_size, int flags = 0) {
+    return com()->write(socket(), data, tx_size, flags);
+}
+
 int baseHostCX::write() {
 
     if(io_disabled()) {
@@ -538,7 +547,7 @@ int baseHostCX::write() {
         _deb("baseHostCX::write[%s]: writebuf_ %d bytes pending",c_name(),tx_size);
     }
 
-    ssize_t l = com()->write(socket(), writebuf_.data(), tx_size, MSG_NOSIGNAL);
+    ssize_t l = io_write(writebuf_.data(), tx_size, MSG_NOSIGNAL);
 
     if (l > 0) {
         meter_write_bytes += l;
