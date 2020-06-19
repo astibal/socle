@@ -443,7 +443,8 @@ int UDPCom::read_from_pool(int _fd, void* _buf, size_t _n, int _flags) {
 
                 memcpy(_buf, queue_elem.data(), to_copy);
                 copied += to_copy;
-                _cons(string_format("read_from_pool: copying %dB from buffer of size %d", to_copy, elem_size).c_str());
+
+                //_cons(string_format("read_from_pool: copying %dB from buffer of size %d", to_copy, elem_size).c_str());
 
                 if(! (_flags & MSG_PEEK)) {
 
