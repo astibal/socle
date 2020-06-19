@@ -519,10 +519,10 @@ private:
             return "";
         }
         
-        mkdir(data_dir.c_str(),700);
+        mkdir(data_dir.c_str(),0750);
             
         std::string hostdir = data_dir+"/"+host_l_+"/";
-        mkdir(hostdir.c_str(),0770);
+        mkdir(hostdir.c_str(),0750);
 
         time_t now = time(nullptr);
         tm loc{0};
@@ -530,7 +530,7 @@ private:
         localtime_r(&now,&loc);
 
         std::string datedir = string_format("%d-%02d-%02d/", loc.tm_year+1900, loc.tm_mon+1, loc.tm_mday);
-        mkdir((hostdir+datedir).c_str(),700);
+        mkdir((hostdir+datedir).c_str(),0750);
         
         std::string file_datepart = string_format("%02d-%02d-%02d_", loc.tm_hour, loc.tm_min, loc.tm_sec);
 
