@@ -88,7 +88,7 @@ void memPool::extend(std::size_t n_sz256, std::size_t n_sz1k, std::size_t n_sz5k
 
 mem_chunk_t memPool::acquire(std::size_t sz) {
 
-    if(sz == 0 || bailing.load()) return mem_chunk_t(nullptr, 0);
+    if(sz == 0) return mem_chunk_t(nullptr, 0);
 
     std::vector<mem_chunk_t>* mem_pool = pick_acq_set(sz);
 

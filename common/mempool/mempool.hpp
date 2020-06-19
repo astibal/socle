@@ -155,6 +155,9 @@ class memPool {
         };
 
         try {
+
+            std::lock_guard<std::mutex> g(lock);
+
             pool_deleter(available_32, chunk_deleter);
             pool_deleter(available_64, chunk_deleter);
             pool_deleter(available_128, chunk_deleter);
