@@ -560,8 +560,8 @@ public:
 		}
 	}
 
-	void left_write(std::string s) {  write('L', std::move(s)); };
-	void right_write(std::string s) {  write('R', std::move(s)); };
+	void left_write(std::string const& s) {  write('L', s); };
+	void right_write(std::string const& s) {  write('R', s); };
 
 	virtual void write(char side, std::string const& s) {
 		
@@ -571,12 +571,15 @@ public:
 		memset(d,0,64);
 		ctime_r(&now.tv_sec,d);
 		
-		std::string& k1 = writer_key_l_;
-		std::string& k2 = writer_key_r_;
+		std::string k1;
+		std::string k2;
 
 		if (side == 'R' || side == 'r') {
 			k1 = writer_key_r_;
 			k2 = writer_key_l_;
+		} else {
+            k1 = writer_key_l_;
+            k2 = writer_key_r_;
 		}
 		
 		if(status()) {
