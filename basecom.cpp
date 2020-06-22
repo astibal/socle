@@ -113,7 +113,16 @@ bool baseCom::resolve_redirected(int s, std::string* target_host, std::string* t
 
     const char* op = "getsockopt(redir)";
 
-    if ( 0 != getsockopt( s, SOL_IP, SO_ORIGINAL_DST, ptr_peer_info, &addrlen )) {
+    int ret =  getsockopt( s, SOL_IP, SO_ORIGINAL_DST, ptr_peer_info, &addrlen );
+    if ( ret != 0) {
+        // including netfilter includes produce compile error, so this is the only working possibility.
+        // yes, I am aware this may (and probably will) break one day. :/
+        #define IP6T_SO_ORIGINAL_DST            80
+
+        ret = getsockopt( s, SOL_IPV6, IP6T_SO_ORIGINAL_DST, ptr_peer_info, &addrlen );
+    }
+
+    if( ret != 0) {
         _err("error getting original DST: %s", string_error().c_str());
     }
     else {
