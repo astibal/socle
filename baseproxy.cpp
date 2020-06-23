@@ -1193,6 +1193,24 @@ int baseProxy::run_poll() {
                 // all real sockets without ANY handler should be re-inserted
                 if(s > 0) {
                     back_in_set.push_back(s);
+                } else {
+
+
+                    int datagrams_erased = 0;
+
+                    // we are copying virtual sockets to not hold the lock too long.
+                    // the price is we have to explicitly refer to UDPCom::in_virt_set here
+                    {
+                        std::scoped_lock<std::recursive_mutex> m (UDPCom::lock);
+
+                        // both protected by the same lock
+                        UDPCom::in_virt_set.erase(s);
+                        datagrams_erased = UDPCom::datagrams_received.erase((uint64_t) s);
+                    }
+
+                    if(datagrams_erased > 0) {
+                        _deb("removed %d DatagramCom entries", datagrams_erased);
+                    }
                 }
 
                 if (com()->poller.poller) {
