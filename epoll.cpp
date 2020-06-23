@@ -30,18 +30,25 @@ int epoll::wait(int timeout) {
     if(click_timer_now()) {
 
         // Setting up rescans!
+        {
+            auto l_ = std::scoped_lock(rescan_set_in.get_lock());
 
-        for (auto isock: rescan_set_in) {
-            _deb("epoll::wait rescanning EPOLLIN socket %d",isock);
-            add(isock,EPOLLIN);
+            for (auto isock: rescan_set_in.get_ul()) {
+                _deb("epoll::wait rescanning EPOLLIN socket %d", isock);
+                add(isock, EPOLLIN);
+            }
+            rescan_set_in.clear_ul();
         }
-        rescan_set_in.clear();
-        
-        for (auto osock: rescan_set_out) {
-            _deb("epoll::wait rescanning EPOLLIN|OUT socket %d",osock);
-            add(osock, EPOLLIN|EPOLLOUT);
+
+        {
+            auto l_ = std::scoped_lock(rescan_set_out.get_lock());
+
+            for (auto osock: rescan_set_out.get_ul()) {
+                _deb("epoll::wait rescanning EPOLLIN|OUT socket %d", osock);
+                add(osock, EPOLLIN | EPOLLOUT);
+            }
+            rescan_set_out.clear_ul();
         }
-        rescan_set_out.clear();
 
         // idle timer?
         if(idle_counter > idle_timeout_ms) {
@@ -51,26 +58,32 @@ int epoll::wait(int timeout) {
             idle_round > 0  ? idle_round = 0 : idle_round = 1;
 
             if(idle_round == 0) {
-                // moving _pre to idle_watched
-                if(! idle_watched_pre.empty())
-                    _deb("epoll::wait: idle round %d, moving %d sockets to idle watch", idle_round, idle_watched_pre.size());
 
-                for (auto s: idle_watched_pre) {
+                auto l = std::scoped_lock(idle_watched_pre.get_lock());
+
+                // moving _pre to idle_watched
+                if(! idle_watched_pre.empty_ul())
+                    _deb("epoll::wait: idle round %d, moving %d sockets to idle watch", idle_round, idle_watched_pre.size_ul());
+
+                for (auto s: idle_watched_pre.get_ul()) {
                     idle_watched.insert(s);
                 }
-                idle_watched_pre.clear();
+                idle_watched_pre.clear_ul();
 
             } else {
-                // finally idle sockets
-                if(! idle_watched.empty())
-                    _dia("epoll::wait: idle round %d, %d sockets marked idle", idle_round, idle_watched.size());
 
-                for (auto s: idle_watched) {
+                auto l = std::scoped_lock(idle_watched.get_lock());
+
+                // finally idle sockets
+                if(! idle_watched.empty_ul())
+                    _dia("epoll::wait: idle round %d, %d sockets marked idle", idle_round, idle_watched.size_ul());
+
+                for (auto s: idle_watched.get_ul()) {
                     _dia("epoll::wait: idle socket %d", s);
 
                     idle_set.insert(s);
                 }
-                idle_watched.clear();
+                idle_watched.clear_ul();
             }
         }
     }
@@ -126,15 +139,20 @@ int epoll::wait(int timeout) {
             _dia("epoll::wait: uncaught event value %d", eventset);
         }
     }
-    if(! enforce_in_set.empty()) {
-        _dia("epoll::wait: enforced sockets set active");
-        for(auto enforced_fd: enforce_in_set ) {
-            in_set.insert(enforced_fd);
-            _deb("epoll::wait: enforced socket %dr", enforced_fd);
-        }
-        enforce_in_set.clear();
-    }
 
+    {
+        auto l_ = std::scoped_lock(enforce_in_set.get_lock());
+
+        if (!enforce_in_set.empty_ul()) {
+            _dia("epoll::wait: enforced sockets set active");
+            for (auto enforced_fd: enforce_in_set.get_ul()) {
+                in_set.insert(enforced_fd);
+                _deb("epoll::wait: enforced socket %dr", enforced_fd);
+            }
+            enforce_in_set.clear_ul();
+        }
+
+    }
 
     _dum("epoll::wait: == end");
     return nfds;
@@ -213,8 +231,7 @@ bool epoll::del(int socket) {
 
 
 bool epoll::in_read_set(int check) {
-    auto f = in_set.find(check);
-    return (f != in_set.end());
+    return in_set.find(check);
 }
 
 bool epoll::in_write_set(int check) {
@@ -224,13 +241,11 @@ bool epoll::in_write_set(int check) {
 }
 
 bool epoll::in_idle_set(int check) {
-    auto f = idle_set.find(check);
-    return (f != idle_set.end());
+    return idle_set.find(check);
 }
 
 bool epoll::in_idle_watched_set(int check) {
-    auto f = idle_watched.find(check);
-    return (f != idle_watched.end());
+    return idle_watched.find(check);
 }
 
 
@@ -266,11 +281,7 @@ bool epoll::rescan_in(int socket) {
             rescan_timer = std::chrono::high_resolution_clock::now();
         }
         
-        auto it = rescan_set_in.find(socket);
-        if(it == rescan_set_in.end()) {
-            rescan_set_in.insert(socket);
-        }
-        
+        rescan_set_in.insert(socket);
         return true;
     }
     
@@ -305,11 +316,7 @@ bool epoll::rescan_out(int socket) {
             rescan_timer = std::chrono::high_resolution_clock::now();
         }
         
-        auto it = rescan_set_out.find(socket);
-        if(it == rescan_set_out.end()) {
-            rescan_set_out.insert(socket);
-        }
-        
+        rescan_set_out.insert(socket);
         return true;
     }
     
@@ -580,11 +587,14 @@ void epoller::set_handler(int check, epoll_handler* h) {
     _deb("epoller::set_handler %d -> 0x%x",check,h);
     
     if(h != nullptr) {
+
+        auto l_ = std::scoped_lock(h->registered_sockets.get_lock());
+
         if(h->registrant && h->registrant != this) {
             _err("epoller::set_handler: setting handler over already existing, different handler. This should not happen!");
             // since registrant will be modified, we need to clear old registrant handlers.
             
-            for(auto cur_socket: h->registered_sockets) {
+            for(auto cur_socket: h->registered_sockets.get_ul()) {
                 _err("epoller::set_handler:  moving old socket %d handler to new one", cur_socket);
 
                 // new is created if it doesn't exist yet
@@ -594,7 +604,7 @@ void epoller::set_handler(int check, epoll_handler* h) {
             }
         }
         h->registrant = this;
-        h->registered_sockets.insert(check);
+        h->registered_sockets.insert_ul(check);
     }
     else {
         clear_handler(check);

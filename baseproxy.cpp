@@ -1142,18 +1142,19 @@ int baseProxy::run_poll() {
 
     for (epoll::set_type * current_set: sets) {
 
-        for (auto s: *current_set) {
+        auto l_ = std::scoped_lock(current_set->get_lock());
+        for (auto cur_socket: current_set->get_ul()) {
             //FIXME
-            _deb("baseProxy::run: %s socket %d ", setname.at(name_iter).c_str(), s);
-            epoll_handler* p_handler = com()->poller.get_handler(s);
+            _deb("baseProxy::run: %s socket %d ", setname.at(name_iter).c_str(), cur_socket);
+            epoll_handler* p_handler = com()->poller.get_handler(cur_socket);
 
             if(p_handler != nullptr) {
 
                 auto seg = p_handler->fence__;
-                _ext("baseProxy::run: socket %d has registered handler 0x%x (fence %x)", s, p_handler, seg);
+                _ext("baseProxy::run: socket %d has registered handler 0x%x (fence %x)", cur_socket, p_handler, seg);
 
                 if(seg != HANDLER_FENCE) {
-                    _err("baseProxy::run: socket %d magic fence doesn't match!!", s);
+                    _err("baseProxy::run: socket %d magic fence doesn't match!!", cur_socket);
                     counter_fence_fail++;
 
                 } else {
@@ -1165,7 +1166,7 @@ int baseProxy::run_poll() {
 
                     auto* proxy = dynamic_cast<baseProxy*>(p_handler);
                     if(proxy != nullptr) {
-                        _ext("baseProxy::run: socket %d has baseProxy handler!!", s);
+                        _ext("baseProxy::run: socket %d has baseProxy handler!!", cur_socket);
 
                         // call poller-carried proxy handler!
                         proxy->handle_sockets_once(com());
@@ -1178,21 +1179,18 @@ int baseProxy::run_poll() {
 
                     } else {
 
-                        _ext("baseProxy::run: socket %d has generic handler", s);
+                        _ext("baseProxy::run: socket %d has generic handler", cur_socket);
                         p_handler->handle_event(com());
                         counter_curr_generic_handler++;
                     }
                 }
 
             } else {
-
-                //FIXME: report virtual sockets too, in the future
-
-                _deb("baseProxy::run: socket %d has NO handler!!",s);
+                _deb("baseProxy::run: socket %d has NO handler!!", cur_socket);
 
                 // all real sockets without ANY handler should be re-inserted
-                if(s > 0) {
-                    back_in_set.push_back(s);
+                if(cur_socket > 0) {
+                    back_in_set.push_back(cur_socket);
                 } else {
 
 
@@ -1204,8 +1202,8 @@ int baseProxy::run_poll() {
                         std::scoped_lock<std::recursive_mutex> m (UDPCom::lock);
 
                         // both protected by the same lock
-                        UDPCom::in_virt_set.erase(s);
-                        datagrams_erased = UDPCom::datagrams_received.erase((uint64_t) s);
+                        UDPCom::in_virt_set.erase(cur_socket);
+                        datagrams_erased = UDPCom::datagrams_received.erase((uint64_t) cur_socket);
                     }
 
                     if(datagrams_erased > 0) {
@@ -1214,17 +1212,17 @@ int baseProxy::run_poll() {
                 }
 
                 if (com()->poller.poller) {
-                    if(s != com()->poller.poller->hint_socket()) {
-                        if(s < 0) {
-                            _ext("virtual socket %d has null handler", s);
+                    if(cur_socket != com()->poller.poller->hint_socket()) {
+                        if(cur_socket < 0) {
+                            _ext("virtual socket %d has null handler", cur_socket);
                             virt_global_hack = true;
                         }else {
-                            _err("baseProxy::run: socket %d has registered NULL handler, removing", s);
-                            com()->poller.poller->del(s);
+                            _err("baseProxy::run: socket %d has registered NULL handler, removing", cur_socket);
+                            com()->poller.poller->del(cur_socket);
                         }
                     } else {
                         // hint file descriptor don't have handler
-                        _deb("baseProxy::run: socket %d is hint socket, running proxy socket handler", s);
+                        _deb("baseProxy::run: socket %d is hint socket, running proxy socket handler", cur_socket);
                         handle_sockets_once(com());
                         counter_curr_hint_handler++;
                     }

@@ -21,15 +21,98 @@
 #include <mpstd.hpp>
 #include <log/logan.hpp>
 
+#include <shared_mutex>
+
 #define EPOLLER_MAX_EVENTS 50
 #define HANDLER_FENCE 0xcaba1a
 
 
 class baseCom;
 
+
+template<typename K, class T = std::set<K>>
+struct protected_set {
+
+    inline auto erase_ul(K e) {
+        return set_.erase(e);
+    }
+
+    inline auto erase(K e) {
+        auto l_ = std::scoped_lock(lock_);
+        return set_.erase(e);
+    }
+
+    inline auto insert_ul(K e) {
+        return set_.insert(e);
+    }
+
+    inline auto insert(K e) {
+        auto l_ = std::scoped_lock(lock_);
+        return set_.insert(e);
+    }
+
+
+    inline auto clear_ul() {
+        return set_.clear();
+    }
+
+    inline auto clear() {
+        auto l_ = std::scoped_lock(lock_);
+        return set_.clear();
+    }
+
+    inline auto find_ul(K e) const {
+        return ( set_.find(e) != set_.end());
+    }
+
+    inline auto find(K e) const {
+        auto l_ = std::scoped_lock(lock_);
+        return ( set_.find(e) != set_.end());
+    }
+
+    inline auto empty_ul() const {
+        return set_.empty();
+    }
+
+    inline auto empty() const {
+        auto l_ = std::scoped_lock(lock_);
+        return set_.empty();
+    }
+
+    inline auto size_ul() const {
+        return set_.size();
+    }
+
+    inline auto size() const {
+        auto l_ = std::scoped_lock(lock_);
+        return set_.size();
+    }
+
+
+    inline T& get_ul() {
+        return set_;
+    }
+
+    protected_set() = default;
+    protected_set(protected_set const& r) {
+        set_ = r.set_;
+    }
+    protected_set& operator=(protected_set const& r) {
+        set_ = r.set_;
+        return *this;
+    }
+
+
+    inline std::recursive_mutex& get_lock() const { return lock_; }
+
+private:
+    T set_;
+    mutable std::recursive_mutex lock_;
+};
+
 struct epoll {
 
-    using set_type = mp::set<int>;
+    using set_type = protected_set<int, mp::set<int>>;
 
     struct epoll_event events[EPOLLER_MAX_EVENTS];
     int fd = 0;
@@ -173,7 +256,7 @@ public:
         if(registrant != nullptr) {
             std::scoped_lock<std::mutex> l(lock_);
 
-            for(auto s: registered_sockets) {
+            for(auto s: registered_sockets.get_ul()) {
 
                 epoll_handler* owner = registrant->get_handler(s);
 

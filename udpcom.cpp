@@ -327,36 +327,48 @@ bool UDPCom::resolve_nonlocal_socket(int sock) {
 }
 
 bool UDPCom::in_readset(int s) {
-    
-    std::lock_guard<std::recursive_mutex> l(DatagramCom::lock);
-    
-    auto it_record = DatagramCom::datagrams_received.find((unsigned int)s);
-    if(it_record != DatagramCom::datagrams_received.end()) {  
-        Datagram& record = (*it_record).second;    
-        
-        if(record.real_socket) {
-            _deb("UDPCom::in_readset[%d]: record contains real socket %d",s,record.socket);
-            return baseCom::in_readset(record.socket);
-        }
-        
-        auto l_ = std::scoped_lock(record.rx_queue_lock);
 
-        int elem = 0;
-        int elem_bytes = 0;
-        for(auto const& r: record.rx_queue) {
-            if (!r.empty()) {
-                elem_bytes += r.size();
-                _deb("UDPCom::in_readset[%d]: record found, data size %dB at pos #%d", s, r.size(), elem);
+    bool real = false;
+    bool real_socket = 0;
+
+    {
+        std::lock_guard<std::recursive_mutex> l(DatagramCom::lock);
+
+        auto it_record = DatagramCom::datagrams_received.find((unsigned int) s);
+        if (it_record != DatagramCom::datagrams_received.end()) {
+            Datagram &record = (*it_record).second;
+
+            if (record.real_socket) {
+                _deb("UDPCom::in_readset[%d]: record contains real socket %d", s, record.socket);
+                real_socket = record.socket;
+                real = true;
+            } else {
+
+                auto l_ = std::scoped_lock(record.rx_queue_lock);
+
+                int elem = 0;
+                int elem_bytes = 0;
+                for (auto const &r: record.rx_queue) {
+                    if (!r.empty()) {
+                        elem_bytes += r.size();
+                        _deb("UDPCom::in_readset[%d]: record found, data size %dB at pos #%d", s, r.size(), elem);
+                    }
+                }
+
+                return (elem_bytes > 0);
             }
         }
-        
-        return (elem_bytes > 0);
-        
-    } else {
-        _ext("UDPCom::in_readset[%d]: record NOT found",s);
+    }
+
+    if(real) {
+        _ext("UDPCom::in_readset[%d]: real record found: %d", s, real_socket);
+        if( s > 0) return baseCom::in_readset(real_socket);
+    }
+    else {
+        _ext("UDPCom::in_readset[%d]: record NOT found", s);
         if( s > 0) return baseCom::in_readset(s);
     }
-    
+
     return false;
 }
 

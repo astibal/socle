@@ -59,10 +59,16 @@ void memPool::extend(std::size_t n_sz256, std::size_t n_sz1k, std::size_t n_sz5k
     sz35k += n_sz20k;
     sz50k += n_sz20k;
 
-    for(unsigned int i = 0; i < sz256 ; i++) {
-        for (int j = 0; j < 10 ; j++) available_32.emplace_back(32);
+    for(unsigned int i = 0; i < sz32 ; i++) {
+        available_32.emplace_back(32);
+    }
+    for(unsigned int i = 0; i < sz64 ; i++) {
         available_64.emplace_back( 64);
+    }
+    for(unsigned int i = 0; i < sz128 ; i++) {
         available_128.emplace_back( 128);
+    }
+    for(unsigned int i = 0; i < sz256 ; i++) {
         available_256.emplace_back(256);
     }
     for(unsigned int i = 0; i < sz1k ; i++) {
