@@ -48,9 +48,9 @@ void memPool::extend(std::size_t n_sz256, std::size_t n_sz1k, std::size_t n_sz5k
 
     std::lock_guard<std::mutex> l_(lock);
 
-    sz32  += n_sz256*10;
-    sz64  += n_sz256;
-    sz128 += n_sz256;
+    sz32  += n_sz256*20;
+    sz64  += n_sz256*10;
+    sz128 += n_sz256*5;
     sz256 += n_sz256;
     sz1k  += n_sz1k;
     sz5k  += n_sz5k;
@@ -246,6 +246,8 @@ void* mempool_alloc(size_t s) {
 
         mp_stats::get().stat_mempool_alloc++;
         mp_stats::get().stat_mempool_alloc_size += s;
+    } else {
+        throw mempool_bad_alloc("cannot acquire from memory pool", s);
     }
 
     return mch.ptr;
