@@ -253,34 +253,34 @@ class sref {
 
             return *this;
         };
-        
+
         sref(const sref<T>& other) {
             reference_ = other.reference_;
-            
+
             if(reference_ != nullptr) {
                 reference_->use();
             }
         };
 
         virtual ~sref() { unref(); };
-        
+
         inline void unref() {
             if(reference_ != nullptr) {
                 reference_->unuse();
                 reference_ = nullptr;
             }
         }
-        
+
         spointer<T>* ref() { return reference_; }
-        
+
         void newref(spointer<T>* n) { reference_ = n; if(n != nullptr) { n->use(); } };
         void newref(spointer<T>& n) { reference_ = &n; if(reference_ != nullptr) { reference_->use(); } };
         void ref(spointer<T>* n) { unref(); newref(n); };
         void ref(spointer<T>& n) { unref(); newref(&n); };
-        
+
         T* refval() { if(ref() != nullptr)  return ref()->pointer_; return nullptr; }
-        
-        
+
+
     private:
         spointer<T>* reference_ = nullptr;
 };
