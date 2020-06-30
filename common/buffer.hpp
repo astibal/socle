@@ -287,7 +287,7 @@ inline buffer::buffer (const void* d, size_type s)
         std::memcpy (data_, d, s);
     }
     else {
-        data_ = 0;
+        data_ = nullptr;
     }
 
     size_ = s;
@@ -316,7 +316,7 @@ inline buffer::buffer (const void* d, size_type s, size_type xc)
       std::memcpy (data_, d, s);
   }
   else
-    data_ = 0;
+    data_ = nullptr;
 
   size_ = s;
   capacity_ = c;
@@ -357,7 +357,7 @@ inline buffer::buffer (const buffer& x)
     }
   }
   else
-    data_ = 0;
+    data_ = nullptr;
 
   free_ = x.free_;
   size_ = x.size_;
@@ -436,7 +436,7 @@ inline unsigned char* buffer::detach ()
 {
   unsigned char* r (data_);
 
-  data_ = 0;
+  data_ = nullptr;
   size_ = 0;
   capacity_ = 0;
 
@@ -471,7 +471,7 @@ inline void buffer::assign (const void* d, size_type s)
     free_ = true;
   }
 
-  if (s != 0)
+  if (s != 0 && d != nullptr)
     std::memcpy (data_, d, s);
 
   size_ = s;
