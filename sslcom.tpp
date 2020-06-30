@@ -1814,12 +1814,14 @@ bool baseSSLCom<L4Proto>::handshake_peer_client() {
         // Do we have sni_filter_to_bypass set? If so, check if we do have also SNI
         // and check all entries in the filter.
 
-        if (sni_filter_to_bypass_.refval() != nullptr) {
+        if (sni_filter_to_bypass()) {
             _deb("SSLCom:waiting: check SNI filter");
 
             if (! sslcom_peer_hello_sni().empty()) {
 
-                for (std::string &filter_element: *sni_filter_to_bypass_.refval()) {
+                for (std::string const& filter_element: *sni_filter_to_bypass()) {
+
+                    _deb("SSLCom:waiting: check SNI filter: %s", filter_element.c_str());
 
                     std::size_t pos = sslcom_peer_hello_sni().rfind(filter_element);
                     if (pos != std::string::npos && pos + filter_element.size() >= sslcom_peer_hello_sni().size()) {
@@ -1854,6 +1856,8 @@ bool baseSSLCom<L4Proto>::handshake_peer_client() {
                         }
                     }
                 }
+            } else {
+                _deb("SSLCom:waiting: peer SNI empty");
             }
         } else {
             _dum("SSLCom::waiting[%d]: SNI bypass filter is empty", socket());

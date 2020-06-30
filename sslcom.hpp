@@ -212,7 +212,7 @@ protected:
 
     std::string sslcom_peer_hello_sni_;
     std::string& sslcom_peer_hello_sni() { return sslcom_peer_hello_sni_; }
-    socle::sref_vector_string sni_filter_to_bypass_;
+    std::shared_ptr<std::vector<std::string>> sni_filter_to_bypass_;
     bool sni_filter_to_bypass_matched = false;
     
     //try to set peer's key/certificate from cache (succeeds if peer haven't yet started ssl handhake and if there is cert in the cache).
@@ -310,7 +310,7 @@ public:
     // set if waiting() should wait for peer hello.
     bool should_wait_for_peer_hello() { return should_wait_for_peer_hello_; }
     void should_wait_for_peer_hello(bool b) { should_wait_for_peer_hello_ = b; }
-    socle::sref_vector_string& sni_filter_to_bypass() { return sni_filter_to_bypass_; }
+    std::shared_ptr<std::vector<std::string>>& sni_filter_to_bypass() { return sni_filter_to_bypass_; }
     
     int connect( const char* host, const char* port) override;
 	int read ( int _fd, void* _buf, size_t _n, int _flags ) override;
