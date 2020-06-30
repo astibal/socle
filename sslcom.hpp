@@ -473,6 +473,7 @@ public:
     typedef enum { VRF_OTHER_SHA1_SIGNATURE=42 } vrf_other_values_t;
     vrf_other_list& verify_extended_info() { return vrf_other_; }
 
+    [[maybe_unused]] inline void verify_reset(verify_status_t s) { verify_status_ = s; }
     [[maybe_unused]] inline int verify_get() const { return static_cast<int>(verify_status_); }
     [[maybe_unused]] inline bool verify_bitcheck(unsigned int s) const { return (flag_check(verify_status_, s)); }
     [[maybe_unused]] inline void verify_bitset(unsigned int s) {

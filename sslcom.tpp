@@ -1594,6 +1594,9 @@ bool baseSSLCom<L4Proto>::bypass_me_and_peer() {
         if(speer) {
             opt_bypass = true;
             speer->opt_bypass = true;
+
+            verify_reset(baseSSLCom<L4Proto>::VRF_OK);
+            speer->verify_reset(baseSSLCom<L4Proto>::VRF_OK);
             return true;
         }
     }
@@ -1832,7 +1835,7 @@ bool baseSSLCom<L4Proto>::handshake_peer_client() {
 
                         if (pos > 0) {
                             if (sslcom_peer_hello_sni().at(pos - 1) != '.') {
-                                _dum("%s NOT bypassed with sni filter %s", sslcom_peer_hello_sni().c_str(),
+                                _deb("%s NOT bypassed with sni filter %s", sslcom_peer_hello_sni().c_str(),
                                        filter_element.c_str());
                                 cont = false;
                             }
@@ -1842,11 +1845,7 @@ bool baseSSLCom<L4Proto>::handshake_peer_client() {
                             _dia("SSLCom:waiting: matched SNI filter: %s!", filter_element.c_str());
                             sni_filter_to_bypass_matched = true;
 
-                            auto *p = dynamic_cast<baseSSLCom *>(peer());
-                            if (p != nullptr) {
-                                opt_bypass = true;
-                                p->opt_bypass = true;
-
+                            if (bypass_me_and_peer()) {
                                 _inf("%s bypassed with sni filter %s", sslcom_peer_hello_sni().c_str(),
                                        filter_element.c_str());
                                 return false;
@@ -2025,6 +2024,7 @@ ret_handshake baseSSLCom<L4Proto>::handshake() {
 
         // our internal signalling for bypass
         opt_bypass = true;
+        verify_reset(baseSSLCom<L4Proto>::VRF_OK);
         _dia("SSLCom::handshake: bypassed.");
 
         return ret_handshake::AGAIN;
@@ -2213,14 +2213,9 @@ bool baseSSLCom<L4Proto>::waiting_peer_hello() {
                         _dia("SSLCom::waiting_peer_hello: analysis failed");
                         _dia("SSLCom::waiting_peer_hello: failed ClientHello data:\n%s",hex_dump(sslcom_peer_hello_buffer.data(),sslcom_peer_hello_buffer.size()).c_str());
                         
-                        if(peer() != nullptr) {
-                            baseSSLCom* s = dynamic_cast<baseSSLCom*>(peer());
-                            if(s != nullptr) {
-                                opt_bypass = true;
-                                s->opt_bypass = true;
-                                _inf("bypassing non-TLS connection");
-                                return false; //return false to return from read() or write()
-                            }
+                        if(bypass_me_and_peer()) {
+                            _inf("bypassing non-TLS connection");
+                            return false; //return false to return from read() or write()
                         }
                         
                         error_flag_ = ERROR_UNSPEC; // peer nullptr or its com() is not SSLCom
@@ -2528,8 +2523,15 @@ int baseSSLCom<L4Proto>::read (int _fd, void* _buf, size_t _n, int _flags )  {
         ret_handshake c = handshake();
 
         if (c == ret_handshake::AGAIN) {
+
+            if(opt_bypass) {
+                _deb("SSLCom:: read[%d]: ssl_waiting() bypass from handshake ", _fd);
+                return L4Proto::read(_fd, _buf, _n, _flags);
+            }
+
             _dum("SSLCom:: read[%d]: ssl_waiting() returned %d: still waiting", _fd, c);
             return -1;
+
         } else if (c == ret_handshake::ERROR) {
             _dia("SSLCom:: read[%d]: ssl_waiting() returned %d: unrecoverable!", _fd, c);
             return 0;
@@ -2757,8 +2759,15 @@ int baseSSLCom<L4Proto>::write (int _fd, const void* _buf, size_t _n, int _flags
 
         ret_handshake c = handshake();
         if (c == ret_handshake::AGAIN) {
+
+            if(opt_bypass) {
+                _deb("SSLCom:: write[%d]: ssl_waiting() bypass from handshake", _fd);
+                return L4Proto::write(_fd, _buf, _n, _flags);
+            }
+
             _dum("SSLCom::write[%d]: ssl_waiting() returned %d: still waiting", _fd, c);
             return 0;
+
         } else if (c == ret_handshake::ERROR) {
             _dia("SSLCom::write[%d]: ssl_waiting() returned %d: unrecoverable!", _fd, c);
             return -1;
