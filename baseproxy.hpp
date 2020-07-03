@@ -209,9 +209,9 @@ public:
     virtual bool handle_cx_write(unsigned char side, baseHostCX* cx);  // return false to break socket loop. Always call this one in your override.
     virtual bool handle_cx_read_once(unsigned char side, baseCom* xcom, baseHostCX* cx);
     virtual bool handle_cx_write_once(unsigned char side, baseCom* xcom, baseHostCX* cx);
-    
+
     //bound sockets
-    bool handle_cx_new(unsigned char side, baseCom* xcom, baseHostCX* cx);
+    bool handle_sockets_accept(unsigned char side, baseCom* xcom, baseHostCX* thiscx);
     
     int handle_sockets_once(baseCom*) override;
     void handle_event(baseCom* com) override {

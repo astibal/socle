@@ -695,7 +695,7 @@ bool baseProxy::handle_cx_write_once(unsigned char side, baseCom* xcom, baseHost
 }
 
 
-bool baseProxy::handle_cx_new(unsigned char side, baseCom* xcom, baseHostCX* thiscx) {
+bool baseProxy::handle_sockets_accept(unsigned char side, baseCom* xcom, baseHostCX* thiscx) {
     
     sockaddr_in clientInfo{0};
     socklen_t addrlen = sizeof(clientInfo);
@@ -703,12 +703,12 @@ bool baseProxy::handle_cx_new(unsigned char side, baseCom* xcom, baseHostCX* thi
     int client = com()->accept(thiscx->socket(), (sockaddr*)&clientInfo, &addrlen);
     
     if(client < 0) {
-        _dia("baseProxy::handle_cx_new[%c]: bound socket accept failed: %s", side, strerror(errno));
+        _dia("baseProxy::handle_sockets_accept[%c]: bound socket accept failed: %s", side, strerror(errno));
         return true; // still, it's not the error which should break socket list iteration
     }
     
     if(new_raw()) {
-        _deb("baseProxy::handle_cx_new[%c]: raw processing on %d", side, client);
+        _deb("baseProxy::handle_sockets_accept[%c]: raw processing on %d", side, client);
         if     (side == 'l') { on_left_new_raw(client); }
         else if(side == 'r') { on_right_new_raw(client); }
     }
@@ -720,7 +720,7 @@ bool baseProxy::handle_cx_new(unsigned char side, baseCom* xcom, baseHostCX* thi
         // cx->com()->nonlocal_dst(cx->com()->nonlocal_dst());
         
         if(!cx->read_waiting_for_peercom()) {
-            _dia("baseProxy::handle_cx_new[%c]: new unpaused socket %d -> accepting", side, client);
+            _dia("baseProxy::handle_sockets_accept[%c]: new unpaused socket %d -> accepting", side, client);
             
             cx->on_accept_socket(client);
             //  DON'T: you don't know if this proxy does have child proxy, or wants to handle situation different way.
@@ -728,7 +728,7 @@ bool baseProxy::handle_cx_new(unsigned char side, baseCom* xcom, baseHostCX* thi
             //   else if(side == 'r') { radd(cx); }
             
         } else {
-            _dia("baseProxy::handle_cx_new[%c]: new waiting_for_peercom socket %d -> delaying", side, client);
+            _dia("baseProxy::handle_sockets_accept[%c]: new waiting_for_peercom socket %d -> delaying", side, client);
             
             cx->on_delay_socket(client);
             //  DON'T: you don't know if this proxy does have child proxy, or wants to handle situation different way.
@@ -909,7 +909,7 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
                 for (auto i: left_bind_sockets) {
                     int s = i->socket();
                     if (xcom->in_readset(s)) {
-                        handle_cx_new('l', xcom, (i));
+                        handle_sockets_accept('l', xcom, (i));
                     }
                 }
             }
