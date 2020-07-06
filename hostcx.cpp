@@ -259,7 +259,7 @@ void baseHostCX::shutdown() {
 
 std::string& baseHostCX::name(bool force) const {
 
-    if(name__.empty() || online_name || force) {
+    if(name_.empty() || online_name || force) {
 
         std::scoped_lock<std::mutex> l(name_mutex_);
 
@@ -281,34 +281,34 @@ std::string& baseHostCX::name(bool force) const {
                 }
 
                 if(socket_in_name) {
-                    name__ = string_format("%d::%s_%s:%s",socket(), com()->shortname().c_str() , chost().c_str(),cport().c_str());
+                    name_ = string_format("%d::%s_%s:%s", socket(), com()->shortname().c_str() , chost().c_str(), cport().c_str());
                 } else {
-                    name__ = string_format("%s_%s:%s",com()->shortname().c_str() , chost().c_str(),cport().c_str());
+                    name_ = string_format("%s_%s:%s", com()->shortname().c_str() , chost().c_str(), cport().c_str());
                 }
 
                 //name__ = string_format("%d:<reduced>",socket());
             }
             else {
-                name__ = std::string("?:<reduced>");
+                name_ = std::string("?:<reduced>");
             }
 
         } else {
 
             if(socket_in_name) {
-                name__ = string_format("%d::%s_%s:%s",socket(), com()->shortname().c_str() ,chost().c_str(),cport().c_str());
+                name_ = string_format("%d::%s_%s:%s", socket(), com()->shortname().c_str() , chost().c_str(), cport().c_str());
             } else {
-                name__ = string_format("%s_%s:%s",com()->shortname().c_str() ,chost().c_str(),cport().c_str());
+                name_ = string_format("%s_%s:%s", com()->shortname().c_str() , chost().c_str(), cport().c_str());
             }
         }
     }
 
-    return name__;
+    return name_;
 }
 
 
 const char* baseHostCX::c_name() const {
     name();
-    return name__.c_str();
+    return name_.c_str();
 }
 
 bool baseHostCX::reconnect(int delay) {

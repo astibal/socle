@@ -1337,6 +1337,17 @@ baseHostCX * baseProxy::listen(int sock, unsigned char side) {
         auto *cx = new baseHostCX(com()->replicate(), sock);
 
         cx->com()->nonlocal_dst(com()->nonlocal_dst());
+        std::string res_host;
+        std::string res_port;
+
+        com()->resolve_socket_dst(sock, &res_host, &res_port);
+
+
+        cx->host(res_host);
+        cx->port(res_port);
+        cx->rename(string_format("listen_%s:%s", res_host.c_str(), res_port.c_str()).c_str());
+
+        std::cout << cx->name() << std::endl;
 
         if ( side == 'L' || side == 'l') lbadd(cx);
         else rbadd(cx);
@@ -1356,7 +1367,6 @@ int baseProxy::bind(unsigned short port, unsigned char side) {
     auto cx = listen(s, side);
 
     if(cx) {
-        cx->host() = string_format("listening_%d", port);
         return cx->socket();
     }
 

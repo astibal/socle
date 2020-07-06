@@ -47,42 +47,56 @@ class Host
 protected:
 	mutable std::string host_; //!< hostname
 	mutable std::string port_; //!< port
-
-	void host(std::string const& s) const {
-        static std::mutex host_port_lock;
-
-        std::scoped_lock<std::mutex> l(host_port_lock);
-	    host_ = s;
-	}
-    void port(std::string const& s) const {
-        static std::mutex host_port_lock;
-
-        std::scoped_lock<std::mutex> l(host_port_lock);
-        port_ = s;
-    }
-
+	mutable std::shared_mutex host_lock_;
 
 public:
 
-	Host() {};
-	
+	Host() = default;
+
+	Host(Host const& r) {
+	    host_ = r.host_;
+	    port_ = r.port_;
+	}
+
+	Host& operator=(Host const& r) {
+        host_ = r.host_;
+        port_ = r.port_;
+
+        return *this;
+    }
+
 	//! Constructor filling hostname and the port
 	/*!
 	 *  Create host structure
 	 *  \param h - hostname string
 	 *  \param p - port number (as the string
 	 */
-	Host(const char* h, const char* p) :
-	host_(h),
-	port_(p) {}
+	Host(const char* h, const char* p) : host_(h),port_(p) {}
 	
 	//! returns host part of the structure
-	std::string& host() { return host_; }
+	std::string host() { return host_; }
 	//! returns port part of the structure
-	std::string& port() { return port_; }
-	
-	const std::string& chost() const { return host_; }
-	const std::string& cport() const { return port_; }
+	std::string port() { return port_; }
+
+    void host(std::string const& s) const {
+
+         auto l_ = std::unique_lock(host_lock_);
+        host_ = s;
+    }
+    void port(std::string const& s) const {
+
+        auto l_ = std::unique_lock(host_lock_);
+        port_ = s;
+    }
+
+	std::string chost() const {
+        auto l_ = std::shared_lock(host_lock_);
+	    return host_;
+	}
+	std::string cport() const {
+        auto l_ = std::shared_lock(host_lock_);
+	    return port_;
+	}
 
     virtual std::string to_string(int verbosity=iINF) const { return string_format("%s:%s", chost().c_str(), cport().c_str()); };
 	
@@ -172,8 +186,8 @@ class baseHostCX : public Host
 
 	/* Basic elements */
 	
-	mutable std::string name__;      //!< human friendly name
-	mutable std::mutex name_mutex_;  // protect name__
+	mutable std::string name_;      //!< human friendly name
+	mutable std::mutex name_mutex_;  // protect name_
 
 	int fds_ = 0;			//!< socket/file descriptor itself
 	int closing_fds_ = 0;   // to close com we call shutdown() which actually don't close fds_. We have to store it and close on very object destruction.
@@ -248,6 +262,10 @@ public:
 
     baseCom* com() const { return com_; }
     void com(baseCom* c);
+    void rename(const char* str) {
+        auto l_ = std::scoped_lock(name_mutex_);
+        name_ = str;
+    }
 
     inline Proxy* parent_proxy() const { return parent_proxy_; };
     inline unsigned char parent_flag() const { return parent_flag_; }
