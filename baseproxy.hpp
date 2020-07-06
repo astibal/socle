@@ -182,8 +182,11 @@ public:
 
 
     // bind proxy to a port (typically left side)
-    int bind(unsigned short, unsigned char);
-    int bind(std::string const&, unsigned char); // support for AF_UNIX and similar
+    int bind(unsigned short port, unsigned char side);
+    int bind(std::string const& path, unsigned char side); // support for AF_UNIX and similar
+
+    // listen on specified port and return associated context
+    baseHostCX * listen(int sock, unsigned char side);
         
     // permanently (re)connected sockets
     int left_connect(const char*, const char*,bool=false);

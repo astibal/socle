@@ -1330,41 +1330,54 @@ void baseProxy::sleep() {
 
 
 
-int baseProxy::bind(unsigned short port, unsigned char side) {
-	
-	int s = com()->bind(port);
-	
-	// this function will always return value of 'port' parameter (but <=0 will not be added)
-	
-	auto *cx = new baseHostCX(com()->replicate(), s);
-        cx->host() = string_format("listening_%d", port);
-	cx->com()->nonlocal_dst(com()->nonlocal_dst());
-	
-	if ( s > 0 ) {
-		if ( side == 'L' || side == 'l') lbadd(cx);
-		else rbadd(cx);
-	}
-
-	return s;
-}
+baseHostCX * baseProxy::listen(int sock, unsigned char side) {
 
 
-int baseProxy::bind(std::string const& path, unsigned char side) {
-    
-    int s = com()->bind(path.c_str());
-    
-    // this function will always return value of 'port' parameter (but <=0 will not be added)
-    
-    auto* cx = new baseHostCX(com()->replicate(), s);
-    cx->host() = string_format("listening_%s", path.c_str());
-    cx->com()->nonlocal_dst(com()->nonlocal_dst());
-    
-    if ( s > 0 ) {
-        if ( side == 'L') lbadd(cx);
+    if ( sock > 0 ) {
+        auto *cx = new baseHostCX(com()->replicate(), sock);
+
+        cx->com()->nonlocal_dst(com()->nonlocal_dst());
+
+        if ( side == 'L' || side == 'l') lbadd(cx);
         else rbadd(cx);
+        return cx;
     }
 
-    return s;
+    return nullptr;
+}
+
+int baseProxy::bind(unsigned short port, unsigned char side) {
+
+
+    // bind to port number - create socket
+    int s = com()->bind(port);
+
+    // listen on socket and get us hostcx
+    auto cx = listen(s, side);
+
+    if(cx) {
+        cx->host() = string_format("listening_%d", port);
+        return cx->socket();
+    }
+
+    return -1;
+}
+
+    // this function will always return value of 'port' parameter (but <=0 will not be added)
+int baseProxy::bind(std::string const& path, unsigned char side) {
+
+    // bind to port number - create socket
+    int s = com()->bind(path.c_str());
+
+    // listen on socket and get us hostcx
+    auto cx = listen(s, side);
+
+    if(cx) {
+        cx->host() = string_format("listening_%s", path.c_str());
+        return cx->socket();
+    }
+
+    return -1;
 }
 
 
