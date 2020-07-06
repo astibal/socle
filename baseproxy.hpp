@@ -42,6 +42,67 @@ Typical use will consists of one left and one right socket.
 
 #include <iproxy.hpp>
 
+struct locks;
+
+template <class K,
+          class MutexType = std::shared_mutex>
+struct lock_for {
+    using MapType = std::map<K, std::shared_ptr<MutexType>>;
+
+    lock_for(lock_for const& r) = delete;
+    lock_for& operator=(lock_for const& r) = delete;
+
+
+
+    [[nodiscard]] std::shared_ptr<MutexType> lock(K k) {
+        auto l_ = std::shared_lock(lock_);
+
+        auto found_mutex_it = lock_db_.find(k);
+        if(found_mutex_it != lock_db_.end()) {
+            return found_mutex_it->second;
+        }
+
+        return nullptr;
+    }
+
+    inline bool insert(K k) {
+        auto l_ = std::unique_lock(lock_);
+
+        auto [ it, new_item ] = lock_db_.emplace(k, std::make_shared<MutexType>());
+        return new_item;
+    }
+
+    MapType& lock_db() { return lock_db_; }
+    std::shared_mutex& lock_db_lock() const { return lock_; }
+
+protected:
+
+    friend struct locks;
+
+    lock_for() = default;
+private:
+
+    MapType lock_db_;
+    mutable std::shared_mutex lock_;
+};
+
+
+struct locks {
+
+    using lock_for_fd = lock_for<int, std::shared_mutex>;
+
+    static lock_for_fd& fd() {
+        static lock_for_fd f;
+        return f;
+    }
+
+    locks(locks const& r) = delete;
+    locks& operator=(locks const& r) = delete;
+private:
+    locks() = default;
+};
+
+
 class baseProxy : public epoll_handler, public Proxy
 {
 public:
