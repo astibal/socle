@@ -35,8 +35,11 @@
 #define USE_SOCKETPAIR
 
 template<class Worker, class SubWorker>
-ThreadedReceiver<Worker,SubWorker>::ThreadedReceiver(baseCom* c, threadedProxyWorker::proxy_type_t t): baseProxy(c),
-                                                                                                       proxy_type_(t) {
+ThreadedReceiver<Worker,SubWorker>::ThreadedReceiver(std::shared_ptr<FdQueue> fdq, baseCom* c, threadedProxyWorker::proxy_type_t t):
+    baseProxy(c),
+    FdQueueHandler(std::move(fdq)),
+    proxy_type_(t) {
+
     baseProxy::new_raw(true);
 
     #ifdef USE_SOCKETPAIR
@@ -53,12 +56,12 @@ ThreadedReceiver<Worker,SubWorker>::ThreadedReceiver(baseCom* c, threadedProxyWo
 
     if(version_check(get_kernel_version(),"3.4")) {
         _deb("Acceptor: kernel supports O_DIRECT");
-        if ( 0 != pipe2(sq__hint,O_DIRECT|O_NONBLOCK)) {
+        if ( 0 != pipe2(hint_pair_,O_DIRECT|O_NONBLOCK)) {
             _err("ThreadedReceiver::new_raw: hint pipe not created, error[%d], %s", errno, string_error().c_str());
         }
     } else {
         _war("Acceptor: kernel doesn't support O_DIRECT");
-        if (0 != pipe2(sq__hint,O_NONBLOCK)) {
+        if (0 != pipe2(hint_pair_,O_NONBLOCK)) {
             _err("ThreadedReceiver::new_raw: hint pipe not created, error[%d], %s", errno, string_error().c_str());
         }
     }
@@ -473,7 +476,7 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
                 } else {
                     _dia("ThreadedReceiver::on_left_new_raw[%d]: inserting new session key in storage: key=%d, bytes=%d",sock, session_key, len);
                 }
-                push(session_key);
+                fdqueue->push(session_key);
             }
             else {
                 Datagram& o_it = DatagramCom::datagrams_received[session_key];
@@ -567,7 +570,7 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
 template<class Worker, class SubWorker>
 void ThreadedReceiver<Worker,SubWorker>::on_right_new_raw(int s) {
     _dia("ThreadedReceiver::on_right_new: connection [%d] pushed to the queue",s);
-    push(s);
+    fdqueue->push(s);
 
 }
 
@@ -633,34 +636,6 @@ void ThreadedReceiver<Worker,SubWorker>::on_run_round() {
     //std::this_thread::yield();
 }
 
-template<class Worker, class SubWorker>
-int ThreadedReceiver<Worker,SubWorker>::push(int s) { 
-    std::lock_guard<std::mutex> lck(sq_lock_);
-    sq_.push_front(s);
-    int wr = ::write(sq__hint[1],"A",1);
-    if( wr <= 0) {
-        _err("ThreadedReceiver::push: failed to write hint byte - error[%d]: %s", wr, string_error().c_str());
-    }
-    return sq_.size();
-}
-
-template<class Worker, class SubWorker>
-int ThreadedReceiver<Worker,SubWorker>::pop() {
-    std::lock_guard<std::mutex> lck(sq_lock_);
-
-    if(sq_.size() == 0) {
-        return 0;
-    }
-
-    uint32_t s = sq_.back();
-    sq_.pop_back();
-
-    char dummy_buffer[1];
-    ::read(sq__hint[0],dummy_buffer,1);
-    _dia("ThreadedReceiver::pop_for_worker: clearing sq__hint %c",dummy_buffer[0]);
-
-    return s;
-}
 
 template<class Worker, class SubWorker>
 int ThreadedReceiver<Worker, SubWorker>::pop_for_worker(int id) {

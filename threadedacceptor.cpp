@@ -30,37 +30,16 @@
 #include <threadedacceptor.hpp>
 #include <log/logger.hpp>
 
-#define USE_SOCKETPAIR
+
 
 template<class Worker, class SubWorker>
-ThreadedAcceptor<Worker,SubWorker>::ThreadedAcceptor(baseCom* c, proxy_type t): baseProxy(c),
+ThreadedAcceptor<Worker,SubWorker>::ThreadedAcceptor (std::shared_ptr<FdQueue> fdq, baseCom *c, proxy_type t):
+    baseProxy(c),
+    FdQueueHandler(fdq),
     proxy_type_(t) {
 
+    fdqueue = fdq;
     baseProxy::new_raw(true);
-
-    #ifdef USE_SOCKETPAIR
-    if(0 == ::socketpair(AF_UNIX, SOCK_STREAM|SOCK_NONBLOCK,0, sq__hint)) {
-        _inf("acceptor: using socketpair");
-        sq_type_ = SQ_SOCKETPAIR;
-    }
-    else if( 0 == pipe2(sq__hint,O_DIRECT|O_NONBLOCK)) {
-        _inf("acceptor: using pipe2");
-        sq_type_ = SQ_PIPE;
-    }
-
-    #else
-    if(version_check(get_kernel_version(),"3.4")) {
-        _deb("Acceptor: kernel supports O_DIRECT");
-        if ( 0 != pipe2(sq__hint,O_DIRECT|O_NONBLOCK)) {
-            _err("ThreadAcceptor::new_raw: hint pipe not created, error[%d], %s", errno, string_error().c_str());
-        }
-    } else {
-        _war("Acceptor: kernel doesn't support O_DIRECT");
-        if (0 != pipe2(sq__hint,O_NONBLOCK)) {
-            _err("ThreadAcceptor::new_raw: hint pipe not created, error[%d], %s", errno, string_error().c_str());
-        }
-    }
-    #endif
 }
 
 template<class Worker, class SubWorker>
@@ -78,21 +57,19 @@ ThreadedAcceptor<Worker,SubWorker>::~ThreadedAcceptor() {
             t_w.first = nullptr;
 		}
 	}
-    ::close(sq__hint[0]);
-    ::close(sq__hint[1]);
-};
+}
 
 
 template<class Worker, class SubWorker>
 void ThreadedAcceptor<Worker,SubWorker>::on_left_new_raw(int s) {
 	_dia("ThreadedAcceptor::on_left_new: connection [%d] pushed to the queue",s);
-	push(s);
+	fdqueue->push(s);
 }
 
 template<class Worker, class SubWorker>
 void ThreadedAcceptor<Worker,SubWorker>::on_right_new_raw(int s) {
 	_dia("ThreadedAcceptor::on_right_new: connection [%d] pushed to the queue",s);
-	push(s);
+	fdqueue->push(s);
 
 }
 
@@ -122,8 +99,9 @@ int ThreadedAcceptor<Worker,SubWorker>::create_workers(int count) {
 		w->parent(this);
         w->pollroot(true);
 
-        _dia("ThreadedAcceptor::create_workers setting worker's queue hint pipe socket %d",sq__hint[0]);
-        w->com()->set_hint_monitor(sq__hint[0]);
+        auto hint_pair = fdqueue->hint_pair();
+        _dia("ThreadedAcceptor::create_workers setting worker's queue hint pipe socket %d",std::get<0>(hint_pair));
+        w->com()->set_hint_monitor(std::get<0>(hint_pair));
 
 		_dia("Created ThreadedAcceptorProxy 0x%x", w);
 
@@ -155,40 +133,6 @@ int ThreadedAcceptor<Worker,SubWorker>::run() {
 template<class Worker, class SubWorker>
 void ThreadedAcceptor<Worker,SubWorker>::on_run_round() {
     // std::this_thread::yield();
-}
-
-template<class Worker, class SubWorker>
-int ThreadedAcceptor<Worker,SubWorker>::push(int s) { 
-	std::lock_guard<std::mutex> lck(sq_lock_);
-	sq_.push_front(s);
-    int wr = ::write(sq__hint[1],"A",1);
-    if( wr <= 0) {
-        _err("ThreadedAcceptor::push: failed to write hint byte - error[%d]: %s", wr, string_error().c_str());
-    }
-	
-	return sq_.size();
-};
-
-template<class Worker, class SubWorker>
-int ThreadedAcceptor<Worker,SubWorker>::pop() {
-    std::lock_guard<std::mutex> lck(sq_lock_);
-
-    if(sq_.size() == 0) {
-        return 0;
-    }
-
-    int s = sq_.back();
-    sq_.pop_back();
-
-    char dummy_buffer[1];
-
-    int red = ::read(sq__hint[0],dummy_buffer,1);
-    if(red > 0) {
-        _dia("ThreadedAcceptor::pop: clearing sq__hint %c", dummy_buffer[0]);
-    } else {
-        _dia("ThreadedAcceptor::pop_for_worker: hint not read, read returned %d", red);
-    }
-    return s;
 }
 
 

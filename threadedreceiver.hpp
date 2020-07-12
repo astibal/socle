@@ -34,14 +34,14 @@
 
 
 template<class Worker, class SubWorker>
-class ThreadedReceiver : public baseProxy {
+class ThreadedReceiver : public baseProxy, public FdQueueHandler {
 public:
 
     using buffer_guard = locked_guard<lockbuffer>;
     using proxy_type_t = threadedProxyWorker::proxy_type_t;
     inline proxy_type_t proxy_type() const { return proxy_type_; }
 
-    ThreadedReceiver(baseCom* c, proxy_type_t t);
+    ThreadedReceiver(std::shared_ptr<FdQueue> fdq, baseCom* c, proxy_type_t t);
     ~ThreadedReceiver() override;
     
     bool     is_quick_port(int sock, short unsigned int dport);
@@ -53,9 +53,7 @@ public:
     
     int run() override;
     void on_run_round() override;
-    
-    int push(int);
-    int pop();
+
     int pop_for_worker(int id);
 
     inline void worker_count_preference(int c) { worker_count_preference_ = c; };
