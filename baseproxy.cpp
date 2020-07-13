@@ -909,7 +909,17 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
                 for (auto i: left_bind_sockets) {
                     int s = i->socket();
                     if (xcom->in_readset(s)) {
-                        handle_sockets_accept('l', xcom, (i));
+
+                        auto m = locks::fd().lock(s);
+
+                        if(m) {
+                            auto l_ = std::unique_lock(*m);
+                            handle_sockets_accept('l', xcom, (i));
+                        }
+                        else {
+                            handle_sockets_accept('l', xcom, (i));
+                            throw  std::runtime_error("mutex unprotected accept");
+                        }
                     }
                 }
             }
