@@ -59,31 +59,43 @@ int epoll::wait(int timeout) {
 
             if(idle_round == 0) {
 
-                auto l = std::scoped_lock(idle_watched_pre.get_lock());
+                mp::set<int> cp;
+                {
+                    auto l = std::scoped_lock(idle_watched_pre.get_lock());
 
-                // moving _pre to idle_watched
-                if(! idle_watched_pre.empty_ul())
-                    _deb("epoll::wait: idle round %d, moving %d sockets to idle watch", idle_round, idle_watched_pre.size_ul());
+                    // moving _pre to idle_watched
+                    if (!idle_watched_pre.empty_ul())
+                        _deb("epoll::wait: idle round %d, moving %d sockets to idle watch", idle_round,
+                             idle_watched_pre.size_ul());
 
-                for (auto s: idle_watched_pre.get_ul()) {
-                    idle_watched.insert(s);
+                    for (auto s: idle_watched_pre.get_ul()) {
+                        cp.insert(s);
+                    }
+                    idle_watched_pre.clear_ul();
                 }
-                idle_watched_pre.clear_ul();
+                for(auto s: cp)
+                    idle_watched.insert(s);
+
 
             } else {
 
-                auto l = std::scoped_lock(idle_watched.get_lock());
+                mp::set<int> cp;
+                {
+                    auto l = std::scoped_lock(idle_watched.get_lock());
 
-                // finally idle sockets
-                if(! idle_watched.empty_ul())
-                    _dia("epoll::wait: idle round %d, %d sockets marked idle", idle_round, idle_watched.size_ul());
+                    // finally idle sockets
+                    if(! idle_watched.empty_ul())
+                        _dia("epoll::wait: idle round %d, %d sockets marked idle", idle_round, idle_watched.size_ul());
 
-                for (auto s: idle_watched.get_ul()) {
-                    _dia("epoll::wait: idle socket %d", s);
+                    for (auto s: idle_watched.get_ul()) {
+                        _dia("epoll::wait: idle socket %d", s);
 
-                    idle_set.insert(s);
+                        cp.insert(s);
+                    }
+                    idle_watched.clear_ul();
                 }
-                idle_watched.clear_ul();
+                for(auto s: cp)
+                    idle_set.insert(s);
             }
         }
     }
@@ -93,7 +105,7 @@ int epoll::wait(int timeout) {
     int nfds = epoll_wait(fd, events, EPOLLER_MAX_EVENTS, timeout);
     
     if(nfds > 0) {
-        _ext("epoll::wait: %d socket events",nfds);
+        _ext("epoll::wait: %d socket events", nfds);
     }
     
     
@@ -140,19 +152,22 @@ int epoll::wait(int timeout) {
         }
     }
 
+    mp::set<int> cp;
     {
         auto l_ = std::scoped_lock(enforce_in_set.get_lock());
 
         if (!enforce_in_set.empty_ul()) {
             _dia("epoll::wait: enforced sockets set active");
             for (auto enforced_fd: enforce_in_set.get_ul()) {
-                in_set.insert(enforced_fd);
+                cp.insert(enforced_fd);
                 _deb("epoll::wait: enforced socket %dr", enforced_fd);
             }
             enforce_in_set.clear_ul();
         }
-
     }
+    for(auto s: cp)
+        idle_set.insert(s);
+
 
     _dum("epoll::wait: == end");
     return nfds;
