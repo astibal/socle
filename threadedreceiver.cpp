@@ -41,32 +41,6 @@ ThreadedReceiver<Worker,SubWorker>::ThreadedReceiver(std::shared_ptr<FdQueue> fd
     proxy_type_(t) {
 
     baseProxy::new_raw(true);
-
-    #ifdef USE_SOCKETPAIR
-    if(0 == ::socketpair(AF_UNIX, SOCK_STREAM|SOCK_NONBLOCK, 0, sq__hint)) {
-        _inf("acceptor: using socketpair");
-        sq_type_ = SQ_SOCKETPAIR;
-    }
-    else if( 0 == pipe2(sq__hint,O_DIRECT|O_NONBLOCK)) {
-        _inf("acceptor: using pipe2");
-        sq_type_ = SQ_PIPE;
-    }
-
-    #else
-
-    if(version_check(get_kernel_version(),"3.4")) {
-        _deb("Acceptor: kernel supports O_DIRECT");
-        if ( 0 != pipe2(hint_pair_,O_DIRECT|O_NONBLOCK)) {
-            _err("ThreadedReceiver::new_raw: hint pipe not created, error[%d], %s", errno, string_error().c_str());
-        }
-    } else {
-        _war("Acceptor: kernel doesn't support O_DIRECT");
-        if (0 != pipe2(hint_pair_,O_NONBLOCK)) {
-            _err("ThreadedReceiver::new_raw: hint pipe not created, error[%d], %s", errno, string_error().c_str());
-        }
-    }
-
-    #endif
 }
 
 template<class Worker, class SubWorker>
@@ -84,9 +58,7 @@ ThreadedReceiver<Worker,SubWorker>::~ThreadedReceiver() {
             t_w.first = nullptr;
         }
     }
-    ::close(sq__hint[0]);
-    ::close(sq__hint[1]);    
-};
+}
 
 template<class Worker, class SubWorker>
 bool ThreadedReceiver<Worker,SubWorker>::is_quick_port(int sock, short unsigned int dport) {
@@ -476,7 +448,7 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
                 } else {
                     _dia("ThreadedReceiver::on_left_new_raw[%d]: inserting new session key in storage: key=%d, bytes=%d",sock, session_key, len);
                 }
-                fdqueue->push(session_key);
+                push(session_key);
             }
             else {
                 Datagram& o_it = DatagramCom::datagrams_received[session_key];
@@ -570,7 +542,7 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
 template<class Worker, class SubWorker>
 void ThreadedReceiver<Worker,SubWorker>::on_right_new_raw(int s) {
     _dia("ThreadedReceiver::on_right_new: connection [%d] pushed to the queue",s);
-    fdqueue->push(s);
+    push(s);
 
 }
 
@@ -601,8 +573,8 @@ int ThreadedReceiver<Worker,SubWorker>::create_workers(int count) {
         w->parent(this);
         w->pollroot(true);
 
-        _dia("ThreadedReceiver::create_workers setting worker's queue hint pipe socket %d",sq__hint[0]);
-        w->com()->set_hint_monitor(sq__hint[0]);        
+        _dia("ThreadedReceiver::create_workers setting worker's queue hint pipe socket %d", std::get<0>(hint_pair()));
+        w->com()->set_hint_monitor(std::get<0>(hint_pair()));
         
         _dia("Created ThreadedWorkerProxy 0x%x", w);
 
@@ -640,35 +612,10 @@ void ThreadedReceiver<Worker,SubWorker>::on_run_round() {
 template<class Worker, class SubWorker>
 int ThreadedReceiver<Worker, SubWorker>::pop_for_worker(int id) {
 
-    std::lock_guard<std::mutex> lck(sq_lock_);
+    // this is unsolvable data race: we don't know if we pop fd for us or not.
+    // auto pop_or_not = pop_if([id](int fd) { ((unsigned int)fd) % Worker::workers_total() == (unsigned int)id; });
 
-    if(sq_.size() == 0) {
-        return 0;
-    }
-
-    uint32_t b = sq_.back();
-
-    if(b <= 0) {
-        return 0;
-    }
-
-    if (((unsigned int)b) % Worker::workers_total() == (unsigned int)id) {
-        int r = sq_.back();
-        sq_.pop_back();
-        _dia("ThreadedReceiver::pop_for_worker: pop-ing %d for worker %d, queue size %d",r,id,sq_.size());
-
-        char dummy_buffer[1];
-        int red = ::read(sq__hint[0],dummy_buffer,1);
-        if(red > 0) {
-            _dia("ThreadedReceiver::pop_for_worker: clearing sq__hint %c", dummy_buffer[0]);
-        } else {
-            _dia("ThreadedReceiver::pop_for_worker: hint not read, read returned %d", red);
-        }
-
-        return r;
-    }
-
-    return 0;
+    return pop();
 }
 
 

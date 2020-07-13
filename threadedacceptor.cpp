@@ -38,7 +38,6 @@ ThreadedAcceptor<Worker,SubWorker>::ThreadedAcceptor (std::shared_ptr<FdQueue> f
     FdQueueHandler(fdq),
     proxy_type_(t) {
 
-    fdqueue = fdq;
     baseProxy::new_raw(true);
 }
 
@@ -63,13 +62,13 @@ ThreadedAcceptor<Worker,SubWorker>::~ThreadedAcceptor() {
 template<class Worker, class SubWorker>
 void ThreadedAcceptor<Worker,SubWorker>::on_left_new_raw(int s) {
 	_dia("ThreadedAcceptor::on_left_new: connection [%d] pushed to the queue",s);
-	fdqueue->push(s);
+	push(s);
 }
 
 template<class Worker, class SubWorker>
 void ThreadedAcceptor<Worker,SubWorker>::on_right_new_raw(int s) {
 	_dia("ThreadedAcceptor::on_right_new: connection [%d] pushed to the queue",s);
-	fdqueue->push(s);
+	push(s);
 
 }
 
@@ -99,9 +98,8 @@ int ThreadedAcceptor<Worker,SubWorker>::create_workers(int count) {
 		w->parent(this);
         w->pollroot(true);
 
-        auto hint_pair = fdqueue->hint_pair();
-        _dia("ThreadedAcceptor::create_workers setting worker's queue hint pipe socket %d",std::get<0>(hint_pair));
-        w->com()->set_hint_monitor(std::get<0>(hint_pair));
+        _dia("ThreadedAcceptor::create_workers setting worker's queue hint pipe socket %d",std::get<0>(hint_pair()));
+        w->com()->set_hint_monitor(std::get<0>(hint_pair()));
 
 		_dia("Created ThreadedAcceptorProxy 0x%x", w);
 

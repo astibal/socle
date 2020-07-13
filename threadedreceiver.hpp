@@ -63,26 +63,18 @@ public:
     void set_quick_list(mp::vector<int>* quick_list) { quick_list_ = quick_list; };
     inline mp::vector<int>* get_quick_list() const { return quick_list_;};
 
-    int sq_type() const { return sq_type_; }
     int task_count() const { return tasks_.size(); }
     constexpr int core_multiplier() const noexcept { return 4; };
 
 private:
     threadedProxyWorker::proxy_type_t proxy_type_;
-
-    mutable std::mutex sq_lock_;
-    mp::deque<int> sq_;
     mp::vector<int>* quick_list_ = nullptr;
 
-    // pipe created to be monitored by Workers with poll. If pipe is filled with *some* data
-    // there is something in the queue to pick-up.
-    int sq__hint[2] = {-1, -1};
 
     mp::vector<std::pair< std::thread*, Worker*>> tasks_;
     int worker_count_preference_=0;
     int create_workers(int count=0);
 
-    enum  { SQ_PIPE = 0, SQ_SOCKETPAIR = 1 } sq_type_;
 };
 
 
