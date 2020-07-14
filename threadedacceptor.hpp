@@ -52,7 +52,7 @@ public:
     inline int worker_count_preference() { return worker_count_preference_; };
 
     int task_count() const { return tasks_.size(); }
-    constexpr int core_multiplier() const noexcept { return 4; };
+    constexpr int core_multiplier() const noexcept { return 1; };
 
 private:
     threadedProxyWorker::proxy_type_t proxy_type_;

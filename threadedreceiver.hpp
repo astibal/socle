@@ -47,9 +47,10 @@ public:
     ~ThreadedReceiver() override;
     
     bool     is_quick_port(int sock, short unsigned int dport);
-    uint32_t create_session_key4(sockaddr_storage *from, sockaddr_storage* orig);
-    uint32_t create_session_key6(sockaddr_storage *from, sockaddr_storage* orig);
-    
+
+
+
+    std::optional<packet_info> process_anc_data(int sock, msghdr* msg);
     void on_left_new_raw(int) override;
     void on_right_new_raw(int) override;
     

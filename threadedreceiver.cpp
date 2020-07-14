@@ -94,52 +94,74 @@ bool ThreadedReceiver<Worker,SubWorker>::is_quick_port(int sock, short unsigned 
     return use_virtual_socket;
 }
 
-template<class Worker, class SubWorker>
-uint32_t ThreadedReceiver<Worker,SubWorker>::create_session_key4(sockaddr_storage* from, sockaddr_storage* orig) {
-    
-    uint32_t s = inet::to_sockaddr_in(from)->sin_addr.s_addr;
-    uint32_t d = inet::to_sockaddr_in(orig)->sin_addr.s_addr;
-    uint32_t sp = ntohs(inet::to_sockaddr_in(from)->sin_port);
-    uint32_t sd = ntohs(inet::to_sockaddr_in(orig)->sin_port);
-
-    std::seed_seq seed1{ s, d, sp, sd };
-    std::mt19937 e(seed1);
-    std::uniform_int_distribution<> dist;
-
-    uint32_t mirand = dist(e);
 
 
-    mirand |= (1 << 31); //this will produce negative number, which should determine  if it's normal socket or not
-
-
-
-    return mirand; // however we return it as the key, therefore cast to unsigned int
-}
 
 template<class Worker, class SubWorker>
-uint32_t ThreadedReceiver<Worker,SubWorker>::create_session_key6(sockaddr_storage* from, sockaddr_storage* orig) {
+std::optional<packet_info> ThreadedReceiver<Worker,SubWorker>::process_anc_data(int sock, msghdr* msg) {
 
-    uint32_t s0 = ((uint32_t*)&inet::to_sockaddr_in6(from)->sin6_addr)[0];
-    uint32_t s1 = ((uint32_t*)&inet::to_sockaddr_in6(from)->sin6_addr)[1];
-    uint32_t s2 = ((uint32_t*)&inet::to_sockaddr_in6(from)->sin6_addr)[2];
-    uint32_t s3 = ((uint32_t*)&inet::to_sockaddr_in6(from)->sin6_addr)[3];
+    bool found_addr = false;
+    packet_info ret;
 
-    uint32_t d0 = ((uint32_t*)&inet::to_sockaddr_in6(orig)->sin6_addr)[0];
-    uint32_t d1 = ((uint32_t*)&inet::to_sockaddr_in6(orig)->sin6_addr)[1];
-    uint32_t d2 = ((uint32_t*)&inet::to_sockaddr_in6(orig)->sin6_addr)[2];
-    uint32_t d3 = ((uint32_t*)&inet::to_sockaddr_in6(orig)->sin6_addr)[3];
+    // iterate through all the control headers
+    int i = 0;
+    for (struct cmsghdr *cmsg = CMSG_FIRSTHDR(msg); cmsg != nullptr; cmsg = CMSG_NXTHDR(msg, cmsg), i++) {
+        _cons(string_format("new_raw: ancillary msg #%d", i).c_str());
 
-    uint32_t sp = ntohs(inet::to_sockaddr_in6(from)->sin6_port);
-    uint32_t dp = ntohs(inet::to_sockaddr_in6(orig)->sin6_port);
+        auto ss = string_format("ThreadedReceiver::on_left_new_raw[%d]: ancillary data level=%d, type=%d",sock,cmsg->cmsg_level,cmsg->cmsg_type);
 
-    std::seed_seq seed1{ s0, d0, s1, d1, s2, d2, s3, d3, sp, dp };
-    std::mt19937 e(seed1);
-    std::uniform_int_distribution<> dist;
+        // ignore the control headers that don't match what we need .. SOL_IP
+        if (
+                ( cmsg->cmsg_level == SOL_IP && cmsg->cmsg_type ==  IP_RECVORIGDSTADDR ) ||
+                ( cmsg->cmsg_level == SOL_IPV6 && cmsg->cmsg_type ==  IPV6_RECVORIGDSTADDR )
+                ){
 
-    uint32_t mirand = dist(e);
-    mirand |= (1 << 31); //this will produce negative number, which should determine  if it's normal socket or not
+            found_addr = true;
+            _cons("found orig address");
 
-    return mirand; // however we return it as the key, therefore cast to unsigned int
+
+            try {
+                if (proxy_type() == proxy_type_t::REDIRECT) {
+                    ret.src_ss = std::make_optional(*static_cast<sockaddr_storage *>(msg->msg_name));
+                    ret.dst_ss = std::nullopt;
+                    ret.str_dst_host = "8.8.8.8";
+                    ret.dport = 53;
+
+                    ret.unpack_src_ss();
+
+                } else {
+                    ret.src_ss = std::make_optional(*static_cast<sockaddr_storage *>(msg->msg_name));
+                    ret.unpack_src_ss();
+
+                    sockaddr_storage orig{};
+                    memcpy(&orig, (struct sockaddr_storage *) CMSG_DATA(cmsg), sizeof(struct sockaddr_storage));
+
+                    ret.dst_ss = std::make_optional(orig);
+                    ret.unpack_dst_ss();
+                }
+                bool use_virtual_socket = false;
+
+                auto ss = string_format(
+                        "ThreadedReceiver::on_left_new_raw[%d]: datagram from: %s/%s:%u to %s/%s:%u (%s)",
+                        sock,
+                        inet_family_str(ret.src_family).c_str(), ret.str_src_host.c_str(), ret.sport,
+                        inet_family_str(ret.dst_family).c_str(), ret.str_dst_host.c_str(), ret.dport,
+                        use_virtual_socket ? "quick" : "cooked"
+                );
+                _cons(ss.c_str());
+            }
+            catch (packet_info_error const& e) {
+                _cons("failed to parse out packet credentials");
+            }
+
+            break;
+        }
+    }
+
+    if(found_addr)
+        return std::make_optional(ret);
+
+    return std::nullopt;
 }
 
 template<class Worker, class SubWorker>
