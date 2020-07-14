@@ -441,16 +441,19 @@ std::string inet_family_str(int fa) {
 
 
 int inet_ss_address_unpack(sockaddr_storage* ptr, std::string* dst, unsigned short* port) {
-    char b[64]; memset(b,0,64);
+
+    constexpr size_t buf_sz = 64;
+
+    char b[buf_sz]; memset(b,0,buf_sz);
     int family = ptr->ss_family;
     unsigned short val_port = 0;
     
     if(family == AF_INET6) {
-        inet_ntop(ptr->ss_family,&(((struct sockaddr_in6*) ptr)->sin6_addr),b,64);
+        inet_ntop(ptr->ss_family,&(((struct sockaddr_in6*) ptr)->sin6_addr),b,buf_sz);
         val_port = ((struct sockaddr_in6*) ptr)->sin6_port;
     }
     else if(family == AF_INET) {
-        inet_ntop(ptr->ss_family,&(((struct sockaddr_in*) ptr)->sin_addr),b,64);
+        inet_ntop(ptr->ss_family,&(((struct sockaddr_in*) ptr)->sin_addr),b,buf_sz);
         val_port = ((struct sockaddr_in*) ptr)->sin_port;
     }
     

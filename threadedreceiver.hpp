@@ -23,6 +23,7 @@
 #include <baseproxy.hpp>
 #include <masterproxy.hpp>
 #include <threadedworker.hpp>
+#include <packetinfo.hpp>
 
 #include <vector>
 #include <deque>
@@ -145,6 +146,7 @@ public:
     };
 };
 
+#endif //_THREADED_RECEIVER_HPP_
+
 #include <threadedreceiver.cpp>
 
-#endif //_THREADED_RECEIVER_HPP_

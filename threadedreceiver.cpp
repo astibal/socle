@@ -16,6 +16,9 @@
     License along with this library.
 */
 
+#ifndef _THREADED_RECEIVER_CPP_
+#define _THREADED_RECEIVER_CPP_
+
 #include <fcntl.h>
 #include <unistd.h>
 
@@ -773,3 +776,6 @@ template<class SubWorker>
 void ThreadedReceiverProxy<SubWorker>::on_run_round () {
     std::this_thread::yield();
 }
+
+
+#endif
