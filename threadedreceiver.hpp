@@ -26,6 +26,7 @@
 
 #include <vector>
 #include <deque>
+#include <fdq.hpp>
 
 #include <thread>
 #include <mutex>

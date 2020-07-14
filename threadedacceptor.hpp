@@ -31,7 +31,7 @@
 #include <mutex>
 
 #include <mpstd.hpp>
-#include <proxy/fdq.hpp>
+#include <fdq.hpp>
 
 template<class Worker, class SubWorker>
 class ThreadedAcceptor : public baseProxy, public FdQueueHandler {
