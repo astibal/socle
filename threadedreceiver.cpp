@@ -164,8 +164,103 @@ std::optional<packet_info> ThreadedReceiver<Worker,SubWorker>::process_anc_data(
     return std::nullopt;
 }
 
+
+
 template<class Worker, class SubWorker>
 void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
+
+    _dia("ThreadedReceiver::on_left_new_raw[%d]: start", sock);
+
+    constexpr unsigned int recv_buff_sz = 2048;
+    constexpr unsigned int cmbuf_sz = 2048;
+
+    unsigned char dummy_buffer[32];
+    int iter = 0;
+
+
+
+    do {
+        _deb("receiver read iteration %d", iter++);
+
+        unsigned char recv_buf_[recv_buff_sz];
+        char cmbuf[cmbuf_sz];
+        sockaddr_storage from{0};
+        iovec io{};
+
+        msghdr msg{};
+
+        auto clear_state = [&]() {
+            memset(recv_buf_, 0, recv_buff_sz);
+            memset(cmbuf, 0, cmbuf_sz);
+            memset(&from, 0, sizeof(sockaddr_storage));
+            memset(&msg, 0, sizeof(msg));
+            memset(&io, 0, sizeof(iovec));
+
+            msg.msg_name = &from;
+            msg.msg_namelen = sizeof(from);
+            msg.msg_control = cmbuf;
+            msg.msg_controllen = sizeof(cmbuf);
+
+            io.iov_base = recv_buf_;
+            io.iov_len = sizeof(recv_buf_);
+
+            msg.msg_iov = &io;
+            msg.msg_iovlen = 1;
+
+            _cons("state cleared");
+        };
+
+        auto dummy_read = [&]() {
+            int l = ::recvmsg(sock, &msg, O_NONBLOCK);
+            _cons("dummy read");
+
+            clear_state();
+
+            return l;
+        };
+
+
+        clear_state();
+
+
+        int len = ::recvmsg(sock, &msg, MSG_PEEK);
+        if (len < 0) {
+            _cons(string_format("[0x%x] new_raw: inner peek returned %d (return)", std::this_thread::get_id(), len).c_str());
+            return;
+        } else {
+            _cons(string_format("[0x%x] new_raw: inner peek returned %d", std::this_thread::get_id(), len).c_str());
+        }
+
+        auto creds = process_anc_data(sock, &msg);
+
+        if(creds.has_value()) {
+            _cons("packet headers processing finished");
+
+            auto [ fd_left, fd_right ]  = creds.value().create_socketpair();
+
+            // NOTE:
+            // keeping it here for reference: this is proof we can bind and create sockets with matching tuples, all can be used
+            // to send data (but obviously only one is selected by OS to deliver data from network
+
+            // int fd2 = creds.value().create_client_socket();
+
+            // ::send(fd, "post1", 5, MSG_DONTWAIT);
+            // ::send(fd2, "post2", 5, MSG_DONTWAIT);
+
+
+            dummy_read();
+
+        } else {
+            _cons("packet headers processing failed");
+            int l = dummy_read();
+            _err("packet headers processing failed, %d bytes flushed out", l);
+        }
+
+    } while(::recv(sock, dummy_buffer,32,O_NONBLOCK|MSG_PEEK) > 0);
+}
+
+template<class Worker, class SubWorker>
+void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw_old(int sock) {
     
     _dia("ThreadedReceiver::on_left_new_raw[%d]: start",sock);
 
@@ -178,6 +273,7 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
         unsigned char recv_buf_[2048];
         char cmbuf[256];
         sockaddr_storage from{0};
+        struct sockaddr_storage orig{0};
 
         iovec io{0};
         msghdr msg{0};
@@ -196,10 +292,11 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
         io.iov_len = sizeof(recv_buf_);
         
         int len = ::recvmsg(sock, &msg, MSG_PEEK);
+        if(len < 0)
+            return;
         
     
         uint32_t session_key = 0;
-        struct sockaddr_storage orig{0};
         
         // use virtual socket for plaintext protocols which don't require special treatment (DNS)
         // virtual sockets can't be used for DTLS, for example
@@ -249,12 +346,12 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
                 if(src_family == AF_INET) {
                     _deb("session key: source socket is IPv4");
 
-                    session_key = create_session_key4(&from,&orig);
+                    session_key = packet_info::create_session_key4(&from,&orig);
                 }
                 else if(src_family == AF_INET6) {
                     _deb("session key: source socket is IPv6");
 
-                    session_key = create_session_key6(&from,&orig);
+                    session_key = packet_info::create_session_key6(&from,&orig);
                 }
 
                 _deb("ThreadedReceiver::on_left_new_raw[%d]: session key %d", sock, session_key );
@@ -433,6 +530,9 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
                     
                     // append data only if socket is virtual
                     len = recv(sock, recv_buf_,len,0);
+                    if(len < 0) {
+                        return;
+                    }
 
                     auto l_ = std::scoped_lock(new_dgram.rx_queue_lock);
 

@@ -35,6 +35,7 @@
 
 
 
+
 template<class Worker, class SubWorker>
 class ThreadedReceiver : public baseProxy, public FdQueueHandler {
 public:
@@ -52,6 +53,9 @@ public:
 
     std::optional<packet_info> process_anc_data(int sock, msghdr* msg);
     void on_left_new_raw(int) override;
+
+
+    void on_left_new_raw_old(int);
     void on_right_new_raw(int) override;
     
     int run() override;
