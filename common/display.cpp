@@ -430,12 +430,12 @@ bool version_check(const std::string &real_string , std::string v) {
 std::string inet_family_str(int fa) {
     switch(fa) {
         case AF_INET:
-            return std::string("IPv4");
+            return std::string("ip4");
         case AF_INET6:
-            return std::string("IPv6");
+            return std::string("ip6");
             
         default:
-            return string_format("Proto%d",fa);
+            return string_format("p%d",fa);
     }
 }
 
