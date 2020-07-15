@@ -179,6 +179,17 @@ std::pair<int,int> packet_info::create_socketpair() {
     _cons(inet_ss_str(& dst_ss.value()).c_str());
 
     auto plug_socket = [&](int fd, sockaddr* bind_ss, sockaddr* connect_ss) {
+
+        // should be faster then std::string
+        constexpr const char* bind_connect_race_hack_iface = "lo";
+        constexpr size_t bcrhi_sz = 2;
+
+        if(0 != ::setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, bind_connect_race_hack_iface, bcrhi_sz)) {
+            _cons("cannot bind to device - bind-connect races may occur");
+        } else {
+            ss << "OK hack - bind to device " << bind_connect_race_hack_iface << std::endl;
+        }
+
         if(::bind(fd, bind_ss, sizeof(struct sockaddr_storage))) {
             ss << string_format("cannot bind port %d to %s:%d\n", fd, str_dst_host.c_str(), dport);
         } else {
@@ -189,6 +200,12 @@ std::pair<int,int> packet_info::create_socketpair() {
             ss << string_format("cannot connect port %d to %s:%d\n", fd, str_src_host.c_str(), sport);
         } else {
             ss << string_format("OK connect port %d to %s:%d\n", fd, str_src_host.c_str(), sport);
+        }
+
+        if(0 != ::setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, "", 0)) {
+            _cons("cannot bind to 'any' device - socket inoperable");
+        } else {
+            ss << "OK hack - bind back to 'any' device " << std::endl;
         }
 
     };
