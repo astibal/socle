@@ -58,10 +58,13 @@ struct packet_info {
     std::string str_dst_host;
     unsigned short dport = 0;
 
+    uint32_t create_session_key(bool shift=false);
     static uint32_t create_session_key4(sockaddr_storage *from, sockaddr_storage* orig,  bool shift=false);
     static uint32_t create_session_key6(sockaddr_storage *from, sockaddr_storage* orig, bool shift=false);
+    void pack_dst_ss();
+    void pack_src_ss();
 
-    std::pair<int,int> create_socketpair() const;
+    std::pair<int,int> create_socketpair();
 };
 
 #endif //_PACKETINFO_HPP_

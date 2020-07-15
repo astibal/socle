@@ -21,6 +21,58 @@
 #include <packetinfo.hpp>
 #include <common/internet.hpp>
 
+
+sockaddr_storage pack_ss(int family, const char* host, unsigned short port) {
+
+    sockaddr_storage ss{0};
+
+    if(family == AF_INET6) {
+        auto p_ip6_src = (sockaddr_in6 *) &ss;
+
+        inet_pton(AF_INET6, host, &p_ip6_src->sin6_addr);
+        ss.ss_family = AF_INET6;
+        p_ip6_src->sin6_port = htons(port);
+    }
+    else {
+        auto p_ip4_src = (sockaddr_in *) &ss;
+
+        inet_pton(AF_INET, host, &p_ip4_src->sin_addr);
+        ss.ss_family = AF_INET;
+        p_ip4_src->sin_port = htons(port);
+    }
+
+    return ss;
+}
+
+void packet_info::pack_dst_ss () {
+    dst_ss = std::make_optional(pack_ss(dst_family, str_dst_host.c_str(), dport));
+}
+
+void packet_info::pack_src_ss () {
+    src_ss = std::make_optional(pack_ss(src_family, str_src_host.c_str(), sport));
+}
+
+
+
+uint32_t packet_info::create_session_key(bool shift) {
+
+
+    if(! src_ss.has_value()) {
+        pack_src_ss();
+    }
+
+    if(! dst_ss.has_value()) {
+        pack_dst_ss();
+    }
+
+    switch (src_family) {
+        case AF_INET6:
+            return create_session_key6(&src_ss.value(), &dst_ss.value(), shift);
+        default:
+            return create_session_key4(&src_ss.value(), &dst_ss.value(), shift);
+    }
+}
+
 uint32_t packet_info::create_session_key4(sockaddr_storage* from, sockaddr_storage* orig, bool shift) {
 
     uint32_t s = inet::to_sockaddr_in(from)->sin_addr.s_addr;
@@ -71,7 +123,7 @@ uint32_t packet_info::create_session_key6(sockaddr_storage* from, sockaddr_stora
 }
 
 
-std::pair<int,int> packet_info::create_socketpair() const {
+std::pair<int,int> packet_info::create_socketpair() {
 
     std::stringstream ss;
 
@@ -83,43 +135,29 @@ std::pair<int,int> packet_info::create_socketpair() const {
             throw packet_info_error("socket call failed");
 
         }
+        int n;
 
-        if(! dst_ss.has_value()) {
-            throw packet_info_error("cannot create socket, src storage is null");
-        }
-        if(! dst_ss.has_value()) {
-            throw packet_info_error("cannot create socket, dst storage is null");
-        }
-
-
-        int n = 1;
-
-        if (0 != ::setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &n, sizeof(int))) {
+        if (n = 1; 0 != ::setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &n, sizeof(int))) {
             ss << string_format("cannot set socket %d option SO_REUSEADDR\n", fd);
         }
-        n = 1;
 
-        if (0 != ::setsockopt(fd, SOL_IP, IP_RECVORIGDSTADDR, &n, sizeof(int))) {
+        if (n = 1; 0 != ::setsockopt(fd, SOL_IP, IP_RECVORIGDSTADDR, &n, sizeof(int))) {
             ss << string_format("cannot set socket %d option IP_RECVORIGDSTADDR\n", fd);
         }
-        n = 1;
 
-        if (0 != ::setsockopt(fd, SOL_IP, SO_BROADCAST, &n, sizeof(int))) {
+        if (n = 1; 0 != ::setsockopt(fd, SOL_IP, SO_BROADCAST, &n, sizeof(int))) {
             ss << string_format("cannot set socket %d option SO_BROADCAST\n", fd);
         }
-        n = 1;
 
         if(src_family == AF_INET) {
-            if (0 != ::setsockopt(fd, SOL_IP, IP_TRANSPARENT, &n, sizeof(int))) {
+            if (n = 1; 0 != ::setsockopt(fd, SOL_IP, IP_TRANSPARENT, &n, sizeof(int))) {
                 ss << string_format("cannot set socket %d option IP_TRANSPARENT\n", fd);
             }
-            n = 1;
         }
         else if (src_family == AF_INET6) {
-            if (0 != ::setsockopt(fd, SOL_IPV6, IPV6_TRANSPARENT, &n, sizeof(int))) {
+            if (n = 1; 0 != ::setsockopt(fd, SOL_IPV6, IPV6_TRANSPARENT, &n, sizeof(int))) {
                 ss << string_format("cannot set socket %d option IPV6_TRANSPARENT\n", fd);
             }
-            n = 1;
         }
         else {
             throw packet_info_error("cannot set transparency for unknown family");
@@ -131,15 +169,14 @@ std::pair<int,int> packet_info::create_socketpair() const {
     int fd_left = socket_setup();
     int fd_right = socket_setup();
 
-    sockaddr_storage ss_src{0};
-    sockaddr_storage ss_dst{0};
 
-    auto p_ip4_src = (sockaddr_in*) &ss_src;
-    auto p_ip4_dst = (sockaddr_in*) &ss_dst;
+    pack_src_ss();
+    pack_dst_ss();
 
-    inet_pton(AF_INET,str_src_host.c_str(),&p_ip4_src->sin_addr); ss_src.ss_family=AF_INET; p_ip4_src->sin_port = htons(sport);
-    inet_pton(AF_INET,str_dst_host.c_str(),&p_ip4_dst->sin_addr); ss_dst.ss_family=AF_INET; p_ip4_dst->sin_port = htons(dport);
+    _cons(ss);
 
+    _cons(inet_ss_str(& src_ss.value()).c_str());
+    _cons(inet_ss_str(& dst_ss.value()).c_str());
 
     auto plug_socket = [&](int fd, sockaddr* bind_ss, sockaddr* connect_ss) {
         if(::bind(fd, bind_ss, sizeof(struct sockaddr_storage))) {
@@ -156,15 +193,16 @@ std::pair<int,int> packet_info::create_socketpair() const {
 
     };
 
-    plug_socket(fd_left, (sockaddr*) &ss_dst, (sockaddr*) &ss_src);
-    plug_socket(fd_right, (sockaddr*) &ss_src, (sockaddr*) &ss_dst);
+    plug_socket(fd_left, (sockaddr*) &dst_ss.value(), (sockaddr*) &src_ss.value());
+    plug_socket(fd_right, (sockaddr*) &src_ss.value(), (sockaddr*) &dst_ss.value());
 
 
     ::send(fd_left, "ABCEFG", 6, MSG_DONTWAIT);
     ::send(fd_right, "XYZ123", 6, MSG_DONTWAIT);
 
 
-    _cons(ss.str().c_str());
+    _cons(ss);
 
     return std::make_pair(fd_left, fd_right);
 }
+
