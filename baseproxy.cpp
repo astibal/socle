@@ -1200,7 +1200,11 @@ int baseProxy::run_poll() {
 
                 // all real sockets without ANY handler should be re-inserted
                 if(cur_socket > 0) {
-                    back_in_set.push_back(cur_socket);
+
+                    if(cur_socket != com()->poller.poller->hint_socket()) {
+                        _deb("baseProxy::run: socket %d not hint socket - reinserting!!", cur_socket);
+                        back_in_set.push_back(cur_socket);
+                    }
                 } else {
 
 
