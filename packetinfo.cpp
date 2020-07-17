@@ -16,6 +16,7 @@
     License along with this library.
 */
 
+#include <fcntl.h>
 #include <random>
 
 #include <packetinfo.hpp>
@@ -163,6 +164,16 @@ std::pair<int,int> packet_info::create_socketpair() {
             throw packet_info_error("cannot set transparency for unknown family");
         }
 
+        if (int oldf = fcntl(fd, F_GETFL, 0) ; ! (oldf & O_NONBLOCK)) {
+            if (fcntl(fd, F_SETFL, oldf | O_NONBLOCK) < 0) {
+                ss << string_format("Error setting socket %d as non-blocking\n", fd);
+
+                return -1;
+            } else {
+                ss << string_format("Setting socket %d as non-blocking\n", fd);
+            }
+        }
+
         return fd;
     };
 
@@ -214,8 +225,8 @@ std::pair<int,int> packet_info::create_socketpair() {
     plug_socket(fd_right, (sockaddr*) &src_ss.value(), (sockaddr*) &dst_ss.value());
 
 
-    ::send(fd_left, "ABCEFG", 6, MSG_DONTWAIT);
-    ::send(fd_right, "XYZ123", 6, MSG_DONTWAIT);
+//    ::send(fd_left, "ABCEFG", 6, MSG_DONTWAIT);
+//    ::send(fd_right, "XYZ123", 6, MSG_DONTWAIT);
 
 
     _cons(ss);
