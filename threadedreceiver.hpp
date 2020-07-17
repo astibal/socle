@@ -51,7 +51,14 @@ public:
 
 
 
+    // get original IP, etc
     std::optional<packet_info> process_anc_data(int sock, msghdr* msg);
+
+    // enqueue new data to early received packets from catch-all socket
+    // return  tuple:
+    // 0: true if the session is new
+    // 1: session key
+    bool add_first_datagrams(int sock, packet_info& pinfo);
     void on_left_new_raw(int) override;
 
 
@@ -149,6 +156,8 @@ public:
         static std::atomic_int workers_total_ = 2;
         return workers_total_;
     };
+
+
 };
 
 #endif //_THREADED_RECEIVER_HPP_
