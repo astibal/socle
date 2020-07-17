@@ -1305,21 +1305,27 @@ int baseProxy::run() {
         
         if(pollroot()) {
 
-            _ext("baseProxy::run: preparing sockets");
-            int s_max = prepare_sockets(com());
-            _ext("baseProxy::run: sockets prepared");
-            if (s_max) {
-                com()->poll();
-            }
+            try {
+                _ext("baseProxy::run: preparing sockets");
+                int s_max = prepare_sockets(com());
+                _ext("baseProxy::run: sockets prepared");
+                if (s_max) {
+                    com()->poll();
+                }
 
-            // FIXME: we currently ignore should_rerun:
-            //  virtual udp set would trigger loop run on all threads when there are data for single one
-            //  which is a bit expensive.
-            //  This needs to be solved in the future.
-            //
-            //  DNS is ok except because its query-response nature. There are few corner-cases
-            //  ie with curl, shooting two DNS queries for happy-eyeballs at once.
-            run_poll();
+                // FIXME: we currently ignore should_rerun:
+                //  virtual udp set would trigger loop run on all threads when there are data for single one
+                //  which is a bit expensive.
+                //  This needs to be solved in the future.
+                //
+                //  DNS is ok except because its query-response nature. There are few corner-cases
+                //  ie with curl, shooting two DNS queries for happy-eyeballs at once.
+                run_poll();
+            }
+            catch (std::runtime_error const& e) {
+                _err("baseProxy::run error - dead on: %s", e.what());
+                state().dead(true);
+            }
         }
 
         on_run_round();
