@@ -50,6 +50,8 @@
 #define  _dum  if(*log.level() >= DUM) log.dum
 #endif
 #define  _deb  if(*log.level() >= DEB) log.deb
+#define  _if_deb  if(*log.level() >= DEB)
+
 #define  _dia  if(*log.level() >= DIA) log.dia
 #define  _inf  if(*log.level() >= INF) log.inf
 #define  _not  if(*log.level() >= NOT) log.noti

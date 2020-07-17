@@ -1198,6 +1198,22 @@ int baseProxy::run_poll() {
             } else {
                 _deb("baseProxy::run: socket %d has NO handler!!", cur_socket);
 
+
+
+                _if_deb {
+                    if (cur_socket == com()->poller.poller->hint_socket()) {
+                        unsigned char buf[2048];
+                        memset(buf, 0, 2048);
+                        int l = ::recv(cur_socket, buf, 2048, MSG_PEEK);
+                        if (l > 0) {
+                            //_deb("Hint socket data:\n %s\n--", hex_dump(buf, l, 4).c_str());
+                            _deb("Hint socket %d data: %s", cur_socket, buf);
+                        } else {
+                            _deb("Hint socket %d data: -none- (%d)", cur_socket, l);
+                        }
+                    }
+                }
+
                 // all real sockets without ANY handler should be re-inserted
                 if(cur_socket > 0) {
 
