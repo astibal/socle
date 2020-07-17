@@ -103,6 +103,12 @@ private:
 };
 
 
+
+class proxy_error : public std::runtime_error {
+public:
+    explicit proxy_error(const char* w) : std::runtime_error(w) {};
+};
+
 class baseProxy : public epoll_handler, public Proxy
 {
 public:
