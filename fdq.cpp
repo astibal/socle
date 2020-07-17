@@ -98,6 +98,15 @@ int FdQueue::pop(uint32_t worker_id) {
     int returned_socket = 0;
 
     {
+
+        // if we have hint-pair for each worker, we should read out hint message to not make a loop
+        // because nobody else than us won't.
+        try {
+            red = ::read(hint_pairs_[worker_id].first, dummy_buffer, 1);
+        } catch (std::out_of_range const& e) {
+            throw fdqueue_error("hints out of bounds");
+        }
+
         std::lock_guard<std::mutex> lck(sq_lock_);
 
         if (sq_.empty()) {
@@ -107,9 +116,6 @@ int FdQueue::pop(uint32_t worker_id) {
         returned_socket = sq_.back();
         sq_.pop_back();
 
-
-
-        red = ::read(hint_pair_[0], dummy_buffer, 1);
     }
 
     if(red > 0) {
