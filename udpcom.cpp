@@ -23,16 +23,6 @@
 #include <linux/in6.h>
 
 
-unsigned int UDPCom::default_sock_family = AF_INET6;
-
-std::map<uint64_t,Datagram> DatagramCom::datagrams_received;
-std::recursive_mutex DatagramCom::lock;
-
-std::map<std::string,std::pair<int,int>> UDPCom::connect_fd_cache;
-std::recursive_mutex UDPCom::connect_fd_cache_lock;
-
-epoll::set_type DatagramCom::in_virt_set;
-
 int UDPCom::translate_socket(int vsock) const {
     
     if(vsock >= 0) { 
@@ -46,15 +36,15 @@ int UDPCom::translate_socket(int vsock) const {
         
         auto it_dgram = datagrams_received.find((unsigned int)vsock);
         if(it_dgram != datagrams_received.end())  {
-            Datagram& d = it_dgram->second;
+            auto d = it_dgram->second;
             
             _dia("UDPCom::translate_socket[%d]: found in table",vsock);
-            if(d.real_socket) {
-                _dia("UDPCom::translate_socket[%d]: translated to real",vsock,d.socket);
-                return d.socket;
+            if(d->real_socket) {
+                _dia("UDPCom::translate_socket[%d]: translated to real",vsock,d->socket_left);
+                return d->socket_left;
             }
             else {
-                _dia("UDPCom::translate_socket[%d]: translated to tproxy socket ",vsock,d.socket);
+                _dia("UDPCom::translate_socket[%d]: translated to tproxy socket ",vsock,d->socket_left);
             }
             // real socket is here bound/connected socket back to source IP.
             // if there is no backward socket, we don't want return TPROXY bound socket, since it can't 
@@ -283,20 +273,20 @@ bool UDPCom::resolve_nonlocal_socket(int sock) {
     
     auto it_record = DatagramCom::datagrams_received.find((unsigned int)sock);
     if(it_record != DatagramCom::datagrams_received.end()) {  
-        Datagram& record = (*it_record).second;
+        auto record = (*it_record).second;
         char b[64]; memset(b,0,64);
         
         _dia("UDPCom::resolve_nonlocal_socket[%x]: found datagram pool entry",sock);
         
-        if(record.dst_family() == AF_INET || record.dst_family() == 0) {
-            inet_ntop(AF_INET, &record.dst_in_addr4(), b, 64);
+        if(record->dst_family() == AF_INET || record->dst_family() == 0) {
+            inet_ntop(AF_INET, &record->dst_in_addr4(), b, 64);
             nonlocal_dst_host().assign(b);
-            nonlocal_dst_port() = ntohs(record.dst_port4());
+            nonlocal_dst_port() = ntohs(record->dst_port4());
             
             l3_proto(AF_INET);
         }
-        else if(record.dst_family() == AF_INET6) {
-            inet_ntop(AF_INET6, &record.dst_in_addr6(), b, 64);
+        else if(record->dst_family() == AF_INET6) {
+            inet_ntop(AF_INET6, &record->dst_in_addr6(), b, 64);
             
             std::string mapped4_temp = b;
             if(mapped4_temp.find("::ffff:") == 0) {
@@ -307,12 +297,12 @@ bool UDPCom::resolve_nonlocal_socket(int sock) {
             }                
             
             nonlocal_dst_host().assign(mapped4_temp);
-            nonlocal_dst_port() = ntohs(record.dst_port6());
+            nonlocal_dst_port() = ntohs(record->dst_port6());
         }
         
 
-//         nonlocal_dst_host() = inet_ntoa(record.dst_in_addr4());
-//         nonlocal_dst_port() = ntohs(record.dst_port4());
+//         nonlocal_dst_host() = inet_ntoa(record->dst_in_addr4());
+//         nonlocal_dst_port() = ntohs(record->dst_port4());
         nonlocal_dst_resolved_ = true;
          
         return true;
@@ -336,19 +326,19 @@ bool UDPCom::in_readset(int s) {
 
         auto it_record = DatagramCom::datagrams_received.find((unsigned int) s);
         if (it_record != DatagramCom::datagrams_received.end()) {
-            Datagram &record = (*it_record).second;
+            auto record = (*it_record).second;
 
-            if (record.real_socket) {
-                _deb("UDPCom::in_readset[%d]: record contains real socket %d", s, record.socket);
-                real_socket = record.socket;
+            if (record->real_socket) {
+                _deb("UDPCom::in_readset[%d]: record contains real socket %d", s, record->socket_left);
+                real_socket = record->socket_left;
                 real = true;
             } else {
 
-                auto l_ = std::scoped_lock(record.rx_queue_lock);
+                auto l_ = std::scoped_lock(record->rx_queue_lock);
 
                 int elem = 0;
                 int elem_bytes = 0;
-                for (auto const &r: record.rx_queue) {
+                for (auto const &r: record->rx_queue) {
                     if (!r.empty()) {
                         elem_bytes += r.size();
                         _deb("UDPCom::in_readset[%d]: record found, data size %dB at pos #%d", s, r.size(), elem);
@@ -429,21 +419,21 @@ int UDPCom::read_from_pool(int _fd, void* _buf, size_t _n, int _flags) {
     
     auto it_record = DatagramCom::datagrams_received.find((unsigned int)_fd);
     if(it_record != DatagramCom::datagrams_received.end()) {  
-        Datagram& record = (*it_record).second;
+        auto record = (*it_record).second;
 
-        if(record.real_socket) {
-            return recv(record.socket, _buf, _n, _flags);
+        if(record->real_socket && record->queue_bytes() == 0) {
+            return recv(record->socket_left, _buf, _n, _flags);
         }
         
-        auto dl_ = std::scoped_lock(record.rx_queue_lock);
+        auto dl_ = std::scoped_lock(record->rx_queue_lock);
         
-        if(! record.empty()) {
+        if(! record->empty()) {
 
 
             int copied = 0;
 
             int elem_index = -1;
-            for(auto& queue_elem : record.rx_queue) {
+            for(auto& queue_elem : record->rx_queue) {
                 elem_index++;
 
                 _dia("UDPCom::read_from_pool[%d]: pool entry %d", _fd, elem_index);
@@ -464,25 +454,15 @@ int UDPCom::read_from_pool(int _fd, void* _buf, size_t _n, int _flags) {
                     _dia("UDPCom::read_from_pool[%d]: retrieved %d bytes from receive pool, in buffer left %d bytes", _fd, copied, queue_elem.size());
 
                     if(copied >= elem_size) {
-                        if( record.cx && record.cx->com()) {
-                            auto* m = dynamic_cast<DatagramCom*>(record.cx->com()->master());
-                            if(m) {
 
-                                int rem_count = 0;
-                                {
-                                    auto ul_ = std::scoped_lock(UDPCom::lock);
-                                    rem_count = UDPCom::in_virt_set.erase(_fd);
-                                }
+                        int rem_count = 0;
+                        {
+                            auto ul_ = std::scoped_lock(UDPCom::lock);
+                            rem_count = UDPCom::in_virt_set.erase(_fd);
+                        }
 
-                                if(rem_count > 0) {
-                                    _dia("buffer read to zero, erased %d entries in in_virt_set", rem_count);
-                                }
-
-                            } else {
-                                _dia("cannot erase %d  from in_virt_set: 's com master is not DataGramCom", _fd);
-                            }
-                        } else {
-                            _dia("cannot erase %d  from in_virt_set: cx=0x%x cx->com=0x%x", _fd, record.cx, record.cx ? record.cx->com() : nullptr);
+                        if(rem_count > 0) {
+                            _dia("buffer read to zero, erased %d entries in in_virt_set", rem_count);
                         }
                     }
 
@@ -499,7 +479,7 @@ int UDPCom::read_from_pool(int _fd, void* _buf, size_t _n, int _flags) {
 
             int bytes_left = 0;
             int elems_left = 0;
-            for(auto& queue_elem : record.rx_queue) {
+            for(auto& queue_elem : record->rx_queue) {
                 if(! queue_elem.empty()) {
                     bytes_left += queue_elem.size();
                     elems_left++;
@@ -559,19 +539,30 @@ int UDPCom::write_to_pool(int _fd, const void* _buf, size_t _n, int _flags) {
     
     auto it_record = DatagramCom::datagrams_received.find((unsigned int)_fd);
     if(it_record != DatagramCom::datagrams_received.end()) {  
-        Datagram& record = (*it_record).second;
-        
+        auto record = (*it_record).second;
+
+
+        if(record->real_socket) {
+            _dia("UDPCom::write_to_pool[%d]: about to write %d bytes into real socket %d", _fd, _n, record->socket_left);
+            int l = ::send(record->socket_left, _buf, _n, 0);
+            if(l < 0) {
+                _dia("UDPCom::write_to_pool[%d]: real socket %d - error %s", _fd, _n, record->socket_left, string_error().c_str());
+            }
+
+            return l;
+        }
+
         std::string ip_src, ip_dst;
         unsigned short port_src, port_dst;
-        inet_ss_address_unpack(&record.src,&ip_src,&port_src);
+        inet_ss_address_unpack(&record->src,&ip_src,&port_src);
         
         sockaddr_storage record_src_4fix{0};
         
-        inet_ss_address_unpack(&record.dst,&ip_dst,&port_dst);
-        std::string af_src = inet_family_str(record.src_family());
-        std::string af_dst = inet_family_str(record.dst_family());
+        inet_ss_address_unpack(&record->dst,&ip_dst,&port_dst);
+        std::string af_src = inet_family_str(record->src_family());
+        std::string af_dst = inet_family_str(record->dst_family());
         
-        _dia("UDPCom::write_to_pool[%d]: about to write %d bytes into socket %d", _fd, _n, record.socket);
+        _dia("UDPCom::write_to_pool[%d]: about to write %d bytes into socket %d", _fd, _n, record->socket_left);
         _deb("UDPCom::write_to_pool[%d]: %s:%s:%d - %s:%s:%d", _fd,
              af_src.c_str(), ip_src.c_str(), port_src,
              af_dst.c_str(), ip_dst.c_str(), port_dst
@@ -590,7 +581,7 @@ int UDPCom::write_to_pool(int _fd, const void* _buf, size_t _n, int _flags) {
 
         message_header.msg_iov = &io;
         message_header.msg_iovlen = 1;
-        message_header.msg_name = (void*)&record.src;
+        message_header.msg_name = (void*)&record->src;
         message_header.msg_namelen = sizeof(struct sockaddr_storage);
         message_header.msg_control = cmbuf;
         message_header.msg_controllen = sizeof(cmbuf);
@@ -602,36 +593,10 @@ int UDPCom::write_to_pool(int _fd, const void* _buf, size_t _n, int _flags) {
         cmsg = CMSG_FIRSTHDR(&message_header);
         cmsg->cmsg_type = IP_PKTINFO;
         
-        //IPV4
-        if(record.dst_family() == AF_INET) {
+        if(record->dst_family() == AF_INET6){
             
-            if(record.real_socket) {
-                da_socket = record.socket;
-            } else {
-                _deb("Constructing IPv4 pktinfo");
-                
-                if(record.src_family() == AF_INET6) {
-                    _deb("reconstructing mapped IPv4 src address record");
-                    record_src_4fix.ss_family = AF_INET;
-                    inet_pton(AF_INET,ip_src.c_str(), &((sockaddr_in*)&record_src_4fix)->sin_addr);
-                    ((sockaddr_in*)&record_src_4fix)->sin_port = record.src_port6();
-                    message_header.msg_name = (void*)&record_src_4fix;
-                }
-                
-                cmsg->cmsg_level = IPPROTO_IP;
-                cmsg->cmsg_len = CMSG_LEN(sizeof(struct in_pktinfo));
-                pktinfo = (struct in_pktinfo*) CMSG_DATA(cmsg);
-                pktinfo->ipi_spec_dst = record.dst_in_addr4();
-                pktinfo->ipi_ifindex = 0;
-                message_header.msg_controllen = CMSG_SPACE(sizeof(struct in_pktinfo));
-
-                da_socket = ::socket (record.dst_family(), SOCK_DGRAM, 0);
-            }
-        }
-        else if(record.dst_family() == AF_INET6){
-            
-            if(record.real_socket) {
-                da_socket = record.socket;
+            if(record->real_socket) {
+                da_socket = record->socket_left;
             } else {
                 _deb("Constucting IPv6 pktinfo");
                 
@@ -639,125 +604,94 @@ int UDPCom::write_to_pool(int _fd, const void* _buf, size_t _n, int _flags) {
                 cmsg->cmsg_type = IPV6_PKTINFO;
                 cmsg->cmsg_len = CMSG_LEN(sizeof(struct in6_pktinfo));
                 pktinfo6 = (struct in6_pktinfo*) CMSG_DATA(cmsg);
-                pktinfo6->ipi6_addr = record.dst_in_addr6();
+                pktinfo6->ipi6_addr = record->dst_in_addr6();
                 pktinfo6->ipi6_ifindex = 0;
                 message_header.msg_controllen = CMSG_SPACE(sizeof(struct in6_pktinfo));
-                da_socket = ::socket (record.dst_family(), SOCK_DGRAM, 0);
+                da_socket = ::socket (record->dst_family(), SOCK_DGRAM, 0);
             }
         }
+        else { //AF_INET and others - we assume AF_INET
 
+            if(record->real_socket) {
+                da_socket = record->socket_left;
+            } else {
+                _deb("Constructing IPv4 pktinfo");
+
+                if(record->src_family() == AF_INET6) {
+                    _deb("reconstructing mapped IPv4 src address record");
+                    record_src_4fix.ss_family = AF_INET;
+                    inet_pton(AF_INET,ip_src.c_str(), &((sockaddr_in*)&record_src_4fix)->sin_addr);
+                    ((sockaddr_in*)&record_src_4fix)->sin_port = record->src_port6();
+                    message_header.msg_name = (void*)&record_src_4fix;
+                }
+
+                cmsg->cmsg_level = IPPROTO_IP;
+                cmsg->cmsg_len = CMSG_LEN(sizeof(struct in_pktinfo));
+                pktinfo = (struct in_pktinfo*) CMSG_DATA(cmsg);
+                pktinfo->ipi_spec_dst = record->dst_in_addr4();
+                pktinfo->ipi_ifindex = 0;
+                message_header.msg_controllen = CMSG_SPACE(sizeof(struct in_pktinfo));
+
+                da_socket = ::socket (record->dst_family(), SOCK_DGRAM, 0);
+            }
+        }
 
         int l = 0;
         int ret_bind = 0;
 
         sockaddr_storage ss_s {0};
         sockaddr_storage ss_d {0};
-        inet_ss_address_remap(&record.dst, &ss_d);
-        inet_ss_address_remap(&record.src, &ss_s);
+        inet_ss_address_remap(&record->dst, &ss_d);
+        inet_ss_address_remap(&record->src, &ss_s);
         
-        _dia("UDPCom::write_to_pool[%d]: real=%d, embryonic=%d", _fd, record.real_socket, record.embryonic);
-        if(record.real_socket && record.embryonic) {
-            _dia("UDPCom::write_to_pool[%d]: changing background embryonic socket %d to %d", _fd, record.socket, da_socket);
-            
-            
-            int n = 1;
-            int da_real_socket = ::socket (ss_d.ss_family, SOCK_DGRAM, 0);
-            
-            if(ss_d.ss_family == AF_INET6) {
-                if(0 != setsockopt(da_real_socket, SOL_IPV6, IPV6_TRANSPARENT, &n, sizeof(n))) {
-                    _err("cannot set socket %d option IPV6_TRANSPARENT", da_real_socket);
-                } n = 1;
+        _dia("UDPCom::write_to_pool[%d]: real=%d", _fd, record->real_socket);
+
+        _deb("UDPCom::write_to_pool[%d]: about to write %d bytes into socket %d", _fd, _n, record->socket_left);
+        _deb("UDPCom::write_to_pool[%d]: custom transparent socket: %d", _fd, da_socket);
+
+
+        int n = 1;
+        if(ss_d.ss_family == AF_INET6) {
+            if(0 != setsockopt(da_socket, SOL_IPV6, IPV6_TRANSPARENT, &n, sizeof(n))) {
+                _err("UDPCom::write_to_pool[%d]: socket %d cannot set option IPV6_TRANSPARENT: %s", _fd, da_socket, string_error().c_str());
             }
-            if(ss_d.ss_family == AF_INET ) {
-                if(0 != setsockopt(da_real_socket, SOL_IP, IP_TRANSPARENT, &n, sizeof(n))){
-                    _err("cannot set socket %d option IP_TRANSPARENT", da_real_socket);
-                }
-                n = 1;
-            }
-            
-            if(0 != setsockopt(da_real_socket, SOL_SOCKET, SO_REUSEADDR, &n, sizeof(n))) {
-                _err("cannot set socket %d option SO_REUSEADDR", da_real_socket);
-            }
-            if(0 != setsockopt(da_real_socket, SOL_SOCKET, SO_BROADCAST, &n, sizeof(n))) {
-                _err("cannot set socket %d option SO_BROADCAST", da_real_socket);
-            }
-            
-            _dia("UDPCom::write_to_pool[%d]: background embryonic socket %s-%s", _fd, inet_ss_str(&ss_s).c_str(), inet_ss_str(&ss_d).c_str());
-            
-            ret_bind = ::bind (da_real_socket, (struct sockaddr*)&(ss_d), sizeof (struct sockaddr_storage));
-            int ret_conn = ::connect(da_real_socket, (struct sockaddr*)&(ss_s), sizeof (struct sockaddr_storage));
-            
-            if (ret_bind != 0) _dia("UDPCom::write_to_pool[%d]: %s", _fd, string_error().c_str());
-            
-            record.embryonic = false;
-            
-            int old_socket = record.socket;
-            record.socket = da_real_socket;
-            
-            
-            _dia("UDPCom::write_to_pool[%d]: background mature socket %d bind status %d, conn status %d", _fd, record.socket, ret_bind, ret_conn);
-            
-            master()->set_monitor(record.socket);
-            master()->set_poll_handler(record.socket,master()->get_poll_handler(old_socket));
-            
-            master()->unset_monitor(old_socket);
-            master()->set_poll_handler(old_socket, nullptr);
-            ::close(old_socket);
+            n = 1;
         }
-        
-        if(ret_bind != 0) {
-            _err("UDPCom::write_to_pool[%d]: cannot bind to destination!", _fd);
+        if(ss_d.ss_family == AF_INET ) {
+            if(0 != setsockopt(da_socket, SOL_IP, IP_TRANSPARENT, &n, sizeof(n))) {
+                _err("UDPCom::write_to_pool[%d]: socket: %d: cannot set option IP_TRANSPARENT: %s", _fd, da_socket, string_error().c_str());
+            }
+            n = 1;
+        }
+        if(0 != setsockopt(da_socket, SOL_SOCKET, SO_REUSEADDR, &n, sizeof(n))) {
+            _err("UDPCom::write_to_pool[%d]: socket: %d: cannot set option SO_REUSEADDR: %s", _fd, da_socket, string_error().c_str());
+        }
+        n = 1;
+
+        if(0 != setsockopt(da_socket, SOL_SOCKET, SO_BROADCAST, &n, sizeof(n))) {
+            _err("UDPCom::write_to_pool[%d]: socket: %d: cannot set option SO_BROADCAST: %s", _fd, da_socket, string_error().c_str());
+        }
+
+        ret_bind = ::bind (da_socket, (struct sockaddr*)&(ss_d), sizeof (struct sockaddr_storage));
+        if(0 != ret_bind) {
+            _err("UDPCom::write_to_pool[%d]: socket: %d: cannot bind: %s", _fd, da_socket, string_error().c_str());
+        }
+
+        int ret_conn = ::connect(da_socket, (struct sockaddr*)&(ss_s), sizeof (struct sockaddr_storage));
+
+        if(ret_conn != 0) {
+            _err("UDPCom::write_to_pool[%d]: socket: %d: connect error: %s", _fd, da_socket, string_error().c_str());
+        }
+
+        l = ::sendmsg(da_socket, &message_header, 0);
+
+        if(l < 0) {
+            _err("UDPCom::write_to_pool[%d]: socket: %d: written %d bytes: %s", _fd, da_socket, l, string_error().c_str());
         } else {
-            _deb("UDPCom::write_to_pool[%d]: about to write %d bytes into socket %d", _fd, _n, record.socket);
-            _deb("UDPCom::write_to_pool[%d]: custom transparent socket: %d", _fd, da_socket);
-            
-            if(record.real_socket) {
-                l = ::send(record.socket, _buf, _n, 0);
-            } else {
-                int n = 1;
-                if(ss_d.ss_family == AF_INET6) {
-                    if(0 != setsockopt(da_socket, SOL_IPV6, IPV6_TRANSPARENT, &n, sizeof(n))) {
-                        _err("UDPCom::write_to_pool[%d]: socket %d cannot set option IPV6_TRANSPARENT: %s", _fd, da_socket, string_error().c_str());
-                    }
-                    n = 1;
-                }
-                if(ss_d.ss_family == AF_INET ) {
-                    if(0 != setsockopt(da_socket, SOL_IP, IP_TRANSPARENT, &n, sizeof(n))) {
-                        _err("UDPCom::write_to_pool[%d]: socket: %d: cannot set option IP_TRANSPARENT: %s", _fd, da_socket, string_error().c_str());
-                    }
-                    n = 1;
-                }
-                if(0 != setsockopt(da_socket, SOL_SOCKET, SO_REUSEADDR, &n, sizeof(n))) {
-                    _err("UDPCom::write_to_pool[%d]: socket: %d: cannot set option SO_REUSEADDR: %s", _fd, da_socket, string_error().c_str());
-                }
-                n = 1;
-
-                if(0 != setsockopt(da_socket, SOL_SOCKET, SO_BROADCAST, &n, sizeof(n))) {
-                    _err("UDPCom::write_to_pool[%d]: socket: %d: cannot set option SO_BROADCAST: %s", _fd, da_socket, string_error().c_str());
-                }
-
-                ret_bind = ::bind (da_socket, (struct sockaddr*)&(ss_d), sizeof (struct sockaddr_storage));
-                if(0 != ret_bind) {
-                    _err("UDPCom::write_to_pool[%d]: socket: %d: cannot bind: %s", _fd, da_socket, string_error().c_str());
-                }
-
-                int ret_conn = ::connect(da_socket, (struct sockaddr*)&(ss_s), sizeof (struct sockaddr_storage));
-                
-                if(ret_conn != 0) {
-                    _err("UDPCom::write_to_pool[%d]: socket: %d: connect error: %s", _fd, da_socket, string_error().c_str());
-                }
-                
-                l = ::sendmsg(da_socket, &message_header, 0);
-            }
-            
-            if(l < 0) {
-                _err("UDPCom::write_to_pool[%d]: socket: %d: written %d bytes: %s", _fd, da_socket, l, string_error().c_str());
-            } else {
-                _deb("UDPCom::write_to_pool[%d]: socket: %d: written %d bytes", _fd, da_socket, l);
-            }
+            _deb("UDPCom::write_to_pool[%d]: socket: %d: written %d bytes", _fd, da_socket, l);
         }
-        
-        if(!record.real_socket) {
+
+        if(!record->real_socket) {
             ::close(da_socket);
         }
         
@@ -775,7 +709,7 @@ bool UDPCom::resolve_socket(bool source, int s, std::string* target_host, std::s
     
     auto it_record = DatagramCom::datagrams_received.find((unsigned int)s);
     if(it_record != DatagramCom::datagrams_received.end()) {  
-        Datagram& record = (*it_record).second;
+        auto record = it_record->second;
         
         char b[64]; memset(b,0,64);
         
@@ -783,15 +717,15 @@ bool UDPCom::resolve_socket(bool source, int s, std::string* target_host, std::s
         
         if(source) {
             
-            if(record.src_family() == AF_INET || record.src_family() == 0) {
-                inet_ntop(AF_INET, &record.src_in_addr4(), b, 64);
+            if(record->src_family() == AF_INET || record->src_family() == 0) {
+                inet_ntop(AF_INET, &record->src_in_addr4(), b, 64);
                 l3_proto(AF_INET);
 
                 if(target_host) target_host->assign(b);
-                if(target_port) target_port->assign(std::to_string(ntohs(record.src_port4())));
+                if(target_port) target_port->assign(std::to_string(ntohs(record->src_port4())));
             }
-            else if(record.src_family() == AF_INET6) {
-                inet_ntop(AF_INET6, &record.src_in_addr6(), b, 64);
+            else if(record->src_family() == AF_INET6) {
+                inet_ntop(AF_INET6, &record->src_in_addr6(), b, 64);
                 l3_proto(AF_INET6);
                 
                 std::string mapped4_temp = b;
@@ -803,21 +737,21 @@ bool UDPCom::resolve_socket(bool source, int s, std::string* target_host, std::s
                 }                
                 
                 if(target_host) target_host->assign(mapped4_temp);
-                if(target_port) target_port->assign(std::to_string(ntohs(record.src_port6())));
+                if(target_port) target_port->assign(std::to_string(ntohs(record->src_port6())));
             }
             
         } else {
             
-            if(record.dst_family() == AF_INET || record.dst_family() == 0) {
-                inet_ntop(AF_INET, &record.dst_in_addr4(), b, 64);
+            if(record->dst_family() == AF_INET || record->dst_family() == 0) {
+                inet_ntop(AF_INET, &record->dst_in_addr4(), b, 64);
                 l3_proto(AF_INET);
                 
                 if(target_host) target_host->assign(b);
-                if(target_port) target_port->assign(std::to_string(ntohs(record.dst_port4())));
+                if(target_port) target_port->assign(std::to_string(ntohs(record->dst_port4())));
                 
             }
-            else if(record.dst_family() == AF_INET6) {
-                inet_ntop(AF_INET6, &record.dst_in_addr6(), b, 64);
+            else if(record->dst_family() == AF_INET6) {
+                inet_ntop(AF_INET6, &record->dst_in_addr6(), b, 64);
                 l3_proto(AF_INET6);
                 
                 std::string mapped4_temp = b;
@@ -830,7 +764,7 @@ bool UDPCom::resolve_socket(bool source, int s, std::string* target_host, std::s
                 }                
                 
                 if(target_host) target_host->assign(mapped4_temp);
-                if(target_port) target_port->assign(std::to_string(ntohs(record.dst_port6())));
+                if(target_port) target_port->assign(std::to_string(ntohs(record->dst_port6())));
             }
         }
         
@@ -900,11 +834,11 @@ void UDPCom::shutdown(int _fd) {
         
         auto it_record = DatagramCom::datagrams_received.find((unsigned int)_fd);
         if(it_record != DatagramCom::datagrams_received.end()) {  
-                Datagram& it = DatagramCom::datagrams_received[(unsigned int)_fd];
+                auto it = DatagramCom::datagrams_received[(unsigned int)_fd];
                 
-                if(! it.reuse) {
-                    if(it.real_socket && it.socket > 0) {
-                        ::close(it.socket);
+                if(! it->reuse) {
+                    if(it->real_socket && it->socket_left > 0) {
+                        ::close(it->socket_left);
                     }
 
                     int remc = UDPCom::in_virt_set.erase(_fd);
@@ -912,7 +846,7 @@ void UDPCom::shutdown(int _fd) {
 
                 } else {
                     _dia("UDPCom::close[%d]: datagrams_received entry reuse flag set, entry  not deleted.", _fd);
-                    it.reuse = false;
+                    it->reuse = false;
                 }
                 
                 _dia("UDPCom::close[%d]: datagrams_received entry erased", _fd);

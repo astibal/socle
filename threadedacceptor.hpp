@@ -65,7 +65,7 @@ private:
 template<class SubWorker>
 class ThreadedAcceptorProxy : public threadedProxyWorker, public MasterProxy {
 public:
-    ThreadedAcceptorProxy(baseCom* c, int worker_id, threadedProxyWorker::proxy_type_t p):
+    ThreadedAcceptorProxy(baseCom* c, uint32_t worker_id, threadedProxyWorker::proxy_type_t p):
             threadedProxyWorker(worker_id, p),
             MasterProxy(c) {}
 

@@ -138,7 +138,7 @@ public:
 template<class SubWorker>
 class ThreadedReceiverProxy : public threadedProxyWorker, public MasterProxy {
 public:
-    ThreadedReceiverProxy(baseCom* c, int worker_id, threadedProxyWorker::proxy_type_t p):
+    ThreadedReceiverProxy(baseCom* c, uint32_t worker_id, threadedProxyWorker::proxy_type_t p):
             threadedProxyWorker(worker_id, p),
             MasterProxy(c) {}
 

@@ -24,13 +24,13 @@ class threadedProxyWorker  {
 public:
     using proxy_type_t = enum class proxy_type_t { NONE, TRANSPARENT, PROXY, REDIRECT };
 
-    threadedProxyWorker(int worker_id, proxy_type_t t): type_(t), worker_id_(worker_id) {}
+    threadedProxyWorker(uint32_t worker_id, proxy_type_t t): type_(t), worker_id_(worker_id) {}
 
     proxy_type_t type_;
 
     [[nodiscard]]
     inline proxy_type_t proxy_type() const { return type_; }
-    int worker_id_ = 0;
+    uint32_t worker_id_ = 0;
 
 };
 #endif //THREADEDWORKER_HPP

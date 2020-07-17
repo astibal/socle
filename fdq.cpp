@@ -6,13 +6,18 @@
 #define USE_SOCKETPAIR
 
 
-FdQueue::FdQueue() : log("acceptor.fdqueue") {
+FdQueue::FdQueue() : log("acceptor.fdqueue") {}
+
+std::pair<int, int> FdQueue::new_pair(uint32_t id) {
+
+    int hint_pair[2] = { -1, -1 };
+
 #ifdef USE_SOCKETPAIR
-    if(0 == ::socketpair(AF_UNIX, SOCK_STREAM|SOCK_NONBLOCK, 0, hint_pair_)) {
+    if(0 == ::socketpair(AF_UNIX, SOCK_STREAM|SOCK_NONBLOCK, 0, hint_pair)) {
         _inf("acceptor: using socketpair");
         sq_type_ = sq_type_t::SQ_SOCKETPAIR;
     }
-    else if( 0 == pipe2(hint_pair_, O_DIRECT | O_NONBLOCK)) {
+    else if( 0 == pipe2(hint_pair, O_DIRECT | O_NONBLOCK)) {
         _inf("acceptor: using pipe2");
         sq_type_ = sq_type_t::SQ_PIPE;
     }
@@ -20,23 +25,46 @@ FdQueue::FdQueue() : log("acceptor.fdqueue") {
 #else
     if(version_check(get_kernel_version(),"3.4")) {
         _deb("Acceptor: kernel supports O_DIRECT");
-        if ( 0 != pipe2(hint_pair_,O_DIRECT|O_NONBLOCK)) {
+        if ( 0 != pipe2(hint_pair,O_DIRECT|O_NONBLOCK)) {
             _err("ThreadAcceptor::new_raw: hint pipe not created, error[%d], %s", errno, string_error().c_str());
         }
     } else {
         _war("Acceptor: kernel doesn't support O_DIRECT");
-        if (0 != pipe2(hint_pair_,O_NONBLOCK)) {
+        if (0 != pipe2(hint_pair,O_NONBLOCK)) {
             _err("ThreadAcceptor::new_raw: hint pipe not created, error[%d], %s", errno, string_error().c_str());
         }
     }
 #endif
+
+    auto pa = std::make_pair(hint_pair[0], hint_pair[1]);
+
+    auto l_ = std::scoped_lock(get_lock());
+    hint_pairs_[id] = pa;
+
+    return pa;
 }
 
 FdQueue::~FdQueue() {
-    ::close(hint_pair_[0]);
-    ::close(hint_pair_[1]);
+    close_all();
 }
 
+int FdQueue::close_all() {
+
+    int s = 0;
+    std::for_each(hint_pairs_.begin(), hint_pairs_.end(), [&](auto& tup) {
+
+        auto const& [ key, p ] = tup;
+
+        ::close(p.first);
+        ::close(p.second);
+
+        s++;
+    });
+
+    hint_pairs_.clear();
+
+    return s;
+}
 
 const char* FdQueue::sq_type_str() const {
     switch (sq_type_) {
@@ -48,18 +76,21 @@ const char* FdQueue::sq_type_str() const {
     return "unknown";
 }
 
-int FdQueue::push(int s) {
+int FdQueue::push_all(int s) {
     std::lock_guard<std::mutex> lck(sq_lock_);
     sq_.push_front(s);
-    int wr = ::write(hint_pair_[1], "A", 1);
-    if( wr <= 0) {
-        _err("FdQueue::push: failed to write hint byte - error[%d]: %s", wr, string_error().c_str());
+
+    for(auto [ key, pair ]: hint_pairs_) {
+        int wr = ::write(pair.second, "A", 1);
+        if (wr <= 0) {
+            _err("FdQueue::push: failed to write hint byte - error[%d]: %s", wr, string_error().c_str());
+        }
     }
 
     return sq_.size();
 };
 
-int FdQueue::pop() {
+int FdQueue::pop(uint32_t worker_id) {
 
     int red = 0;
     char dummy_buffer[1];
@@ -89,3 +120,6 @@ int FdQueue::pop() {
     return returned_socket;
 }
 
+std::pair<int,int> FdQueue::hint_pair(uint32_t id) const {
+    return hint_pairs_.at(id);
+}

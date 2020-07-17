@@ -62,13 +62,13 @@ ThreadedAcceptor<Worker,SubWorker>::~ThreadedAcceptor() {
 template<class Worker, class SubWorker>
 void ThreadedAcceptor<Worker,SubWorker>::on_left_new_raw(int s) {
 	_dia("ThreadedAcceptor::on_left_new: connection [%d] pushed to the queue",s);
-	push(s);
+	hint_push_all(s);
 }
 
 template<class Worker, class SubWorker>
 void ThreadedAcceptor<Worker,SubWorker>::on_right_new_raw(int s) {
 	_dia("ThreadedAcceptor::on_right_new: connection [%d] pushed to the queue",s);
-	push(s);
+	hint_push_all(s);
 
 }
 
@@ -93,13 +93,22 @@ int ThreadedAcceptor<Worker,SubWorker>::create_workers(int count) {
 
 	for( unsigned int i = 0; i < nthreads; i++) {
 
-		auto *w = new Worker(this->com()->replicate(),i, proxy_type_);
+	    uint32_t this_worker_id = worker_id_max()++;
+
+	    auto pa = hint_new_pair(this_worker_id);
+
+        std::stringstream ss;
+        ss << "acceptor[" << std::this_thread::get_id() << "][" << i << "]: created pair " << pa.first << "," << pa.second;
+        _cons(ss);
+
+
+		auto *w = new Worker(this->com()->replicate(), this_worker_id, proxy_type_);
 		w->com()->nonlocal_dst(this->com()->nonlocal_dst());
 		w->parent(this);
         w->pollroot(true);
 
-        _dia("ThreadedAcceptor::create_workers setting worker's queue hint pipe socket %d",std::get<0>(hint_pair()));
-        w->com()->set_hint_monitor(std::get<0>(hint_pair()));
+        _dia("ThreadedAcceptor::create_workers setting worker's queue hint pipe socket %d", pa.first);
+        w->com()->set_hint_monitor(pa.first);
 
 		_dia("Created ThreadedAcceptorProxy 0x%x", w);
 
@@ -148,7 +157,7 @@ int ThreadedAcceptorProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
             this->state().dead(true);
         }
 
-        int s = p->pop();
+        int s = p->pop(worker_id_);
         if (s > 0) {
             _dia("ThreadedAcceptorProxy::run: removed from queue: 0x%016llx (socket %d)", s, s);
 
