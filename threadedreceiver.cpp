@@ -463,8 +463,7 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw_old(int sock) {
             
             std::lock_guard<std::recursive_mutex> l(DatagramCom::lock);
             
-            Datagram dgram;
-            struct Datagram& new_dgram = dgram;
+            auto new_dgram = std::make_shared<Datagram>();
             auto it = DatagramCom::datagrams_received.find(session_key);
             bool clashed = false;
             baseHostCX* clashed_cx = nullptr;
@@ -476,11 +475,11 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw_old(int sock) {
 
                 clash:
 
-                new_dgram.src = from;
-                new_dgram.dst = orig;
+                new_dgram->src = from;
+                new_dgram->dst = orig;
                 //d.rx.size(0);
-                new_dgram.socket = sock;
-                com()->unblock(new_dgram.socket);
+                new_dgram->socket_left = sock;
+                com()->unblock(new_dgram->socket_left);
                 
                 std::string str_src_host; unsigned short sport;
                 int src_family = inet_ss_address_unpack(&from,&str_src_host,&sport);
@@ -494,28 +493,28 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw_old(int sock) {
                     if(dst_family == AF_INET) {
 
                         int n = 1;
-                        if(0 != ::setsockopt(new_dgram.socket, SOL_SOCKET, SO_REUSEADDR, &n, sizeof(int))) {
-                            _err("cannot set socket %d option SO_REUSEADDR", new_dgram.socket);
+                        if(0 != ::setsockopt(new_dgram->socket_left, SOL_SOCKET, SO_REUSEADDR, &n, sizeof(int))) {
+                            _err("cannot set socket %d option SO_REUSEADDR", new_dgram->socket_left);
                         }
                         n = 1;
 
-                        if(0 != ::setsockopt(new_dgram.socket, SOL_IP, IP_RECVORIGDSTADDR, &n, sizeof(int))) {
-                            _err("cannot set socket %d option IP_RECVORIGDSTADDR", new_dgram.socket);
+                        if(0 != ::setsockopt(new_dgram->socket_left, SOL_IP, IP_RECVORIGDSTADDR, &n, sizeof(int))) {
+                            _err("cannot set socket %d option IP_RECVORIGDSTADDR", new_dgram->socket_left);
                         }
                         n = 1;
 
-                        if(0 != ::setsockopt(new_dgram.socket, SOL_IP, SO_BROADCAST, &n, sizeof(int))) {
-                            _err("cannot set socket %d option SO_BROADCAST", new_dgram.socket);
+                        if(0 != ::setsockopt(new_dgram->socket_left, SOL_IP, SO_BROADCAST, &n, sizeof(int))) {
+                            _err("cannot set socket %d option SO_BROADCAST", new_dgram->socket_left);
                         }
                         n = 1;
 
-                        if(0 != ::setsockopt(new_dgram.socket, SOL_IP, IP_TRANSPARENT, &n, sizeof(int))) {
-                            _err("cannot set socket %d option IP_TRANSPARENT", new_dgram.socket);
+                        if(0 != ::setsockopt(new_dgram->socket_left, SOL_IP, IP_TRANSPARENT, &n, sizeof(int))) {
+                            _err("cannot set socket %d option IP_TRANSPARENT", new_dgram->socket_left);
                         }
                         n = 1;
 
-                        if(0 != ::setsockopt(new_dgram.socket, SOL_IPV6, IPV6_TRANSPARENT, &n, sizeof(int))) {
-                            _err("cannot set socket %d option IPV6_TRANSPARENT", new_dgram.socket);
+                        if(0 != ::setsockopt(new_dgram->socket_left, SOL_IPV6, IPV6_TRANSPARENT, &n, sizeof(int))) {
+                            _err("cannot set socket %d option IPV6_TRANSPARENT", new_dgram->socket_left);
                         }
                         n = 1;
                         
@@ -549,18 +548,18 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw_old(int sock) {
                         ss_dst.sin_port = htons(dport);
                         ss_dst.sin_family = AF_INET;
                         
-                        ret_bin = ::bind (new_dgram.socket, (sockaddr*)&ss_dst, sizeof (struct sockaddr_in));
+                        ret_bin = ::bind (new_dgram->socket_left, (sockaddr*)&ss_dst, sizeof (struct sockaddr_in));
                         if(ret_bin != 0) _dia("ipv4 transparenting: bind error: %s",string_error().c_str()); // bind is not succeeding with already bound socket ... => this will create empbryonic connection
-                        ret_con = ::connect(new_dgram.socket, (sockaddr*)&ss_src, sizeof (struct sockaddr_in));
+                        ret_con = ::connect(new_dgram->socket_left, (sockaddr*)&ss_src, sizeof (struct sockaddr_in));
                         if(ret_con != 0) _err("ipv4 transparenting: connect error: %s",string_error().c_str());
                         
                     } else {
 
                         int n = 1;
-                        ::setsockopt(new_dgram.socket, SOL_SOCKET, SO_REUSEADDR, &n, sizeof(int)); n = 1;
-                        ::setsockopt(new_dgram.socket, SOL_IP, SO_BROADCAST, &n, sizeof(int)); n = 1;
-                        ::setsockopt(new_dgram.socket, SOL_IP, IPV6_RECVORIGDSTADDR, &n, sizeof(int)); n = 1;
-                        ::setsockopt(new_dgram.socket, SOL_IPV6, IPV6_TRANSPARENT, &n, sizeof(int));
+                        ::setsockopt(new_dgram->socket_left, SOL_SOCKET, SO_REUSEADDR, &n, sizeof(int)); n = 1;
+                        ::setsockopt(new_dgram->socket_left, SOL_IP, SO_BROADCAST, &n, sizeof(int)); n = 1;
+                        ::setsockopt(new_dgram->socket_left, SOL_IP, IPV6_RECVORIGDSTADDR, &n, sizeof(int)); n = 1;
+                        ::setsockopt(new_dgram->socket_left, SOL_IPV6, IPV6_TRANSPARENT, &n, sizeof(int));
 
                         sockaddr_storage ss_src{0};
                         sockaddr_storage ss_dst{0};
@@ -568,16 +567,16 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw_old(int sock) {
                         inet_pton(AF_INET6,str_src_host.c_str(),&ss_src); ss_src.ss_family=AF_INET6; ((sockaddr_in6*)&ss_src)->sin6_port = htons(sport);
                         inet_pton(AF_INET6,str_dst_host.c_str(),&ss_dst); ss_dst.ss_family=AF_INET6; ((sockaddr_in6*)&ss_dst)->sin6_port = htons(dport);
 
-                        ret_bin = ::bind (new_dgram.socket, (struct sockaddr*)&(new_dgram.dst), sizeof (struct sockaddr_storage));
+                        ret_bin = ::bind (new_dgram->socket_left, (struct sockaddr*)&(new_dgram->dst), sizeof (struct sockaddr_storage));
                         if(ret_bin != 0) _dia("ipv6 transparency: bind error: %s",string_error().c_str()); // bind is not succeeding with already bound socket ... => this will create empbryonic connection
-                        ret_con = ::connect(new_dgram.socket, (struct sockaddr*)&(new_dgram.src), sizeof (struct sockaddr_storage));
+                        ret_con = ::connect(new_dgram->socket_left, (struct sockaddr*)&(new_dgram->src), sizeof (struct sockaddr_storage));
                         if(ret_con != 0) _err("ipv6 transparency: connect error: %s",string_error().c_str());
                     }
 
                 }
 
                 _dia("ThreadedReceiver::on_left_new_raw[new %d]: datagram from: %s/%s:%u to %s/%s:%u",
-                     new_dgram.socket,
+                     new_dgram->socket_left,
                      inet_family_str(src_family).c_str(), str_src_host.c_str(), sport,
                      inet_family_str(dst_family).c_str(), str_dst_host.c_str(), dport
                             );            
@@ -590,21 +589,18 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw_old(int sock) {
                 
                 
                 // in case of virtual sockets, default ret_con is -127
-                if(ret_con == 0) {
+                if(ret_con == 0 && ret_bin == 0) {
                     // if bind succeeded, we have full back-channel socket to the client/client_port_
-                    if(ret_bin == 0) {
-                        new_dgram.embryonic = false;
-                    }
-                    
+
                     // d.socket is now connected to originator!
-                    com()->unblock(new_dgram.socket);
-                    new_dgram.real_socket = true;
+                    com()->unblock(new_dgram->socket_left);
+                    new_dgram->real_socket = true;
 
 
                     // for now, don't monitor this rebuilt socket. It should be handled by new proxy object later.
-                    com()->master()->unset_monitor(new_dgram.socket);
+                    com()->master()->unset_monitor(new_dgram->socket_left);
                     // also remove this proxy as handler
-                    com()->set_poll_handler(new_dgram.socket, nullptr);
+                    com()->set_poll_handler(new_dgram->socket_left, nullptr);
                     
                     for (auto bound_cx: left_bind_sockets) {
                         bound_cx->remove_socket();
@@ -624,10 +620,10 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw_old(int sock) {
                         return;
                     }
 
-                    auto l_ = std::scoped_lock(new_dgram.rx_queue_lock);
+                    auto l_ = std::scoped_lock(new_dgram->rx_queue_lock);
 
                     bool success = false;
-                    for(auto& elem: new_dgram.rx_queue) {
+                    for(auto& elem: new_dgram->rx_queue) {
                         if(elem.empty()) {
                             elem.append(recv_buf_, len);
                             success = true;
@@ -643,19 +639,11 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw_old(int sock) {
                 
                 
                 DatagramCom::datagrams_received[session_key] = new_dgram;
-                Datagram& n_it = DatagramCom::datagrams_received[session_key];
+                auto n_it = DatagramCom::datagrams_received[session_key];
                 
                 
                 if (clashed) {
-                    n_it.reuse = true;
-                    
-                    // fix crash when cx is already deleted, but not removed for some reason
-                    // clashed_cx->error() is no-op anyway, it just returns error state!
-                    if(clashed_cx != nullptr) {
-                        //clashed_cx->error();
-                    } else {
-                        n_it.embryonic = true;
-                    }
+                    n_it->reuse = true;
                 }
                 
                 if(clashed) {
@@ -663,10 +651,10 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw_old(int sock) {
                 } else {
                     _dia("ThreadedReceiver::on_left_new_raw[%d]: inserting new session key in storage: key=%d, bytes=%d",sock, session_key, len);
                 }
-                push(session_key);
+                hint_push_all(session_key);
             }
             else {
-                Datagram& o_it = DatagramCom::datagrams_received[session_key];
+                auto o_it = DatagramCom::datagrams_received[session_key];
 
                 bool clashed_cond = false;
                 
@@ -676,8 +664,8 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw_old(int sock) {
                 s_src = inet_ss_str(&from);
                 s_dst = inet_ss_str(&orig);
                 
-                d_src = inet_ss_str(&o_it.src);
-                d_dst = inet_ss_str(&o_it.dst);
+                d_src = inet_ss_str(&o_it->src);
+                d_dst = inet_ss_str(&o_it->dst);
                 
                 _deb("ThreadedReceiver::on_left_new_raw[%d]: key %d: clash test %s:%s vs. %s:%s", sock, session_key, s_src.c_str(),s_dst.c_str(),d_src.c_str(),d_dst.c_str());
                                 
@@ -685,17 +673,17 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw_old(int sock) {
                 if( s_src != d_src || s_dst != d_dst) { clashed_cond = true; }
                 
                 if(clashed_cond) {
-                    _dia("ThreadedReceiver::on_left_new_raw[%d]: key %d: session clash with cx@%x!",sock, session_key,o_it.cx);
+                    _dia("ThreadedReceiver::on_left_new_raw[%d]: key %d: session clash with cx@%x!",sock, session_key,o_it->cx);
                     clashed = true;
-                    clashed_cx = o_it.cx;
+                    clashed_cx = o_it->cx;
                     
                     goto clash;
                 }
                 
                 
-                auto bl_ = std::scoped_lock(o_it.rx_queue_lock);
+                auto bl_ = std::scoped_lock(o_it->rx_queue_lock);
 
-                auto queue_bytes = o_it.queue_bytes();
+                auto queue_bytes = o_it->queue_bytes();
 
                 if(queue_bytes > 0) {
                     // If there are data, we apparently can't catch up with the speed.
@@ -703,7 +691,7 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw_old(int sock) {
                     _dia("ThreadedReceiver::on_left_new_raw[%d]: key %d: already queued %dB of data",sock, session_key, queue_bytes);
 
                     // no need to iterate current queue and dump it atm
-                    //_deb("                              data for key %d\n%s",session_key,hex_dump(o_it.rx,4).c_str());
+                    //_deb("                              data for key %d\n%s",session_key,hex_dump(o_it->rx,4).c_str());
                 }
                     
                 
@@ -712,9 +700,9 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw_old(int sock) {
                 
 
                 auto& picked_buffer = [&o_it]() -> buffer& {
-                    auto& fallback = o_it.rx_queue.back();
+                    auto& fallback = o_it->rx_queue.back();
 
-                    for(auto& r: o_it.rx_queue) {
+                    for(auto& r: o_it->rx_queue) {
                         if(r.empty()) {
                             return r;
                         }
@@ -725,8 +713,8 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw_old(int sock) {
                 picked_buffer.size(0);
                 picked_buffer.append(recv_buf_,len);
                 
-                if(o_it.cx) {
-                    baseCom* com = o_it.cx->com();
+                if(o_it->cx) {
+                    baseCom* com = o_it->cx->com();
                     auto* um = dynamic_cast<DatagramCom*>(com->master());
                     if(um) {
                         std::lock_guard<std::recursive_mutex> l_(DatagramCom::lock);
@@ -734,10 +722,10 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw_old(int sock) {
                     }
                     
                     // mark target cx's socket as write-monitor, triggering proxy session.
-                    if(o_it.cx->peercom()) {
-                        int ps = o_it.cx->peer()->socket();
+                    if(o_it->cx->peercom()) {
+                        int ps = o_it->cx->peer()->socket();
                         _deb("write socket hint to peer's socket: %d",ps);
-                        o_it.cx->peercom()->set_write_monitor(ps); 
+                        o_it->cx->peercom()->set_write_monitor(ps);
                     } else {
                         _err("write socket hint to peer's socket can't be set, peer or peercom doesn't exist!");
                     } 
@@ -780,6 +768,9 @@ int ThreadedReceiver<Worker,SubWorker>::create_workers(int count) {
     }
     
     Worker::workers_total() = nthreads;
+
+//    int cl = hint_close_all();
+//    _dia("ThreadedReceiver::create_workers: closed %d previously created hint socketpairs", cl);
 
     for( unsigned int i = 0; i < nthreads; i++) {
 
