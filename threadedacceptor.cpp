@@ -32,8 +32,8 @@
 
 
 
-template<class Worker, class SubWorker>
-ThreadedAcceptor<Worker,SubWorker>::ThreadedAcceptor (std::shared_ptr<FdQueue> fdq, baseCom *c, proxy_type t):
+template<class Worker>
+ThreadedAcceptor<Worker>::ThreadedAcceptor (std::shared_ptr<FdQueue> fdq, baseCom *c, proxy_type t):
     baseProxy(c),
     FdQueueHandler(fdq),
     proxy_type_(t) {
@@ -41,8 +41,8 @@ ThreadedAcceptor<Worker,SubWorker>::ThreadedAcceptor (std::shared_ptr<FdQueue> f
     baseProxy::new_raw(true);
 }
 
-template<class Worker, class SubWorker>
-ThreadedAcceptor<Worker,SubWorker>::~ThreadedAcceptor() { 
+template<class Worker>
+ThreadedAcceptor<Worker>::~ThreadedAcceptor() {
 	if(! tasks_.empty())  {
 
 		for(auto& thread_worker: tasks_) {
@@ -59,22 +59,22 @@ ThreadedAcceptor<Worker,SubWorker>::~ThreadedAcceptor() {
 }
 
 
-template<class Worker, class SubWorker>
-void ThreadedAcceptor<Worker,SubWorker>::on_left_new_raw(int s) {
+template<class Worker>
+void ThreadedAcceptor<Worker>::on_left_new_raw(int s) {
 	_dia("ThreadedAcceptor::on_left_new: connection [%d] pushed to the queue",s);
 	hint_push_all(s);
 }
 
-template<class Worker, class SubWorker>
-void ThreadedAcceptor<Worker,SubWorker>::on_right_new_raw(int s) {
+template<class Worker>
+void ThreadedAcceptor<Worker>::on_right_new_raw(int s) {
 	_dia("ThreadedAcceptor::on_right_new: connection [%d] pushed to the queue",s);
 	hint_push_all(s);
 
 }
 
 
-template<class Worker, class SubWorker>
-int ThreadedAcceptor<Worker,SubWorker>::create_workers(int count) {
+template<class Worker>
+int ThreadedAcceptor<Worker>::create_workers(int count) {
 
 	auto nthreads = std::thread::hardware_concurrency();
     _dia("Detected %d cores to use, multiplier to apply: %d.", nthreads, core_multiplier());
@@ -119,8 +119,8 @@ int ThreadedAcceptor<Worker,SubWorker>::create_workers(int count) {
 }
 
 
-template<class Worker, class SubWorker>
-int ThreadedAcceptor<Worker,SubWorker>::run() {
+template<class Worker>
+int ThreadedAcceptor<Worker>::run() {
 	
     pollroot(true);
 	create_workers(worker_count_preference());
@@ -137,8 +137,8 @@ int ThreadedAcceptor<Worker,SubWorker>::run() {
 	return tasks_.size();
 }
 
-template<class Worker, class SubWorker>
-void ThreadedAcceptor<Worker,SubWorker>::on_run_round() {
+template<class Worker>
+void ThreadedAcceptor<Worker>::on_run_round() {
     // std::this_thread::yield();
 }
 
@@ -147,7 +147,7 @@ void ThreadedAcceptor<Worker,SubWorker>::on_run_round() {
 template<class SubWorker>
 int ThreadedAcceptorProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
 	
-	auto *p = (ThreadedAcceptor<ThreadedAcceptorProxy<SubWorker>,SubWorker> *)MasterProxy::parent();
+	auto *p = (ThreadedAcceptor<ThreadedAcceptorProxy<SubWorker>> *)MasterProxy::parent();
 	if(p == nullptr) {
 		_fat("PARENT is NULL");
 	} else {

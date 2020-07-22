@@ -33,7 +33,7 @@
 #include <mpstd.hpp>
 #include <fdq.hpp>
 
-template<class Worker, class SubWorker>
+template<class Worker>
 class ThreadedAcceptor : public baseProxy, public FdQueueHandler {
 public:
     using proxy_type = threadedProxyWorker::proxy_type_t;

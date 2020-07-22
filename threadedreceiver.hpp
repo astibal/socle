@@ -36,7 +36,7 @@
 
 
 
-template<class Worker, class SubWorker>
+template<class Worker>
 class ThreadedReceiver : public baseProxy, public FdQueueHandler {
 public:
 

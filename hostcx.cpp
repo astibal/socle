@@ -132,7 +132,7 @@ baseHostCX::~baseHostCX() {
 
 
 void baseHostCX::com(baseCom* c) {
-    if(com_) delete com_;
+
     com_ = c;
     if(c != nullptr) {
         com_->init(this);
@@ -150,15 +150,15 @@ int baseHostCX::connect() {
 
     opening(true);
 
-    _deb("HostCX::connect[%s]: blocking=%d",c_name(), com()->GLOBAL_IO_BLOCKING());
+    _deb("HostCX::connect[%s]: blocking=%d",c_name(), baseCom::GLOBAL_IO_BLOCKING());
     fds_ = com()->connect(host_.c_str(),port_.c_str());
     error_ = false;
 
-    if (fds_ > 0 && com()->GLOBAL_IO_BLOCKING()) {
+    if (fds_ > 0 && baseCom::GLOBAL_IO_BLOCKING()) {
         _deb("HostCX::connect[%s]: blocking, connected successfully, socket %d",c_name(),fds_);
         opening(false);
     }
-    else if (com()->GLOBAL_IO_BLOCKING()) {
+    else if (baseCom::GLOBAL_IO_BLOCKING()) {
         _deb("HostCX::connect[%s]: blocking, failed!",c_name());
         opening(false);
     }
@@ -508,7 +508,7 @@ void baseHostCX::pre_read() {
 void baseHostCX::post_read() {
 }
 
-int baseHostCX::io_write(unsigned char* data, size_t tx_size, int flags = 0) {
+int baseHostCX::io_write(unsigned char* data, size_t tx_size, int flags = 0) const {
     return com()->write(socket(), data, tx_size, flags);
 }
 

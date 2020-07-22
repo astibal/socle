@@ -37,8 +37,8 @@
 
 #define USE_SOCKETPAIR
 
-template<class Worker, class SubWorker>
-ThreadedReceiver<Worker,SubWorker>::ThreadedReceiver(std::shared_ptr<FdQueue> fdq, baseCom* c, threadedProxyWorker::proxy_type_t t):
+template<class Worker>
+ThreadedReceiver<Worker>::ThreadedReceiver(std::shared_ptr<FdQueue> fdq, baseCom* c, threadedProxyWorker::proxy_type_t t):
     baseProxy(c),
     FdQueueHandler(std::move(fdq)),
     proxy_type_(t) {
@@ -46,8 +46,8 @@ ThreadedReceiver<Worker,SubWorker>::ThreadedReceiver(std::shared_ptr<FdQueue> fd
     baseProxy::new_raw(true);
 }
 
-template<class Worker, class SubWorker>
-ThreadedReceiver<Worker,SubWorker>::~ThreadedReceiver() {
+template<class Worker>
+ThreadedReceiver<Worker>::~ThreadedReceiver() {
     if(! tasks_.empty())  {
 
         for(auto& thread_worker: tasks_) {
@@ -63,8 +63,8 @@ ThreadedReceiver<Worker,SubWorker>::~ThreadedReceiver() {
     }
 }
 
-template<class Worker, class SubWorker>
-bool ThreadedReceiver<Worker,SubWorker>::is_quick_port(int sock, short unsigned int dport) {
+template<class Worker>
+bool ThreadedReceiver<Worker>::is_quick_port(int sock, short unsigned int dport) {
     
     bool use_virtual_socket = false;
     
@@ -97,8 +97,8 @@ bool ThreadedReceiver<Worker,SubWorker>::is_quick_port(int sock, short unsigned 
 
 
 
-template<class Worker, class SubWorker>
-std::optional<packet_info> ThreadedReceiver<Worker,SubWorker>::process_anc_data(int sock, msghdr* msg) {
+template<class Worker>
+std::optional<packet_info> ThreadedReceiver<Worker>::process_anc_data(int sock, msghdr* msg) {
 
     bool found_addr = false;
     packet_info ret;
@@ -165,8 +165,8 @@ std::optional<packet_info> ThreadedReceiver<Worker,SubWorker>::process_anc_data(
 }
 
 
-template<class Worker, class SubWorker>
-bool ThreadedReceiver<Worker,SubWorker>::add_first_datagrams(int sock, packet_info& pinfo) {
+template<class Worker>
+bool ThreadedReceiver<Worker>::add_first_datagrams(int sock, packet_info& pinfo) {
 
     auto session_key = pinfo.create_session_key(true);
 
@@ -258,8 +258,8 @@ bool ThreadedReceiver<Worker,SubWorker>::add_first_datagrams(int sock, packet_in
 }
 
 
-template<class Worker, class SubWorker>
-void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
+template<class Worker>
+void ThreadedReceiver<Worker>::on_left_new_raw(int sock) {
 
     _dia("ThreadedReceiver::on_left_new_raw[%d]: start", sock);
 
@@ -349,8 +349,8 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw(int sock) {
     } while(::recv(sock, dummy_buffer,32,O_NONBLOCK|MSG_PEEK) > 0);
 }
 
-template<class Worker, class SubWorker>
-void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw_old(int sock) {
+template<class Worker>
+void ThreadedReceiver<Worker>::on_left_new_raw_old(int sock) {
     
     _dia("ThreadedReceiver::on_left_new_raw[%d]: start",sock);
 
@@ -742,16 +742,16 @@ void ThreadedReceiver<Worker,SubWorker>::on_left_new_raw_old(int sock) {
     } while(::recv(sock, dummy_buffer,32,O_NONBLOCK|MSG_PEEK) > 0);
 }
 
-template<class Worker, class SubWorker>
-void ThreadedReceiver<Worker,SubWorker>::on_right_new_raw(int s) {
+template<class Worker>
+void ThreadedReceiver<Worker>::on_right_new_raw(int s) {
     _dia("ThreadedReceiver::on_right_new: connection [%d] pushed to the queue",s);
     hint_push_all(s);
 
 }
 
 
-template<class Worker, class SubWorker>
-int ThreadedReceiver<Worker,SubWorker>::create_workers(int count) {
+template<class Worker>
+int ThreadedReceiver<Worker>::create_workers(int count) {
 
     auto nthreads = std::thread::hardware_concurrency();
     _dia("Detected %d cores to use, multiplier to apply: %d.", nthreads, core_multiplier());
@@ -800,8 +800,8 @@ int ThreadedReceiver<Worker,SubWorker>::create_workers(int count) {
 }
 
 
-template<class Worker, class SubWorker>
-int ThreadedReceiver<Worker,SubWorker>::run() {
+template<class Worker>
+int ThreadedReceiver<Worker>::run() {
     
     pollroot(true);
     create_workers(worker_count_preference());
@@ -818,14 +818,14 @@ int ThreadedReceiver<Worker,SubWorker>::run() {
     return tasks_.size();
 }
 
-template<class Worker, class SubWorker>
-void ThreadedReceiver<Worker,SubWorker>::on_run_round() {
+template<class Worker>
+void ThreadedReceiver<Worker>::on_run_round() {
     //std::this_thread::yield();
 }
 
 
-template<class Worker, class SubWorker>
-int ThreadedReceiver<Worker, SubWorker>::pop_for_worker(int id) {
+template<class Worker>
+int ThreadedReceiver<Worker>::pop_for_worker(int id) {
 
     // this is unsolvable data race: we don't know if we pop fd for us or not.
     // auto pop_or_not = pop_if([id](int fd) { ((unsigned int)fd) % Worker::workers_total() == (unsigned int)id; });
@@ -839,7 +839,7 @@ int ThreadedReceiver<Worker, SubWorker>::pop_for_worker(int id) {
 template<class SubWorker>
 int ThreadedReceiverProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
     
-    auto *p = (ThreadedReceiver<ThreadedReceiverProxy<SubWorker>,SubWorker> *)MasterProxy::parent();
+    auto *p = (ThreadedReceiver<ThreadedReceiverProxy<SubWorker> > *)MasterProxy::parent();
     if(p == nullptr) {
         throw proxy_error("PARENT is NULL");
     }
