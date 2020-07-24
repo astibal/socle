@@ -116,11 +116,11 @@ struct Datagram {
     }
 
 
-    int socket_left;
-    int socket_right;
+    int socket_left = 0;
+    int socket_right = 0;
     bool real_socket = false;   // indicate if inbound connection was suceessfully bound, so we can use
                                 // real socket instead of virtual.
-    
+
     bool reuse = false;         // make this true if there is e.g. clash and closed CX/Com should not
                                 // trigger it's removal from the pool: com()->close() will otherwise
                                 // erase it.
@@ -205,6 +205,11 @@ public:
     virtual bool resolve_nonlocal_socket(int sock);
     bool resolve_socket(bool source, int s, std::string* target_host, std::string* target_port, sockaddr_storage* target_storage) override;
 protected:
+
+    bool embryonic = true;      // is it a new connection? If so, we should look in datagram store before reading real
+                                // sockets. After all datagram early data are processed, we should switch it to false
+                                // and not read from store anymore
+
 
     unsigned int bind_sock_family = AF_INET6;
     int bind_sock_type = SOCK_DGRAM;
