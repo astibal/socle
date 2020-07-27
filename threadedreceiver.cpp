@@ -892,9 +892,21 @@ int ThreadedReceiverProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
         try {
             cx = this->new_cx(virtual_socket);
             record->cx = cx;
+
+            if(auto ucom = dynamic_cast<UDPCom*>(cx->com()); ucom) {
+                // set virtual socket to read early data
+                ucom->embryonic_id(virtual_socket);
+
+                // we need to monitor also embryonic socket
+                com()->set_monitor(virtual_socket);
+                com()->set_poll_handler(virtual_socket, this);
+            } else {
+                throw socle::com_error("cx com is not UDPCom");
+            }
+
         }
-        catch (socle::com_is_null const &e) {
-            _err("cannot handover cx to proxy");
+        catch (socle::com_error const &e) {
+            _err("cannot handover cx to proxy: %s", e.what());
         }
     }
 

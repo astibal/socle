@@ -204,11 +204,14 @@ public:
 
     virtual bool resolve_nonlocal_socket(int sock);
     bool resolve_socket(bool source, int s, std::string* target_host, std::string* target_port, sockaddr_storage* target_storage) override;
+
+    inline uint32_t embryonic_id() const { return embryonic_id_; };
+    inline uint32_t embryonic_id(uint32_t n) { auto tmp = embryonic_id_; embryonic_id_ = n; return tmp; };
 protected:
 
-    bool embryonic = true;      // is it a new connection? If so, we should look in datagram store before reading real
-                                // sockets. After all datagram early data are processed, we should switch it to false
-                                // and not read from store anymore
+    uint32_t embryonic_id_ = 0;      // is it a new connection? If non-zero, we should look in datagram store before reading real
+                                    // sockets. After all datagram early data are processed, we should set it to 0
+                                    // and not read from store anymore
 
 
     unsigned int bind_sock_family = AF_INET6;

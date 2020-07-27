@@ -333,8 +333,10 @@ bool UDPCom::in_readset(int s) {
                 _deb("UDPCom::in_readset[%d]: record contains real socket %d", s, record->socket_left);
                 real_socket = record->socket_left;
                 real = true;
-            } else {
+            }
 
+            // even though record contains real socket, we will always return true as long as there are pending early data
+            {
                 auto l_ = std::scoped_lock(record->rx_queue_lock);
 
                 int elem = 0;
@@ -405,8 +407,22 @@ int UDPCom::poll() {
 
 int UDPCom::read(int _fd, void* _buf, size_t _n, int _flags) {
 
-    _dum("UDPCom::read[%d] read", _fd);
-    
+    _cons(string_format("UDPCom::read[%d] read", _fd).c_str());
+
+
+    if(embryonic_id() != 0) {
+
+        _cons("embryonic: reading from pool");
+
+        auto  r = read_from_pool(embryonic_id(), _buf, _n, _flags);
+
+        if(! in_readset(embryonic_id())) {
+            embryonic_id(0);
+        }
+
+        return r;
+    }
+
     if (_fd < 0) {
         return read_from_pool(_fd, _buf, _n, _flags);
     } else {
