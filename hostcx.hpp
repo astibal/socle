@@ -157,25 +157,19 @@ class Proxy;
 
 namespace socle {
 
-    class com_error : public std::exception {
+    class com_error : public std::runtime_error {
     public:
-        [[nodiscard]] const char* what () const noexcept override  {
-            return "Com object error";
-        }
+        explicit com_error(const char* w) : std::runtime_error(w) {};
     };
 
     class com_is_null : public socle::com_error {
     public:
-        [[nodiscard]] const char* what () const noexcept override  {
-            return "Com object is nullptr";
-        }
+        com_is_null() : com_error("com is null") {};
     };
 
     class create_socket_failed : public com_error{
     public:
-        [[nodiscard]] const char* what () const noexcept override  {
-            return "Cannot create a new socket";
-        }
+        create_socket_failed() : com_error("failed to create a socket") {};
     };
 }
 
