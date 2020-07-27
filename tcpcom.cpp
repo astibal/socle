@@ -17,6 +17,7 @@
 */
 #include <netinet/tcp.h>
 #include <tcpcom.hpp>
+#include <socketinfo.hpp>
 #include <internet.hpp>
 
 
@@ -63,7 +64,7 @@ int TCPCom::connect(const char* host, const char* port) {
             _deb("TCPCom::connect[%s:%s]: about to name socket[%d] after: %s:%d", host, port, sfd, nonlocal_src_host().c_str(), nonlocal_src_port());
             int bind_status = namesocket(sfd, nonlocal_src_host(), nonlocal_src_port(), l3_proto());
             if (bind_status != 0) {
-                    _war("cannot bind this %s socket to %s:%d: %s", inet_family_str(l3_proto()).c_str(), nonlocal_src_host().c_str(), nonlocal_src_port(), strerror(bind_status));
+                    _war("cannot bind this %s socket to %s:%d: %s", SocketInfo::inet_family_str(l3_proto()).c_str(), nonlocal_src_host().c_str(), nonlocal_src_port(), strerror(bind_status));
             } else {
                 _dia("TCPCom::connect[%s:%s]: socket[%d] transparency for %s:%d OK", host, port, sfd, nonlocal_src_host().c_str(), nonlocal_src_port());
             }

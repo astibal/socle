@@ -43,8 +43,8 @@ add_library(socle_lib
         threadedacceptor.cpp
         threadedreceiver.hpp
         threadedreceiver.cpp
-        packetinfo.hpp
-        packetinfo.cpp
+        socketinfo.hpp
+        socketinfo.cpp
         fdq.hpp
         fdq.cpp)
 target_link_libraries(socle_lib socle_common_lib)

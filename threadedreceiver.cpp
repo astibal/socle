@@ -98,10 +98,10 @@ bool ThreadedReceiver<Worker>::is_quick_port(int sock, short unsigned int dport)
 
 
 template<class Worker>
-std::optional<packet_info> ThreadedReceiver<Worker>::process_anc_data(int sock, msghdr* msg) {
+std::optional<SocketInfo> ThreadedReceiver<Worker>::process_anc_data(int sock, msghdr* msg) {
 
     bool found_addr = false;
-    packet_info ret;
+    SocketInfo ret;
 
     // iterate through all the control headers
     int i = 0;
@@ -144,13 +144,13 @@ std::optional<packet_info> ThreadedReceiver<Worker>::process_anc_data(int sock, 
                 auto ss = string_format(
                         "ThreadedReceiver::on_left_new_raw[%d]: datagram from: %s/%s:%u to %s/%s:%u (%s)",
                         sock,
-                        inet_family_str(ret.src_family).c_str(), ret.str_src_host.c_str(), ret.sport,
-                        inet_family_str(ret.dst_family).c_str(), ret.str_dst_host.c_str(), ret.dport,
+                        SocketInfo::inet_family_str(ret.src_family).c_str(), ret.str_src_host.c_str(), ret.sport,
+                        SocketInfo::inet_family_str(ret.dst_family).c_str(), ret.str_dst_host.c_str(), ret.dport,
                         use_virtual_socket ? "quick" : "cooked"
                 );
                 _cons(ss.c_str());
             }
-            catch (packet_info_error const& e) {
+            catch (socket_info_error const& e) {
                 _cons("failed to parse out packet credentials");
             }
 
@@ -166,13 +166,13 @@ std::optional<packet_info> ThreadedReceiver<Worker>::process_anc_data(int sock, 
 
 
 template<class Worker>
-bool ThreadedReceiver<Worker>::add_first_datagrams(int sock, packet_info& pinfo) {
+bool ThreadedReceiver<Worker>::add_first_datagrams(int sock, SocketInfo& pinfo) {
 
     auto session_key = pinfo.create_session_key(true);
 
 
     // lambda creating a new entry
-    auto create_new_entry = [](int sock, packet_info& pinfo) -> std::shared_ptr<Datagram> {
+    auto create_new_entry = [](int sock, SocketInfo& pinfo) -> std::shared_ptr<Datagram> {
         auto entry = std::make_shared<Datagram>();
 
         entry->src = pinfo.src_ss.value();
@@ -436,12 +436,12 @@ void ThreadedReceiver<Worker>::on_left_new_raw_old(int sock) {
                 if(src_family == AF_INET) {
                     _deb("session key: source socket is IPv4");
 
-                    session_key = packet_info::create_session_key4(&from,&orig);
+                    session_key = SocketInfo::create_session_key4(&from, &orig);
                 }
                 else if(src_family == AF_INET6) {
                     _deb("session key: source socket is IPv6");
 
-                    session_key = packet_info::create_session_key6(&from,&orig);
+                    session_key = SocketInfo::create_session_key6(&from, &orig);
                 }
 
                 _deb("ThreadedReceiver::on_left_new_raw[%d]: session key %d", sock, session_key );
@@ -886,8 +886,8 @@ int ThreadedReceiverProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
         cx = nullptr;
 
         _deb("Record dump: cx=0x%x dst=%s real_socket=%d reuse=%d rx_size=0x%x socket_l=%d socket_r=%d src=%s",
-             record->cx, inet_ss_str(&record->dst).c_str(), record->real_socket,
-             record->reuse, record->queue_bytes_l(), record->socket_left, record->socket_right, inet_ss_str(&record->src).c_str());
+             record->cx, SocketInfo::inet_ss_str(&record->dst).c_str(), record->real_socket,
+             record->reuse, record->queue_bytes_l(), record->socket_left, record->socket_right, SocketInfo::inet_ss_str(&record->src).c_str());
 
         try {
             cx = this->new_cx(virtual_socket);

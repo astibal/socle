@@ -19,8 +19,24 @@
 #include <fcntl.h>
 #include <random>
 
-#include <packetinfo.hpp>
+#include <socketinfo.hpp>
 #include <common/internet.hpp>
+
+
+void SocketInfo::unpack_src_ss() {
+
+    if(! src_ss.has_value()) throw socket_info_error("cannot obtain source details");
+
+    src_family = inet_ss_address_unpack(& src_ss.value(), &str_src_host, &sport);
+};
+
+
+void SocketInfo::unpack_dst_ss() {
+
+    if(! dst_ss.has_value()) throw socket_info_error("cannot obtain destination details");
+
+    dst_family = inet_ss_address_unpack(& dst_ss.value(), &str_dst_host, &dport);
+};
 
 
 sockaddr_storage pack_ss(int family, const char* host, unsigned short port) {
@@ -45,17 +61,17 @@ sockaddr_storage pack_ss(int family, const char* host, unsigned short port) {
     return ss;
 }
 
-void packet_info::pack_dst_ss () {
+void SocketInfo::pack_dst_ss () {
     dst_ss = std::make_optional(pack_ss(dst_family, str_dst_host.c_str(), dport));
 }
 
-void packet_info::pack_src_ss () {
+void SocketInfo::pack_src_ss () {
     src_ss = std::make_optional(pack_ss(src_family, str_src_host.c_str(), sport));
 }
 
 
 
-uint32_t packet_info::create_session_key(bool shift) {
+uint32_t SocketInfo::create_session_key(bool shift) {
 
 
     if(! src_ss.has_value()) {
@@ -74,7 +90,7 @@ uint32_t packet_info::create_session_key(bool shift) {
     }
 }
 
-uint32_t packet_info::create_session_key4(sockaddr_storage* from, sockaddr_storage* orig, bool shift) {
+uint32_t SocketInfo::create_session_key4(sockaddr_storage* from, sockaddr_storage* orig, bool shift) {
 
     uint32_t s = inet::to_sockaddr_in(from)->sin_addr.s_addr;
     uint32_t d = inet::to_sockaddr_in(orig)->sin_addr.s_addr;
@@ -96,7 +112,7 @@ uint32_t packet_info::create_session_key4(sockaddr_storage* from, sockaddr_stora
     return mirand; // however we return it as the key, therefore cast to unsigned int
 }
 
-uint32_t packet_info::create_session_key6(sockaddr_storage* from, sockaddr_storage* orig, bool shift) {
+uint32_t SocketInfo::create_session_key6(sockaddr_storage* from, sockaddr_storage* orig, bool shift) {
 
     uint32_t s0 = ((uint32_t*)&inet::to_sockaddr_in6(from)->sin6_addr)[0];
     uint32_t s1 = ((uint32_t*)&inet::to_sockaddr_in6(from)->sin6_addr)[1];
@@ -124,7 +140,7 @@ uint32_t packet_info::create_session_key6(sockaddr_storage* from, sockaddr_stora
 }
 
 
-std::pair<int,int> packet_info::create_socketpair() {
+std::pair<int,int> SocketInfo::create_socketpair() {
 
     std::stringstream ss;
 
@@ -133,7 +149,7 @@ std::pair<int,int> packet_info::create_socketpair() {
 
         if (fd < 0) {
             _cons("socket failed");
-            throw packet_info_error("socket call failed");
+            throw socket_info_error("socket call failed");
 
         }
         int n;
@@ -161,7 +177,7 @@ std::pair<int,int> packet_info::create_socketpair() {
             }
         }
         else {
-            throw packet_info_error("cannot set transparency for unknown family");
+            throw socket_info_error("cannot set transparency for unknown family");
         }
 
         if (int oldf = fcntl(fd, F_GETFL, 0) ; ! (oldf & O_NONBLOCK)) {
@@ -234,3 +250,78 @@ std::pair<int,int> packet_info::create_socketpair() {
     return std::make_pair(fd_left, fd_right);
 }
 
+std::string SocketInfo::inet_family_str(int fa) {
+    switch(fa) {
+        case AF_INET:
+            return std::string("ip4");
+        case AF_INET6:
+            return std::string("ip6");
+
+        default:
+            return string_format("p%d",fa);
+    }
+}
+
+
+int SocketInfo::inet_ss_address_unpack(sockaddr_storage* ptr, std::string* dst, unsigned short* port) {
+
+    constexpr size_t buf_sz = 64;
+
+    char b[buf_sz]; memset(b,0,buf_sz);
+    int family = ptr->ss_family;
+    unsigned short val_port = 0;
+
+    if(family == AF_INET6) {
+        inet_ntop(ptr->ss_family,&(((struct sockaddr_in6*) ptr)->sin6_addr),b,buf_sz);
+        val_port = ((struct sockaddr_in6*) ptr)->sin6_port;
+    }
+    else if(family == AF_INET) {
+        inet_ntop(ptr->ss_family,&(((struct sockaddr_in*) ptr)->sin_addr),b,buf_sz);
+        val_port = ((struct sockaddr_in*) ptr)->sin_port;
+    }
+
+    std::string mapped4_temp = b;
+    if(mapped4_temp.find("::ffff:") == 0) {
+        mapped4_temp = mapped4_temp.substr(7);
+        family = AF_INET;
+    }
+
+    if(dst != nullptr) {
+        // function can be useful just to detect mapped IP
+        dst->assign(mapped4_temp);
+    }
+    if(port != nullptr) {
+        *port = ntohs(val_port);
+    }
+    return family;
+}
+
+
+int SocketInfo::inet_ss_address_remap(sockaddr_storage* orig, sockaddr_storage* mapped) {
+    std::string ip_part;
+    unsigned short port_part;
+
+    int fa = inet_ss_address_unpack(orig,&ip_part,&port_part);
+
+    if(fa == AF_INET) {
+        inet_pton(fa,ip_part.c_str(),&((struct sockaddr_in*)mapped)->sin_addr);
+        ((struct sockaddr_in*)mapped)->sin_port = htons(port_part);
+        mapped->ss_family = fa;
+    }
+    else if(fa == AF_INET6) {
+        inet_pton(fa,ip_part.c_str(),&((struct sockaddr_in6*)mapped)->sin6_addr);
+        ((struct sockaddr_in6*)mapped)->sin6_port = htons(port_part);
+        mapped->ss_family = fa;
+    }
+
+    return fa;
+}
+
+std::string SocketInfo::inet_ss_str(sockaddr_storage* s) {
+    std::string ip;
+    unsigned short port;
+
+    int fa = inet_ss_address_unpack(s,&ip,&port);
+
+    return string_format("%s/%s:%d", inet_family_str(fa).c_str(),ip.c_str(),port);
+}

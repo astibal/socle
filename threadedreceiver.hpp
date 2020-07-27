@@ -23,7 +23,7 @@
 #include <baseproxy.hpp>
 #include <masterproxy.hpp>
 #include <threadedworker.hpp>
-#include <packetinfo.hpp>
+#include <socketinfo.hpp>
 
 #include <vector>
 #include <deque>
@@ -52,13 +52,13 @@ public:
 
 
     // get original IP, etc
-    std::optional<packet_info> process_anc_data(int sock, msghdr* msg);
+    std::optional<SocketInfo> process_anc_data(int sock, msghdr* msg);
 
     // enqueue new data to early received packets from catch-all socket
     // return  tuple:
     // 0: true if the session is new
     // 1: session key
-    bool add_first_datagrams(int sock, packet_info& pinfo);
+    bool add_first_datagrams(int sock, SocketInfo& pinfo);
     void on_left_new_raw(int) override;
 
 
