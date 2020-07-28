@@ -53,7 +53,6 @@ struct Datagram {
         dst = r.dst;
         src = r.src;
         socket_left = r.socket_left;
-        socket_right = r.socket_right;
         real_socket = r.real_socket;
         reuse = r.reuse;
         cx = r.cx;
@@ -65,7 +64,6 @@ struct Datagram {
         dst = r.dst;
         src = r.src;
         socket_left = r.socket_left;
-        socket_right = r.socket_right;
 
         real_socket = r.real_socket;
         reuse = r.reuse;
@@ -117,8 +115,7 @@ struct Datagram {
 
 
     int socket_left = 0;
-    int socket_right = 0;
-    bool real_socket = false;   // indicate if inbound connection was suceessfully bound, so we can use
+    bool real_socket = false;   // indicate if inbound connection was successfully bound, so we can use
                                 // real socket instead of virtual.
 
     bool reuse = false;         // make this true if there is e.g. clash and closed CX/Com should not

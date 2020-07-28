@@ -140,7 +140,7 @@ uint32_t SocketInfo::create_session_key6(sockaddr_storage* from, sockaddr_storag
 }
 
 
-std::pair<int,int> SocketInfo::create_socketpair() {
+int SocketInfo::create_socket_left() {
 
     std::stringstream ss;
 
@@ -194,8 +194,6 @@ std::pair<int,int> SocketInfo::create_socketpair() {
     };
 
     int fd_left = socket_setup();
-    int fd_right = socket_setup();
-
 
     pack_src_ss();
     pack_dst_ss();
@@ -238,7 +236,6 @@ std::pair<int,int> SocketInfo::create_socketpair() {
     };
 
     plug_socket(fd_left, (sockaddr*) &dst_ss.value(), (sockaddr*) &src_ss.value());
-    plug_socket(fd_right, (sockaddr*) &src_ss.value(), (sockaddr*) &dst_ss.value());
 
 
 //    ::send(fd_left, "ABCEFG", 6, MSG_DONTWAIT);
@@ -247,7 +244,7 @@ std::pair<int,int> SocketInfo::create_socketpair() {
 
     _cons(ss);
 
-    return std::make_pair(fd_left, fd_right);
+    return fd_left;
 }
 
 std::string SocketInfo::inet_family_str(int fa) {

@@ -241,16 +241,14 @@ bool ThreadedReceiver<Worker>::add_first_datagrams(int sock, SocketInfo& pinfo) 
         _err("ThreadedReceiver::add_first_datagrams[%d]: cannot enqueue data of size %d", sock, red);
     }
 
-    auto [ fd_left, fd_right ]  = pinfo.create_socketpair();
-    entry->socket_left = fd_left;
-    entry->socket_right = fd_right;
+    entry->socket_left = pinfo.create_socket_left();
 
 
     if(new_entry)
         hint_push_all(session_key);
 
     _dia("ThreadedReceiver::add_first_datagrams[%d]: early %dB, sk %d, is_new %d", sock, red, session_key, new_entry);
-    _dia("ThreadedReceiver::add_first_datagrams[%d]: connected sockets: l: %d r: %d", sock, fd_left, fd_right);
+    _dia("ThreadedReceiver::add_first_datagrams[%d]: connected sockets: l: %d", sock, entry->socket_left);
 
     DatagramCom::in_virt_set.insert(session_key);
 
@@ -881,13 +879,12 @@ int ThreadedReceiverProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
 
         auto record = it_record->second;
         _record_socket_left = record->socket_left;
-        _record_socket_right = record->socket_right;
 
         cx = nullptr;
 
-        _deb("Record dump: cx=0x%x dst=%s real_socket=%d reuse=%d rx_size=0x%x socket_l=%d socket_r=%d src=%s",
+        _deb("Record dump: cx=0x%x dst=%s real_socket=%d reuse=%d rx_size=0x%x socket_l=%d src=%s",
              record->cx, SocketInfo::inet_ss_str(&record->dst).c_str(), record->real_socket,
-             record->reuse, record->queue_bytes_l(), record->socket_left, record->socket_right, SocketInfo::inet_ss_str(&record->src).c_str());
+             record->reuse, record->queue_bytes_l(), record->socket_left, SocketInfo::inet_ss_str(&record->src).c_str());
 
         try {
             cx = this->new_cx(virtual_socket);

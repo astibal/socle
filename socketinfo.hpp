@@ -39,7 +39,7 @@ struct SocketInfo {
 
     void pack_dst_ss();
     void pack_src_ss();
-    std::pair<int,int> create_socketpair();
+    int create_socket_left();
 
 
     // create pseudo-unique session id. If @shift is true, returning value is "signed" (most significant bit set to 1)
