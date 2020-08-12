@@ -274,27 +274,29 @@ bool baseProxy::run_timers () {
 
     if(clicker_.reset_timer()) {
 
-        auto cx_check = [&](auto* cx) {
+        auto cx_check = [&](auto* cx, bool idle_check=false) {
             on_cx_timer(cx);
-            if(cx->idle_timeout()) {
+            if(idle_check && cx->idle_timeout()) {
                 state().dead(true);
             }
         };
 
-        auto for_each_check = [&](auto what) {
-            std::for_each(what.begin(), what.end(), cx_check);
+        auto for_each_check = [&](auto what, bool idle_check=false) {
+            for(auto it: what) {
+                cx_check(it, idle_check);
+            }
         };
 
 
-        for_each_check(left_sockets);
-        for_each_check(left_delayed_accepts);
+        for_each_check(left_sockets, true);
+        for_each_check(left_delayed_accepts, true);
         for_each_check(left_bind_sockets);
-        for_each_check(left_pc_cx);
+        for_each_check(left_pc_cx, true);
 
-        for_each_check(right_sockets);
-        for_each_check(right_delayed_accepts);
+        for_each_check(right_sockets, true);
+        for_each_check(right_delayed_accepts, true);
         for_each_check(right_bind_sockets);
-        for_each_check(right_pc_cx);
+        for_each_check(right_pc_cx, true);
 
         return true;
     }
