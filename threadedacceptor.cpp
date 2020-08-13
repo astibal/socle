@@ -97,10 +97,7 @@ int ThreadedAcceptor<Worker>::create_workers(int count) {
 
 	    auto pa = hint_new_pair(this_worker_id);
 
-        std::stringstream ss;
-        ss << "acceptor[" << std::this_thread::get_id() << "][" << i << "]: created pair " << pa.first << "," << pa.second;
-        _cons(ss);
-
+        _deb("acceptor[0x%x][%d]: created queue socket pair %d,%d", std::this_thread::get_id(), i, pa.first, pa.second);
 
 		auto *w = new Worker(this->com()->replicate(), this_worker_id, proxy_type_);
 		w->com()->nonlocal_dst(this->com()->nonlocal_dst());

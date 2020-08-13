@@ -407,12 +407,12 @@ int UDPCom::poll() {
 
 int UDPCom::read(int _fd, void* _buf, size_t _n, int _flags) {
 
-    _cons(string_format("UDPCom::read[%d] read", _fd).c_str());
+    _deb("UDPCom::read[%d] read", _fd);
 
 
     if(embryonic_id() != 0) {
 
-        _cons("embryonic: reading from pool");
+        _deb("embryonic: reading from pool");
 
         auto  r = read_from_pool(embryonic_id(), _buf, _n, _flags);
 

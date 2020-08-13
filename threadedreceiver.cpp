@@ -106,9 +106,9 @@ std::optional<SocketInfo> ThreadedReceiver<Worker>::process_anc_data(int sock, m
     // iterate through all the control headers
     int i = 0;
     for (struct cmsghdr *cmsg = CMSG_FIRSTHDR(msg); cmsg != nullptr; cmsg = CMSG_NXTHDR(msg, cmsg), i++) {
-        _cons(string_format("new_raw: ancillary msg #%d", i).c_str());
+        _deb("new_raw: ancillary msg #%d", i);
 
-        auto ss = string_format("ThreadedReceiver::on_left_new_raw[%d]: ancillary data level=%d, type=%d",sock,cmsg->cmsg_level,cmsg->cmsg_type);
+        _dia("ThreadedReceiver::on_left_new_raw[%d]: ancillary data level=%d, type=%d",sock,cmsg->cmsg_level,cmsg->cmsg_type);
 
         // ignore the control headers that don't match what we need .. SOL_IP
         if (
@@ -117,17 +117,20 @@ std::optional<SocketInfo> ThreadedReceiver<Worker>::process_anc_data(int sock, m
                 ){
 
             found_addr = true;
-            _cons("found orig address");
+            _deb("found orig address");
 
 
             try {
                 if (proxy_type() == proxy_type_t::REDIRECT) {
                     ret.src_ss = std::make_optional(*static_cast<sockaddr_storage *>(msg->msg_name));
-                    ret.dst_ss = std::nullopt;
-                    ret.str_dst_host = "8.8.8.8";
-                    ret.dport = 53;
-
                     ret.unpack_src_ss();
+
+                    // there are no dst info data in CMSG in redirect case
+                    sockaddr_storage orig{};
+                    memcpy(&orig, (struct sockaddr_storage *) CMSG_DATA(cmsg), sizeof(struct sockaddr_storage));
+
+                    ret.dst_ss = std::make_optional(orig);
+                    ret.unpack_dst_ss();
 
                 } else {
                     ret.src_ss = std::make_optional(*static_cast<sockaddr_storage *>(msg->msg_name));
@@ -139,19 +142,15 @@ std::optional<SocketInfo> ThreadedReceiver<Worker>::process_anc_data(int sock, m
                     ret.dst_ss = std::make_optional(orig);
                     ret.unpack_dst_ss();
                 }
-                bool use_virtual_socket = false;
-
-                auto ss = string_format(
-                        "ThreadedReceiver::on_left_new_raw[%d]: datagram from: %s/%s:%u to %s/%s:%u (%s)",
+                _dia("ThreadedReceiver::on_left_new_raw[%d]: datagram from: %s/%s:%u to %s/%s:%u",
                         sock,
                         SocketInfo::inet_family_str(ret.src_family).c_str(), ret.str_src_host.c_str(), ret.sport,
-                        SocketInfo::inet_family_str(ret.dst_family).c_str(), ret.str_dst_host.c_str(), ret.dport,
-                        use_virtual_socket ? "quick" : "cooked"
+                        SocketInfo::inet_family_str(ret.dst_family).c_str(), ret.str_dst_host.c_str(), ret.dport
                 );
-                _cons(ss.c_str());
+
             }
             catch (socket_info_error const& e) {
-                _cons("failed to parse out packet credentials");
+                _err("socket error: %s", e.what());
             }
 
             break;
@@ -195,17 +194,17 @@ bool ThreadedReceiver<Worker>::add_first_datagrams(int sock, SocketInfo& pinfo) 
 
     if(it != DatagramCom::datagrams_received.end()) {
 
-        _cons("existing datagram");
+        _dia("existing datagram");
 
         if(! it->second) {
-            _cons("existing datagram - null");
+            _deb("existing datagram - null");
             it->second = create_new_entry(sock, pinfo);
         }
         entry = it->second;
         new_entry = false;
     } else {
 
-        _cons("new datagram");
+        _dia("new datagram");
 
         entry = create_new_entry(sock, pinfo);
         DatagramCom::datagrams_received[session_key] = entry;
@@ -220,9 +219,7 @@ bool ThreadedReceiver<Worker>::add_first_datagrams(int sock, SocketInfo& pinfo) 
 
     int red = com()->read(sock, buff, buff_sz, 0);
 
-    std::stringstream  ss;
-    ss << "red: " << red << " bytes from socket " << sock << std::endl;
-    _cons(ss);
+    _dia("red: %d bytes from socket %d", red, sock);
 
     int enk = 0;
 
@@ -233,15 +230,14 @@ bool ThreadedReceiver<Worker>::add_first_datagrams(int sock, SocketInfo& pinfo) 
         auto l_ = std::scoped_lock(entry->rx_queue_lock);
         enk = entry->enqueue(buff, red);
 
-        ss << "enk: " << enk << " bytes from socket " << sock << std::endl;
-        _cons(ss);
+        _dia("enk: %d bytes from socket %d", enk, sock);
     }
 
     if (red != enk) {
         _err("ThreadedReceiver::add_first_datagrams[%d]: cannot enqueue data of size %d", sock, red);
     }
 
-    entry->socket_left = pinfo.create_socket_left();
+    entry->socket_left = pinfo.create_socket_left(com()->l4_proto());
 
 
     if(new_entry)
@@ -297,12 +293,12 @@ void ThreadedReceiver<Worker>::on_left_new_raw(int sock) {
             msg.msg_iov = &io;
             msg.msg_iovlen = 1;
 
-            _cons("state cleared");
+            _deb(" receiver state cleared");
         };
 
         auto dummy_read = [&]() {
             int l = ::recvmsg(sock, &msg, O_NONBLOCK);
-            _cons("dummy read");
+            _deb("receiver dummy read");
 
             clear_state();
 
@@ -315,33 +311,36 @@ void ThreadedReceiver<Worker>::on_left_new_raw(int sock) {
 
         int len = ::recvmsg(sock, &msg, MSG_PEEK);
         if (len < 0) {
-            _cons(string_format("[0x%x] new_raw: inner peek returned %d (return)", std::this_thread::get_id(), len).c_str());
+            _dia("[0x%x] new_raw: inner peek returned %d (return)", std::this_thread::get_id(), len);
             return;
         } else {
-            _cons(string_format("[0x%x] new_raw: inner peek returned %d", std::this_thread::get_id(), len).c_str());
+            _dia("[0x%x] new_raw: inner peek returned %d", std::this_thread::get_id(), len);
         }
 
-        auto creds = process_anc_data(sock, &msg);
+        try {
+            auto creds = process_anc_data(sock, &msg);
 
-        if(creds.has_value()) {
-            _cons("packet headers processing finished");
+            if (creds.has_value()) {
+                _dia("packet headers processing finished");
 
-            // NOTE:
-            // keeping it here for reference: this is proof we can bind and create sockets with matching tuples, all can be used
-            // to send data (but obviously only one is selected by OS to deliver data from network
+                // NOTE:
+                // keeping it here for reference: this is proof we can bind and create sockets with matching tuples, all can be used
+                // to send data (but obviously only one is selected by OS to deliver data from network
 
-            // int fd2 = creds.value().create_client_socket();
-
-            // ::send(fd, "post1", 5, MSG_DONTWAIT);
-            // ::send(fd2, "post2", 5, MSG_DONTWAIT);
+                // int fd2 = creds.value().create_client_socket(com()->l4_proto());
+                // ::send(fd2, "post2", 5, MSG_DONTWAIT);
 
 
-            add_first_datagrams(sock, creds.value());
+                add_first_datagrams(sock, creds.value());
 
-        } else {
-            _cons("packet headers processing failed");
-            int l = dummy_read();
-            _err("packet headers processing failed, %d bytes flushed out", l);
+            } else {
+                int l = dummy_read();
+                _err("packet headers processing failed, %d bytes flushed out", l);
+            }
+        }
+        catch(socket_info_error const& e) {
+            _err("socket error: %s", e.what());
+            // _cons(string_format("socket error: %s", e.what()).c_str());
         }
 
     } while(::recv(sock, dummy_buffer,32,O_NONBLOCK|MSG_PEEK) > 0);
@@ -631,7 +630,7 @@ void ThreadedReceiver<Worker>::on_left_new_raw_old(int sock) {
 
                     if(! success) {
                         _deb("ThreadedReceiver::on_left_new_raw[%d]: key %d - queue full, dropped %d bytes",sock, session_key, len);
-                        _cons("udp dropping bytes");
+                        _dia("udp dropping bytes");
                     }
                 }
                 
@@ -776,9 +775,7 @@ int ThreadedReceiver<Worker>::create_workers(int count) {
 
         auto pa = hint_new_pair(this_worker_id);
 
-        std::stringstream ss;
-        ss << "receiver[" << std::this_thread::get_id() << "][" << i << "]: created pair " << pa.first << "," << pa.second;
-        _cons(ss);
+        _deb("receiver[0x%x][%d]: created queue socket pair %d,%d", std::this_thread::get_id(), i, pa.first, pa.second);
 
         auto *w = new Worker(this->com()->replicate(), this_worker_id, proxy_type_);
         w->com()->nonlocal_dst(this->com()->nonlocal_dst());

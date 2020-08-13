@@ -278,6 +278,8 @@ bool baseProxy::run_timers () {
             on_cx_timer(cx);
             if(idle_check && cx->idle_timeout()) {
                 state().dead(true);
+
+                _dia("%s: timed out!", this->hr().c_str());
             }
         };
 

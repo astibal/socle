@@ -140,40 +140,37 @@ uint32_t SocketInfo::create_session_key6(sockaddr_storage* from, sockaddr_storag
 }
 
 
-int SocketInfo::create_socket_left() {
-
-    std::stringstream ss;
+int SocketInfo::create_socket_left (int l4_proto) {
 
     auto socket_setup = [&]() -> int {
-        int fd = socket(src_family, SOCK_DGRAM, 0);
+        int fd = socket(src_family, l4_proto, 0);
 
         if (fd < 0) {
-            _cons("socket failed");
             throw socket_info_error("socket call failed");
 
         }
         int n;
 
         if (n = 1; 0 != ::setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &n, sizeof(int))) {
-            ss << string_format("cannot set socket %d option SO_REUSEADDR\n", fd);
+            throw socket_info_error(string_format("cannot set socket %d option SO_REUSEADDR\n", fd).c_str());
         }
 
         if (n = 1; 0 != ::setsockopt(fd, SOL_IP, IP_RECVORIGDSTADDR, &n, sizeof(int))) {
-            ss << string_format("cannot set socket %d option IP_RECVORIGDSTADDR\n", fd);
+            throw socket_info_error(string_format("cannot set socket %d option IP_RECVORIGDSTADDR\n", fd).c_str());
         }
 
         if (n = 1; 0 != ::setsockopt(fd, SOL_IP, SO_BROADCAST, &n, sizeof(int))) {
-            ss << string_format("cannot set socket %d option SO_BROADCAST\n", fd);
+            throw socket_info_error(string_format("cannot set socket %d option SO_BROADCAST\n", fd).c_str());
         }
 
         if(src_family == AF_INET) {
             if (n = 1; 0 != ::setsockopt(fd, SOL_IP, IP_TRANSPARENT, &n, sizeof(int))) {
-                ss << string_format("cannot set socket %d option IP_TRANSPARENT\n", fd);
+                throw socket_info_error(string_format("cannot set socket %d option IP_TRANSPARENT\n", fd).c_str());
             }
         }
         else if (src_family == AF_INET6) {
             if (n = 1; 0 != ::setsockopt(fd, SOL_IPV6, IPV6_TRANSPARENT, &n, sizeof(int))) {
-                ss << string_format("cannot set socket %d option IPV6_TRANSPARENT\n", fd);
+                throw socket_info_error(string_format("cannot set socket %d option IPV6_TRANSPARENT\n", fd).c_str());
             }
         }
         else {
@@ -182,11 +179,9 @@ int SocketInfo::create_socket_left() {
 
         if (int oldf = fcntl(fd, F_GETFL, 0) ; ! (oldf & O_NONBLOCK)) {
             if (fcntl(fd, F_SETFL, oldf | O_NONBLOCK) < 0) {
-                ss << string_format("Error setting socket %d as non-blocking\n", fd);
+                throw socket_info_error(string_format("Error setting socket %d as non-blocking\n", fd).c_str());
 
                 return -1;
-            } else {
-                ss << string_format("Setting socket %d as non-blocking\n", fd);
             }
         }
 
@@ -198,10 +193,8 @@ int SocketInfo::create_socket_left() {
     pack_src_ss();
     pack_dst_ss();
 
-    _cons(ss);
-
-    _cons(inet_ss_str(& src_ss.value()).c_str());
-    _cons(inet_ss_str(& dst_ss.value()).c_str());
+    //_cons(inet_ss_str(& src_ss.value()).c_str());
+    //_cons(inet_ss_str(& dst_ss.value()).c_str());
 
     auto plug_socket = [&](int fd, sockaddr* bind_ss, sockaddr* connect_ss) {
 
@@ -210,39 +203,23 @@ int SocketInfo::create_socket_left() {
         constexpr size_t bcrhi_sz = 2;
 
         if(0 != ::setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, bind_connect_race_hack_iface, bcrhi_sz)) {
-            _cons("cannot bind to device - bind-connect races may occur");
-        } else {
-            ss << "OK hack - bind to device " << bind_connect_race_hack_iface << std::endl;
+            throw socket_info_error("cannot bind to device - bind-connect races may occur");
         }
 
         if(::bind(fd, bind_ss, sizeof(struct sockaddr_storage))) {
-            ss << string_format("cannot bind port %d to %s:%d\n", fd, str_dst_host.c_str(), dport);
-        } else {
-            ss << string_format("OK bind port %d to %s:%d\n", fd, str_dst_host.c_str(), dport);
+            throw socket_info_error(string_format("cannot bind port %d to %s:%d\n", fd, str_dst_host.c_str(), dport).c_str());
         }
 
         if (::connect(fd, connect_ss, sizeof(struct sockaddr_storage))) {
-            ss << string_format("cannot connect port %d to %s:%d\n", fd, str_src_host.c_str(), sport);
-        } else {
-            ss << string_format("OK connect port %d to %s:%d\n", fd, str_src_host.c_str(), sport);
+            throw socket_info_error(string_format("cannot connect port %d to %s:%d\n", fd, str_src_host.c_str(), sport).c_str());
         }
 
         if(0 != ::setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, "", 0)) {
-            _cons("cannot bind to 'any' device - socket inoperable");
-        } else {
-            ss << "OK hack - bind back to 'any' device " << std::endl;
+            throw socket_info_error("cannot bind to 'any' device - socket inoperable");
         }
-
     };
 
-    plug_socket(fd_left, (sockaddr*) &dst_ss.value(), (sockaddr*) &src_ss.value());
-
-
-//    ::send(fd_left, "ABCEFG", 6, MSG_DONTWAIT);
-//    ::send(fd_right, "XYZ123", 6, MSG_DONTWAIT);
-
-
-    _cons(ss);
+    plug_socket(fd_left, (sockaddr *) &dst_ss.value(), (sockaddr *) &src_ss.value());
 
     return fd_left;
 }
