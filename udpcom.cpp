@@ -319,20 +319,18 @@ bool UDPCom::resolve_nonlocal_socket(int sock) {
 
 bool UDPCom::in_readset(int s) {
 
-    bool real = false;
-    bool real_socket = 0;
+    if(s < 0) {
 
-    {
         std::lock_guard<std::recursive_mutex> l(DatagramCom::lock);
 
         auto it_record = DatagramCom::datagrams_received.find((unsigned int) s);
         if (it_record != DatagramCom::datagrams_received.end()) {
             auto record = (*it_record).second;
 
-            if (record->real_socket) {
-                _deb("UDPCom::in_readset[%d]: record contains real socket %d", s, record->socket_left);
-                real_socket = record->socket_left;
-                real = true;
+            if (record->real_socket > 0) {
+                _deb("UDPCom::in_readset[%d]: fyi - record contains real socket %d", s, record->socket_left);
+            } else {
+                _war("UDPCom::in_readset[%d]: fyi - invalid real socket %d", s, record->socket_left);
             }
 
             // even though record contains real socket, we will always return true as long as there are pending early data
@@ -348,21 +346,21 @@ bool UDPCom::in_readset(int s) {
                     }
                 }
 
-                return (elem_bytes > 0);
+                bool ret = (elem_bytes > 0);
+                _deb("UDPCom::in_readset[%d]: returning %d, because entry contains %dB of embryonic data", s, ret, elem_bytes);
+                return ret;
             }
+        } else {
+            _deb("UDPCom::in_readset[%d]: returning false, record not found", s);
+            return false;
         }
+    } else if (s > 0) {
+        _deb("UDPCom::in_readset[%d]: real socket", s);
+        return baseCom::in_readset(s);
+    } else {
+        _err("calling in_readset(0)");
+        return false;
     }
-
-    if(real) {
-        _ext("UDPCom::in_readset[%d]: real record found: %d", s, real_socket);
-        if( s > 0) return baseCom::in_readset(real_socket);
-    }
-    else {
-        _ext("UDPCom::in_readset[%d]: record NOT found", s);
-        if( s > 0) return baseCom::in_readset(s);
-    }
-
-    return false;
 }
 
 bool UDPCom::in_writeset(int s) {
@@ -439,6 +437,7 @@ int UDPCom::read_from_pool(int _fd, void* _buf, size_t _n, int _flags) {
         auto record = (*it_record).second;
 
         if(record->real_socket && record->queue_bytes() == 0) {
+            _dia("UDPCom::read_from_pool[%d]: pool empty, reading  from real socket %d", _fd, record->real_socket);
             return recv(record->socket_left, _buf, _n, _flags);
         }
         
