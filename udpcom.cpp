@@ -41,11 +41,11 @@ int UDPCom::translate_socket(int vsock) const {
             
             _dia("UDPCom::translate_socket[%d]: found in table",vsock);
             if(d->real_socket) {
-                _dia("UDPCom::translate_socket[%d]: translated to real",vsock,d->socket_left);
+                _dia("UDPCom::translate_socket[%d]: translated to real", vsock, d->socket_left);
                 return d->socket_left;
             }
             else {
-                _dia("UDPCom::translate_socket[%d]: translated to tproxy socket ",vsock,d->socket_left);
+                _dia("UDPCom::translate_socket[%d]: translated to tproxy socket ", vsock, d->socket_left);
             }
             // real socket is here bound/connected socket back to source IP.
             // if there is no backward socket, we don't want return TPROXY bound socket, since it can't 
@@ -53,7 +53,7 @@ int UDPCom::translate_socket(int vsock) const {
         }
     }
 
-    _dia("UDPCom::translate_socket[%d]: NOT found in table",vsock);
+    _dia("UDPCom::translate_socket[%d]: NOT found in table", vsock);
     return baseCom::translate_socket(vsock);
 }
 
