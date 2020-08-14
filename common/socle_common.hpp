@@ -18,11 +18,11 @@
 
 
 // Uncomment line below and enable extensive buffer object profiling.
-// Warning: it's resource intesive.
+// Warning: it's resource intensive.
 
 //#define SOCLE_MEM_PROFILE
 
-// you can enforce/supress new API with removing formula
+// you can enforce/suppress new API with removing formula
 
 #include <openssl/opensslv.h>
 
