@@ -40,9 +40,9 @@ int UDPCom::translate_socket(int vsock) const {
             auto d = it_dgram->second;
             
             _dia("UDPCom::translate_socket[%d]: found in table",vsock);
-            if(d->real_socket) {
+            if(d->socket_left.has_value()) {
                 _dia("UDPCom::translate_socket[%d]: translated to real", vsock, d->socket_left);
-                return d->socket_left;
+                return d->socket_left.value();
             }
             else {
                 _dia("UDPCom::translate_socket[%d]: translated to tproxy socket ", vsock, d->socket_left);
@@ -327,10 +327,10 @@ bool UDPCom::in_readset(int s) {
         if (it_record != DatagramCom::datagrams_received.end()) {
             auto record = (*it_record).second;
 
-            if (record->real_socket > 0) {
-                _deb("UDPCom::in_readset[%d]: fyi - record contains real socket %d", s, record->socket_left);
+            if (record->socket_left.has_value()) {
+                _deb("UDPCom::in_readset[%d]: fyi - record contains real socket %d", s, record->socket_left.value());
             } else {
-                _war("UDPCom::in_readset[%d]: fyi - invalid real socket %d", s, record->socket_left);
+                _war("UDPCom::in_readset[%d]: fyi - no real socket", s);
             }
 
             // even though record contains real socket, we will always return true as long as there are pending early data
@@ -347,18 +347,36 @@ bool UDPCom::in_readset(int s) {
                 }
 
                 bool ret = (elem_bytes > 0);
-                _deb("UDPCom::in_readset[%d]: returning %d, because entry contains %dB of embryonic data", s, ret, elem_bytes);
-                return ret;
+                if (ret) {
+                    _deb("UDPCom::in_readset[%d]: returning %d, because entry contains %dB of embryonic data", s, ret,
+                         elem_bytes);
+                    return ret;
+                } else {
+                    if(record->socket_left.has_value()) {
+                        int real_ret = baseCom::in_readset(record->socket_left.value());
+                        _deb("UDPCom::in_readset[%d]: no embryonic data, real socket %d check - returning %d", s,
+                             record->socket_left,
+                             real_ret);
+
+                        return real_ret;
+                    }
+                    else {
+                        _deb("UDPCom::in_readset[%d]: no embryonic data, real socket %d invalid, returning 0", s, record->socket_left);
+                        return false;
+                    }
+                }
             }
         } else {
-            _deb("UDPCom::in_readset[%d]: returning false, record not found", s);
+            _deb("UDPCom::in_readset[%d]: record not found, returning 0", s);
             return false;
         }
     } else if (s > 0) {
-        _deb("UDPCom::in_readset[%d]: real socket", s);
-        return baseCom::in_readset(s);
+        bool r = baseCom::in_readset(s);
+        _deb("UDPCom::in_readset[%d]: real socket, returning %d", s, r);
+        return r;
+
     } else {
-        _err("calling in_readset(0)");
+        _err("calling in_readset(0), returning 0");
         return false;
     }
 }
@@ -436,9 +454,9 @@ int UDPCom::read_from_pool(int _fd, void* _buf, size_t _n, int _flags) {
     if(it_record != DatagramCom::datagrams_received.end()) {  
         auto record = (*it_record).second;
 
-        if(record->real_socket && record->queue_bytes() == 0) {
-            _dia("UDPCom::read_from_pool[%d]: pool empty, reading  from real socket %d", _fd, record->real_socket);
-            return recv(record->socket_left, _buf, _n, _flags);
+        if(record->socket_left.has_value() && record->queue_bytes() == 0) {
+            _dia("UDPCom::read_from_pool[%d]: pool empty, reading  from real socket %d", _fd, record->socket_left.value());
+            return recv(record->socket_left.value(), _buf, _n, _flags);
         }
         
         auto dl_ = std::scoped_lock(record->rx_queue_lock);
@@ -558,11 +576,11 @@ int UDPCom::write_to_pool(int _fd, const void* _buf, size_t _n, int _flags) {
         auto record = (*it_record).second;
 
 
-        if(record->real_socket) {
-            _dia("UDPCom::write_to_pool[%d]: about to write %d bytes into real socket %d", _fd, _n, record->socket_left);
-            int l = ::send(record->socket_left, _buf, _n, 0);
+        if(record->socket_left.has_value()) {
+            _dia("UDPCom::write_to_pool[%d]: about to write %d bytes into real socket %d", _fd, _n, record->socket_left.value());
+            int l = ::send(record->socket_left.value(), _buf, _n, 0);
             if(l < 0) {
-                _dia("UDPCom::write_to_pool[%d]: real socket %d - error %s", _fd, _n, record->socket_left, string_error().c_str());
+                _dia("UDPCom::write_to_pool[%d]: real socket %d - error %s", _fd, _n, record->socket_left.value(), string_error().c_str());
             }
 
             return l;
@@ -577,8 +595,10 @@ int UDPCom::write_to_pool(int _fd, const void* _buf, size_t _n, int _flags) {
         SocketInfo::inet_ss_address_unpack(&record->dst, &ip_dst, &port_dst);
         std::string af_src = SocketInfo::inet_family_str(record->src_family());
         std::string af_dst = SocketInfo::inet_family_str(record->dst_family());
-        
-        _dia("UDPCom::write_to_pool[%d]: about to write %d bytes into socket %d", _fd, _n, record->socket_left);
+
+        if(record->socket_left.has_value()) {
+            _dia("UDPCom::write_to_pool[%d]: about to write %d bytes into socket %d", _fd, _n, record->socket_left.value());
+        }
         _deb("UDPCom::write_to_pool[%d]: %s:%s:%d - %s:%s:%d", _fd,
              af_src.c_str(), ip_src.c_str(), port_src,
              af_dst.c_str(), ip_dst.c_str(), port_dst
@@ -611,8 +631,8 @@ int UDPCom::write_to_pool(int _fd, const void* _buf, size_t _n, int _flags) {
         
         if(record->dst_family() == AF_INET6){
             
-            if(record->real_socket) {
-                da_socket = record->socket_left;
+            if(record->socket_left.has_value()) {
+                da_socket = record->socket_left.value();
             } else {
                 _deb("Constucting IPv6 pktinfo");
                 
@@ -628,8 +648,8 @@ int UDPCom::write_to_pool(int _fd, const void* _buf, size_t _n, int _flags) {
         }
         else { //AF_INET and others - we assume AF_INET
 
-            if(record->real_socket) {
-                da_socket = record->socket_left;
+            if(record->socket_left.has_value()) {
+                da_socket = record->socket_left.value();
             } else {
                 _deb("Constructing IPv4 pktinfo");
 
@@ -659,8 +679,14 @@ int UDPCom::write_to_pool(int _fd, const void* _buf, size_t _n, int _flags) {
         sockaddr_storage ss_d {0};
         SocketInfo::inet_ss_address_remap(&record->dst, &ss_d);
         SocketInfo::inet_ss_address_remap(&record->src, &ss_s);
-        
-        _dia("UDPCom::write_to_pool[%d]: real=%d", _fd, record->real_socket);
+
+        if(log_level() >= DIA) {
+            if (record->socket_left.has_value()) {
+                _dia("UDPCom::write_to_pool[%d]: real=%d", _fd, record->socket_left.value());
+            } else {
+                _dia("UDPCom::write_to_pool[%d]: no real socket", _fd);
+            }
+        }
 
         _deb("UDPCom::write_to_pool[%d]: about to write %d bytes into socket %d", _fd, _n, record->socket_left);
         _deb("UDPCom::write_to_pool[%d]: custom transparent socket: %d", _fd, da_socket);
@@ -707,7 +733,7 @@ int UDPCom::write_to_pool(int _fd, const void* _buf, size_t _n, int _flags) {
             _deb("UDPCom::write_to_pool[%d]: socket: %d: written %d bytes", _fd, da_socket, l);
         }
 
-        if(!record->real_socket) {
+        if(!record->socket_left.has_value()) {
             ::close(da_socket);
         }
         
@@ -853,8 +879,8 @@ void UDPCom::shutdown(int _fd) {
                 auto it = DatagramCom::datagrams_received[(unsigned int)_fd];
                 
                 if(! it->reuse) {
-                    if(it->real_socket && it->socket_left > 0) {
-                        ::close(it->socket_left);
+                    if(it->socket_left.has_value() && it->socket_left.value() > 0) {
+                        ::close(it->socket_left.value());
                     }
 
                     int remc = UDPCom::in_virt_set.erase(_fd);

@@ -176,7 +176,6 @@ bool ThreadedReceiver<Worker>::add_first_datagrams(int sock, SocketInfo& pinfo) 
 
         entry->src = pinfo.src_ss.value();
         entry->dst = pinfo.dst_ss.value();
-        entry->real_socket = true;
         entry->reuse = false;
 
         return entry;
@@ -482,12 +481,14 @@ int ThreadedReceiverProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
         _dia("ThreadedReceiverProxy::handle_sockets_once[%d]: found in datagram pool", virtual_socket);
 
         auto record = it_record->second;
-        _record_socket_left = record->socket_left;
+
+        if(record->socket_left.has_value())
+            _record_socket_left = record->socket_left.value();
 
         cx = nullptr;
 
         _deb("Record dump: cx=0x%x dst=%s real_socket=%d reuse=%d rx_size=0x%x socket_l=%d src=%s",
-             record->cx, SocketInfo::inet_ss_str(&record->dst).c_str(), record->real_socket,
+             record->cx, SocketInfo::inet_ss_str(&record->dst).c_str(), record->socket_left.has_value() ? record->socket_left : -1,
              record->reuse, record->queue_bytes_l(), record->socket_left, SocketInfo::inet_ss_str(&record->src).c_str());
 
         try {

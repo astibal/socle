@@ -53,7 +53,6 @@ struct Datagram {
         dst = r.dst;
         src = r.src;
         socket_left = r.socket_left;
-        real_socket = r.real_socket;
         reuse = r.reuse;
         cx = r.cx;
         rx_queue = r.rx_queue;
@@ -65,7 +64,6 @@ struct Datagram {
         src = r.src;
         socket_left = r.socket_left;
 
-        real_socket = r.real_socket;
         reuse = r.reuse;
         cx = r.cx;
         rx_queue = r.rx_queue;
@@ -114,9 +112,7 @@ struct Datagram {
     }
 
 
-    int socket_left = 0;
-    bool real_socket = false;   // indicate if inbound connection was successfully bound, so we can use
-                                // real socket instead of virtual.
+    std::optional<int> socket_left;
 
     bool reuse = false;         // make this true if there is e.g. clash and closed CX/Com should not
                                 // trigger it's removal from the pool: com()->close() will otherwise
