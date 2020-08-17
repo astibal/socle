@@ -1174,10 +1174,12 @@ int baseProxy::run_poll() {
 
                     auto* proxy = dynamic_cast<baseProxy*>(p_handler);
                     if(proxy != nullptr) {
-                        _ext("baseProxy::run: socket %d has baseProxy handler!!", cur_socket);
 
+                        _deb("baseProxy::run_poll: socket %d -> handler 0x%x : executing", cur_socket, proxy);
                         // call poller-carried proxy handler!
                         proxy->handle_sockets_once(com());
+                        _deb("baseProxy::run_poll: socket %d -> handler 0x%x : finished", cur_socket, proxy);
+
                         if(proxy->state().dead()) {
                             proxy->shutdown();
                             _dia("Proxy 0x%x has been shutdown.", proxy);
@@ -1187,7 +1189,7 @@ int baseProxy::run_poll() {
 
                     } else {
 
-                        _ext("baseProxy::run: socket %d has generic handler", cur_socket);
+                        _deb("baseProxy::run: socket %d has generic handler", cur_socket);
                         p_handler->handle_event(com());
                         counter_curr_generic_handler++;
                     }
