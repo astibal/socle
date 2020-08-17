@@ -133,8 +133,8 @@ mem_chunk_t memPool::acquire(std::size_t sz) {
 
             // for tracking purposes only - add this chunk to map!
             {
-                std::lock_guard<std::mutex> l(mpdata::lock());
-                mpdata::map()[new_entry.ptr] = new_entry;
+                std::lock_guard<std::mutex> l(mpdata::trace_lock());
+                mpdata::trace_map()[new_entry.ptr] = new_entry;
             }
         }
         #endif
@@ -154,10 +154,13 @@ mem_chunk_t memPool::acquire(std::size_t sz) {
         if(mem_chunk::trace_enabled) {
             free_entry.set_trace();
 
+            // std::cerr << "allocating " << reinterpret_cast<unsigned long>(free_entry.ptr) << ", size " <<  free_entry.capacity << "B" << std::endl;
+            // std::cerr << free_entry.str_trace() << std::endl << std::endl;
+
             // for tracking purposes only - add this chunk to map!
             {
-                std::lock_guard<std::mutex> l(mpdata::lock());
-                mpdata::map()[free_entry.ptr] = free_entry;
+                std::lock_guard<std::mutex> l(mpdata::trace_lock());
+                mpdata::trace_map()[free_entry.ptr] = free_entry;
             }
         }
         #endif
@@ -170,6 +173,11 @@ mem_chunk_t memPool::acquire(std::size_t sz) {
 void memPool::release(mem_chunk_t to_ret){
 
     if (!to_ret.ptr) {
+
+        #ifdef MEMPOOL_DEBUG
+        //std::cerr << "attempt to release nullptr (no-op)" << std::endl;
+        #endif
+
         return;
     }
 
@@ -178,12 +186,28 @@ void memPool::release(mem_chunk_t to_ret){
     std::vector<mem_chunk_t>* mem_pool = pick_ret_set(to_ret.capacity);
 
 
-    if(!mem_pool || to_ret.pool_type == mem_chunk::type::HEAP) {
+    if(to_ret.pool_type == mem_chunk::type::HEAP) {
         stat_out_free++;
         stat_out_free_size += to_ret.capacity;
 
         delete[] to_ret.ptr;
-    } else {
+    }
+    else if (! mem_pool) {
+
+        stat_out_pool_miss++;
+        stat_out_pool_miss_size+=to_ret.capacity;
+
+        #ifdef MEMPOOL_DEBUG
+
+        std::stringstream ss;
+        ss << "cannot pick a mempool for " << reinterpret_cast<unsigned long>(to_ret.ptr) << ", size " <<  to_ret.capacity << "B" << std::endl;
+        // std::cerr << ss.str();
+        throw std::runtime_error(ss.str());
+
+        #endif
+
+    }
+    else {
         stat_ret++;
         stat_ret_size += to_ret.capacity;
 
@@ -194,11 +218,13 @@ void memPool::release(mem_chunk_t to_ret){
 
         #ifdef MEMPOOL_DEBUG
 
-        std::lock_guard<std::mutex> l(mpdata::lock());
+        std::lock_guard<std::mutex> l(mpdata::trace_lock());
         if(mem_chunk::trace_enabled) {
-            auto i = mpdata::map().find(to_ret.ptr);
-            if (i != mpdata::map().end()) {
-                mpdata::map().erase(i);
+            // std::cerr << "releasing " << reinterpret_cast<unsigned long>(to_ret.ptr) << ", size " <<  to_ret.capacity << "B" << std::endl;
+
+            auto i = mpdata::trace_map().find(to_ret.ptr);
+            if (i != mpdata::trace_map().end()) {
+                mpdata::trace_map().erase(i);
             }
         }
 

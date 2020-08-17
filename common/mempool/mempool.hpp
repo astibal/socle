@@ -30,7 +30,7 @@
 #include <display.hpp>
 #include <log/logger.hpp>
 
-//#define MEMPOOL_DEBUG
+#define MEMPOOL_DEBUG
 
 class buffer;
 
@@ -203,6 +203,10 @@ public:
     std::atomic<unsigned long long> stat_out_free;
     std::atomic<unsigned long long> stat_out_free_size;
 
+    std::atomic<unsigned long long> stat_out_pool_miss;
+    std::atomic<unsigned long long> stat_out_pool_miss_size;
+
+
     long unsigned int mem_32_av() const { return static_cast<long unsigned int>(available_32.size()); };
     long unsigned int mem_64_av() const { return static_cast<long unsigned int>(available_64.size()); };
     long unsigned int mem_128_av() const { return static_cast<long unsigned int>(available_128.size()); };
@@ -246,6 +250,19 @@ struct mpdata {
         static std::mutex m;
         return m;
     };
+
+    #ifdef MEMPOOL_DEBUG
+    static std::unordered_map<void *, mem_chunk>& trace_map() {
+        static std::unordered_map<void *, mem_chunk> m;
+        return m;
+    }
+    static std::mutex& trace_lock() {
+        static std::mutex m;
+        return m;
+    };
+
+    #endif
+
 };
 
 class mempool_bad_alloc : public std::runtime_error {
