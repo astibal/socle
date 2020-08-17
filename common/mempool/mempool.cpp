@@ -223,17 +223,26 @@ std::vector<mem_chunk_t>* memPool::pick_acq_set(ssize_t s) {
 std::vector<mem_chunk_t>* memPool::pick_ret_set(ssize_t s) {
 
     std::lock_guard<std::mutex> g(lock);
-    if      (s == 50 * 1024) return  available_50k.size() < sz20k ? &available_50k : nullptr;
-    else if (s == 35 * 1024) return  available_35k.size() < sz20k ? &available_35k : nullptr;
-    else if (s == 20 * 1024) return  available_20k.size() < sz20k ? &available_20k : nullptr;
-    else if (s == 10 * 1024) return  available_10k.size() < sz10k ? &available_10k : nullptr;
-    else if (s ==  5 * 1024) return  available_5k.size() < sz5k ? &available_5k : nullptr;
-    else if (s ==  1 * 1024) return  available_1k.size() < sz1k ? &available_1k : nullptr;
-    else if (s ==       256) return  available_256.size() < sz256 ? &available_256 : nullptr;
-    else if (s ==       128) return  available_128.size() < sz256 ? &available_128 : nullptr;
-    else if (s ==        64) return  available_64.size() < sz256 ? &available_64 : nullptr;
-    else if (s ==        32) return  available_32.size() < 10 * sz256 ? &available_32 : nullptr;
-    else return nullptr;
+    if      (s == 50 * 1024) return  &available_50k;
+    else if (s == 35 * 1024) return  &available_35k;
+    else if (s == 20 * 1024) return  &available_20k;
+    else if (s == 10 * 1024) return  &available_10k;
+    else if (s ==  5 * 1024) return  &available_5k;
+    else if (s ==  1 * 1024) return  &available_1k;
+    else if (s ==       256) return  &available_256;
+    else if (s ==       128) return  &available_128;
+    else if (s ==        64) return  &available_64;
+    else if (s ==        32) return  &available_32;
+    else {
+
+        #ifdef MEMPOOL_DEBUG
+
+        throw std::runtime_error("incorrect release chunk size");
+
+        #endif
+
+        return nullptr;
+    }
 }
 
 
