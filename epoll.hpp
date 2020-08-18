@@ -98,7 +98,9 @@ struct protected_set {
         set_ = r.set_;
     }
     protected_set& operator=(protected_set const& r) {
-        set_ = r.set_;
+        if(&r != this) {
+            set_ = r.set_;
+        }
         return *this;
     }
 
