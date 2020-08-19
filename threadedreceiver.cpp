@@ -501,7 +501,7 @@ int ThreadedReceiverProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
 
                 // we need to monitor also embryonic socket
                 com()->set_monitor(virtual_socket);
-                com()->set_poll_handler(virtual_socket, this);
+
             } else {
                 throw socle::com_error("cx com is not UDPCom");
             }
