@@ -1270,7 +1270,9 @@ int baseProxy::run_poll() {
 
     // add back sockets which don't have handler - generally it should be just few sockets!
 
-    if(!back_in_set.empty())  _deb("%d sockets in back_in_set re-added to in_set", back_in_set.size());
+    _if_deb {
+        if (!back_in_set.empty()) _deb("%d sockets in back_in_set re-added to in_set", back_in_set.size());
+    }
 
     for(int a: back_in_set) {
         counter_curr_back_handler++;
@@ -1285,7 +1287,7 @@ int baseProxy::run_poll() {
     }
 
     if(counter_curr_proxy_handler || counter_curr_generic_handler || counter_curr_back_handler) {
-        _dia("baseProxy::run: 0x%x called handlers - proxy: %d/%d, gen: %d/%d, back-ins: %d%d, hint: %d/%d",
+        _dia("baseProxy::run: 0x%x called handlers - proxy: %d/%d, gen: %d/%d, back-ins: %d/%d, hint: %d/%d",
              this,
              stats_.counter_proxy_handler, counter_curr_proxy_handler, stats_.counter_generic_handler, counter_curr_generic_handler,
              stats_.counter_back_handler, counter_curr_back_handler, stats_.counter_hint_handler, counter_curr_hint_handler);
