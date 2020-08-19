@@ -433,6 +433,7 @@ int UDPCom::read(int _fd, void* _buf, size_t _n, int _flags) {
         auto  r = read_from_pool(embryonic_id(), _buf, _n, _flags);
 
         if(! in_readset(embryonic_id())) {
+            DatagramCom::in_virt_set.erase(embryonic_id());
             embryonic_id(0);
         }
 
@@ -871,7 +872,10 @@ void UDPCom::shutdown(int _fd) {
         }
         
     } else {
-        
+
+        int remc = UDPCom::in_virt_set.erase(_fd);
+        _dia("removing %d from in_virt_set on shutdown (%d entries)", _fd, remc);
+
         std::lock_guard<std::recursive_mutex> l(DatagramCom::lock);
         
         auto it_record = DatagramCom::datagrams_received.find((unsigned int)_fd);
@@ -883,9 +887,6 @@ void UDPCom::shutdown(int _fd) {
                         ::close(it->socket_left.value());
                     }
 
-                    int remc = UDPCom::in_virt_set.erase(_fd);
-                    _dia("removing %d from in_virt_set on shutdown (%d entries)", _fd, remc);
-
                 } else {
                     _dia("UDPCom::close[%d]: datagrams_received entry reuse flag set, entry  not deleted.", _fd);
                     it->reuse = false;
@@ -896,5 +897,11 @@ void UDPCom::shutdown(int _fd) {
         } else {
             _dia("UDPCom::close[%d]: datagrams_received entry NOT found, thus not erased", _fd);
         }
+    }
+
+    if(embryonic_id() != 0) {
+        int remc = UDPCom::in_virt_set.erase(embryonic_id());
+        _dia("removing embryonic %d from in_virt_set on shutdown (%d entries)", embryonic_id(), remc);
+
     }
 }
