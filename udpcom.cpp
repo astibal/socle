@@ -580,12 +580,18 @@ int UDPCom::write_to_pool(int _fd, const void* _buf, size_t _n, int _flags) {
         if(record->socket_left.has_value()) {
             _dia("UDPCom::write_to_pool[%d]: about to write %d bytes into real socket %d", _fd, _n, record->socket_left.value());
             int l = ::send(record->socket_left.value(), _buf, _n, 0);
+
+            //_deb("UDPCom::write_to_pool[%d]: %d written to socket %d", _fd , l, record->socket_left.value());
+
             if(l < 0) {
                 _dia("UDPCom::write_to_pool[%d]: real socket %d - error %s", _fd, _n, record->socket_left.value(), string_error().c_str());
             }
 
             return l;
+        } else {
+            _dia("UDPCom::write_to_pool[%d]: no real socket", _fd);
         }
+
 
         std::string ip_src, ip_dst;
         unsigned short port_src, port_dst;
