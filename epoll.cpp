@@ -165,8 +165,9 @@ int epoll::wait(int timeout) {
             enforce_in_set.clear_ul();
         }
     }
-    for(auto s: cp)
-        idle_set.insert(s);
+    for(auto s: cp) {
+        in_set.insert(s);
+    }
 
 
     _dum("epoll::wait: == end");
