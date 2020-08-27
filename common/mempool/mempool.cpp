@@ -170,15 +170,34 @@ void memPool::allocate(std::size_t n_sz256, std::size_t n_sz1k, std::size_t n_sz
         }
     };
 
+    available_32.reserve(sz32);
     stockpile(bigptr_32, alloc32, 32, available_32);
+
+    available_64.reserve(sz64);
     stockpile(bigptr_64, alloc64, 64, available_64);
+
+    available_128.reserve(sz128);
     stockpile(bigptr_128, alloc128, 128, available_128);
+
+    available_256.reserve(sz256);
     stockpile(bigptr_256, alloc256, 256, available_256);
+
+    available_1k.reserve(sz1k);
     stockpile(bigptr_1k, alloc1k, 1024, available_1k);
+
+    available_5k.reserve(sz5k);
     stockpile(bigptr_5k, alloc5k, 5*1024, available_5k);
+
+    available_10k.reserve(sz10k);
     stockpile(bigptr_10k, alloc10k, 10*1024, available_10k);
+
+    available_20k.reserve(sz20k);
     stockpile(bigptr_20k, alloc20k, 20*1024, available_20k);
+
+    available_35k.reserve(sz35k);
     stockpile(bigptr_35k, alloc35k, 35*1024, available_35k);
+
+    available_50k.reserve(sz50k);
     stockpile(bigptr_50k, alloc50k, 50*1024, available_50k);
 
 }
