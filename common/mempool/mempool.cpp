@@ -366,7 +366,24 @@ void memPool::release(mem_chunk_t xto_ret){
             }
         }
 
+        if(get_canary().canary_sz) {
+            if (!get_canary().check_canary(to_ret.ptr - get_canary().canary_sz)) {
+                // auto b = bt();
+                // std::cerr << "front canary check failed\nbt:\n" << b;
+
+                throw mempool_bad_alloc("front canary check failed");
+            }
+
+            if (!get_canary().check_canary(to_ret.ptr + to_ret.capacity)) {
+                // auto b = bt();
+                // std::cerr << "rear canary check failed\nbt:\n" << b;
+
+                throw mempool_bad_alloc("rear canary check failed");
+            }
+        }
+
         #endif
+
     } else {
         throw mempool_bad_alloc("cannot determine pool to return pointer");
     }
