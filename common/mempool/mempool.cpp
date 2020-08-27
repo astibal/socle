@@ -207,7 +207,7 @@ mem_chunk_t memPool::acquire(std::size_t sz) {
 
     if(sz == 0) return mem_chunk_t(nullptr, 0);
 
-    std::vector<mem_chunk_t>* mem_pool = pick_acq_set(sz);
+    auto* mem_pool = pick_acq_set(sz);
 
     stat_acq++;
     stat_acq_size += sz;
@@ -297,7 +297,7 @@ void memPool::release(mem_chunk_t xto_ret){
 
     if(bailing.load()) return;
 
-    std::vector<mem_chunk_t>* mem_pool = pick_ret_set(to_ret.capacity);
+    auto* mem_pool = pick_ret_set(to_ret.capacity);
 
 
     if(to_ret.pool_type == mem_chunk::type::HEAP) {
