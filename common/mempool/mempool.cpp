@@ -101,10 +101,12 @@ void memPool::allocate(std::size_t n_sz256, std::size_t n_sz1k, std::size_t n_sz
     sz50k += n_sz20k;
 
 #ifdef MEMPOOL_DEBUG
-    const int canary_sz = 8; // add 8 bytes of canary
+    get_canary().canary_sz = 8; // add 8 bytes of canary
 #else
-    const int canary_sz = 0;
+    get_canary().canary_sz = 0;
 #endif
+
+    std::size_t canary_sz = get_canary().canary_sz;
 
     alloc32 = sz32 * 32 + sz32*canary_sz + canary_sz;
     bigptr_32 = static_cast<unsigned char*>(::malloc(alloc32));
@@ -140,33 +142,20 @@ void memPool::allocate(std::size_t n_sz256, std::size_t n_sz1k, std::size_t n_sz
     // over-runs can be therefore detected for all chunks, even first one from the bigptr.
 
 
-    auto gen_canary_byte = [](int index) -> unsigned char {
-        if(canary_sz) {
-            const char* canary = "CaNaRy";
-            const int xsz = 6;
-            return canary[index % xsz];
-        }
-
-        throw mempool_bad_alloc("generating canary bytes for zero size canary");
-    };
 
 
-    auto stockpile = [&gen_canary_byte] (unsigned char* ptr, unsigned int ptr_len, unsigned chunk_len, std::vector<mem_chunk>& storage) {
+
+    auto stockpile = [] (unsigned char* ptr, unsigned int ptr_len, unsigned chunk_len, std::vector<mem_chunk>& storage) {
 
 
-        // fill first canary
-        auto write_canary = [&gen_canary_byte](unsigned char* ptr) {
-            for (int i = 0; i < canary_sz; i++) {
-                ptr[i] = gen_canary_byte(i);
-            }
-        };
-        write_canary(ptr);
 
-        for(unsigned char* cur_ptr = ptr + canary_sz; cur_ptr < ptr + ptr_len; cur_ptr += (chunk_len + canary_sz)) {
+        get_canary().write_canary(ptr);
+
+        for(unsigned char* cur_ptr = ptr + get_canary().canary_sz; cur_ptr < ptr + ptr_len; cur_ptr += (chunk_len + get_canary().canary_sz)) {
             storage.emplace_back(cur_ptr, chunk_len);
 
             // write canary string at the end of data
-            write_canary(cur_ptr + chunk_len);
+            get_canary().write_canary(cur_ptr + chunk_len);
         }
     };
 

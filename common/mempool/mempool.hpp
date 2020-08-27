@@ -30,6 +30,8 @@
 #include <display.hpp>
 #include <log/logger.hpp>
 
+#include <mempool/canary.hpp>
+
 //#define MEMPOOL_DEBUG
 
 class buffer;
@@ -176,6 +178,14 @@ class memPool {
     std::size_t alloc50k = 0;
     unsigned char* bigptr_50k = nullptr;
 
+    using canary_t = mp_canary;
+
+    static canary_t& get_canary() {
+        static canary_t c;
+        return c;
+    };
+
+
     memPool(std::size_t sz256, std::size_t sz1k, std::size_t sz5k, std::size_t sz10k, std::size_t sz20k);
     ~memPool() noexcept;
 
@@ -262,12 +272,6 @@ struct mpdata {
 
 };
 
-class mempool_bad_alloc : public std::runtime_error {
-public:
-    int block_size {0};
-    mempool_bad_alloc(const char* e) : std::runtime_error(e) {};
-    mempool_bad_alloc(const char* e, int block_size) : std::runtime_error(e), block_size(block_size) {};
-};
 
 void* mempool_alloc(size_t);
 void* mempool_realloc(void*, size_t);
