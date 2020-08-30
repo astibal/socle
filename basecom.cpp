@@ -24,11 +24,6 @@
 #include <linux/netfilter_ipv6.h>
 
 
-int baseCom::poll_msec = 100;
-int baseCom::rescan_poll_multiplier = 2;
-bool baseCom::debug_log_data_crc = false;
-
-
 void baseCom::init(baseHostCX* owner) {
 
 	if(!_static_init) {

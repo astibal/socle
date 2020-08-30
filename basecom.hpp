@@ -36,21 +36,23 @@
 #include <epoll.hpp>
 #include <log/logger.hpp>
 
-static const char str_unknown[] = "unknown";
-static const char str_getsockname[] = "getsockname-tproxy";
-static const char str_getpeername[] = "getpeername-tproxy";
 
 class baseHostCX;
 
 class baseCom {
 public:
-    static bool& GLOBAL_IO_BLOCKING() { static bool b = false; return b; }
-    static bool debug_log_data_crc;
-    
     friend class baseHostCX;
-    
-    static int poll_msec;
-    static int rescan_poll_multiplier;
+
+    static bool& GLOBAL_IO_BLOCKING() { static bool b = false; return b; }
+
+    static inline bool debug_log_data_crc = false;
+    static inline const char str_unknown[] = "unknown";
+    static inline const char str_getsockname[] = "getsockname-tproxy";
+    static inline const char str_getpeername[] = "getpeername-tproxy";
+
+    static inline int poll_msec = 100;
+    static inline int rescan_poll_multiplier = 2;
+
     int     poll_result = 0;
     baseHostCX* owner_cx_ = nullptr;
     inline baseHostCX* owner_cx() const { return owner_cx_; }
@@ -196,6 +198,8 @@ public:
             // auto bts = bt(true);
             // _err("trace: \r\n%s", bts.c_str());
             //::close(fd_);
+
+            _war("baseCom::socket(%d): possibly leaking previously held socket %d", sock, fd_);
         }
 
         fd_ = sock;
