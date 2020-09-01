@@ -1221,28 +1221,6 @@ int baseProxy::run_poll() {
                         _deb("baseProxy::run: socket %d not hint socket - reinserting!!", cur_socket);
                         back_in_set.push_back(cur_socket);
                     }
-                } else {
-
-
-                    int datagrams_erased = 0;
-
-                    // we are copying virtual sockets to not hold the lock too long.
-                    // the price is we have to explicitly refer to UDPCom::in_virt_set here
-                    if(cur_socket < 0)
-                    {
-                        std::scoped_lock<std::recursive_mutex> m (UDPCom::lock);
-
-                        // both protected by the same lock
-                        if(com()->in_readset(cur_socket)) {
-                            _deb("baseProxy::run: socket  %d still in readset - not removing", cur_socket);
-                        }  else {
-                            datagrams_erased = UDPCom::datagrams_received.erase((uint64_t) cur_socket);
-                        }
-                    }
-
-                    if(datagrams_erased > 0) {
-                        _deb("baseProxy::run: removed %d DatagramCom entries", datagrams_erased);
-                    }
                 }
 
                 if (com()->poller.poller) {
