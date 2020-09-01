@@ -236,11 +236,11 @@ bool ThreadedReceiver<Worker>::add_first_datagrams(int sock, SocketInfo& pinfo) 
         _err("ThreadedReceiver::add_first_datagrams[%d]: cannot enqueue data of size %d", sock, red);
     }
 
-    entry->socket_left = pinfo.create_socket_left(com()->l4_proto());
-
-
-    if(new_entry)
+    // crate sockets only for new entries
+    if(new_entry) {
+        entry->socket_left = pinfo.create_socket_left(com()->l4_proto());
         hint_push_all(session_key);
+    }
 
     _dia("ThreadedReceiver::add_first_datagrams[%d]: early %dB, sk %d, is_new %d", sock, red, session_key, new_entry);
     _dia("ThreadedReceiver::add_first_datagrams[%d]: connected sockets: l: %d", sock, entry->socket_left);
@@ -497,7 +497,7 @@ int ThreadedReceiverProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
 
             if(auto ucom = dynamic_cast<UDPCom*>(cx->com()); ucom) {
                 // set virtual socket to read early data
-                ucom->embryonic_id(virtual_socket);
+                ucom->embryonics().id = virtual_socket;
 
                 // we need to monitor also embryonic socket
                 com()->set_monitor(virtual_socket);
