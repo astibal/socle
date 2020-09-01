@@ -426,15 +426,15 @@ int UDPCom::read(int _fd, void* _buf, size_t _n, int _flags) {
     _deb("UDPCom::read[%d] read", _fd);
 
 
-    if(embryonic_id() != 0) {
+    if(embryonics().id != 0 && !embryonics().pool_depleted) {
 
         _deb("embryonic: reading from pool");
 
-        auto  r = read_from_pool(embryonic_id(), _buf, _n, _flags);
+        auto  r = read_from_pool(embryonics().id, _buf, _n, _flags);
 
-        if(! in_readset(embryonic_id())) {
-            DatagramCom::in_virt_set.erase(embryonic_id());
-            embryonic_id(0);
+        if(! in_readset(embryonics().id)) {
+            DatagramCom::in_virt_set.erase(embryonics().id);
+            embryonics().pool_depleted = true;
         }
 
         return r;
@@ -826,88 +826,162 @@ bool UDPCom::resolve_socket(bool source, int s, std::string* target_host, std::s
 
 
 void UDPCom::shutdown(int _fd) {
-    if(_fd > 0) {
+
+    auto kill_socket = [&](int fd) -> int {
+
+        int ret = 0;
+
+        int shutdown_ret = ::shutdown(fd, SHUT_RDWR);
+        if(shutdown_ret < 0) {
+            _not("UDPCom::shutdown[%d] shutdown error: %s", fd, string_error().c_str());
+            ret = shutdown_ret;
+        } else {
+            _deb("UDPCom::shutdown[%d] shut down", fd);
+        }
+
+        int close_ret = ::close(fd);
+        if(close_ret < 0) {
+            _not("UDPCom::shutdown[%d] close error: %s", fd, string_error().c_str());
+            ret = close_ret;
+        } else {
+            _deb("UDPCom::shutdown[%d] closed", fd);
+        }
+
+        return ret;
+    };
+
+
+    auto kill_connect_cache = [&](std::string const& key) -> int {
+        auto l_ = std::scoped_lock(connect_fd_cache_lock);
+        int count = 0;
+
+        auto it_fd = connect_fd_cache.find(key.c_str());
+
+        if(it_fd != connect_fd_cache.end()) {
+            std::pair<int,int>& cached_fd_ref = it_fd->second;
+
+            if(cached_fd_ref.second <= 1) {
+                count = connect_fd_cache.erase(key);
+                _dia("UDPCom::shutdown[%d]/kill_connect_cache[%s]: %d removed", _fd, key.c_str(), count);
+
+                if(kill_socket(cached_fd_ref.first) != 0) {
+                    _war("UDPCom::shutdown[%d]/kill_connect_cache[%s]: socket close error", _fd, key.c_str());
+                } else {
+                    _deb("UDPCom::shutdown[%d]/kill_connect_cache[%s]: socket closed", _fd, key.c_str());
+                }
+
+            } else {
+                cached_fd_ref.second--;
+                _deb("UDPCom::shutdown[%d]/kill_connect_cache[%s]: still in use, refcount now %d", _fd, key.c_str(), cached_fd_ref.second);
+            }
+        } else {
+            _deb("UDPCom::shutdown[%d]/kill_connect_cache[%s]: not found in connect cache.", _fd, key.c_str());
+
+            // What if socket is already used somewhere else?
+            //::close(__fd) can't be used. Doing nothing is better.
+
+        }
+
+        return count;
+    };
+
+    auto create_connect_cache_key = [&](int fd) -> std::optional<std::string> {
         std::string sip, sport;
         std::string dip, dport;
-        
+
         // it's oposite in this case, so following is CORRECT
-        
-        _dia("UDPCom::shutdown[%d]: request to shutdown socket", _fd);
-        
-        if(resolve_socket_dst(_fd, &sip, &sport) && resolve_socket_src(_fd, &dip, &dport)) {
-        
+
+        _dia("UDPCom::shutdown[%d]: request to shutdown socket", fd);
+
+        if(resolve_socket_dst(_fd, &sip, &sport) && resolve_socket_src(fd, &dip, &dport)) {
+
             std::string key = string_format("%s:%s-%s:%s", sip.c_str(), sport.c_str(),dip.c_str(), dport.c_str());
 
-            _deb("UDPCom::shutdown[%d]: removing connect cache %s", _fd, key.c_str());
-            connect_fd_cache_lock.lock();
-            int count = 0;
-            
-            auto it_fd = connect_fd_cache.find(key);
-            if(it_fd != connect_fd_cache.end()) {
-                std::pair<int,int>& cached_fd_ref = it_fd->second;            
-            
-                if(cached_fd_ref.second <= 1) {
-                    count = connect_fd_cache.erase(key);
-                    _deb("UDPCom::shutdown[%d]: %d removed", _fd, count);
+            _deb("UDPCom::shutdown[%d]: removing connect cache %s", fd, key.c_str());
 
-                    int r = ::shutdown(_fd, SHUT_RDWR);
-                    if(r > 0) {
-                        _deb("UDPCom::shutdown[%d]: %s", _fd, string_error().c_str());
-                    } else {
-                        _deb("UDPCom::shutdown[%d]: shutdown", _fd);
-                    }
-                    
-                    ::close(_fd);
-                } else {
-                    cached_fd_ref.second--;
-                    _deb("UDPCom::shutdown[%d]: still in use, recount now %d", _fd, cached_fd_ref.second);
-                }
-            } else {
-                _deb("UDPCom::shutdown[%d]: key %s not found in connect cache.", _fd, key.c_str());
-                
-                // What if socket is already used somewhere else?
-                //::close(__fd) can't be used. Doing nothing is better.
-                
-            }
-            
-            connect_fd_cache_lock.unlock();
-        } else {
-            
-            _dia("UDPCom::shutdown[%d]: socket not resolved, still closing", _fd);
-            ::close(_fd);
+            return std::make_optional(key);
         }
-        
+
+        return std::nullopt;
+    };
+
+
+
+    auto kill_datagram_entry = [&](int fd) -> int {
+        int count = 0;
+
+        std::lock_guard<std::recursive_mutex> l(DatagramCom::lock);
+
+        auto it_record = DatagramCom::datagrams_received.find((unsigned int)fd);
+        if(it_record != DatagramCom::datagrams_received.end()) {
+            auto it = DatagramCom::datagrams_received[(unsigned int)fd];
+
+            if(! it->reuse) {
+                if(it->socket_left.has_value() && it->socket_left.value() > 0) {
+                    int left = it->socket_left.value();
+
+                    if(kill_socket(left) != 0) {
+                        _war("UDPCom::shutdown[%d]/kill_datagram_entry[%d]: socket close error", _fd, left);
+                    } else {
+                        _deb("UDPCom::shutdown[%d]/kill_datagram_entry[%d]: socket closed", _fd, left);
+                    }
+                }
+
+            } else {
+                _dia("UDPCom::shutdown[%d]/kill_datagram_entry: datagrams_received entry reuse flag set, entry  not deleted.", fd);
+                it->reuse = false;
+            }
+
+            _dia("UDPCom::shutdown[%d]/kill_datagram_entry: datagrams_received entry erased", fd);
+            count = DatagramCom::datagrams_received.erase((unsigned int)fd);
+        } else {
+            _dia("UDPCom::shutdown[%d]/kill_datagram_entry: datagrams_received entry NOT found, thus not erased", fd);
+        }
+
+        return count;
+    };
+
+
+    // ----
+
+    _dia("UDPCom::shutdown[%d]: request to shutdown socket", _fd);
+
+    if(_fd > 0) {
+
+        int killed_from_cache = 0;
+
+        if(! connect_fd_cache.empty()) {
+            if (auto key = create_connect_cache_key(_fd); key.has_value()) {
+                killed_from_cache = kill_connect_cache(key.value());
+                _dia("UDPCom::shutdown[%d]: removed %d from connect cache", _fd, killed_from_cache);
+            }
+        }
+
+        if(killed_from_cache == 0)  kill_socket(_fd);
+
+        _deb("UDPCom::shutdown[%d]: eof real socket specific code", _fd);
+
     } else {
 
         int remc = UDPCom::in_virt_set.erase(_fd);
-        _dia("removing %d from in_virt_set on shutdown (%d entries)", _fd, remc);
+        _dia("UDPCom::shutdown[%d]: removed %d entries from in_virt_set on shutdown", _fd, remc);
 
-        std::lock_guard<std::recursive_mutex> l(DatagramCom::lock);
-        
-        auto it_record = DatagramCom::datagrams_received.find((unsigned int)_fd);
-        if(it_record != DatagramCom::datagrams_received.end()) {  
-                auto it = DatagramCom::datagrams_received[(unsigned int)_fd];
-                
-                if(! it->reuse) {
-                    if(it->socket_left.has_value() && it->socket_left.value() > 0) {
-                        ::close(it->socket_left.value());
-                    }
+        remc = kill_datagram_entry(_fd);
+        _dia("UDPCom::shutdown[%d]: removed %d entries from datagrams on shutdown", _fd, remc);
 
-                } else {
-                    _dia("UDPCom::close[%d]: datagrams_received entry reuse flag set, entry  not deleted.", _fd);
-                    it->reuse = false;
-                }
-                
-                _dia("UDPCom::close[%d]: datagrams_received entry erased", _fd);
-                DatagramCom::datagrams_received.erase((unsigned int)_fd);
-        } else {
-            _dia("UDPCom::close[%d]: datagrams_received entry NOT found, thus not erased", _fd);
-        }
+
+        _deb("UDPCom::shutdown[%d]: eof virtual socket specific code", _fd);
+
     }
 
-    if(embryonic_id() != 0) {
-        int remc = UDPCom::in_virt_set.erase(embryonic_id());
-        _dia("removing embryonic %d from in_virt_set on shutdown (%d entries)", embryonic_id(), remc);
+
+
+    if(embryonics().id != 0) {
+        int remc = UDPCom::in_virt_set.erase(embryonics().id);
+        _dia("UDPCom::shutdown[%d]: removed embryonic id=%d from in_virt_set on shutdown (%d entries)", _fd, embryonics().id, remc);
+
+        remc = kill_datagram_entry(embryonics().id);
+        _dia("UDPCom::shutdown[%d]: closing embryonic id=%d datagram entry on shutdown (%d entries)", _fd, embryonics().id, remc);
 
     }
 }

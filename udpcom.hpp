@@ -198,14 +198,19 @@ public:
     virtual bool resolve_nonlocal_socket(int sock);
     bool resolve_socket(bool source, int s, std::string* target_host, std::string* target_port, sockaddr_storage* target_storage) override;
 
-    inline uint32_t embryonic_id() const { return embryonic_id_; };
-    inline uint32_t embryonic_id(uint32_t n) { auto tmp = embryonic_id_; embryonic_id_ = n; return tmp; };
+    struct embryon {
+        uint32_t id = 0;     // is it a new connection? If non-zero, we should look in datagram store before reading real
+                             // sockets. After all datagram early data are processed, we should set it to 0
+                             // and not read from store anymore
+
+        bool pool_depleted = false;     // should we read from pool, or we already depleted it? It's cache value to not check pool again.
+    };
+
+    embryon embryonics() const { return embryonics_; };
+    embryon& embryonics() { return embryonics_; };
+    embryon embryonics(uint32_t n, bool p) { auto tmp = embryonics_; embryonics_ = { .id = n, .pool_depleted = p }; return tmp; };
 protected:
-
-    uint32_t embryonic_id_ = 0;      // is it a new connection? If non-zero, we should look in datagram store before reading real
-                                    // sockets. After all datagram early data are processed, we should set it to 0
-                                    // and not read from store anymore
-
+    embryon embryonics_= {0, false };
 
     unsigned int bind_sock_family = AF_INET6;
     int bind_sock_type = SOCK_DGRAM;
