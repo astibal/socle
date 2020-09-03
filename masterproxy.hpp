@@ -30,8 +30,12 @@ public:
     template<class T>
     using set_type = mp::set<T>;
 
+    using mutex_t = std::mutex;
+    mutex_t& proxy_lock() const { return proxies_lock_; }
+
 protected:
     vector_type <baseProxy*> proxies_;
+    mutable mutex_t proxies_lock_;
 
 public:
     explicit MasterProxy(baseCom* c): baseProxy(c) {}
