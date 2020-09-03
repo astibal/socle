@@ -36,9 +36,8 @@
 template<class Worker>
 class ThreadedAcceptor : public baseProxy, public FdQueueHandler {
 public:
-    using proxy_type = threadedProxyWorker::proxy_type_t;
 
-	explicit ThreadedAcceptor (std::shared_ptr<FdQueue> fdq, baseCom *c, proxy_type type);
+	explicit ThreadedAcceptor (std::shared_ptr<FdQueue> fdq, baseCom *c, proxyType type);
 	~ThreadedAcceptor() override;
 	
 	void on_left_new_raw(int) override;
@@ -54,8 +53,10 @@ public:
     int task_count() const { return tasks_.size(); }
     constexpr int core_multiplier() const noexcept { return 1; };
 
+    proxyType proxy_type() const { return proxy_type_; };
+    auto& tasks() { return tasks_; };
 private:
-    threadedProxyWorker::proxy_type_t proxy_type_;
+    proxyType proxy_type_;
 	mp::vector<std::pair< std::thread*, Worker*>> tasks_;
 
     int worker_count_preference_=0;
@@ -65,7 +66,7 @@ private:
 template<class SubWorker>
 class ThreadedAcceptorProxy : public threadedProxyWorker, public MasterProxy {
 public:
-    ThreadedAcceptorProxy(baseCom* c, uint32_t worker_id, threadedProxyWorker::proxy_type_t p):
+    ThreadedAcceptorProxy(baseCom* c, uint32_t worker_id, proxyType p):
             threadedProxyWorker(worker_id, p),
             MasterProxy(c) {}
 

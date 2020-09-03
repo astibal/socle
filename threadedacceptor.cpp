@@ -33,7 +33,7 @@
 
 
 template<class Worker>
-ThreadedAcceptor<Worker>::ThreadedAcceptor (std::shared_ptr<FdQueue> fdq, baseCom *c, proxy_type t):
+ThreadedAcceptor<Worker>::ThreadedAcceptor (std::shared_ptr<FdQueue> fdq, baseCom *c, proxyType t):
     baseProxy(c),
     FdQueueHandler(fdq),
     proxy_type_(t) {
@@ -168,10 +168,10 @@ int ThreadedAcceptorProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
 
                 cx->com()->nonlocal_dst(this->com()->nonlocal_dst());
 
-                if (proxy_type() == proxy_type_t::TRANSPARENT) {
+                if (proxy_type().is_transparent()) {
                     cx->com()->resolve_nonlocal_dst_socket(s);
                 } else
-                    if (proxy_type() == proxy_type_t::REDIRECT) {
+                    if (proxy_type().is_redirect()) {
                     cx->com()->resolve_redirected_dst_socket(s);
                 }
 

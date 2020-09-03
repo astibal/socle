@@ -41,10 +41,10 @@ class ThreadedReceiver : public baseProxy, public FdQueueHandler {
 public:
 
     using buffer_guard = locked_guard<lockbuffer>;
-    using proxy_type_t = threadedProxyWorker::proxy_type_t;
-    inline proxy_type_t proxy_type() const { return proxy_type_; }
 
-    ThreadedReceiver(std::shared_ptr<FdQueue> fdq, baseCom* c, proxy_type_t t);
+    inline proxyType proxy_type() const { return proxy_type_; }
+
+    ThreadedReceiver(std::shared_ptr<FdQueue> fdq, baseCom* c, proxyType t);
     ~ThreadedReceiver() override;
     
     bool     is_quick_port(int sock, short unsigned int dport);
@@ -81,7 +81,7 @@ public:
     constexpr int core_multiplier() const noexcept { return 4; };
 
 private:
-    threadedProxyWorker::proxy_type_t proxy_type_;
+    proxyType proxy_type_;
     mp::vector<int>* quick_list_ = nullptr;
 
 
@@ -145,7 +145,7 @@ public:
 template<class SubWorker>
 class ThreadedReceiverProxy : public threadedProxyWorker, public MasterProxy {
 public:
-    ThreadedReceiverProxy(baseCom* c, uint32_t worker_id, threadedProxyWorker::proxy_type_t p):
+    ThreadedReceiverProxy(baseCom* c, uint32_t worker_id, proxyType p):
             threadedProxyWorker(worker_id, p),
             MasterProxy(c) {}
 

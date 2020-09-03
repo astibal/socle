@@ -38,7 +38,7 @@
 #define USE_SOCKETPAIR
 
 template<class Worker>
-ThreadedReceiver<Worker>::ThreadedReceiver(std::shared_ptr<FdQueue> fdq, baseCom* c, threadedProxyWorker::proxy_type_t t):
+ThreadedReceiver<Worker>::ThreadedReceiver(std::shared_ptr<FdQueue> fdq, baseCom* c, proxyType t):
     baseProxy(c),
     FdQueueHandler(std::move(fdq)),
     proxy_type_(t) {
@@ -121,7 +121,7 @@ std::optional<SocketInfo> ThreadedReceiver<Worker>::process_anc_data(int sock, m
 
 
             try {
-                if (proxy_type() == proxy_type_t::REDIRECT) {
+                if (proxy_type().is_redirect()) {
                     ret.src_ss = std::make_optional(*static_cast<sockaddr_storage *>(msg->msg_name));
                     ret.unpack_src_ss();
 
@@ -541,7 +541,7 @@ int ThreadedReceiverProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
             cx_bcom->nonlocal_dst(this->com()->nonlocal_dst());
 
 
-            if (proxy_type() == proxy_type_t::TRANSPARENT) {
+            if (proxy_type().is_transparent()) {
                 cx_bcom->resolve_nonlocal_dst_socket(virtual_socket);
             } else {
 
