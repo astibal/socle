@@ -42,8 +42,6 @@ public:
 
     using buffer_guard = locked_guard<lockbuffer>;
 
-    inline proxyType proxy_type() const { return proxy_type_; }
-
     ThreadedReceiver(std::shared_ptr<FdQueue> fdq, baseCom* c, proxyType t);
     ~ThreadedReceiver() override;
     
@@ -80,6 +78,8 @@ public:
     int task_count() const { return tasks_.size(); }
     constexpr int core_multiplier() const noexcept { return 4; };
 
+    proxyType proxy_type() const { return proxy_type_; };
+    auto& tasks() { return tasks_; };
 private:
     proxyType proxy_type_;
     mp::vector<int>* quick_list_ = nullptr;
