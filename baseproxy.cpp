@@ -1150,8 +1150,14 @@ int baseProxy::run_poll() {
 
     for (epoll::set_type * current_set: sets) {
 
-        auto l_ = std::scoped_lock(current_set->get_lock());
-        for (auto cur_socket: current_set->get_ul()) {
+        mp::set<int> copied;
+        {
+            auto l_ = std::scoped_lock(current_set->get_lock());
+            for(auto s: current_set->get_ul()) {
+                copied.emplace(s);
+            }
+        }
+        for (auto cur_socket: copied) {
             //FIXME
             _deb("baseProxy::run: %s socket %d ", setname.at(name_iter).c_str(), cur_socket);
             epoll_handler* p_handler = com()->poller.get_handler(cur_socket);

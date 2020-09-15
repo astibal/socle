@@ -12,6 +12,8 @@ std::pair<int, int> FdQueue::new_pair(uint32_t id) {
 
     int hint_pair[2] = { -1, -1 };
 
+    auto l_ = std::scoped_lock(get_lock());
+
 #ifdef USE_SOCKETPAIR
     if(0 == ::socketpair(AF_UNIX, SOCK_STREAM|SOCK_NONBLOCK, 0, hint_pair)) {
         _inf("acceptor: using socketpair");
@@ -37,8 +39,6 @@ std::pair<int, int> FdQueue::new_pair(uint32_t id) {
 #endif
 
     auto pa = std::make_pair(hint_pair[0], hint_pair[1]);
-
-    auto l_ = std::scoped_lock(get_lock());
     hint_pairs_[id] = pa;
 
     return pa;

@@ -468,6 +468,9 @@ int ThreadedReceiverProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
     baseHostCX *cx = nullptr;
     bool found = false;
 
+
+    // datagram lock
+    {
     auto l_ = std::scoped_lock(DatagramCom::lock);
 
     _dia("ThreadedReceiverProxy::handle_sockets_once: DatagramCom::datagrams_received.size() = %d",
@@ -586,7 +589,7 @@ int ThreadedReceiverProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
         }
     }
 
-
+    } // datagram lock release - prevent mutex dead-lock races in generic handler
 
     return MasterProxy::handle_sockets_once(com());
 }
