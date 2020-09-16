@@ -5,14 +5,16 @@ loglevel epoll::log_level = INF;
 
 int epoll::init() {
     // size in epoll_create is ignored since 2.6.8, but has to be greater than 0
-    fd = epoll_create(1);
-    _dia("epoll::init: epoll socket created: %d",fd);
-    if (fd == -1) {
-        _err("epoll::init:%x: epoll_create failed! errno %d",this,errno);
+    int s = epoll_create(1);
+    epoll_fd_ = s;
+
+    _dia("epoll::init: epoll socket created: %d", s);
+    if (s == -1) {
+        _err("epoll::init:%x: epoll_create failed! errno %d", this, errno);
     }
     rescan_timer = std::chrono::high_resolution_clock::now();
 
-    return fd;
+    return s;
 }
 
 int epoll::wait(int timeout) {
@@ -102,7 +104,7 @@ int epoll::wait(int timeout) {
     
     // wait for epoll
     
-    int nfds = epoll_wait(fd, events, EPOLLER_MAX_EVENTS, timeout);
+    int nfds = epoll_wait(epoll_socket(), events, EPOLLER_MAX_EVENTS, timeout);
     
     if(nfds > 0) {
         _ext("epoll::wait: %d socket events", nfds);
@@ -180,6 +182,8 @@ bool epoll::add(int socket, int mask) {
     
     ev.events = mask;
     ev.data.fd = socket;
+
+    int fd = epoll_socket();
     
     _deb("epoll:add:%x: epoll_ctl(%d): called to add socket %d ",this, fd, socket);
     
@@ -199,12 +203,15 @@ bool epoll::add(int socket, int mask) {
 }
 
 bool epoll::modify(int socket, int mask) {
+
+    int fd = epoll_socket();
     epoll_event ev{0};
     ev.events = mask;
     ev.data.fd = socket;
-    
+
     _deb("epoll:modify:%x: epoll_ctl(%d): called to modify socket %d, epollin=%d,epollout=%d ",this, fd, socket,flag_check<int>(mask,EPOLLIN),flag_check<int>(mask,EPOLLOUT));
-    
+
+
     if (::epoll_ctl(fd, EPOLL_CTL_MOD, socket, &ev) == -1) {
         if(errno == ENOENT) {
             _dia("epoll:modify:%x: epoll_ctl(%d): socket %d not monitored, fixing...",this, fd, socket);
@@ -223,6 +230,8 @@ bool epoll::modify(int socket, int mask) {
 }
 
 bool epoll::del(int socket) {
+
+    int fd = epoll_socket();
     struct epoll_event ev;
     memset(&ev,0,sizeof ev);
     
@@ -266,19 +275,25 @@ bool epoll::in_idle_watched_set(int check) {
 
 
 bool epoll::hint_socket(int socket) {
-    
+
+    int fd = epoll_socket();
+
     if(hint_socket() > 0) {
+
+        int h_fd = hint_socket();
+
         struct epoll_event rem_ev;
         rem_ev.events = EPOLLIN;
         rem_ev.data.fd = hint_socket();
         
         _dia("epoll:hint_socket:%x: epoll_ctl(%d): removing old hint socket %d",this, fd,hint_socket());
-        ::epoll_ctl(fd,EPOLL_CTL_DEL,hint_fd,&rem_ev);
+        ::epoll_ctl(fd,EPOLL_CTL_DEL, h_fd, &rem_ev);
     }
     
     if(add(socket,EPOLLIN)) {
         _dia("epoll:hint_socket:%x: epoll_ctl(%d): setting hint socket %d",this, fd, socket);
-        hint_fd = socket;
+        hint_fd_ = socket;
+
     } else {
         _dia("epoll:hint_socket:%x: epoll_ctl(%d): setting hint socket %d FAILED.",this, fd, socket);
         return false;

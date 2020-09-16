@@ -117,8 +117,8 @@ struct epoll {
     using set_type = protected_set<int, mp::set<int>>;
 
     struct epoll_event events[EPOLLER_MAX_EVENTS];
-    int fd = 0;
-    int hint_fd = 0;
+    std::atomic_int epoll_fd_ = 0;
+    std::atomic_int hint_fd_ = 0;
     bool auto_epollout_remove = true;
     set_type in_set;
     set_type out_set;
@@ -174,11 +174,13 @@ struct epoll {
     virtual bool click_timer_now (); // return true if we should add them back to in_set (scan their readability again). If yes, reset timer.
 
     inline void clear() { memset(events,0,EPOLLER_MAX_EVENTS*sizeof(epoll_event)); in_set.clear(); out_set.clear(); idle_set.clear(); }
+
     bool hint_socket(int socket); // this is the socket which will be additionally monitored for EPOLLIN; each time it's readable, single byte is read from it.
-    [[nodiscard]] inline int hint_socket() const { return hint_fd; }
+    [[nodiscard]] inline int hint_socket() const { return hint_fd_.load(); }
+    [[nodiscard]] inline int epoll_socket() const { return epoll_fd_.load(); }
 
     virtual ~epoll() {
-        if (fd > 0) ::close(fd);
+        if (epoll_socket() > 0) ::close(epoll_socket());
     };
 
     static loglevel log_level;
