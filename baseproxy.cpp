@@ -1114,7 +1114,7 @@ int baseProxy::run_poll() {
     // normally we don't need to re-run, there are data still waiting which won't trigger epoll
     int should_rerun = 0;
 
-    if(! com()->poller.poller) {
+    if(! poller()) {
         _err("com()->poller.poller is null!");
         return should_rerun;
     }
@@ -1128,11 +1128,10 @@ int baseProxy::run_poll() {
 
     std::vector<int> back_in_set;
 
-    // std::set<int>& sets[] = { com()->poller.poller->in_set, com()->poller.poller->out_set };
     std::vector<epoll::set_type*> sets;
-    sets.push_back(&com()->poller.poller->in_set);
-    sets.push_back(&com()->poller.poller->out_set);
-    sets.push_back(&com()->poller.poller->idle_set);
+    sets.push_back(&poller()->in_set);
+    sets.push_back(&poller()->out_set);
+    sets.push_back(&poller()->idle_set);
 
     std::vector<std::string> setname = { "inset", "outset", "idleset" };
     int name_iter = 0;
@@ -1210,7 +1209,7 @@ int baseProxy::run_poll() {
                 _deb("baseProxy::run: socket %d has NO handler!!", cur_socket);
 
 
-                int hint_socket = com()->poller.poller->hint_socket();
+                int hint_socket = poller()->hint_socket();
 
                 _if_deb {
                     if (cur_socket == hint_socket) {
@@ -1242,7 +1241,7 @@ int baseProxy::run_poll() {
                         virt_global_hack = true;
                     }else {
                         _err("baseProxy::run: socket %d has registered NULL handler, removing", cur_socket);
-                        com()->poller.poller->del(cur_socket);
+                        poller()->del(cur_socket);
                     }
                 } else {
                     // hint file descriptor don't have handler
@@ -1257,7 +1256,7 @@ int baseProxy::run_poll() {
     }
 
     // clear in_set, so already handled sockets are excluded
-    com()->poller.poller->in_set.clear();
+    poller()->in_set.clear();
 
     // add back sockets which don't have handler - generally it should be just few sockets!
 
