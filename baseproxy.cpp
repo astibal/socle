@@ -1114,6 +1114,11 @@ int baseProxy::run_poll() {
     // normally we don't need to re-run, there are data still waiting which won't trigger epoll
     int should_rerun = 0;
 
+    if(! com()->poller.poller) {
+        _err("com()->poller.poller is null!");
+        return should_rerun;
+    }
+
     int counter_curr_proxy_handler = 0;
     int counter_curr_generic_handler = 0;
     int counter_curr_back_handler = 0;
@@ -1205,9 +1210,10 @@ int baseProxy::run_poll() {
                 _deb("baseProxy::run: socket %d has NO handler!!", cur_socket);
 
 
+                int hint_socket = com()->poller.poller->hint_socket();
 
                 _if_deb {
-                    if (cur_socket == com()->poller.poller->hint_socket()) {
+                    if (cur_socket == hint_socket) {
                         unsigned char buf[2048];
                         memset(buf, 0, 2048);
                         int l = ::recv(cur_socket, buf, 2048, MSG_PEEK);
@@ -1223,29 +1229,26 @@ int baseProxy::run_poll() {
                 // all real sockets without ANY handler should be re-inserted
                 if(cur_socket > 0) {
 
-                    if(cur_socket != com()->poller.poller->hint_socket()) {
+                    if(cur_socket != hint_socket) {
                         _deb("baseProxy::run: socket %d not hint socket - reinserting!!", cur_socket);
                         back_in_set.push_back(cur_socket);
                     }
                 }
 
-                if (com()->poller.poller) {
-                    if(cur_socket != com()->poller.poller->hint_socket()) {
-                        if(cur_socket < 0) {
-                            _ext("virtual socket %d has null handler", cur_socket);
-                            virt_global_hack = true;
-                        }else {
-                            _err("baseProxy::run: socket %d has registered NULL handler, removing", cur_socket);
-                            com()->poller.poller->del(cur_socket);
-                        }
-                    } else {
-                        // hint file descriptor don't have handler
-                        _deb("baseProxy::run: socket %d is hint socket, running proxy socket handler", cur_socket);
-                        handle_sockets_once(com());
-                        counter_curr_hint_handler++;
+
+                if(cur_socket != hint_socket) {
+                    if(cur_socket < 0) {
+                        _ext("virtual socket %d has null handler", cur_socket);
+                        virt_global_hack = true;
+                    }else {
+                        _err("baseProxy::run: socket %d has registered NULL handler, removing", cur_socket);
+                        com()->poller.poller->del(cur_socket);
                     }
                 } else {
-                    _err("com()->poller.poller is null!");
+                    // hint file descriptor don't have handler
+                    _deb("baseProxy::run: socket %d is hint socket, running proxy socket handler", cur_socket);
+                    handle_sockets_once(com());
+                    counter_curr_hint_handler++;
                 }
             }
         }
