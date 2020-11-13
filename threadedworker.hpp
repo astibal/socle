@@ -113,14 +113,14 @@ public:
         // on default , do the magic as pre-set
         if(count == 0) {
             nthreads = worker_count_preference();
-            _dia("Detected %d cores to use, multiplier to apply: %d.", nthreads, core_multiplier());
+            _dia("create_workers: detected %d cores to use, multiplier to apply: %d.", nthreads, core_multiplier());
             nthreads *= core_multiplier();
         }
 
         // on overridden positive, set count exactly as it has been specified by argument
         else if(count > 0) {
             nthreads = count;
-            _dia("Threads pool-size overridden: %d", nthreads);
+            _dia("create_workers: threads pool-size overridden: %d", nthreads);
 
         }
 
@@ -139,18 +139,12 @@ public:
             // register this
             auto pa = fdq_->new_pair(this_worker_id);
 
-            _deb("acceptor[0x%x][%d]: created queue socket pair %d,%d", std::this_thread::get_id(), i, pa.first, pa.second);
+            _deb("create_workers: acceptor[0x%x][%d]: created queue socket pair %d,%d", std::this_thread::get_id(), i, pa.first, pa.second);
 
             auto *w = new WorkerType(parent_com->replicate(), this_worker_id, proxy_type);
-//            w->com()->nonlocal_dst(parent_com->nonlocal_dst());
-//            w->pollroot(true);
-//            w->parent(this);
 
-            _dia("ThreadedAcceptor::create_workers setting worker's queue hint pipe socket %d", pa.first);
+            _dia("create_workers: acceptor[0x%x][%d]: new worker id=%d, queue hint pipe socket %d", std::this_thread::get_id(), i, this_worker_id, pa.first);
             w->com()->set_hint_monitor(pa.first);
-
-
-            _dia("Created ThreadedAcceptorProxy 0x%x", w);
 
             tasks_.push_back( {nullptr, w} );
         }
