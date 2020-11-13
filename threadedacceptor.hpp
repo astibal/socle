@@ -34,7 +34,7 @@
 #include <fdq.hpp>
 
 template<class Worker>
-class ThreadedAcceptor : public baseProxy, public FdQueueHandler {
+class ThreadedAcceptor : public baseProxy, public FdQueueHandler, public hasWorkers<Worker> {
 public:
 
 	explicit ThreadedAcceptor (std::shared_ptr<FdQueue> fdq, baseCom *c, proxyType type);
@@ -45,22 +45,10 @@ public:
 	
 	int run() override;
 	void on_run_round() override;
-	
-
-    inline void worker_count_preference(int c) { worker_count_preference_ = c; };
-    inline int worker_count_preference() { return worker_count_preference_; };
-
-    int task_count() const { return tasks_.size(); }
-    constexpr int core_multiplier() const noexcept { return 1; };
 
     proxyType proxy_type() const { return proxy_type_; };
-    auto& tasks() { return tasks_; };
 private:
     proxyType proxy_type_;
-	mp::vector<std::pair< std::thread*, Worker*>> tasks_;
-
-    int worker_count_preference_=0;
-	int create_workers(int count=0);
 };
 
 template<class SubWorker>

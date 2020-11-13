@@ -37,7 +37,7 @@
 
 
 template<class Worker>
-class ThreadedReceiver : public baseProxy, public FdQueueHandler {
+class ThreadedReceiver : public baseProxy, public FdQueueHandler, public hasWorkers<Worker> {
 public:
 
     using buffer_guard = locked_guard<lockbuffer>;
@@ -68,27 +68,14 @@ public:
 
     int pop_for_worker(int id);
 
-    inline void worker_count_preference(int c) { worker_count_preference_ = c; };
-    inline int worker_count_preference() { return worker_count_preference_; };
-    
-    
     void set_quick_list(mp::vector<int>* quick_list) { quick_list_ = quick_list; };
     inline mp::vector<int>* get_quick_list() const { return quick_list_;};
 
-    int task_count() const { return tasks_.size(); }
-    constexpr int core_multiplier() const noexcept { return 4; };
 
     proxyType proxy_type() const { return proxy_type_; };
-    auto& tasks() { return tasks_; };
 private:
     proxyType proxy_type_;
     mp::vector<int>* quick_list_ = nullptr;
-
-
-    mp::vector<std::pair< std::thread*, Worker*>> tasks_;
-    int worker_count_preference_=0;
-    int create_workers(int count=0);
-
 };
 
 
