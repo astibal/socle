@@ -87,6 +87,7 @@ public:
 };
 
 struct FdQueueHandler {
+    FdQueueHandler() = delete;
     explicit FdQueueHandler(std::shared_ptr<FdQueue> fdq) : fdqueue(std::move(fdq)) {}
 
     [[nodiscard]] int pop(int worker_id) const {
