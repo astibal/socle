@@ -23,9 +23,11 @@
 #include <baseproxy.hpp>
 #include <masterproxy.hpp>
 #include <threadedworker.hpp>
+#include <socketinfo.hpp>
 
 #include <vector>
 #include <deque>
+#include <fdq.hpp>
 
 #include <thread>
 #include <mutex>
@@ -33,58 +35,47 @@
 
 
 
-template<class Worker, class SubWorker>
-class ThreadedReceiver : public baseProxy {
+
+template<class Worker>
+class ThreadedReceiver : public baseProxy, public FdQueueHandler, public hasWorkers<Worker> {
 public:
 
     using buffer_guard = locked_guard<lockbuffer>;
-    using proxy_type_t = threadedProxyWorker::proxy_type_t;
-    inline proxy_type_t proxy_type() const { return proxy_type_; }
 
-    ThreadedReceiver(baseCom* c, proxy_type_t t);
+    ThreadedReceiver(std::shared_ptr<FdQueue> fdq, baseCom* c, proxyType t);
     ~ThreadedReceiver() override;
     
     bool     is_quick_port(int sock, short unsigned int dport);
-    uint32_t create_session_key4(sockaddr_storage *from, sockaddr_storage* orig);
-    uint32_t create_session_key6(sockaddr_storage *from, sockaddr_storage* orig);
-    
+
+
+
+    // get original IP, etc
+    std::optional<SocketInfo> process_anc_data(int sock, msghdr* msg);
+
+    // enqueue new data to early received packets from catch-all socket
+    // return  tuple:
+    // 0: true if the session is new
+    // 1: session key
+    bool add_first_datagrams(int sock, SocketInfo& pinfo);
     void on_left_new_raw(int) override;
+
+
+    void on_left_new_raw_old(int);
     void on_right_new_raw(int) override;
     
     int run() override;
     void on_run_round() override;
-    
-    int push(int);
-    int pop();
+
     int pop_for_worker(int id);
 
-    inline void worker_count_preference(int c) { worker_count_preference_ = c; };
-    inline int worker_count_preference() { return worker_count_preference_; };
-    
-    
     void set_quick_list(mp::vector<int>* quick_list) { quick_list_ = quick_list; };
     inline mp::vector<int>* get_quick_list() const { return quick_list_;};
 
-    int sq_type() const { return sq_type_; }
-    int task_count() const { return tasks_.size(); }
-    constexpr int core_multiplier() const noexcept { return 4; };
 
+    proxyType proxy_type() const { return proxy_type_; };
 private:
-    threadedProxyWorker::proxy_type_t proxy_type_;
-
-    mutable std::mutex sq_lock_;
-    mp::deque<int> sq_;
+    proxyType proxy_type_;
     mp::vector<int>* quick_list_ = nullptr;
-
-    // pipe created to be monitored by Workers with poll. If pipe is filled with *some* data
-    // there is something in the queue to pick-up.
-    int sq__hint[2] = {-1, -1};
-
-    mp::vector<std::pair< std::thread*, Worker*>> tasks_;
-    int worker_count_preference_=0;
-    int create_workers(int count=0);
-
-    enum  { SQ_PIPE = 0, SQ_SOCKETPAIR = 1 } sq_type_;
 };
 
 
@@ -141,7 +132,7 @@ public:
 template<class SubWorker>
 class ThreadedReceiverProxy : public threadedProxyWorker, public MasterProxy {
 public:
-    ThreadedReceiverProxy(baseCom* c, int worker_id, threadedProxyWorker::proxy_type_t p):
+    ThreadedReceiverProxy(baseCom* c, uint32_t worker_id, proxyType p):
             threadedProxyWorker(worker_id, p),
             MasterProxy(c) {}
 
@@ -152,8 +143,11 @@ public:
         static std::atomic_int workers_total_ = 2;
         return workers_total_;
     };
+
+
 };
+
+#endif //_THREADED_RECEIVER_HPP_
 
 #include <threadedreceiver.cpp>
 
-#endif //_THREADED_RECEIVER_HPP_

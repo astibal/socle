@@ -26,7 +26,6 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <fcntl.h>
-#include <time.h>
 #include <unistd.h>
 
 
@@ -47,42 +46,56 @@ class Host
 protected:
 	mutable std::string host_; //!< hostname
 	mutable std::string port_; //!< port
-
-	void host(std::string const& s) const {
-        static std::mutex host_port_lock;
-
-        std::scoped_lock<std::mutex> l(host_port_lock);
-	    host_ = s;
-	}
-    void port(std::string const& s) const {
-        static std::mutex host_port_lock;
-
-        std::scoped_lock<std::mutex> l(host_port_lock);
-        port_ = s;
-    }
-
+	mutable std::shared_mutex host_lock_;
 
 public:
 
-	Host() {};
-	
+	Host() = default;
+
+	Host(Host const& r) {
+	    host_ = r.host_;
+	    port_ = r.port_;
+	}
+
+	Host& operator=(Host const& r) {
+        host_ = r.host_;
+        port_ = r.port_;
+
+        return *this;
+    }
+
 	//! Constructor filling hostname and the port
 	/*!
 	 *  Create host structure
 	 *  \param h - hostname string
 	 *  \param p - port number (as the string
 	 */
-	Host(const char* h, const char* p) :
-	host_(h),
-	port_(p) {}
+	Host(const char* h, const char* p) : host_(h),port_(p) {}
 	
 	//! returns host part of the structure
-	std::string& host() { return host_; }
+	std::string host() { return host_; }
 	//! returns port part of the structure
-	std::string& port() { return port_; }
-	
-	const std::string& chost() const { return host_; }
-	const std::string& cport() const { return port_; }
+	std::string port() { return port_; }
+
+    void host(std::string const& s) const {
+
+         auto l_ = std::unique_lock(host_lock_);
+        host_ = s;
+    }
+    void port(std::string const& s) const {
+
+        auto l_ = std::unique_lock(host_lock_);
+        port_ = s;
+    }
+
+	std::string chost() const {
+        auto l_ = std::shared_lock(host_lock_);
+	    return host_;
+	}
+	std::string cport() const {
+        auto l_ = std::shared_lock(host_lock_);
+	    return port_;
+	}
 
     virtual std::string to_string(int verbosity=iINF) const { return string_format("%s:%s", chost().c_str(), cport().c_str()); };
 	
@@ -144,25 +157,19 @@ class Proxy;
 
 namespace socle {
 
-    class com_error : public std::exception {
+    class com_error : public std::runtime_error {
     public:
-        const char* what () const noexcept override  {
-            return "Com object error";
-        }
+        explicit com_error(const char* w) : std::runtime_error(w) {};
     };
 
     class com_is_null : public socle::com_error {
     public:
-        const char* what () const noexcept override  {
-            return "Com object is nullptr";
-        }
+        com_is_null() : com_error("com is null") {};
     };
 
     class create_socket_failed : public com_error{
     public:
-        const char* what () const noexcept override  {
-            return "Cannot create a new socket";
-        }
+        create_socket_failed() : com_error("failed to create a socket") {};
     };
 }
 
@@ -172,8 +179,8 @@ class baseHostCX : public Host
 
 	/* Basic elements */
 	
-	mutable std::string name__;      //!< human friendly name
-	mutable std::mutex name_mutex_;  // protect name__
+	mutable std::string name_;      //!< human friendly name
+	mutable std::mutex name_mutex_;  // protect name_
 
 	int fds_ = 0;			//!< socket/file descriptor itself
 	int closing_fds_ = 0;   // to close com we call shutdown() which actually don't close fds_. We have to store it and close on very object destruction.
@@ -214,11 +221,6 @@ class baseHostCX : public Host
 	// waiting_for_peercom hostcx won't be read/written until unpaused.
 	bool read_waiting_for_peercom_ = false;
     bool write_waiting_for_peercom_ = false;
-//     bool delayed_accept_ = false;
-    
-    // Com class can optionally unpause socket, using waiting_for_peercom flag as signalling between Com and CX interfaces.
-    // You want to keep it true
-    bool allow_com_unpause_ = true;
 
     // after writing all data into the socket we should shutdown the socket
     bool close_after_write_ = false;
@@ -238,16 +240,17 @@ protected:
     Proxy* parent_proxy_ = nullptr;
     unsigned char parent_flag_ = '0';
 
-    bool rescan_in_flag_ = false;
     bool rescan_out_flag_ = false;
 
     logan_lite log = logan_lite("proxy");
 public:
 
-    typedef enum { INIT, ACCEPTED, CONNECTING, CONNECTED, IO, CLOSING, CLOSED } fsm_t;
-
     baseCom* com() const { return com_; }
     void com(baseCom* c);
+    void rename(const char* str) {
+        auto l_ = std::scoped_lock(name_mutex_);
+        name_ = str;
+    }
 
     inline Proxy* parent_proxy() const { return parent_proxy_; };
     inline unsigned char parent_flag() const { return parent_flag_; }
@@ -265,7 +268,7 @@ public:
 
     baseCom* peercom() const { if(peer()) { return peer()->com(); } return nullptr; }
     
-    inline std::string& comlog() { return com()->log_buffer_; };
+    inline std::string& comlog() const { if(com()) return com()->log_buffer_; throw socle::com_is_null(); };
 public:
 	/* meters */
 	unsigned int  meter_read_count;
@@ -289,10 +292,10 @@ public:
 	std::string& name(bool force=false) const;
 	const char* c_name() const;
 	
-    ssize_t processed_bytes() { return processed_bytes_; };
+    inline ssize_t processed_bytes() const noexcept { return processed_bytes_; };
     
 
-	inline bool opening() { return opening_; }
+	inline bool opening() const { return opening_; }
 	inline void opening(bool b) { opening_ = b; if (b) { time(&t_connected); time(&w_activity); time(&r_activity); } }
 	// if we are trying to open socket too long - effective for non-blocking sockets only
 	bool opening_timeout();
@@ -330,7 +333,7 @@ public:
     [[nodiscard]] int socket() const { return fds_; };
     [[nodiscard]] int real_socket() const { if(com_) { return com_->translate_socket(fds_); } return socket(); }
 
-    [[nodiscard]] bool is_connected();
+    [[maybe_unused]] [[nodiscard]] bool is_connected();
     [[nodiscard]] int closed_socket() const { return closing_fds_; };
 
     void permanent(bool p) { permanent_=p; }
@@ -340,27 +343,27 @@ public:
 	 Before the next *process()* is invoked, 
 	 Set to false using *auto_finish(false)* to keep data in the buffer.remove automatically processed bytes from read buffer before next read cycle is run.
 	 4 from 5 psychiatrists recommend this  for sake of your own sanity.
-	*/		
-	void auto_finish(bool a) { auto_finish_ = a; } 
+	*/
+    [[maybe_unused]] void auto_finish(bool a) { auto_finish_ = a; }
 	bool auto_finish() const { return auto_finish_; }
 
-    [[nodiscard]] bool reduced() const { return !( host_.size() && port_.size() ); }
+    [[nodiscard]] bool reduced() const { return host_.empty() && port_.empty() ; }
 	int connect();
 	bool reconnect(int delay=5);
 	inline int reconnect_delay() const { return reconnect_delay_; }
 	inline int idle_delay() const { return idle_delay_; };
         inline void idle_delay(int d) { idle_delay_ = d; };
     
-	inline bool should_reconnect_now() { time_t now = time(nullptr); return (now - last_reconnect_ > reconnect_delay() && !reduced()); }
+	inline bool should_reconnect_now() const { time_t now = time(nullptr); return (now - last_reconnect_ > reconnect_delay() && !reduced()); }
 	
 	inline lockbuffer* readbuf() { return &readbuf_; }
 	inline lockbuffer const* readbuf() const { return &readbuf_; }
 
 	inline lockbuffer* writebuf() { return &writebuf_; }
-    inline lockbuffer const* writebuf() const { return &readbuf_; }
+    [[maybe_unused]] inline lockbuffer const* writebuf() const { return &readbuf_; }
 	
 	inline void send(buffer& b) { writebuf_.append(b); }
-	inline int  peek(buffer& b) { int r = com()->peek(this->socket(),b.data(),b.capacity(),0); if (r > 0) { b.size(r); } return r; }
+	inline int  peek(buffer& b) const { int r = com()->peek(this->socket(),b.data(),b.capacity(),0); if (r > 0) { b.size(r); } return r; }
 	
 	inline int next_read_limit() const { return next_read_limit_; }
 	inline void next_read_limit(int s) { next_read_limit_ = s; }
@@ -382,7 +385,7 @@ public:
 
 	int process_() { return process(); };
 	int write();
-	int io_write(unsigned char* data, size_t tx_size, int flags);
+	int io_write(unsigned char* data, size_t tx_size, int flags) const;
 	
 	
 	//overide this, and return number of bytes to be possible to passed to application/another hostcx
@@ -392,7 +395,7 @@ public:
 	virtual void to_write(buffer b);
     virtual void to_write(const std::string&);
 	virtual void to_write(unsigned char* c, unsigned int l); 
-	inline bool close_after_write() { return close_after_write_; };
+	inline bool close_after_write() const { return close_after_write_; };
 	inline void close_after_write(bool b) { close_after_write_ = b; };
 	
 	virtual buffer to_read();

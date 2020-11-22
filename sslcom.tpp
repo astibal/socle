@@ -1622,15 +1622,15 @@ void baseSSLCom<L4Proto>::accept_socket (int sockfd) {
             if (it_rec != l4com->datagrams_received.end()) {
                 _deb("datagram records found");
 
-                Datagram &rec = it_rec->second;
-                socket(::socket(rec.dst_family(), SOCK_DGRAM, IPPROTO_UDP));
+                auto record = it_rec->second;
+                socket(::socket(record->dst_family(), SOCK_DGRAM, IPPROTO_UDP));
 
                 if(socket() > 0) {
                     int n = 1;
                     int ret_opt4 = setsockopt(socket(), SOL_IP, IP_TRANSPARENT, &n, sizeof(n));
                     int ret_opt6 = setsockopt(socket(), SOL_IPV6, IPV6_TRANSPARENT, &n, sizeof(n));
-                    int ret_con = ::connect(socket(), (sockaddr *) &rec.src, sizeof(sockaddr_storage));
-                    int ret_bind = ::bind(socket(), (sockaddr *) &rec.dst, sizeof(sockaddr_storage));
+                    int ret_con = ::connect(socket(), (sockaddr *) &record->src, sizeof(sockaddr_storage));
+                    int ret_bind = ::bind(socket(), (sockaddr *) &record->dst, sizeof(sockaddr_storage));
                     _inf("Masked socket: connect=%d, bind=%d, transp4=%d, transp6=%d",
                          ret_con == 0, ret_bind == 0, ret_opt4 == 0, ret_opt6 == 0);
                 }

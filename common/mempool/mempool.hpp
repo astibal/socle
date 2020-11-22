@@ -30,6 +30,8 @@
 #include <display.hpp>
 #include <log/logger.hpp>
 
+#include <mempool/canary.hpp>
+
 //#define MEMPOOL_DEBUG
 
 class buffer;
@@ -37,7 +39,7 @@ class buffer;
 typedef struct mem_chunk
 {
     mem_chunk(): ptr(nullptr), capacity(0) {};
-    explicit mem_chunk(std::size_t s): capacity(s) { ptr = new unsigned char[s]; };
+    explicit mem_chunk(std::size_t s): capacity(s) { ptr = new unsigned char[s]; pool_type = type::HEAP; };
     mem_chunk(unsigned char* p, std::size_t c): ptr(p), capacity(c) {};
 
     // Actually coverity found wanted feature - mem_chunk is basically pointer with size
@@ -120,8 +122,11 @@ typedef struct mem_chunk
 class memPool {
 
     std::size_t sz32;
+    constexpr static unsigned int m32 = 20;
     std::size_t sz64;
+    constexpr static unsigned int m64 = 10;
     std::size_t sz128;
+    constexpr static unsigned int m128 = 5;
     std::size_t sz256;
     std::size_t sz1k;
     std::size_t sz5k;
@@ -134,43 +139,55 @@ class memPool {
     std::vector<mem_chunk_t>* pick_ret_set(ssize_t s);
 
     std::vector<mem_chunk_t> available_32;
+    std::size_t alloc32 = 0;
+    unsigned char* bigptr_32 = nullptr;
+
     std::vector<mem_chunk_t> available_64;
+    std::size_t alloc64 = 0;
+    unsigned char* bigptr_64 = nullptr;
+
     std::vector<mem_chunk_t> available_128;
+    std::size_t alloc128 = 0;
+    unsigned char* bigptr_128 = nullptr;
+
     std::vector<mem_chunk_t> available_256;
+    std::size_t alloc256 = 0;
+    unsigned char* bigptr_256 = nullptr;
+
     std::vector<mem_chunk_t> available_1k;
+    std::size_t alloc1k = 0;
+    unsigned char* bigptr_1k = nullptr;
+
     std::vector<mem_chunk_t> available_5k;
+    std::size_t alloc5k = 0;
+    unsigned char* bigptr_5k = nullptr;
+
     std::vector<mem_chunk_t> available_10k;
+    std::size_t alloc10k = 0;
+    unsigned char* bigptr_10k = nullptr;
+
     std::vector<mem_chunk_t> available_20k;
+    std::size_t alloc20k = 0;
+    unsigned char* bigptr_20k = nullptr;
+
     std::vector<mem_chunk_t> available_35k;
+    std::size_t alloc35k = 0;
+    unsigned char* bigptr_35k = nullptr;
+
     std::vector<mem_chunk_t> available_50k;
-//    std::vector<mem_chunk_t> available_big; // will be empty initially
+    std::size_t alloc50k = 0;
+    unsigned char* bigptr_50k = nullptr;
+
+    using canary_t = mp_canary;
+
+    static canary_t& get_canary() {
+        static canary_t c;
+        return c;
+    };
+
 
     memPool(std::size_t sz256, std::size_t sz1k, std::size_t sz5k, std::size_t sz10k, std::size_t sz20k);
-    ~memPool() noexcept {
-
-        auto chunk_deleter = [](mem_chunk& m) { delete[] m.ptr; m.ptr = nullptr; };
-        auto pool_deleter = [](auto& pool, auto chunk_deleter) {
-            std::for_each(pool.begin(), pool.end(), chunk_deleter );
-            pool.clear();
-        };
-
-        try {
-
-            std::lock_guard<std::mutex> g(lock);
-
-            pool_deleter(available_32, chunk_deleter);
-            pool_deleter(available_64, chunk_deleter);
-            pool_deleter(available_128, chunk_deleter);
-            pool_deleter(available_256, chunk_deleter);
-            pool_deleter(available_5k, chunk_deleter);
-            pool_deleter(available_10k, chunk_deleter);
-            pool_deleter(available_20k, chunk_deleter);
-            pool_deleter(available_35k, chunk_deleter);
-            pool_deleter(available_50k, chunk_deleter);
-        } catch (std::exception const& e) {
-            std::cerr << "exception in ~memPool(): " <<  e.what() << std::endl;
-        }
-    }
+    ~memPool() noexcept;
 
 public:
 
@@ -183,10 +200,11 @@ public:
         return m;
     }
 
-    void extend(std::size_t sz256, std::size_t sz1k, std::size_t sz5k, std::size_t sz10k, std::size_t sz20k);
+    void allocate(std::size_t sz256, std::size_t sz1k, std::size_t sz5k, std::size_t sz10k, std::size_t sz20k);
 
     mem_chunk_t acquire(std::size_t sz);
     void release(mem_chunk_t to_ret);
+    std::size_t find_ptr_size(void* ptr);
 
     std::atomic<unsigned long long> stat_acq;
     std::atomic<unsigned long long> stat_acq_size;
@@ -203,6 +221,10 @@ public:
     std::atomic<unsigned long long> stat_out_free;
     std::atomic<unsigned long long> stat_out_free_size;
 
+    std::atomic<unsigned long long> stat_out_pool_miss;
+    std::atomic<unsigned long long> stat_out_pool_miss_size;
+
+
     long unsigned int mem_32_av() const { return static_cast<long unsigned int>(available_32.size()); };
     long unsigned int mem_64_av() const { return static_cast<long unsigned int>(available_64.size()); };
     long unsigned int mem_128_av() const { return static_cast<long unsigned int>(available_128.size()); };
@@ -213,7 +235,6 @@ public:
     long unsigned int mem_20k_av() const { return static_cast<long unsigned int>(available_20k.size()); };
     long unsigned int mem_35k_av() const { return static_cast<long unsigned int>(available_35k.size()); };
     long unsigned int mem_50k_av() const { return static_cast<long unsigned int>(available_50k.size()); };
-//    long unsigned int mem_big_av() const { return static_cast<long unsigned int>(available_big.size()); };
 
 
     long unsigned int mem_32_sz() const { return static_cast<long unsigned int>(sz32); };
@@ -237,23 +258,20 @@ public:
 
 struct mpdata {
 
-    static std::unordered_map<void *, mem_chunk>& map() {
+    #ifdef MEMPOOL_DEBUG
+    static std::unordered_map<void *, mem_chunk>& trace_map() {
         static std::unordered_map<void *, mem_chunk> m;
         return m;
     }
-
-    static std::mutex& lock() {
+    static std::mutex& trace_lock() {
         static std::mutex m;
         return m;
     };
+
+    #endif
+
 };
 
-class mempool_bad_alloc : public std::runtime_error {
-public:
-    int block_size {0};
-    mempool_bad_alloc(const char* e) : std::runtime_error(e) {};
-    mempool_bad_alloc(const char* e, int block_size) : std::runtime_error(e), block_size(block_size) {};
-};
 
 void* mempool_alloc(size_t);
 void* mempool_realloc(void*, size_t);

@@ -55,7 +55,10 @@ bool MasterProxy::run_timers()
 
             if(p->state().dead()) {
                 delit_list.push_back(*i);
-                i = proxies().erase(i);
+                {
+                    auto l_ = std::scoped_lock(proxies_lock_);
+                    i = proxies().erase(i);
+                }
                 continue;
             } else {
                 p->run_timers();
@@ -117,10 +120,13 @@ int MasterProxy::handle_sockets_once(baseCom* xcom) {
 
         auto p = *i;
         if (p->state().dead()) {
-            delete(p);
 
-            i = proxies().erase(i);
-                        
+            {
+                auto l_ = std::scoped_lock(proxies_lock_);
+                i = proxies().erase(i);
+            }
+
+            delete(p);
             proxies_deleted++;
             continue;
         }
@@ -139,6 +145,10 @@ void MasterProxy::shutdown() {
 	baseProxy::shutdown();
 	
 	int i = 0;
+
+	// anyone getting proxies from list would get valid pointer
+	auto l_ = std::scoped_lock(proxies_lock_);
+
 	for(auto ii: proxies()) {
 		_inf("MasterProxy::shutdown: slave[%d]",i);
 		ii->shutdown();

@@ -19,18 +19,144 @@
 #ifndef THREADEDWORKER_HPP
 #define THREADEDWORKER_HPP
 
+#include <fdq.hpp>
+
+struct proxyType {
+    enum class proxy_type_t { NONE, TRANSPARENT, PROXY, REDIRECT } type_;
+    std::string to_string() const;
+
+    bool is_none() const { return type_ == proxy_type_t::NONE; };
+    bool is_transparent() const { return type_ == proxy_type_t::TRANSPARENT; };
+    bool is_proxy() const { return type_ == proxy_type_t::PROXY; };
+    bool is_redirect() const { return type_ == proxy_type_t::REDIRECT; };
+
+    static proxyType none() { return { .type_ = proxy_type_t::NONE }; };
+    static proxyType transparent() { return { .type_ = proxy_type_t::TRANSPARENT }; };
+    static proxyType proxy() { return { .type_ = proxy_type_t::PROXY }; };
+    static proxyType redirect() { return { .type_ = proxy_type_t::REDIRECT }; };
+};
+
 class threadedProxyWorker  {
 
 public:
-    using proxy_type_t = enum class proxy_type_t { NONE, TRANSPARENT, PROXY, REDIRECT };
+    threadedProxyWorker(uint32_t worker_id, proxyType t): type_(t), worker_id_(worker_id) {}
 
-    threadedProxyWorker(int worker_id, proxy_type_t t): type_(t), worker_id_(worker_id) {}
-
-    proxy_type_t type_;
+    proxyType type_;
 
     [[nodiscard]]
-    inline proxy_type_t proxy_type() const { return type_; }
-    int worker_id_ = 0;
+    inline proxyType proxy_type() const { return type_; }
+    uint32_t worker_id_ = 0;
 
 };
+
+inline std::string proxyType::to_string() const {
+    switch(type_) {
+        case proxy_type_t::NONE:
+            return "none";
+
+        case proxy_type_t::TRANSPARENT:
+            return "transparent";
+
+        case proxy_type_t::PROXY:
+            return "proxy";
+
+        case proxy_type_t::REDIRECT:
+            return "redirected";
+    }
+
+    return "unknown";
+}
+
+
+template<class WorkerType>
+class hasWorkers {
+
+private:
+    std::shared_ptr<FdQueue> fdq_;
+
+public:
+    hasWorkers() = delete;
+    // we need to link this class object to where we register workers (this abstraction costs referencing to child class parent, but it's worth it)
+    explicit hasWorkers(std::shared_ptr<FdQueue> fdq) : fdq_(fdq) {
+    }
+
+    void worker_count_preference(int c) { worker_count_preference_ = c; };
+    int worker_count_preference() const { return worker_count_preference_; };
+
+    auto& tasks() { return tasks_; };
+    auto task_count() const { return tasks_.size(); }
+
+    constexpr int core_multiplier() const noexcept { return 1; };
+
+    virtual ~hasWorkers() {
+        if (!tasks_.empty()) {
+
+            for (auto &thread_worker: tasks_) {
+                thread_worker.second->state().dead(true);
+            }
+
+            for (unsigned int i = 0; i <= tasks_.size(); i++) {
+                auto &t_w = tasks_[i];
+                t_w.first->join();
+                delete t_w.first;
+                t_w.first = nullptr;
+            }
+        }
+    };
+
+    int create_workers(int count, baseCom* parent_com, proxyType proxy_type) {
+
+        logan_lite log("service");
+
+        auto nthreads = std::thread::hardware_concurrency();
+
+        // on default , do the magic as pre-set
+        if(count == 0) {
+            nthreads = worker_count_preference();
+            _dia("create_workers: detected %d cores to use, multiplier to apply: %d.", nthreads, core_multiplier());
+            nthreads *= core_multiplier();
+        }
+
+        // on overridden positive, set count exactly as it has been specified by argument
+        else if(count > 0) {
+            nthreads = count;
+            _dia("create_workers: threads pool-size overridden: %d", nthreads);
+
+        }
+
+        // on overridden negative we want to disable service and not spawning any workers
+        else if (count < 0) {
+            WorkerType::workers_total() = count;
+            return count;
+        }
+
+        WorkerType::workers_total() = nthreads;
+
+        for( unsigned int i = 0; i < nthreads; i++) {
+
+            uint32_t this_worker_id = fdq_->worker_id_max()++;
+
+            // register this
+            auto pa = fdq_->new_pair(this_worker_id);
+
+            _deb("create_workers: acceptor[0x%x][%d]: created queue socket pair %d,%d", std::this_thread::get_id(), i, pa.first, pa.second);
+
+            auto *w = new WorkerType(parent_com->replicate(), this_worker_id, proxy_type);
+
+            _dia("create_workers: acceptor[0x%x][%d]: new worker id=%d, queue hint pipe socket %d", std::this_thread::get_id(), i, this_worker_id, pa.first);
+            w->com()->set_hint_monitor(pa.first);
+
+            tasks_.push_back( {nullptr, w} );
+        }
+
+        return nthreads;
+    };
+
+private:
+    int worker_count_preference_=0;
+    mp::vector<std::pair< std::thread*, WorkerType*>> tasks_;
+};
+
+
+
 #endif //THREADEDWORKER_HPP

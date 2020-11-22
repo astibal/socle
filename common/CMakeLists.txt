@@ -29,7 +29,12 @@ add_library(
 		log/logan.cpp
 		mempool/mempool.cpp
 		mempool/mpallocator.hpp
-		mpstd.hpp mpdisplay.hpp mpdisplay.cpp ../threadedworker.hpp)
+		mempool/mperror.hpp
+		mempool/canary.hpp
+		mpstd.hpp
+		mpdisplay.hpp
+		mpdisplay.cpp
+		)
 
 if(UNIX)
 	IF(NOT CMAKE_BUILD_TYPE)

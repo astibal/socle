@@ -36,21 +36,23 @@
 #include <epoll.hpp>
 #include <log/logger.hpp>
 
-static const char str_unknown[] = "unknown";
-static const char str_getsockname[] = "getsockname-tproxy";
-static const char str_getpeername[] = "getpeername-tproxy";
 
 class baseHostCX;
 
 class baseCom {
 public:
-    static bool& GLOBAL_IO_BLOCKING() { static bool b = false; return b; }
-    static bool debug_log_data_crc;
-    
     friend class baseHostCX;
-    
-    static int poll_msec;
-    static int rescan_poll_multiplier;
+
+    static bool& GLOBAL_IO_BLOCKING() { static bool b = false; return b; }
+
+    static inline bool debug_log_data_crc = false;
+    static inline const char str_unknown[] = "unknown";
+    static inline const char str_getsockname[] = "getsockname-tproxy";
+    static inline const char str_getpeername[] = "getpeername-tproxy";
+
+    static inline int poll_msec = 100;
+    static inline int rescan_poll_multiplier = 2;
+
     int     poll_result = 0;
     baseHostCX* owner_cx_ = nullptr;
     inline baseHostCX* owner_cx() const { return owner_cx_; }
@@ -196,6 +198,8 @@ public:
             // auto bts = bt(true);
             // _err("trace: \r\n%s", bts.c_str());
             //::close(fd_);
+
+            _war("baseCom::socket(%d): possibly leaking previously held socket %d", sock, fd_);
         }
 
         fd_ = sock;
@@ -234,90 +238,176 @@ public:
     virtual bool readable(int s) { return true; };
     virtual bool writable(int s) { return true; }; 
     
-    // operate on FD_SETs
+    // check if socket is changed
     virtual bool in_readset(int s) { return master()->poller.in_read_set(s); };
     virtual bool in_writeset(int s) { return master()->poller.in_write_set(s); };
     virtual bool in_idleset(int s) { return master()->poller.in_idle_set(s); };
 
-    inline void set_monitor(int s) { 
-        _dia("basecom::set_monitor: called to add %d",s);
-        if (s > 0 ) { 
+    inline void set_monitor(int xs) {
+        _dia("basecom::set_monitor: called to add %d", xs);
+
+        int s = xs;
+        if(xs < 0) {
+            s = master()->translate_socket(s);
+            _dia("   virtual socket, translated to real %d", s);
+        }
+
+        if (s > 0) {
             master()->poller.add(s,EPOLLIN); 
         } 
     };
-    inline void set_enforce(int s) {
-        _dia("basecom::set_enforce: called to add %d", s);
+    inline void set_enforce(int xs) {
+        _dia("basecom::set_enforce: called to add %d", xs);
+
+        int s = xs;
+        if(xs < 0) {
+            s = master()->translate_socket(s);
+            _dia("   virtual socket, translated to real %d", s);
+        }
+
         if (s > 0 ) {
             master()->poller.enforce_in(s);
         }
     };
 
-    inline void unset_monitor(int s) { 
-        _dia("basecom::unset_monitor: called to remove %d",s);
+    inline void unset_monitor(int xs) {
+        _dia("basecom::unset_monitor: called to remove %d", xs);
+
+        int s = xs;
+        if(xs < 0) {
+            s = master()->translate_socket(s);
+            _dia("   virtual socket, translated to real %d", s);
+        }
+
         if (s > 0 ) { 
             master()->poller.del(s);
             master()->poller.cancel_rescan_in(s);
             master()->poller.cancel_rescan_out(s);
         } 
     };    
-    inline void set_write_monitor(int s) {
-        _dia("basecom::set_write_monitor: called to add EPOLLOUT %d",s);
+    inline void set_write_monitor(int xs) {
+        _dia("basecom::set_write_monitor: called to add EPOLLOUT %d", xs);
+
+        int s = xs;
+        if(xs < 0) {
+            s = master()->translate_socket(s);
+            _dia("   virtual socket, translated to real %d", s);
+        }
+
         if (s > 0 ) { 
             master()->poller.modify(s,EPOLLIN|EPOLLOUT); 
         } 
     }
-    inline void set_write_monitor_only(int s) {
-        _dia("basecom::set_write_monitor: called to add EPOLLOUT %d only",s);
+    inline void set_write_monitor_only(int xs) {
+        _dia("basecom::set_write_monitor: called to add EPOLLOUT %d only", xs);
+
+        int s = xs;
+        if(xs < 0) {
+            s = master()->translate_socket(s);
+            _dia("   virtual socket, translated to real %d", s);
+        }
+
         if (s > 0 ) { 
             master()->poller.modify(s,EPOLLOUT); 
         } 
     }    
 
-    inline void change_monitor(int s, int new_mode) { 
-        _dia("basecom::change_monitor: change mode of %d to %d",s, new_mode);
+    inline void change_monitor(int xs, int new_mode) {
+        _dia("basecom::change_monitor: change mode of %d to %d", xs, new_mode);
+
+        int s = xs;
+        if(xs < 0) {
+            s = master()->translate_socket(s);
+            _dia("   virtual socket, translated to real %d", s);
+        }
+
         if (s > 0 ) { 
             master()->poller.modify(s, new_mode);
         } 
     };       
     
     inline void set_hint_monitor(int s) {
-        _dia("basecom::set_hint_monitor: called: %d",s);
+        _dia("basecom::set_hint_monitor: called: %d", s);
         master()->poller.hint_socket(s); 
     }
 
-    inline void set_poll_handler(int s, epoll_handler* h) {
-        _dia("basecom::set_poll_handler: called to add %d monitored by %x",s,h);
-        master()->poller.set_handler(s,h);
+    inline void set_poll_handler(int xs, epoll_handler* h) {
+        _dia("basecom::set_poll_handler: called to add %d monitored by 0x%x", xs, h);
+
+        int s = xs;
+        if(xs < 0) {
+            s = master()->translate_socket(s);
+            _dia("   virtual socket, translated to real %d", s);
+        }
+
+        master()->poller.set_handler(s, h);
+
+        // add also virtual handler
+        if(xs < 0) {
+            _dia("basecom::set_poll_handler: called to add also virtual %d monitored by 0x%x", xs, h);
+            master()->poller.set_handler(xs, h);
+        }
     };
 
     inline epoll_handler* get_poll_handler(int s) {
-        _deb("basecom::set_poll_handler: called to get handler of %d",s);
+        _deb("basecom::get_poll_handler: called to get handler of %d", s);
         epoll_handler* h =  master()->poller.get_handler(s);
-        _dia("basecom::set_poll_handler: handler of %d is 0x%x",s,h);
+        _dia("basecom::get_poll_handler: handler of %d is 0x%x", s, h);
         return h;
     };
 
-    inline void set_idle_watch(int s) {
+    inline void set_idle_watch(int xs) {
+
+        _dia("basecom::set_idle_watch: called: %d", xs);
+
+        int s = xs;
+        if(xs < 0) {
+            s = master()->translate_socket(s);
+            _dia("   virtual socket, translated to real %d", s);
+        }
+
         if(s > 0) {
             master()->poller.set_idle_watch(s);
         }
     }
-    inline void clear_idle_watch(int s) {
+    inline void clear_idle_watch(int xs) {
+        _dia("basecom::clear_idle_watch: called: %d", xs);
+
+        int s = xs;
+        if(xs < 0) {
+            s = master()->translate_socket(s);
+            _dia("   virtual socket, translated to real %d", s);
+        }
+
         if(s > 0) {
             master()->poller.clear_idle_watch(s);
         }
     }
 
 
-    inline void rescan_read(int s) {
-        _dia("basecom::rescan_read: called to rescan EPOLLIN %d",s);
+    inline void rescan_read(int xs) {
+        _dia("basecom::rescan_read: called to rescan EPOLLIN %d", xs);
+
+        int s = xs;
+        if(xs < 0) {
+            s = master()->translate_socket(s);
+            _dia("   virtual socket, translated to real %d", s);
+        }
+
         if (s > 0 ) { 
             master()->poller.rescan_in(s);
         } 
     }
 
-    inline void rescan_write(int s) {
-        _dia("basecom::rescan_read: called to rescan EPOLLOUT %d",s);
+    inline void rescan_write(int xs) {
+        _dia("basecom::rescan_read: called to rescan EPOLLOUT %d", xs);
+
+        int s = xs;
+        if(xs < 0) {
+            s = master()->translate_socket(s);
+            _dia("   virtual socket, translated to real %d", s);
+        }
+
         if (s > 0 ) { 
             master()->poller.rescan_out(s);
         } 

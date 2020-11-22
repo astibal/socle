@@ -81,8 +81,8 @@ public:
 
           free_ = ref.free_;
 
-          auto log = logan::create("buffer");
-          _inf("buffer trace:\n %s", bt(true).c_str());
+          // auto log = logan::create("buffer");
+          // _deb("buffer owner move trace ctor(buffer&&):\n %s", bt(true).c_str());
 
           ref.free_ = false; // make the almost-invalid reference not free our memory
       }
@@ -100,6 +100,9 @@ public:
               counter_free(capacity_);
           }
       }
+
+      // auto log = logan::create("buffer");
+      // _deb("buffer owner move trace op=(buffer&&):\n %s", bt(true).c_str());
 
       data_ = ref.data_;
       capacity_ = ref.capacity_;

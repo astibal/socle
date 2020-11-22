@@ -52,9 +52,7 @@ struct Datagram {
     Datagram(Datagram const& r) {
         dst = r.dst;
         src = r.src;
-        socket = r.socket;
-        real_socket = r.real_socket;
-        embryonic = r.embryonic;
+        socket_left = r.socket_left;
         reuse = r.reuse;
         cx = r.cx;
         rx_queue = r.rx_queue;
@@ -64,9 +62,8 @@ struct Datagram {
 
         dst = r.dst;
         src = r.src;
-        socket = r.socket;
-        real_socket = r.real_socket;
-        embryonic = r.embryonic;
+        socket_left = r.socket_left;
+
         reuse = r.reuse;
         cx = r.cx;
         rx_queue = r.rx_queue;
@@ -104,12 +101,19 @@ struct Datagram {
         return (queue_bytes_l() == 0);
     }
 
+    inline int enqueue(unsigned char* data, size_t len) {
+        for(auto& elem: rx_queue) {
+            if(elem.empty()) {
+                elem.append(data, len);
+                return len;
+            }
+        }
+        return 0;
+    }
 
-    int socket;
-    bool real_socket = false;   // indicate if inbound connection was suceessfully bound, so we can use
-                                // real socket instead of virtual.
-    
-    bool embryonic = true;
+
+    std::optional<int> socket_left;
+
     bool reuse = false;         // make this true if there is e.g. clash and closed CX/Com should not
                                 // trigger it's removal from the pool: com()->close() will otherwise
                                 // erase it.
@@ -144,11 +148,11 @@ struct Datagram {
 
 class DatagramCom {
 public:
-    static std::recursive_mutex lock;
-    static std::map<uint64_t,Datagram> datagrams_received;
+    static inline std::recursive_mutex lock;
+    static inline std::map<uint64_t,std::shared_ptr<Datagram>> datagrams_received;
   
     // set with all virtal sockets which have data to read
-    static epoll::set_type in_virt_set;
+    static inline epoll::set_type in_virt_set;
 };
 
 class UDPCom : public virtual baseCom, public DatagramCom {
@@ -161,8 +165,6 @@ public:
 
         log.sub_area("com.udp");
     };
-    
-    static std::string udpcom_name_;
     
     void init(baseHostCX* owner) override;
     baseCom* replicate() override { return new UDPCom(); };
@@ -195,7 +197,20 @@ public:
 
     virtual bool resolve_nonlocal_socket(int sock);
     bool resolve_socket(bool source, int s, std::string* target_host, std::string* target_port, sockaddr_storage* target_storage) override;
+
+    struct embryon {
+        uint32_t id = 0;     // is it a new connection? If non-zero, we should look in datagram store before reading real
+                             // sockets. After all datagram early data are processed, we should set it to 0
+                             // and not read from store anymore
+
+        bool pool_depleted = false;     // should we read from pool, or we already depleted it? It's cache value to not check pool again.
+    };
+
+    embryon embryonics() const { return embryonics_; };
+    embryon& embryonics() { return embryonics_; };
+    embryon embryonics(uint32_t n, bool p) { auto tmp = embryonics_; embryonics_ = { .id = n, .pool_depleted = p }; return tmp; };
 protected:
+    embryon embryonics_= {0, false };
 
     unsigned int bind_sock_family = AF_INET6;
     int bind_sock_type = SOCK_DGRAM;
@@ -212,13 +227,13 @@ protected:
     
     // Since we don't want one Com to close another's Com opened socket,
     // we implement value as tuple of <fd,refcount>.
-    static std::map<std::string,std::pair<int,int>> connect_fd_cache;
-    static std::recursive_mutex connect_fd_cache_lock;
+    static inline std::map<std::string,std::pair<int,int>> connect_fd_cache;
+    static inline std::recursive_mutex connect_fd_cache_lock;
     
 public:
     
     // allow older kernels to use UDP -- we have to set bind_sock_family to IPv4 variant
-    static unsigned int default_sock_family;
+    static inline unsigned int default_sock_family = AF_INET6;
 
     DECLARE_C_NAME("UDPCom");
     DECLARE_LOGGING(to_string);

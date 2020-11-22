@@ -140,6 +140,9 @@ public:
     void log_simple(const char* str);
 
     template <class ... Args>
+    void log_simple(std::stringstream& ss);
+
+    template <class ... Args>
     void log(loglevel l, const std::string& fmt, Args ... args);
     //void log_w_name(loglevel l, const char* n, const std::string& fmt, ...);
 
@@ -205,6 +208,14 @@ private:
 template <class ... Args>
 void logger::log_simple(const char* str) {
     std::cerr << str << std::endl;
+}
+
+template <class ... Args>
+void logger::log_simple(std::stringstream& ss) {
+    std::string s = ss.str();
+    ss.clear();
+
+    std::cerr << s << std::endl;
 }
 
 template <class ... Args>

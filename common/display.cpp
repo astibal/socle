@@ -427,78 +427,7 @@ bool version_check(const std::string &real_string , std::string v) {
     return true;
 }
 
-std::string inet_family_str(int fa) {
-    switch(fa) {
-        case AF_INET:
-            return std::string("IPv4");
-        case AF_INET6:
-            return std::string("IPv6");
-            
-        default:
-            return string_format("Proto%d",fa);
-    }
-}
 
-
-int inet_ss_address_unpack(sockaddr_storage* ptr, std::string* dst, unsigned short* port) {
-    char b[64]; memset(b,0,64);
-    int family = ptr->ss_family;
-    unsigned short val_port = 0;
-    
-    if(family == AF_INET6) {
-        inet_ntop(ptr->ss_family,&(((struct sockaddr_in6*) ptr)->sin6_addr),b,64);
-        val_port = ((struct sockaddr_in6*) ptr)->sin6_port;
-    }
-    else if(family == AF_INET) {
-        inet_ntop(ptr->ss_family,&(((struct sockaddr_in*) ptr)->sin_addr),b,64);
-        val_port = ((struct sockaddr_in*) ptr)->sin_port;
-    }
-    
-    std::string mapped4_temp = b;
-    if(mapped4_temp.find("::ffff:") == 0) {
-        mapped4_temp = mapped4_temp.substr(7);
-        family = AF_INET;
-    }    
-    
-    if(dst != nullptr) {
-        // function can be useful just to detect mapped IP
-        dst->assign(mapped4_temp);
-    }
-    if(port != nullptr) {
-        *port = ntohs(val_port);
-    }
-    return family;
-}
-
-
-int inet_ss_address_remap(sockaddr_storage* orig, sockaddr_storage* mapped) {
-    std::string ip_part;
-    unsigned short port_part;
-    
-    int fa = inet_ss_address_unpack(orig,&ip_part,&port_part);
-    
-    if(fa == AF_INET) {
-        inet_pton(fa,ip_part.c_str(),&((struct sockaddr_in*)mapped)->sin_addr);
-        ((struct sockaddr_in*)mapped)->sin_port = htons(port_part);
-        mapped->ss_family = fa;
-    }
-    else if(fa == AF_INET6) {
-        inet_pton(fa,ip_part.c_str(),&((struct sockaddr_in6*)mapped)->sin6_addr);
-        ((struct sockaddr_in6*)mapped)->sin6_port = htons(port_part);
-        mapped->ss_family = fa;
-    }
-    
-    return fa;
-}
-
-std::string inet_ss_str(sockaddr_storage* s) {
-    std::string ip;
-    unsigned short port;
-    
-    int fa = inet_ss_address_unpack(s,&ip,&port);
-    
-    return string_format("%s/%s:%d", inet_family_str(fa).c_str(),ip.c_str(),port);
-}
 
 
 int safe_val(const std::string &str_val, int default_val) {

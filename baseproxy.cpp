@@ -274,33 +274,31 @@ bool baseProxy::run_timers () {
 
     if(clicker_.reset_timer()) {
 
-        for (auto i: left_sockets) {
-            on_cx_timer(i);
-        }
-        for (auto ii: left_bind_sockets) {
-            on_cx_timer(ii);
-        }
+        auto cx_check = [&](auto* cx, bool idle_check=false) {
+            on_cx_timer(cx);
+            if(idle_check && cx->idle_timeout()) {
+                state().dead(true);
 
-        for (auto j: right_sockets) {
-            on_cx_timer(j);
-        }
-        for (auto jj: right_bind_sockets) {
-            on_cx_timer(jj);
-        }
+                _dia("%s: timed out!", this->hr().c_str());
+            }
+        };
 
-        for (auto k: left_pc_cx) {
-            on_cx_timer(k);
-        }
-        for (auto l: right_pc_cx) {
-            on_cx_timer(l);
-        }
+        auto for_each_check = [&](auto what, bool idle_check=false) {
+            for(auto it: what) {
+                cx_check(it, idle_check);
+            }
+        };
 
-        for (auto k: left_delayed_accepts) {
-            on_cx_timer(k);
-        }
-        for (auto l: right_delayed_accepts) {
-            on_cx_timer(l);
-        }
+
+        for_each_check(left_sockets, true);
+        for_each_check(left_delayed_accepts, true);
+        for_each_check(left_bind_sockets);
+        for_each_check(left_pc_cx, true);
+
+        for_each_check(right_sockets, true);
+        for_each_check(right_delayed_accepts, true);
+        for_each_check(right_bind_sockets);
+        for_each_check(right_pc_cx, true);
 
         return true;
     }
@@ -695,7 +693,7 @@ bool baseProxy::handle_cx_write_once(unsigned char side, baseCom* xcom, baseHost
 }
 
 
-bool baseProxy::handle_cx_new(unsigned char side, baseCom* xcom, baseHostCX* thiscx) {
+bool baseProxy::handle_sockets_accept(unsigned char side, baseCom* xcom, baseHostCX* thiscx) {
     
     sockaddr_in clientInfo{0};
     socklen_t addrlen = sizeof(clientInfo);
@@ -703,12 +701,12 @@ bool baseProxy::handle_cx_new(unsigned char side, baseCom* xcom, baseHostCX* thi
     int client = com()->accept(thiscx->socket(), (sockaddr*)&clientInfo, &addrlen);
     
     if(client < 0) {
-        _dia("baseProxy::handle_cx_new[%c]: bound socket accept failed: %s", side, strerror(errno));
+        _dia("baseProxy::handle_sockets_accept[%c]: bound socket accept failed: %s", side, strerror(errno));
         return true; // still, it's not the error which should break socket list iteration
     }
     
     if(new_raw()) {
-        _deb("baseProxy::handle_cx_new[%c]: raw processing on %d", side, client);
+        _deb("baseProxy::handle_sockets_accept[%c]: raw processing on %d", side, client);
         if     (side == 'l') { on_left_new_raw(client); }
         else if(side == 'r') { on_right_new_raw(client); }
     }
@@ -720,7 +718,7 @@ bool baseProxy::handle_cx_new(unsigned char side, baseCom* xcom, baseHostCX* thi
         // cx->com()->nonlocal_dst(cx->com()->nonlocal_dst());
         
         if(!cx->read_waiting_for_peercom()) {
-            _dia("baseProxy::handle_cx_new[%c]: new unpaused socket %d -> accepting", side, client);
+            _dia("baseProxy::handle_sockets_accept[%c]: new unpaused socket %d -> accepting", side, client);
             
             cx->on_accept_socket(client);
             //  DON'T: you don't know if this proxy does have child proxy, or wants to handle situation different way.
@@ -728,7 +726,7 @@ bool baseProxy::handle_cx_new(unsigned char side, baseCom* xcom, baseHostCX* thi
             //   else if(side == 'r') { radd(cx); }
             
         } else {
-            _dia("baseProxy::handle_cx_new[%c]: new waiting_for_peercom socket %d -> delaying", side, client);
+            _dia("baseProxy::handle_sockets_accept[%c]: new waiting_for_peercom socket %d -> delaying", side, client);
             
             cx->on_delay_socket(client);
             //  DON'T: you don't know if this proxy does have child proxy, or wants to handle situation different way.
@@ -909,7 +907,17 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
                 for (auto i: left_bind_sockets) {
                     int s = i->socket();
                     if (xcom->in_readset(s)) {
-                        handle_cx_new('l', xcom, (i));
+
+                        auto m = locks::fd().lock(s);
+
+                        if(m) {
+                            auto l_ = std::unique_lock(*m);
+                            handle_sockets_accept('l', xcom, (i));
+                        }
+                        else {
+                            handle_sockets_accept('l', xcom, (i));
+                            throw  std::runtime_error("mutex unprotected accept");
+                        }
                     }
                 }
             }
@@ -1106,6 +1114,11 @@ int baseProxy::run_poll() {
     // normally we don't need to re-run, there are data still waiting which won't trigger epoll
     int should_rerun = 0;
 
+    if(! poller()) {
+        _err("com()->poller.poller is null!");
+        return should_rerun;
+    }
+
     int counter_curr_proxy_handler = 0;
     int counter_curr_generic_handler = 0;
     int counter_curr_back_handler = 0;
@@ -1115,11 +1128,10 @@ int baseProxy::run_poll() {
 
     std::vector<int> back_in_set;
 
-    // std::set<int>& sets[] = { com()->poller.poller->in_set, com()->poller.poller->out_set };
     std::vector<epoll::set_type*> sets;
-    sets.push_back(&com()->poller.poller->in_set);
-    sets.push_back(&com()->poller.poller->out_set);
-    sets.push_back(&com()->poller.poller->idle_set);
+    sets.push_back(&poller()->in_set);
+    sets.push_back(&poller()->out_set);
+    sets.push_back(&poller()->idle_set);
 
     std::vector<std::string> setname = { "inset", "outset", "idleset" };
     int name_iter = 0;
@@ -1142,8 +1154,14 @@ int baseProxy::run_poll() {
 
     for (epoll::set_type * current_set: sets) {
 
-        auto l_ = std::scoped_lock(current_set->get_lock());
-        for (auto cur_socket: current_set->get_ul()) {
+        mp::set<int> copied;
+        {
+            auto l_ = std::scoped_lock(current_set->get_lock());
+            for(auto s: current_set->get_ul()) {
+                copied.emplace(s);
+            }
+        }
+        for (auto cur_socket: copied) {
             //FIXME
             _deb("baseProxy::run: %s socket %d ", setname.at(name_iter).c_str(), cur_socket);
             epoll_handler* p_handler = com()->poller.get_handler(cur_socket);
@@ -1166,10 +1184,12 @@ int baseProxy::run_poll() {
 
                     auto* proxy = dynamic_cast<baseProxy*>(p_handler);
                     if(proxy != nullptr) {
-                        _ext("baseProxy::run: socket %d has baseProxy handler!!", cur_socket);
 
+                        _deb("baseProxy::run_poll: socket %d -> handler 0x%x : executing", cur_socket, proxy);
                         // call poller-carried proxy handler!
                         proxy->handle_sockets_once(com());
+                        _deb("baseProxy::run_poll: socket %d -> handler 0x%x : finished", cur_socket, proxy);
+
                         if(proxy->state().dead()) {
                             proxy->shutdown();
                             _dia("Proxy 0x%x has been shutdown.", proxy);
@@ -1179,7 +1199,7 @@ int baseProxy::run_poll() {
 
                     } else {
 
-                        _ext("baseProxy::run: socket %d has generic handler", cur_socket);
+                        _deb("baseProxy::run: socket %d has generic handler", cur_socket);
                         p_handler->handle_event(com());
                         counter_curr_generic_handler++;
                     }
@@ -1188,46 +1208,46 @@ int baseProxy::run_poll() {
             } else {
                 _deb("baseProxy::run: socket %d has NO handler!!", cur_socket);
 
-                // all real sockets without ANY handler should be re-inserted
-                if(cur_socket > 0) {
-                    back_in_set.push_back(cur_socket);
-                } else {
 
+                int hint_socket = poller()->hint_socket();
 
-                    int datagrams_erased = 0;
-
-                    // we are copying virtual sockets to not hold the lock too long.
-                    // the price is we have to explicitly refer to UDPCom::in_virt_set here
-                    {
-                        std::scoped_lock<std::recursive_mutex> m (UDPCom::lock);
-
-                        // both protected by the same lock
-                        UDPCom::in_virt_set.erase(cur_socket);
-                        datagrams_erased = UDPCom::datagrams_received.erase((uint64_t) cur_socket);
-                    }
-
-                    if(datagrams_erased > 0) {
-                        _deb("removed %d DatagramCom entries", datagrams_erased);
+                _if_deb {
+                    if (cur_socket == hint_socket) {
+                        unsigned char buf[2048];
+                        memset(buf, 0, 2048);
+                        int l = ::recv(cur_socket, buf, 2048, MSG_PEEK);
+                        if (l > 0) {
+                            //_deb("Hint socket data:\n %s\n--", hex_dump(buf, l, 4).c_str());
+                            _deb("Hint socket %d data: %s", cur_socket, buf);
+                        } else {
+                            _deb("Hint socket %d data: -none- (%d)", cur_socket, l);
+                        }
                     }
                 }
 
-                if (com()->poller.poller) {
-                    if(cur_socket != com()->poller.poller->hint_socket()) {
-                        if(cur_socket < 0) {
-                            _ext("virtual socket %d has null handler", cur_socket);
-                            virt_global_hack = true;
-                        }else {
-                            _err("baseProxy::run: socket %d has registered NULL handler, removing", cur_socket);
-                            com()->poller.poller->del(cur_socket);
-                        }
-                    } else {
-                        // hint file descriptor don't have handler
-                        _deb("baseProxy::run: socket %d is hint socket, running proxy socket handler", cur_socket);
-                        handle_sockets_once(com());
-                        counter_curr_hint_handler++;
+                // all real sockets without ANY handler should be re-inserted
+                if(cur_socket > 0) {
+
+                    if(cur_socket != hint_socket) {
+                        _deb("baseProxy::run: socket %d not hint socket - reinserting!!", cur_socket);
+                        back_in_set.push_back(cur_socket);
+                    }
+                }
+
+
+                if(cur_socket != hint_socket) {
+                    if(cur_socket < 0) {
+                        _ext("virtual socket %d has null handler", cur_socket);
+                        virt_global_hack = true;
+                    }else {
+                        _err("baseProxy::run: socket %d has registered NULL handler, removing", cur_socket);
+                        poller()->del(cur_socket);
                     }
                 } else {
-                    _err("com()->poller.poller is null!");
+                    // hint file descriptor don't have handler
+                    _deb("baseProxy::run: socket %d is hint socket, running proxy socket handler", cur_socket);
+                    handle_sockets_once(com());
+                    counter_curr_hint_handler++;
                 }
             }
         }
@@ -1236,11 +1256,13 @@ int baseProxy::run_poll() {
     }
 
     // clear in_set, so already handled sockets are excluded
-    com()->poller.poller->in_set.clear();
+    poller()->in_set.clear();
 
     // add back sockets which don't have handler - generally it should be just few sockets!
 
-    if(!back_in_set.empty())  _deb("%d sockets in back_in_set re-added to in_set", back_in_set.size());
+    _if_deb {
+        if (!back_in_set.empty()) _deb("%d sockets in back_in_set re-added to in_set", back_in_set.size());
+    }
 
     for(int a: back_in_set) {
         counter_curr_back_handler++;
@@ -1255,7 +1277,7 @@ int baseProxy::run_poll() {
     }
 
     if(counter_curr_proxy_handler || counter_curr_generic_handler || counter_curr_back_handler) {
-        _dia("baseProxy::run: 0x%x called handlers - proxy: %d/%d, gen: %d/%d, back-ins: %d%d, hint: %d/%d",
+        _dia("baseProxy::run: 0x%x called handlers - proxy: %d/%d, gen: %d/%d, back-ins: %d/%d, hint: %d/%d",
              this,
              stats_.counter_proxy_handler, counter_curr_proxy_handler, stats_.counter_generic_handler, counter_curr_generic_handler,
              stats_.counter_back_handler, counter_curr_back_handler, stats_.counter_hint_handler, counter_curr_hint_handler);
@@ -1291,21 +1313,27 @@ int baseProxy::run() {
         
         if(pollroot()) {
 
-            _ext("baseProxy::run: preparing sockets");
-            int s_max = prepare_sockets(com());
-            _ext("baseProxy::run: sockets prepared");
-            if (s_max) {
-                com()->poll();
-            }
+            try {
+                _ext("baseProxy::run: preparing sockets");
+                int s_max = prepare_sockets(com());
+                _ext("baseProxy::run: sockets prepared");
+                if (s_max) {
+                    com()->poll();
+                }
 
-            // FIXME: we currently ignore should_rerun:
-            //  virtual udp set would trigger loop run on all threads when there are data for single one
-            //  which is a bit expensive.
-            //  This needs to be solved in the future.
-            //
-            //  DNS is ok except because its query-response nature. There are few corner-cases
-            //  ie with curl, shooting two DNS queries for happy-eyeballs at once.
-            run_poll();
+                // FIXME: we currently ignore should_rerun:
+                //  virtual udp set would trigger loop run on all threads when there are data for single one
+                //  which is a bit expensive.
+                //  This needs to be solved in the future.
+                //
+                //  DNS is ok except because its query-response nature. There are few corner-cases
+                //  ie with curl, shooting two DNS queries for happy-eyeballs at once.
+                run_poll();
+            }
+            catch (std::runtime_error const& e) {
+                _err("baseProxy::run error - dead on: %s", e.what());
+                state().dead(true);
+            }
         }
 
         on_run_round();
@@ -1330,41 +1358,64 @@ void baseProxy::sleep() {
 
 
 
-int baseProxy::bind(unsigned short port, unsigned char side) {
-	
-	int s = com()->bind(port);
-	
-	// this function will always return value of 'port' parameter (but <=0 will not be added)
-	
-	auto *cx = new baseHostCX(com()->replicate(), s);
-        cx->host() = string_format("listening_%d", port);
-	cx->com()->nonlocal_dst(com()->nonlocal_dst());
-	
-	if ( s > 0 ) {
-		if ( side == 'L' || side == 'l') lbadd(cx);
-		else rbadd(cx);
-	}
-
-	return s;
-}
+baseHostCX * baseProxy::listen(int sock, unsigned char side) {
 
 
-int baseProxy::bind(std::string const& path, unsigned char side) {
-    
-    int s = com()->bind(path.c_str());
-    
-    // this function will always return value of 'port' parameter (but <=0 will not be added)
-    
-    auto* cx = new baseHostCX(com()->replicate(), s);
-    cx->host() = string_format("listening_%s", path.c_str());
-    cx->com()->nonlocal_dst(com()->nonlocal_dst());
-    
-    if ( s > 0 ) {
-        if ( side == 'L') lbadd(cx);
+    if ( sock > 0 ) {
+        auto *cx = new baseHostCX(com()->replicate(), sock);
+
+        cx->com()->nonlocal_dst(com()->nonlocal_dst());
+        std::string res_host;
+        std::string res_port;
+
+        com()->resolve_socket_dst(sock, &res_host, &res_port);
+
+
+        cx->host(res_host);
+        cx->port(res_port);
+        cx->rename(string_format("listen_%s:%s", res_host.c_str(), res_port.c_str()).c_str());
+
+        std::cout << cx->name() << std::endl;
+
+        if ( side == 'L' || side == 'l') lbadd(cx);
         else rbadd(cx);
+        return cx;
     }
 
-    return s;
+    return nullptr;
+}
+
+int baseProxy::bind(unsigned short port, unsigned char side) {
+
+
+    // bind to port number - create socket
+    int s = com()->bind(port);
+
+    // listen on socket and get us hostcx
+    auto cx = listen(s, side);
+
+    if(cx) {
+        return cx->socket();
+    }
+
+    return -1;
+}
+
+    // this function will always return value of 'port' parameter (but <=0 will not be added)
+int baseProxy::bind(std::string const& path, unsigned char side) {
+
+    // bind to port number - create socket
+    int s = com()->bind(path.c_str());
+
+    // listen on socket and get us hostcx
+    auto cx = listen(s, side);
+
+    if(cx) {
+        cx->host() = string_format("listening_%s", path.c_str());
+        return cx->socket();
+    }
+
+    return -1;
 }
 
 

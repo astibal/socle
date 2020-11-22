@@ -31,13 +31,13 @@
 #include <mutex>
 
 #include <mpstd.hpp>
+#include <fdq.hpp>
 
-template<class Worker, class SubWorker>
-class ThreadedAcceptor : public baseProxy {
+template<class Worker>
+class ThreadedAcceptor : public baseProxy, public FdQueueHandler, public hasWorkers<Worker> {
 public:
-    using proxy_type = threadedProxyWorker::proxy_type_t;
 
-	explicit ThreadedAcceptor(baseCom* c, proxy_type type);
+	explicit ThreadedAcceptor (std::shared_ptr<FdQueue> fdq, baseCom *c, proxyType type);
 	~ThreadedAcceptor() override;
 	
 	void on_left_new_raw(int) override;
@@ -45,39 +45,16 @@ public:
 	
 	int run() override;
 	void on_run_round() override;
-	
-	int push(int);
-	int pop();
 
-    inline void worker_count_preference(int c) { worker_count_preference_ = c; };
-    inline int worker_count_preference() { return worker_count_preference_; };
-
-    int sq_type() const { return sq_type_; }
-    int task_count() const { return tasks_.size(); }
-    constexpr int core_multiplier() const noexcept { return 4; };
-
+    proxyType proxy_type() const { return proxy_type_; };
 private:
-    threadedProxyWorker::proxy_type_t proxy_type_;
-
-	mutable std::mutex sq_lock_;
-	mp::deque<int> sq_;
-    
-    // pipe created to be monitored by Workers with poll. If pipe is filled with *some* data
-    // there is something in the queue to pick-up.
-    int sq__hint[2] = {-1, -1};
-	
-	mp::vector<std::pair< std::thread*, Worker*>> tasks_;
-
-    int worker_count_preference_=0;
-	int create_workers(int count=0);
-
-    enum  { SQ_PIPE = 0, SQ_SOCKETPAIR = 1 } sq_type_;
+    proxyType proxy_type_;
 };
 
 template<class SubWorker>
 class ThreadedAcceptorProxy : public threadedProxyWorker, public MasterProxy {
 public:
-    ThreadedAcceptorProxy(baseCom* c, int worker_id, threadedProxyWorker::proxy_type_t p):
+    ThreadedAcceptorProxy(baseCom* c, uint32_t worker_id, proxyType p):
             threadedProxyWorker(worker_id, p),
             MasterProxy(c) {}
 
