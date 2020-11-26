@@ -22,6 +22,7 @@
 
 #include <semaphore.h>
 #include <sys/types.h>
+#include <sys/stat.h>
 #include <sys/mman.h>
 #include <fcntl.h>
 #include <sys/socket.h>
@@ -79,6 +80,8 @@ public:
         
         unsigned char* shared_memory = nullptr;
         memory_fd  = -1;
+
+        bool will_initialize = false;
         
         semaphore = sem_open(semaphore_name.c_str(),O_RDWR,0600);
         if(semaphore == nullptr) {
@@ -103,21 +106,44 @@ public:
                     _war("Failed to create new memory object; errno is %d", errno);
                     goto fail;
                 }
+
+                _dia("shared mem buffer file %s created", memory_name.c_str());
+
+                ftruncate(memory_fd, memory_size);
+                will_initialize = true;
+
             } else {
                 goto fail;
             }
+        } else {
+            // we opened to be mapped file, check its size
+
+            struct stat st{0};
+            stat(memory_name.c_str(), &st);
+            if(st.st_size == 0) {
+                _dia("shared mem buffer file %s empty - resizing", memory_name.c_str());
+                ftruncate(memory_fd, memory_size);
+            }
+
         }
         
-        shared_memory = (unsigned char*)mmap((void *)0, memory_size, PROT_READ | PROT_WRITE, MAP_SHARED, memory_fd, 0);
+        shared_memory = (unsigned char*)mmap(nullptr, memory_size, PROT_READ | PROT_WRITE, MAP_SHARED, memory_fd, 0);
         if (shared_memory == MAP_FAILED) {
             _war("MMapping the shared memory failed; errno is %d", errno);
             goto fail;
         }
         
 
+        if(will_initialize) {
+            _dia("shared mem buffer file %s zeroized", memory_name.c_str());
+            ::memset(shared_memory, 0, mem_size);
+        }
+
         data_ = shared_memory;
         capacity_ = mem_size;
         size_ = capacity_;
+
+        // don't go back here
         attached_ = true;
         
         return true;
