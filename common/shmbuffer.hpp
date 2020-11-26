@@ -109,7 +109,10 @@ public:
 
                 _dia("shared mem buffer file %s created", memory_name.c_str());
 
-                ftruncate(memory_fd, memory_size);
+                if(ftruncate(memory_fd, memory_size) != 0) {
+                    _dia("shared mem buffer file %s cannot be truncated: %s", memory_name.c_str(), string_error().c_str());
+                    goto fail;
+                }
                 will_initialize = true;
 
             } else {
@@ -122,7 +125,10 @@ public:
             stat(memory_name.c_str(), &st);
             if(st.st_size == 0) {
                 _dia("shared mem buffer file %s empty - resizing", memory_name.c_str());
-                ftruncate(memory_fd, memory_size);
+                if(ftruncate(memory_fd, memory_size) != 0) {
+                    _dia("shared mem buffer file %s cannot be truncated: %s", memory_name.c_str(), string_error().c_str());
+                    goto fail;
+                }
             }
 
         }
