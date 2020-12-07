@@ -44,7 +44,7 @@
 
 #include <crc32.hpp>
 #include <display.hpp>
-#include <biostring.hpp>
+#include <biomem.hpp>
 #include <buffer.hpp>
 #include <internet.hpp>
 #include "hostcx.hpp"
@@ -1308,6 +1308,20 @@ int baseSSLCom<L4Proto>::ct_verify_callback(const CT_POLICY_EVAL_CTX *ctx, const
                 auto  res_validate = SCT_get_validation_status(sc_entry);
 
                 _dia("ct: sct#%d - ret:%d,%s", i, ret_validate, SCT_validation_status_str(res_validate));
+
+                if(*log.level() > DIA) {
+                    const CTLOG_STORE *log_store = SSL_CTX_get0_ctlog_store(SSLFactory::factory().default_tls_client_cx());
+
+                    BioMemory bm;
+                    SCT_print(sc_entry, bm, 4, log_store);
+
+                    auto v_of_s = string_split(bm.str(), '\n');
+
+                    _deb("    : SCT info");
+                    for(auto const& s: v_of_s) {
+                        _deb(s.c_str());
+                    }
+                }
             }
         }
     }
