@@ -463,6 +463,7 @@ public:
                     VRF_CLIENT_CERT_RQ=0x40,
                     VRF_HOSTNAME_FAILED=0x80,
                             VRF_CT_MISSING=0x100,
+                            VRF_CT_FAILED=0x200,
                                     VRF_DEFERRED=0x1000,
                                     VRF_EXTENDED_INFO=0x2000,
                                     VRF_ALLFAILED=0x4000,
@@ -471,7 +472,10 @@ public:
 
     using vrf_other_list = std::vector<short>;
     vrf_other_list vrf_other_;
-    typedef enum { VRF_OTHER_SHA1_SIGNATURE=42 } vrf_other_values_t;
+    typedef enum { VRF_OTHER_SHA1_SIGNATURE=42,  // sha1 signature in the chain
+                   VRF_OTHER_CT_INVALID,         // some of CT entries are invalid
+                   VRF_OTHER_CT_FAILED,          // add this for each failed CT entry
+                 } vrf_other_values_t;
     vrf_other_list& verify_extended_info() { return vrf_other_; }
 
     [[maybe_unused]] inline void verify_reset(verify_status_t s) { verify_status_ = s; }

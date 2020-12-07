@@ -1302,6 +1302,10 @@ int baseSSLCom<L4Proto>::ct_verify_callback(const CT_POLICY_EVAL_CTX *ctx, const
             result = false;
         } else {
 
+            // how many good and valid SCTs were recognized
+            int res_ok = 0;
+            int res_failed = 0;
+
             for(int i = 0; i < sc_num; i++) {
                 auto* sc_entry = sk_SCT_value(scts, i);
                 int ret_validate  = SCT_validate(sc_entry, ctx);
@@ -1322,7 +1326,56 @@ int baseSSLCom<L4Proto>::ct_verify_callback(const CT_POLICY_EVAL_CTX *ctx, const
                         _deb(s.c_str());
                     }
                 }
+
+                if(ret_validate == 1) {
+                    switch(res_validate) {
+                        case SCT_VALIDATION_STATUS_VALID:
+                            // increment only if status is valid
+                            if(res_ok >= 0) res_ok++;
+                            continue;
+
+                        case SCT_VALIDATION_STATUS_INVALID:
+                            res_ok=-1; // message there is invalid entry, ensure it will not get any non-negative value anymore
+                            res_failed++;
+                            break;
+
+                        case SCT_VALIDATION_STATUS_UNKNOWN_LOG:
+                        case SCT_VALIDATION_STATUS_NOT_SET:
+                        case SCT_VALIDATION_STATUS_UNVERIFIED:
+                        case SCT_VALIDATION_STATUS_UNKNOWN_VERSION:
+                        default:
+                            res_failed++;
+                            continue;
+                    }
+                } else {
+                    continue;
+                }
             }
+
+            // now all logs are processed, we have res_ok and res_failed to check
+            if(res_failed > 0) {
+                _dia("%d SCT entries were not verified", res_failed);
+            }
+            if(res_ok < 0) {
+                // there is invalid entry - fail to connect
+                result = false;
+
+                // announce error and invalid entry
+                sslcom->verify_bitreset(baseSSLCom::VRF_OK);
+                sslcom->verify_bitset(baseSSLCom::VRF_CT_FAILED);
+                sslcom->verify_extended_info().emplace_back(VRF_OTHER_CT_INVALID);
+            }
+            else if(res_ok < 2) {
+                // announce error and insufficient understood
+                sslcom->verify_bitreset(baseSSLCom::VRF_OK);
+                sslcom->verify_bitset(baseSSLCom::VRF_CT_MISSING);
+            }
+
+            for(int f = 0; f < res_failed; f++) {
+                sslcom->verify_bitset(baseSSLCom::VRF_CT_FAILED);
+                sslcom->verify_extended_info().emplace_back(VRF_OTHER_CT_FAILED);
+            }
+
         }
     }
 
