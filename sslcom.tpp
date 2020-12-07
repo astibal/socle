@@ -44,6 +44,7 @@
 
 #include <crc32.hpp>
 #include <display.hpp>
+#include <biostring.hpp>
 #include <buffer.hpp>
 #include <internet.hpp>
 #include "hostcx.hpp"
@@ -1282,6 +1283,45 @@ int baseSSLCom<L4Proto>::ssl_client_cert_callback(SSL* ssl, X509** x509, EVP_PKE
 
 
 template <class L4Proto>
+int baseSSLCom<L4Proto>::ct_verify_callback(const CT_POLICY_EVAL_CTX *ctx, const STACK_OF(SCT) *scts, void *arg) {
+
+    bool result = true;
+
+    auto sc_num = sk_SCT_num(scts);
+    auto sslcom = static_cast<baseSSLCom*>(arg);
+
+    if(sslcom) {
+        static auto log = logan::create("com.ssl.callback.ct");
+
+        _dia("certificate transparency callback: %d entries in certificate", sc_num);
+
+        if(sc_num < 2) {
+            sslcom->verify_bitreset(baseSSLCom::VRF_OK);
+            sslcom->verify_bitset(baseSSLCom::VRF_CT_MISSING);
+
+            result = false;
+        } else {
+
+            for(int i = 0; i < sc_num; i++) {
+                auto* sc_entry = sk_SCT_value(scts, i);
+                int ret_validate  = SCT_validate(sc_entry, ctx);
+                auto  res_validate = SCT_get_validation_status(sc_entry);
+
+                _dia("ct: sct#%d - ret:%d,%s", i, ret_validate, SCT_validation_status_str(res_validate));
+            }
+        }
+    }
+
+    if(result) {
+        return 1;
+    } else if(sslcom->opt_failed_certcheck_replacement) {
+        return 1;
+    }
+
+    return 0;
+}
+
+template <class L4Proto>
 void baseSSLCom<L4Proto>::init_ssl_callbacks() {
     SSL_set_msg_callback(sslcom_ssl,ssl_msg_callback);
     SSL_set_msg_callback_arg(sslcom_ssl,(void*)this);
@@ -1327,6 +1367,21 @@ void baseSSLCom<L4Proto>::init_ssl_callbacks() {
                 _err("cannot load trusted store for OCSP. Fail-open.");
                 opt_ocsp_stapling_mode = 0;
             }
+        }
+
+        if (opt_ct_enable) {
+
+            if(SSLFactory::factory().is_ct_available()) {
+
+                _dia("setting up certificate transparency mode to strict");
+                SSL_enable_ct(sslcom_ssl, SSL_CT_VALIDATION_STRICT);
+                _dia("setting up certificate transparency callback");
+                SSL_set_ct_validation_callback(sslcom_ssl, ct_verify_callback, this);
+
+            } else {
+                _war("certificate transparency desired but not available");
+            }
+
         }
     } 
 }

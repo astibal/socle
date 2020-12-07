@@ -462,6 +462,7 @@ public:
                     VRF_REVOKED=0x20,
                     VRF_CLIENT_CERT_RQ=0x40,
                     VRF_HOSTNAME_FAILED=0x80,
+                            VRF_CT_MISSING=0x100,
                                     VRF_DEFERRED=0x1000,
                                     VRF_EXTENDED_INFO=0x2000,
                                     VRF_ALLFAILED=0x4000,
@@ -490,6 +491,11 @@ public:
     }
 
 
+    // Certificate Transparency support
+    bool opt_ct_enable = true;
+    static int ct_verify_callback(const CT_POLICY_EVAL_CTX *ctx, const STACK_OF(SCT) *scts, void *arg);
+
+
     DECLARE_C_NAME("SSLCom");
     DECLARE_LOGGING(to_string);
 
@@ -497,6 +503,7 @@ private:
     unsigned int verify_status_ = VRF_NOTTESTED;
 };
 
+const char* SCT_validation_status_str(sct_validation_status_t const& st);
 
 typedef baseSSLCom<TCPCom> SSLCom;
 typedef baseSSLCom<UDPCom> DTLSCom;

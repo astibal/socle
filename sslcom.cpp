@@ -118,3 +118,29 @@ int CompatThreading::THREAD_cleanup() {
     return 1;
 }
 
+const char* SCT_validation_status_str(sct_validation_status_t const& st) {
+    static const char* SCT_VALIDATION_STATUS_NOT_SET_ =  "SCT_VALIDATION_STATUS_NOT_SET";
+    static const char* SCT_VALIDATION_STATUS_UNKNOWN_LOG_ = "SCT_VALIDATION_STATUS_UNKNOWN_LOG";
+    static const char* SCT_VALIDATION_STATUS_VALID_ = "SCT_VALIDATION_STATUS_VALID";
+    static const char* SCT_VALIDATION_STATUS_INVALID_ = "SCT_VALIDATION_STATUS_INVALID";
+    static const char* SCT_VALIDATION_STATUS_UNVERIFIED_ = "SCT_VALIDATION_STATUS_UNVERIFIED";
+    static const char* SCT_VALIDATION_STATUS_UNKNOWN_VERSION_ = "SCT_VALIDATION_STATUS_UNKNOWN_VERSION";
+    static const char* UNK_ = "???";
+
+    switch(st) {
+        case SCT_VALIDATION_STATUS_NOT_SET:
+            return SCT_VALIDATION_STATUS_NOT_SET_;
+        case SCT_VALIDATION_STATUS_UNKNOWN_LOG:
+            return SCT_VALIDATION_STATUS_UNKNOWN_LOG_;
+        case SCT_VALIDATION_STATUS_VALID:
+            return SCT_VALIDATION_STATUS_VALID_;
+        case SCT_VALIDATION_STATUS_INVALID:
+            return SCT_VALIDATION_STATUS_INVALID_;
+        case SCT_VALIDATION_STATUS_UNVERIFIED:
+            return SCT_VALIDATION_STATUS_UNVERIFIED_;
+        case SCT_VALIDATION_STATUS_UNKNOWN_VERSION:
+            return SCT_VALIDATION_STATUS_UNKNOWN_VERSION_;
+        default:
+            return UNK_;
+    }
+}

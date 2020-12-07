@@ -107,7 +107,12 @@ public:
     static std::string& certs_path() { static std::string certs_path = "./certs/"; return certs_path; };
     static std::string& certs_password() { static std::string certs_password = "password"; return certs_password; };
 
+    static std::string& ctlogfile() { static std::string ctl = "ct_log_list.cnf"; return ctl; };
+
+    bool is_ct_available() const { return is_ct_available_; };
 private:
+    void is_ct_available(bool n) { is_ct_available_ = n; };
+    bool is_ct_available_ = false;
     
     int       serial=0xCABA1A;
     

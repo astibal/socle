@@ -25,6 +25,7 @@
 #include <sslmitmcom.hpp>
 
 #include <openssl/ssl.h>
+#include <openssl/ct.h>
 
 
 
@@ -231,6 +232,17 @@ SSL_CTX* SSLFactory::client_ctx_setup(EVP_PKEY* priv, X509* cert, const char* ci
     #ifdef USE_OPENSSL111
     SSL_CTX_set_keylog_callback(ctx, SSLCom::ssl_keylog_callback);
     #endif
+
+    struct stat s{};
+    if (stat(SSLFactory::ctlogfile().c_str(), &s) == 0) {
+        if (SSL_CTX_set_ctlog_list_file(ctx, SSLFactory::ctlogfile().c_str()) == 1) {
+            is_ct_available(true);
+        }
+    } else {
+        _war("certificate transparency log not found: %s", SSLFactory::ctlogfile().c_str());
+    }
+
+    // SSL_CTX_set_default_ctlog_list_file(ctx);
 
     return ctx;
 }
