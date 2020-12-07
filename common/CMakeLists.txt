@@ -34,7 +34,7 @@ add_library(
 		mpstd.hpp
 		mpdisplay.hpp
 		mpdisplay.cpp
-		)
+        biomem.hpp)
 
 if(UNIX)
 	IF(NOT CMAKE_BUILD_TYPE)
