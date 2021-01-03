@@ -476,7 +476,7 @@ std::string string_tolower(const std::string& orig) {
     std::stringstream r;
 
     for(char c: orig) {
-        r << (unsigned char)tolower((int)c);
+        r << (unsigned char)std::tolower((int)c);
     }
 
     return r.str();
