@@ -65,6 +65,40 @@ std::string string_format(const char* format, Args ... args)
     return ret;
 }
 
+
+template <class ... Args>
+[[nodiscard]] const char* string_format_heap(const char* format, Args ... args)
+{
+
+    int cap = 512;
+    int mul = 1;
+    int max = 20;
+    void* b = nullptr;
+
+    // data written to buffer
+    int w = 0;
+    int cursize = cap*mul;
+
+    do {
+
+        cursize = cap*mul;
+
+        b = ::realloc(b, cursize);
+        memset(b, 0, cursize);
+
+        //  man snprintf:
+        //  The functions snprintf() and vsnprintf() write at most size bytes (including the terminating null byte ('\0')) to str.
+        w = snprintf((char*)b, cursize, format, args...);
+
+        mul++;
+    } while(w >= (int)cursize && mul <= max);
+
+
+    // w counts in also \0 terminator
+    return (const char*)b;
+}
+
+
 #pragma GCC diagnostic pop
 
 #endif //STRINGFORMAT_HPP
