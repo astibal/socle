@@ -279,8 +279,14 @@ public:
 struct mpdata {
 
     #ifdef MEMPOOL_DEBUG
-    static std::unordered_map<void *, mem_chunk>& trace_map() {
-        static std::unordered_map<void *, mem_chunk> m;
+    static std::unordered_map<
+                            unsigned long,
+                            mem_chunk,
+                            std::hash<unsigned long>,
+                            std::equal_to<>,
+                            malloc_allocator<std::pair<const unsigned long,mem_chunk>>>& trace_map() {
+
+        static std::unordered_map<unsigned long, mem_chunk, std::hash<unsigned long>, std::equal_to<>, malloc_allocator<std::pair<const unsigned long,mem_chunk>>> m;
         return m;
     }
     static std::mutex& trace_lock() {
