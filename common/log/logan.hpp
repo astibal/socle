@@ -45,13 +45,14 @@
 #ifdef BUILD_RELEASE
 #define  _ext  if(false) log.ext
 #define  _dum  if(false) log.dum
+#define  _deb  if(false) log.deb
+#define  _if_deb  if(false)
 #else
 #define  _ext  if(*log.level() >= EXT) log.ext
 #define  _dum  if(*log.level() >= DUM) log.dum
-#endif
 #define  _deb  if(*log.level() >= DEB) log.deb
 #define  _if_deb  if(*log.level() >= DEB)
-
+#endif
 #define  _dia  if(*log.level() >= DIA) log.dia
 #define  _inf  if(*log.level() >= INF) log.inf
 #define  _not  if(*log.level() >= NOT) log.noti
