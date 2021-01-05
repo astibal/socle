@@ -127,7 +127,11 @@ class sobjectDB : public base_sobject {
 
     //sobjectDB() : db_("global object db",0, false), oid_db_("oid db", 0, false) {};
     sobjectDB()  = default;
-    virtual ~sobjectDB() = default;
+    virtual ~sobjectDB() {
+        for(auto & it: oid_db_) {
+            it.second.release();
+        }
+    };
 
 public:
     static sobjectDB& get() {
