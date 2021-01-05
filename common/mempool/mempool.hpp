@@ -31,6 +31,8 @@
 #include <log/logger.hpp>
 
 #include <mempool/canary.hpp>
+#include <mempool/malloc_allocator.hpp>
+
 
 //#define MEMPOOL_DEBUG
 //#define MEMPOOL_ALL
@@ -204,7 +206,7 @@ public:
 
     // indicate to not use any allocation functions which are not safe!
     // resource requests will fail and releases do nothing.
-    std::atomic_bool bailing = false;
+    static inline bool bailing = false;
 
     static memPool& pool() {
         static memPool m = memPool(5000,10000,10000,1000,800);

@@ -255,7 +255,7 @@ mem_chunk_t memPool::acquire(std::size_t sz) {
             // for tracking purposes only - add this chunk to map!
             {
                 std::lock_guard<std::mutex> l(mpdata::trace_lock());
-                mpdata::trace_map()[new_entry.ptr] = new_entry;
+                mpdata::trace_map()[(unsigned long)(new_entry.ptr)] = new_entry;
             }
         }
         #endif
@@ -281,7 +281,7 @@ mem_chunk_t memPool::acquire(std::size_t sz) {
             // for tracking purposes only - add this chunk to map!
             {
                 std::lock_guard<std::mutex> l(mpdata::trace_lock());
-                mpdata::trace_map()[free_entry.ptr] = free_entry;
+                mpdata::trace_map()[(unsigned long)free_entry.ptr] = free_entry;
             }
         }
         #endif
@@ -305,7 +305,7 @@ void memPool::release(mem_chunk_t xto_ret){
         return;
     }
 
-    if(bailing.load()) return;
+    if(bailing) return;
 
     auto* mem_pool = pick_ret_set(to_ret.capacity);
 
@@ -377,7 +377,7 @@ void memPool::release(mem_chunk_t xto_ret){
         if(mem_chunk::trace_enabled) {
             // std::cerr << "releasing " << reinterpret_cast<unsigned long>(to_ret.ptr) << ", size " <<  to_ret.capacity << "B" << std::endl;
 
-            auto i = mpdata::trace_map().find(to_ret.ptr);
+            auto i = mpdata::trace_map().find((unsigned long)to_ret.ptr);
             if (i != mpdata::trace_map().end()) {
                 mpdata::trace_map().erase(i);
             }
@@ -442,8 +442,14 @@ std::vector<mem_chunk_t>* memPool::pick_ret_set(ssize_t s) {
 
 void* mempool_alloc(size_t s) {
 
-    if(not buffer::use_pool or not memPool::is_ready())
+#ifdef MEMPOOL_ALL
+    if(not buffer::use_pool or memPool::bailing or not memPool::is_ready() )
         return ::malloc(s);
+#else
+    if(not buffer::use_pool or memPool::bailing)
+        return malloc(s);
+#endif
+
 
     mem_chunk_t mch = memPool::pool().acquire(s);
 
@@ -459,9 +465,13 @@ void* mempool_alloc(size_t s) {
 
 void* mempool_realloc(void* optr, size_t nsz) {
 
-    if(not buffer::use_pool or not memPool::is_ready())
+#ifdef MEMPOOL_ALL
+    if(not buffer::use_pool or memPool::bailing or not memPool::is_ready())
         return ::realloc(optr,nsz);
-
+#else
+    if(not buffer::use_pool or memPool::bailing)
+        return realloc(optr,nsz);
+#endif
     size_t ptr_size = 0;
     if(optr) {
         ptr_size = memPool::pool().find_ptr_size(optr);
@@ -517,10 +527,23 @@ void* mempool_realloc(void* optr, size_t nsz) {
 void mempool_free(void* optr) {
 
 
+#ifdef MEMPOOL_ALL
+    if(memPool::bailing) {
+        return;
+    }
     if(not buffer::use_pool or not memPool::is_ready()) {
         ::free(optr);
         return;
     }
+#else
+    if(memPool::bailing) {
+        return;
+    }
+    if(not buffer::use_pool) {
+        ::free(optr);
+        return;
+    }
+#endif
 
     auto ptr_size = memPool::pool().find_ptr_size(optr);
 
