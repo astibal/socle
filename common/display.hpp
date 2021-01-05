@@ -79,4 +79,43 @@ std::string inet_ss_str(sockaddr_storage *s);
 
 template <typename ... Args>
 std::string string_printf(const std::string& fmt, const Args& ... args);
+
+template <typename ... Args>
+std::string string_printf(const std::string& fmt, const Args& ... args)
+{
+    std::stringstream ss;
+
+    size_t fmtIndex = 0;
+    size_t placeHolders = 0;
+    auto printFmt = [&fmt, &ss, &fmtIndex, &placeHolders]()
+    {
+        for (; fmtIndex < fmt.size(); ++fmtIndex)
+        {
+            if (fmt[fmtIndex] != '%')
+                ss << fmt[fmtIndex];
+            else if (++fmtIndex < fmt.size())
+            {
+                if (fmt[fmtIndex] == '%')
+                    ss << '%';
+                else
+                {
+                    ++fmtIndex;
+                    ++placeHolders;
+                    break;
+                }
+            }
+        }
+    };
+
+    ((printFmt(), ss, ss << args), ..., (printFmt()));
+
+    if (placeHolders < sizeof...(args))
+        throw std::runtime_error("extra arguments provided to printf");
+    if (placeHolders > sizeof...(args))
+        throw std::runtime_error("invalid format string: missing arguments");
+
+
+    return ss.str();
+}
+
 #endif // DISPLAY_HPP
