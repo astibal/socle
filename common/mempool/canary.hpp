@@ -16,6 +16,9 @@
     License along with this library.
 */
 
+#ifndef MP_CANARY_HPP
+#define MP_CANARY_HPP
+
 #include <mempool/mperror.hpp>
 
 struct mp_canary {
@@ -58,3 +61,4 @@ struct mp_canary {
     }
 };
 
+#endif
