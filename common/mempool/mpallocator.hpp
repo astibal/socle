@@ -16,10 +16,10 @@
     License along with this library.
 */
 
-#include <mempool/mempool.hpp>
-
 #ifndef MPALLOCATOR_HPP
 #define MPALLOCATOR_HPP
+
+#include <mempool/mempool.hpp>
 
 template <class T>
 class mp_allocator
