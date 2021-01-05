@@ -33,13 +33,24 @@
 #include <mempool/canary.hpp>
 
 //#define MEMPOOL_DEBUG
+//#define MEMPOOL_ALL
+
+#if defined(MEMPOOL_DEBUG) && defined(MEMPOOL_ALL)
+    #error "cannot combine yet"
+#endif
 
 class buffer;
 
 typedef struct mem_chunk
 {
     mem_chunk(): ptr(nullptr), capacity(0) {};
+
+#ifdef MEMPOOL_ALL
+    // mempool should avoid using new() operator - in MEMPOOL_ALL mode it will recurse and dies
+    explicit mem_chunk(std::size_t s): capacity(s) { ptr = (unsigned char*)::malloc(s); pool_type = type::HEAP; };
+#else
     explicit mem_chunk(std::size_t s): capacity(s) { ptr = new unsigned char[s]; pool_type = type::HEAP; };
+#endif
     mem_chunk(unsigned char* p, std::size_t c): ptr(p), capacity(c) {};
 
     // Actually coverity found wanted feature - mem_chunk is basically pointer with size
@@ -201,6 +212,13 @@ public:
     }
 
     void allocate(std::size_t sz256, std::size_t sz1k, std::size_t sz5k, std::size_t sz10k, std::size_t sz20k);
+
+    static inline bool heap_on_tension = true;
+
+    static std::atomic_bool& is_ready() {
+        static std::atomic_bool is_ready_(false);
+        return is_ready_;
+    }
 
     mem_chunk_t acquire(std::size_t sz);
     void release(mem_chunk_t to_ret);

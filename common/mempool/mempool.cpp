@@ -17,6 +17,7 @@
 */
 
 #include <mempool/mempool.hpp>
+#include <utils/mem.hpp>
 
 #include <unordered_map>
 #include "buffer.hpp"
@@ -41,6 +42,7 @@ memPool::memPool(std::size_t sz256, std::size_t sz1k, std::size_t sz5k, std::siz
     stat_out_free_size = 0;
 
     allocate(sz256, sz1k, sz5k, sz10k, sz20k);
+    is_ready() = true; // mark memPool ready for use
 }
 
 memPool::~memPool() noexcept {
@@ -312,7 +314,12 @@ void memPool::release(mem_chunk_t xto_ret){
         stat_out_free++;
         stat_out_free_size += to_ret.capacity;
 
+#ifdef MEMPOOL_ALL
+        // don't recurse to itself
+        ::free(to_ret.ptr);
+#else
         delete[] to_ret.ptr;
+#endif
         return;
     }
 
@@ -322,8 +329,10 @@ void memPool::release(mem_chunk_t xto_ret){
         auto found_size = find_ptr_size(to_ret.ptr);
         if(found_size) {
             #ifdef MEMPOOL_DEBUG
-            auto msg = string_format("memPool::release: found unknown ptr has size %d", found_size);
-            _cons(msg.c_str());
+            auto msg = std::unique_ptr<const char, sx::mem::deleters::unique_ptr_deleter_free<const char>>(
+                    string_format_heap("memPool::release: found unknown ptr has size %d", found_size),
+                    sx::mem::deleters::unique_ptr_deleter_free<const char>());
+            _cons(msg.get());
             #endif
 
             mem_pool = pick_ret_set(found_size);
@@ -331,14 +340,22 @@ void memPool::release(mem_chunk_t xto_ret){
             to_ret.pool_type = mem_chunk::pool_type_t::POOL;
         } else {
             #ifdef MEMPOOL_DEBUG
-            auto msg = string_format("memPool::release: unknown ptr not in the pool");
-            _cons(msg.c_str());
+            auto msg = std::unique_ptr<const char, sx::mem::deleters::unique_ptr_deleter_free<const char>>(
+                    string_format_heap("memPool::release: unknown ptr not in the pool"),
+                    sx::mem::deleters::unique_ptr_deleter_free<const char>());
+            _cons(msg.get());
             #endif
 
             stat_out_pool_miss++;
             stat_out_pool_miss_size += to_ret.capacity;
 
+
+#ifdef MEMPOOL_ALL
+            // don't recurse to itself
+            ::free(to_ret.ptr);
+#else
             delete[] to_ret.ptr;
+#endif
             return;
         }
     }
@@ -425,8 +442,8 @@ std::vector<mem_chunk_t>* memPool::pick_ret_set(ssize_t s) {
 
 void* mempool_alloc(size_t s) {
 
-    if(!buffer::use_pool)
-        return malloc(s);
+    if(not buffer::use_pool or not memPool::is_ready())
+        return ::malloc(s);
 
     mem_chunk_t mch = memPool::pool().acquire(s);
 
@@ -442,8 +459,8 @@ void* mempool_alloc(size_t s) {
 
 void* mempool_realloc(void* optr, size_t nsz) {
 
-    if(!buffer::use_pool)
-        return realloc(optr,nsz);
+    if(not buffer::use_pool or not memPool::is_ready())
+        return ::realloc(optr,nsz);
 
     size_t ptr_size = 0;
     if(optr) {
@@ -465,7 +482,12 @@ void* mempool_realloc(void* optr, size_t nsz) {
         if(optr && ! ptr_size) {
             mp_stats::get().stat_mempool_realloc_miss++;
         }
+
+        if(memPool::heap_on_tension)
+            return mem_chunk(nsz).ptr;
+
         return nullptr;
+
     } else {
 
         if(optr) {
@@ -493,6 +515,12 @@ void* mempool_realloc(void* optr, size_t nsz) {
 
 
 void mempool_free(void* optr) {
+
+
+    if(not buffer::use_pool or not memPool::is_ready()) {
+        ::free(optr);
+        return;
+    }
 
     auto ptr_size = memPool::pool().find_ptr_size(optr);
 
