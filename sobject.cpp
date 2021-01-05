@@ -51,8 +51,8 @@ sobject::sobject() {
     {
         std::scoped_lock<std::recursive_mutex> l_(sobjectDB::getlock());
         oid_ = id_key ^ id_current++;
-        sobjectDB::oid_db()[oid_] = this;
-        sobjectDB::db()[this] = new sobject_info();
+        sobjectDB::oid_db()[oid_] = std::unique_ptr<sobject>(this);
+        sobjectDB::db()[this] = std::make_unique<sobject_info>();
     }
     mtr_created().update(1);
 }
@@ -62,6 +62,7 @@ sobject::~sobject() {
 
     {
         std::scoped_lock<std::recursive_mutex> l_(sobjectDB::getlock());
+        sobjectDB::oid_db()[oid_].release();
         sobjectDB::oid_db().erase(oid());
         sobjectDB::db().erase(this);
     }
@@ -82,7 +83,7 @@ std::string sobjectDB::str_list(const char* class_criteria, const char* delimite
 
     std::scoped_lock<std::recursive_mutex> l_(getlock());
 
-    for(auto [ptr, info] : db()) {
+    for(auto& [ptr, info] : db()) {
 
         if(!ptr) continue;
         
@@ -146,7 +147,7 @@ std::string sobjectDB::str_stats(const char* criteria) {
 
     {
         std::scoped_lock<std::recursive_mutex> l_(getlock());
-        for (auto it: db()) {
+        for (auto const & it: db()) {
             sobject *ptr = it.first;
 
             if (!ptr) {
@@ -154,7 +155,7 @@ std::string sobjectDB::str_stats(const char* criteria) {
             }
             _deb("comparing classname: %s and %s", ptr->c_class_name(), criteria);
             if (criteria == nullptr || ptr->class_name() == criteria) {
-                auto si = it.second;
+                auto const & si = it.second;
                 object_counter++;
 
                 if (si != nullptr) {

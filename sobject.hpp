@@ -122,8 +122,8 @@ class sobject;
 // Singleton class - used as central sobject storage
 class sobjectDB : public base_sobject {
 
-    std::unordered_map<sobject*,sobject_info*> db_;
-    std::unordered_map<uint64_t,sobject*> oid_db_;
+    std::unordered_map<sobject*, std::unique_ptr<sobject_info>> db_;
+    std::unordered_map<uint64_t, std::unique_ptr<sobject>> oid_db_;
 
     //sobjectDB() : db_("global object db",0, false), oid_db_("oid db", 0, false) {};
     sobjectDB()  = default;
@@ -135,8 +135,8 @@ public:
         return sobjdb;
     }
 
-    static std::unordered_map<sobject*,sobject_info*>& db() { return sobjectDB::get().db_; }
-    static std::unordered_map<uint64_t,sobject*>& oid_db() { return sobjectDB::get().oid_db_; }
+    static std::unordered_map<sobject*,std::unique_ptr<sobject_info>>& db() { return sobjectDB::get().db_; }
+    static std::unordered_map<uint64_t,std::unique_ptr<sobject>>& oid_db() { return sobjectDB::get().oid_db_; }
 
     // convenience methods giving info in human readable string form
     static std::string str_list(const char* class_criteria = nullptr,
