@@ -38,7 +38,7 @@
 //#define MEMPOOL_ALL
 
 #if defined(MEMPOOL_DEBUG) && defined(MEMPOOL_ALL)
-    #error "cannot combine yet"
+    #warning "MEMPOOL_ALL together with MEMPOOL_DEBUG is highly experimental at this moment."
 #endif
 
 class buffer;
@@ -284,9 +284,9 @@ struct mpdata {
                             mem_chunk,
                             std::hash<unsigned long>,
                             std::equal_to<>,
-                            malloc_allocator<std::pair<const unsigned long,mem_chunk>>>& trace_map() {
+                            mp::malloc::allocator<std::pair<const unsigned long,mem_chunk>>>& trace_map() {
 
-        static std::unordered_map<unsigned long, mem_chunk, std::hash<unsigned long>, std::equal_to<>, malloc_allocator<std::pair<const unsigned long,mem_chunk>>> m;
+        static std::unordered_map<unsigned long, mem_chunk, std::hash<unsigned long>, std::equal_to<>, mp::malloc::allocator<std::pair<const unsigned long,mem_chunk>>> m;
         return m;
     }
     static std::mutex& trace_lock() {
