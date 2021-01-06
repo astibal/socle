@@ -596,10 +596,12 @@ epoll_handler* epoller::get_handler(int check) {
 void epoller::clear_handler(int check) {
     std::scoped_lock<std::mutex> l(lock_);
 
-    _deb("epoller::clear_handler %d -> 0x%x -> nullptr", check, get_handler(check));
-    handler_info_t& href = handler_db[check];
-    href.clear();
-;
+    auto it = handler_db.find(check);
+
+    if(it != handler_db.end()) {
+        handler_db.erase(it);
+        _deb("epoller::clear_handler %d -> 0x%x -> nullptr", check, it->second.handler);
+    }
 
     if(poller) {
         unsigned long r = poller->rescan_set_in.erase(check);
