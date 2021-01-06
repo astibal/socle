@@ -38,7 +38,11 @@ protected:
     mutable mutex_t proxies_lock_;
 
 public:
-    explicit MasterProxy(baseCom* c): baseProxy(c) {}
+    static inline unsigned int subproxy_reserve = 10;
+
+    explicit MasterProxy(baseCom* c): baseProxy(c) {
+        proxies_.reserve(subproxy_reserve);
+    }
     vector_type <baseProxy*>& proxies() { return proxies_; };
 	
     int prepare_sockets(baseCom*) override;
