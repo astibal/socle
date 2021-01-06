@@ -208,11 +208,11 @@ bool baseSSLMitmCom<SSLProto>::spoof_cert(X509* cert_orig, SpoofOptions& spo) {
 
     std::string store_key = SSLFactory::make_store_key(cert_orig, spo);
 
-    auto* parek = this->factory()->find(store_key).value_or(nullptr);
-    if (parek) {
+    auto parek = this->factory()->find(store_key);
+    if (parek.has_value()) {
         _dia("SSLMitmCom::spoof_cert[%x]: factory hit for '%s'", this, store_key.c_str());
-        this->sslcom_pref_cert = parek->second;
-        this->sslcom_pref_key = parek->first;
+        this->sslcom_pref_cert = parek.value().second;
+        this->sslcom_pref_key = parek.value().first;
         
         return true;
     } 
@@ -220,14 +220,14 @@ bool baseSSLMitmCom<SSLProto>::spoof_cert(X509* cert_orig, SpoofOptions& spo) {
     
         _dia("SSLMitmCom::spoof_cert[%x]: NOT in my factory '%s'", this, store_key.c_str());
         
-        auto* parek = this->factory()->spoof(cert_orig, spo.self_signed, &spo.sans);
-        if(!parek) {
+        auto spoof_ret = this->factory()->spoof(cert_orig, spo.self_signed, &spo.sans);
+        if(not spoof_ret.has_value()) {
             _war("SSLMitmCom::spoof_cert[%x]: factory failed to spoof '%d' - default will be used", this, store_key.c_str());
             return false;
         } 
         else {
-            this->sslcom_pref_cert = parek->second;
-            this->sslcom_pref_key  = parek->first;
+            this->sslcom_pref_cert = spoof_ret.value().second;
+            this->sslcom_pref_key  = spoof_ret.value().first;
 
 #ifdef USE_OPENSSL11
             EVP_PKEY_up_ref(this->sslcom_pref_key);
@@ -235,11 +235,11 @@ bool baseSSLMitmCom<SSLProto>::spoof_cert(X509* cert_orig, SpoofOptions& spo) {
             // just increment key refcount, cert is new (made from key), thus refcount is already 1
             CRYPTO_add(&this->sslcom_pref_key->references,+1,CRYPTO_LOCK_EVP_PKEY);
 #endif //USE_OPENSSL11
-        }
-        
-        if (! this->factory()->add(store_key, parek)) {
-            _dia("SSLMitmCom::spoof_cert[%x]: spoof was successful, but cache add failed for %s", this, store_key.c_str());
-            return true;
+
+            if (! this->factory()->add(store_key, spoof_ret.value())) {
+                _dia("SSLMitmCom::spoof_cert[%x]: spoof was successful, but cache add failed for %s", this, store_key.c_str());
+                return true;
+            }
         }
     }
         

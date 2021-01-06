@@ -2417,15 +2417,15 @@ bool baseSSLCom<L4Proto>::enforce_peer_cert_from_cache(std::string & subj) {
 
             std::lock_guard<std::recursive_mutex> l_(factory()->lock());
 
-            auto* parek = factory()->find(subj).value_or(nullptr);
-            if (parek != nullptr) {
+            auto parek = factory()->find(subj);
+            if (parek.has_value()) {
                 _dia("Found cached certificate %s based on fqdn search.",subj.c_str());
                 baseSSLCom* p = dynamic_cast<baseSSLCom*>(peer());
                 if(p != nullptr) {
 
                     if(p->sslcom_waiting) {
-                        p->sslcom_pref_cert = parek->second;
-                        p->sslcom_pref_key = parek->first;
+                        p->sslcom_pref_cert = parek.value().second;
+                        p->sslcom_pref_key = parek.value().first;
                         //p->init_server(); this will be done automatically, peer was waiting_for_peercom
                         p->owner_cx()->waiting_for_peercom(false);
                         _dia("SSLCom::enforce_peer_cert_from_cache: peer certs replaced by SNI lookup, peer was unpaused.");

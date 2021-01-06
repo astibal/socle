@@ -76,15 +76,57 @@ struct SpoofOptions;
 
 using namespace inet::cert;
 
+class CertCacheEntry {
+public:
+    using X509_PAIR = std::pair<EVP_PKEY*,X509*>;
+
+    explicit CertCacheEntry(X509_PAIR v) : value(std::move(v)) { };
+    CertCacheEntry(CertCacheEntry const& v) = delete;
+    CertCacheEntry& operator=(CertCacheEntry const& v) = delete;
+
+    CertCacheEntry(CertCacheEntry && v) noexcept { assign(std::move(v)); }
+    CertCacheEntry& operator=(CertCacheEntry && v) noexcept { assign(std::move(v)); return *this; };
+
+    void assign(CertCacheEntry&& v) noexcept {
+        reset();
+
+        value = v.value;
+        v.value = {nullptr, nullptr};
+    }
+
+    X509_PAIR release() noexcept {
+        auto ret = value;
+        value = {nullptr, nullptr};
+        return ret;
+    }
+
+    inline void reset() noexcept {
+        EVP_PKEY_free(value.first);
+        X509_free(value.second);
+
+        release();
+    }
+
+    ~CertCacheEntry() {
+        reset();
+    };
+
+    [[nodiscard]] X509_PAIR const* keypair() const { return &value; }
+    [[nodiscard]] EVP_PKEY const* key() const { return value.first; }
+    [[nodiscard]] X509 const* cert() const { return value.second; }
+
+private:
+    X509_PAIR value;
+};
+
 class SSLFactory {
 
 public:
 
     template<class K, class V>
     using map_type = mp::map<K, V>;
-    using X509_PAIR = std::pair<EVP_PKEY*,X509*> ;
-    using X509_CACHE = map_type<std::string, X509_PAIR*>;
-
+    using X509_PAIR = CertCacheEntry::X509_PAIR;
+    using X509_CACHE = map_type<std::string, CertCacheEntry>;
     using FQDN_CACHE = map_type<std::string, std::string>;
 
     using expiring_verify_result = expiring<VerifyStatus>;
@@ -188,7 +230,7 @@ public:
 
     // our killer feature here
     [[nodiscard]] // discarding result will leak memory
-    SSLFactory::X509_PAIR* spoof(X509* cert_orig, bool self_sign=false, std::vector<std::string>* additional_sans=nullptr);
+    std::optional<SSLFactory::X509_PAIR> spoof(X509* cert_orig, bool self_sign=false, std::vector<std::string>* additional_sans=nullptr);
      
     static int convert_ASN1TIME(ASN1_TIME*, char*, size_t);
     static std::string print_cert(X509* cert, int indent=4);
@@ -205,10 +247,9 @@ public:
 
     static std::string make_store_key(X509* cert_orig, const SpoofOptions& spo);
 
-    bool add(std::string& store_key, EVP_PKEY* cert_privkey,X509* cert,X509_REQ* req=nullptr);
-    bool add(std::string& store_key, X509_PAIR* p,X509_REQ* req=nullptr);
+    bool add (std::string &store_key, X509_PAIR parek);
 
-    std::optional<SSLFactory::X509_PAIR*> find(std::string const& subject) const;
+    std::optional<const SSLFactory::X509_PAIR> find(std::string const& subject) const;
     std::optional<std::string> find_subject_by_fqdn(std::string const& fqdn) const;
     bool erase(const std::string &subject);
      
