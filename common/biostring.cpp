@@ -84,7 +84,10 @@ namespace {
         return new_meth;
     }
 
-    static BIO_METHOD* bio_string_methods = my_init_meth();
+    static BIO_METHOD* bio_string_methods() {
+        static BIO_METHOD* meth =  my_init_meth();
+        return meth;
+    }
 
 #else
     BIO_METHOD bio_string_methods = {
@@ -109,7 +112,7 @@ namespace {
 BIO* BIO_new_string(std::string* out) {
 
 #ifdef USE_OPENSSL11
-    BIO* bio = BIO_new(bio_string_methods);
+    BIO* bio = BIO_new(bio_string_methods());
     BUF_MEM* mem_ptr = BUF_MEM_new();
 
     mem_ptr->data = (char*) out->data();
