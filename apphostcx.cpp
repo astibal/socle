@@ -110,14 +110,18 @@ void AppHostCX::post_read() {
     if ( mode() == MODE_POST) {
         if(this->meter_read_bytes <= max_detect_bytes()) {
             auto b = this->to_read();
-            this->flow().append('r',b);
-        }
-        
-        _dia("AppHostCX::post_read[%s]: side %c, flow path: %s",c_name(), 'r', flow().hr().c_str());
+            this->flow().append('r', b);
 
-        // we can't detect starttls in POST mode
-        detect(sensor(),'r');
-        inspect('r');
+
+            _dia("AppHostCX::post_read[%s]: side %c, flow path: %s", c_name(), 'r', flow().hr().c_str());
+
+            // we can't detect starttls in POST mode
+            detect(sensor(), 'r');
+            inspect('r');
+        }
+        else {
+            _deb("AppHostCX::post_read[%s]: OUT OF INSPECT WINDOW: side %c, flow path: %s", c_name(), 'r', flow().hr().c_str());
+        }
     }
     
     if (mode() == MODE_PRE) {
@@ -131,28 +135,33 @@ void AppHostCX::post_write() {
         
         if(this->meter_write_bytes <= max_detect_bytes()) {
             auto b = this->writebuf();
-            
+
             int f_s = flow().flow().size();
             int f_last_data_size = flow().flow().back().second->size();
 
-            _deb("AppHostCX::post_write[%s]: peek_counter %d, written to socket %d, write buffer size %d, flow size %d, flow data size %d",c_name(),peek_write_counter,meter_write_bytes,b->size(), f_s,f_last_data_size);
+            _deb("AppHostCX::post_write[%s]: peek_counter %d, written to socket %d, write buffer size %d, flow size %d, flow data size %d",
+                 c_name(), peek_write_counter, meter_write_bytes, b->size(), f_s, f_last_data_size);
 
             // how many data I am missing?
-            int delta  = (meter_write_bytes + b->size()) - peek_write_counter;
-            buffer delta_b = b->view(b->size()-delta,b->size());
-            
-            if(delta > 0) {
-                _dia("AppHostCX::post_write[%s]: flow append new %d bytes",c_name(),delta_b.size());
-                this->flow().append('w',delta_b);
+            int delta = (meter_write_bytes + b->size()) - peek_write_counter;
+            buffer delta_b = b->view(b->size() - delta, b->size());
+
+            if (delta > 0) {
+                _dia("AppHostCX::post_write[%s]: flow append new %d bytes", c_name(), delta_b.size());
+                this->flow().append('w', delta_b);
                 peek_write_counter += delta_b.size();
             } else {
-                _dia("AppHostCX::post_write:[%s]: data are already copied in the flow",c_name());
+                _dia("AppHostCX::post_write:[%s]: data are already copied in the flow", c_name());
             }
+
+            // we can't detect starttls in POST mode
+            _dia("AppHostCX::post_write[%s]: side %c, flow path: %s", c_name(), 'w', flow().hr().c_str());
+            detect(sensor(), 'w');
+            inspect('w');
         }
-        // we can't detect starttls in POST mode
-        _dia("AppHostCX::post_write[%s]: side %c, flow path: %s",c_name(), 'w', flow().hr().c_str());
-        detect(sensor(),'w');
-        inspect('w');
+        else {
+            _deb("AppHostCX::post_write[%s]: OUT OF INSPECT WINDOW: side %c, flow path: %s", c_name(), 'w', flow().hr().c_str());
+        }
     }
     
     // react on specific signatures 
