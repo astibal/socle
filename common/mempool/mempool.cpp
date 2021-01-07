@@ -469,8 +469,14 @@ void* mempool_realloc(void* optr, size_t nsz) {
     if(not buffer::use_pool or memPool::bailing or not memPool::is_ready())
         return ::realloc(optr,nsz);
 #else
-    if(not buffer::use_pool or memPool::bailing)
-        return realloc(optr,nsz);
+    if(not buffer::use_pool) {
+        return realloc(optr, nsz);
+    }
+
+    // if we use pools and exiting, rather leak than crash
+    if(buffer::use_pool and memPool::bailing) {
+        return ::malloc(nsz);
+    }
 #endif
     size_t ptr_size = 0;
     if(optr) {
