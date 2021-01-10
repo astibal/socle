@@ -1375,8 +1375,6 @@ baseHostCX * baseProxy::listen(int sock, unsigned char side) {
         cx->port(res_port);
         cx->rename(string_format("listen_%s:%s", res_host.c_str(), res_port.c_str()).c_str());
 
-        std::cout << cx->name() << std::endl;
-
         if ( side == 'L' || side == 'l') lbadd(cx);
         else rbadd(cx);
         return cx;
