@@ -2058,8 +2058,11 @@ ret_handshake baseSSLCom<L4Proto>::handshake() {
         if(! handshake_peer_client() ) {
             _dia("SSLCom::handshake: %s on socket %d: waiting for the peer...", op_descr, socket());
 
-            _dia("SSLCom::handshake: %s on socket %d: scanning IN only", op_descr, socket());
-            change_monitor(socket(), EPOLLIN);
+
+            _dia("SSLCom::handshake: %s on socket %d: rescan IN", op_descr, socket());
+            unset_monitor(socket());
+            rescan_read(socket());
+
 
             return ret_handshake::AGAIN;
         }
@@ -2355,7 +2358,8 @@ bool baseSSLCom<L4Proto>::waiting_peer_hello() {
                         }
                     }
                     
-                    sslcom_peer_hello_received_ = true;
+                    sslcom_peer_hello_received(true);
+                    set_monitor(socket());
 
                     if(sslcom_peer_hello_sni_.size() > 0) {
 
@@ -2395,6 +2399,7 @@ bool baseSSLCom<L4Proto>::waiting_peer_hello() {
                 if(peer_scom->l4_proto() == SOCK_DGRAM) {
                     // atm don't wait for hello
                     sslcom_peer_hello_received(true);
+                    set_monitor(socket());
                 }
             }
         } else {
@@ -2403,6 +2408,7 @@ bool baseSSLCom<L4Proto>::waiting_peer_hello() {
     } else {
         _dia("SSLCom::waiting_peer_hello: no peers, setting hello received.");
         sslcom_peer_hello_received(true);
+        set_monitor(socket());
     }
 
     return sslcom_peer_hello_received_;
