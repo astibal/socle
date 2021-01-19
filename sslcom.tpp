@@ -1152,6 +1152,7 @@ bool baseSSLCom<L4Proto>::is_verify_status_opt_allowed() {
         // remove VRF_ALLFAILED because any of certificates are not possible to validate
         //  (even OCSP/CRL works, it doesn't make sense to use such information, they are officially not usable)
 
+        problem_mask = flag_reset<decltype(problem_mask)>(problem_mask, SSLCom::VRF_OK);
         problem_mask = flag_reset<decltype(problem_mask)>(problem_mask, SSLCom::VRF_DEFERRED);
         problem_mask = flag_reset<decltype(problem_mask)>(problem_mask, SSLCom::VRF_ALLFAILED);
 
@@ -1225,9 +1226,13 @@ int baseSSLCom<L4Proto>::status_resp_callback(SSL* ssl, void* arg) {
             // break verify loop
             com->verify_bitreset(VRF_NOTTESTED);
             if (com->is_verify_status_opt_allowed()) {
+                com->verify_bitset(VRF_OK);
+                com->verify_origin(verify_origin_t::EXEMPT);
                 return 1;
             }
             else {
+                com->verify_bitreset(VRF_OK);
+                com->verify_bitset(VRF_ALLFAILED);
                 return com->opt_failed_certcheck_replacement;
             }
         }

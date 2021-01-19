@@ -425,7 +425,8 @@ public:
         OCSP_CACHE,
         OCSP,
         CRL_CACHE,
-        CRL
+        CRL,
+        EXEMPT
     };
     verify_origin_t verify_origin_ {verify_origin_t::NONE};
     [[nodiscard]] verify_origin_t verify_origin() const { return verify_origin_; }
