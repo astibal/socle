@@ -284,6 +284,8 @@ public:
     static void ssl_info_callback(const SSL *s, int where, int ret);
     static DH* ssl_dh_callback(SSL* s, int is_export, int key_length);
     static EC_KEY* ssl_ecdh_callback(SSL* s, int is_export, int key_length);
+
+    bool is_verify_status_opt_allowed();
     static int status_resp_callback(SSL *s, void *arg);
     static int ssl_client_cert_callback(SSL *ssl, X509 **x509, EVP_PKEY **pkey);
     static int ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx);

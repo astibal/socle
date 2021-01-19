@@ -1118,6 +1118,58 @@ std::pair<typename baseSSLCom<L4Proto>::staple_code_t, int> baseSSLCom<L4Proto>:
 
 
 template <class L4Proto>
+bool baseSSLCom<L4Proto>::is_verify_status_opt_allowed() {
+    bool this_is_allowed_by_option = true;
+    auto problem_mask = verify_get();
+
+    // do test run for cases the TLS problem is explicitly allowed by policy
+    // and therefore are NOT eligible for replacement
+
+    if(this_is_allowed_by_option and verify_bitcheck(SSLCom::VRF_SELF_SIGNED)) {
+        this_is_allowed_by_option = opt_allow_self_signed_cert;
+
+        problem_mask = flag_reset<decltype(problem_mask)>(problem_mask, SSLCom::VRF_SELF_SIGNED);
+    }
+    if(this_is_allowed_by_option and verify_bitcheck(SSLCom::VRF_SELF_SIGNED_CHAIN)) {
+        this_is_allowed_by_option = opt_allow_self_signed_chain;
+
+        problem_mask = flag_reset<decltype(problem_mask)>(problem_mask, SSLCom::VRF_SELF_SIGNED_CHAIN);
+    }
+    if(this_is_allowed_by_option and verify_bitcheck(SSLCom::VRF_INVALID)) {
+        this_is_allowed_by_option = opt_allow_not_valid_cert;
+
+        problem_mask = flag_reset<decltype(problem_mask)>(problem_mask, SSLCom::VRF_INVALID);
+    }
+    if(this_is_allowed_by_option and verify_bitcheck(SSLCom::VRF_UNKNOWN_ISSUER)) {
+        this_is_allowed_by_option = opt_allow_unknown_issuer;
+
+        problem_mask = flag_reset<decltype(problem_mask)>(problem_mask, SSLCom::VRF_UNKNOWN_ISSUER);
+    }
+
+    if(this_is_allowed_by_option) {
+        // we hit allow options while not failing other
+        // remove VRF_DEFERRED flag (which made connection reach this code)
+        // remove VRF_ALLFAILED because any of certificates are not possible to validate
+        //  (even OCSP/CRL works, it doesn't make sense to use such information, they are officially not usable)
+
+        problem_mask = flag_reset<decltype(problem_mask)>(problem_mask, SSLCom::VRF_DEFERRED);
+        problem_mask = flag_reset<decltype(problem_mask)>(problem_mask, SSLCom::VRF_ALLFAILED);
+
+        if ((problem_mask == 0) or
+            (problem_mask == SSLCom::VRF_CLIENT_CERT_RQ)) {
+
+            // indicate exceptions are satisfied and we can proceed with proxy
+            return true;
+        }
+    }
+
+    // exceptions are not satisfied - more handling is needed
+    return false;
+};
+
+
+
+template <class L4Proto>
 int baseSSLCom<L4Proto>::status_resp_callback(SSL* ssl, void* arg) {
 
     auto& log = inet::ocsp::OcspFactory::log();
@@ -1152,15 +1204,32 @@ int baseSSLCom<L4Proto>::status_resp_callback(SSL* ssl, void* arg) {
     peer_cert   = com->sslcom_target_cert;
     issuer_cert = com->sslcom_target_issuer;
 
-    if(! com->verify_bitcheck(VRF_NOTTESTED)) {
-        // check how it was tested already
 
+    // before OCSP/CRL and other complicated checks, check if the connection
+    // isn't broken or distrust. Check also for allow_* exceptions we should honor.
+    auto non_ok = com->verify_get();
+
+    non_ok = flag_reset<decltype(non_ok)>(non_ok, VRF_NOTTESTED);
+    non_ok = flag_reset<decltype(non_ok)>(non_ok, VRF_DEFERRED);
+    non_ok = flag_reset<decltype(non_ok)>(non_ok, VRF_OK);
+
+    if(non_ok > 0) {
+
+        // check how it was tested already
         if (com->verify_get() != VRF_OK && !com->verify_bitcheck(VRF_CLIENT_CERT_RQ)) {
             _dia("status_resp_callback[%s]: certificate verification failed already (%d), no need to check stapling",
                  name.c_str(),
                  com->verify_get());
 
-            return com->opt_failed_certcheck_replacement;
+
+            // break verify loop
+            com->verify_bitreset(VRF_NOTTESTED);
+            if (com->is_verify_status_opt_allowed()) {
+                return 1;
+            }
+            else {
+                return com->opt_failed_certcheck_replacement;
+            }
         }
     }
 
