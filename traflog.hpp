@@ -105,7 +105,7 @@ public:
 
             _dia("file: %s: creating a new stream", fnm.c_str());
 
-            for(auto s: ofstream_pool.items()) {
+            for(auto const& s: ofstream_pool.items()) {
                 _deb("pool item: %s", s.c_str());
             }
 
@@ -117,7 +117,7 @@ public:
             auto entry = ofstream_pool.cache().find(fnm);
             if(entry != ofstream_pool.cache().end()) {
 
-                auto exo = entry->second;
+                auto exo = entry->second.ptr();
                 _deb("new ofstream entry: 0x%x", exo.get());
 
             } else {

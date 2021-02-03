@@ -45,7 +45,7 @@ struct expiring {
     time_t& expired_at() { return expired_at_; };
 
     virtual bool expired() { return (this->expired_at_ <= ::time(nullptr)); }
-    static bool is_expired(std::shared_ptr<expiring<T>>& ptr) {  return ptr->expired(); }
+    static bool is_expired(std::shared_ptr<expiring<T>> ptr) {  return ptr->expired(); }
 
 private:
     T value_{0};
@@ -81,17 +81,35 @@ typedef expiring<std::string> expiring_string;
 template <class K, class T>
 class ptr_cache {
 public:
+    struct DataBlock {
+        DataBlock() = default;
+        explicit DataBlock(std::shared_ptr<T> v) : pointer_(v) {}
+
+        inline std::shared_ptr<T> ptr() { return pointer_; }
+        inline std::shared_ptr<T> ptr() const { return pointer_; }
+    private:
+        std::shared_ptr<T> pointer_;
+    };
+
+    using cache_t = mp::unordered_map<K, DataBlock>;
+    using queue_t = mp::deque<K>;
+
+
     explicit ptr_cache(const char* n): auto_delete_(true), max_size_(0) {
         name(n);
         log = logan::create("socle.ptrcache");
 
     }
-    ptr_cache(const char* n, unsigned int max_size, bool auto_delete, bool (*fn_exp)(std::shared_ptr<T>&) = nullptr ): auto_delete_(auto_delete), max_size_(max_size) {
+    ptr_cache(const char* n, unsigned int max_size, bool auto_delete, bool (*fn_exp)(std::shared_ptr<T>) = nullptr ): auto_delete_(auto_delete), max_size_(max_size) {
         name(n);
         expiration_check(fn_exp);
         log = logan::create("socle.ptrcache");
     }
     virtual ~ptr_cache() = default;
+
+    enum class MODE { FIFO, };
+    MODE mode_ = MODE::FIFO;
+    inline void mode(MODE m) { mode_ = m; }
 
     void clear() {
         std::lock_guard<std::recursive_mutex> l(lock_);
@@ -100,14 +118,14 @@ public:
         items_.clear();
     }
 
-    mp::unordered_map<K,std::shared_ptr<T>>& cache() { return cache_; }
-    mp::deque<K> const& items() { return items_; };
+    cache_t& cache() { return cache_; }
+    queue_t const& items() { return items_; };
 
     std::shared_ptr<T>   default_value() const { return default_value_; }
     int max_size() const { return max_size_; }
 
     unsigned int opportunistic_removal() const { return opportunistic_removal_; };
-    
+
     bool erase(K k) {
         std::lock_guard<std::recursive_mutex> l(lock_);
         auto it = cache().find(k);
@@ -125,7 +143,7 @@ public:
     }
 
     // shortcut to erase cache iterator
-    typename std::unordered_map<std::string, std::shared_ptr<T>>::iterator erase(typename std::unordered_map<std::string, std::shared_ptr<T>>::iterator& i) {
+    typename cache_t::iterator erase(typename cache_t::iterator& i) {
         std::lock_guard<std::recursive_mutex> l(lock_);
         return cache().erase(i);
     }
@@ -138,13 +156,13 @@ public:
         }
         else if (fn_expired_check != nullptr) {
             // check if object isn't expired
-            if(fn_expired_check(it->second)) {
+            if(fn_expired_check(it->second.ptr())) {
                 erase(k);
                 return default_value();
             }
         }
         
-        return it->second;
+        return it->second.ptr();
     }
 
     bool set(const K k, T* v) {
@@ -160,31 +178,25 @@ public:
         auto it = cache().find(k);
         if(it != cache().end()) {
             _dia("ptr_cache::set[%s]: existing entry found", c_name());
-            auto& ptr = it->second;
-            ret = true;
-            ptr = v;
+            cache()[k] = DataBlock(v);
         } else {
             _dia("ptr_cache::set[%s]: new entry added", c_name());
-            cache()[k] = v;
+            cache()[k] = DataBlock(v);
             
             if(max_size_ > 0) {
                 _deb("ptr_cache::set[%s]: current size %d/%d", c_name(), items_.size(), max_size_);
 
                 while( items_.size() >= max_size_) {
                     _deb("ptr_cache::set[%s]: max size reached!", c_name());
-                    K to_delete = items_.front();
-                    
-                    if(!erase(to_delete)) {
-                        if( opportunistic_removal() == 0 ) {
-                            // log.removal errors only if opportunistic removal is enabled
-                            _not("ptr_cache::set[%s]: cannot erase oldest object: not found!", c_name());
-                        }
-                    } else {
-                        _dia("ptr_cache::set[%s]: oldest object removed", c_name());
+
+                    switch(mode_) {
+                        case MODE::FIFO:
+                            if(delete_last()) {
+                                _dia("ptr_cache::set[%s]: max size: object removed from cache", c_name());
+                            }
+                            break;
+
                     }
-                    
-                    items_.pop_front();
-                    _dia("ptr_cache::set[%s]: max size: object removed from cache", c_name());
                 }
 
                 items_.push_back(k);
@@ -193,8 +205,9 @@ public:
 
         return ret;
     }
-    
-    void expiration_check(bool (*fn_expired_check_ptr)(std::shared_ptr<T>&)) { fn_expired_check = fn_expired_check_ptr; };
+
+    bool delete_last();
+    void expiration_check(bool (*fn_expired_check_ptr)(std::shared_ptr<T>)) { fn_expired_check = fn_expired_check_ptr; };
     std::recursive_mutex& getlock() { return lock_; }
 
 private:
@@ -205,14 +218,36 @@ private:
     mp::deque<K> items_;
     
     std::shared_ptr<T> default_value_{nullptr};
-    mp::unordered_map<K,std::shared_ptr<T>> cache_;
+    cache_t cache_;
     mutable std::recursive_mutex lock_;
     
-    bool (*fn_expired_check)(std::shared_ptr<T>&) = nullptr;
+    bool (*fn_expired_check)(std::shared_ptr<T>) = nullptr;
 
     logan_lite log;
 
     DECLARE_C_NAME("object cache");
 };
+
+
+template <class K, class T>
+inline bool ptr_cache<K,T>::delete_last() {
+    bool to_ret = false;
+
+    K to_delete = items_.front();
+
+    if(!erase(to_delete)) {
+        if( opportunistic_removal() == 0 ) {
+            // log.removal errors only if opportunistic removal is enabled
+            _not("ptr_cache::set[%s]: cannot erase oldest object: not found!", c_name());
+        }
+    } else {
+        to_ret = true;
+        _dia("ptr_cache::set[%s]: oldest object removed", c_name());
+    }
+
+    items_.pop_front();
+
+    return to_ret;
+}
 
 #endif
