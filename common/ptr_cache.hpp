@@ -82,13 +82,24 @@ template <class K, class T>
 class ptr_cache {
 public:
     struct DataBlock {
+
+        using timestamp_t = std::chrono::time_point<std::chrono::system_clock>;
+        using count_t = uint32_t;
+
         DataBlock() = default;
-        explicit DataBlock(std::shared_ptr<T> v) : pointer_(v) {}
+        explicit DataBlock(std::shared_ptr<T> v) : pointer_(v), counter_(0) {}
 
         inline std::shared_ptr<T> ptr() { return pointer_; }
         inline std::shared_ptr<T> ptr() const { return pointer_; }
+
+        void touch() { timestamp_ = std::chrono::system_clock::now(); counter_++; }
+        template<typename TT> TT age() const { return std::chrono::duration<TT>( std::chrono::system_clock::now() ); };
+        count_t count() const { return counter_; }
     private:
         std::shared_ptr<T> pointer_;
+        timestamp_t timestamp_;
+        count_t counter_;
+
     };
 
     using cache_t = mp::unordered_map<K, DataBlock>;
@@ -107,9 +118,11 @@ public:
     }
     virtual ~ptr_cache() = default;
 
-    enum class MODE { FIFO, };
+    enum class MODE { FIFO, LRU };
     MODE mode_ = MODE::FIFO;
-    inline void mode(MODE m) { mode_ = m; }
+    inline void mode(ptr_cache::MODE m) { mode_ = m; }
+    inline void mode_lru() { mode_ = MODE::LRU; }
+    inline void mode_fifo() { mode_ = MODE::FIFO; }
 
     void clear() {
         std::lock_guard<std::recursive_mutex> l(lock_);
@@ -119,7 +132,10 @@ public:
     }
 
     cache_t& cache() { return cache_; }
-    queue_t const& items() { return items_; };
+    cache_t const& cache() const { return cache_; }
+
+    queue_t& items() { return items_; };
+    queue_t const& items() const { return items_; };
 
     std::shared_ptr<T>   default_value() const { return default_value_; }
     int max_size() const { return max_size_; }
@@ -161,6 +177,11 @@ public:
                 return default_value();
             }
         }
+
+        if(mode_ == MODE::LRU) {
+            it->second.touch();
+            lru_reoder();
+        }
         
         return it->second.ptr();
     }
@@ -184,22 +205,24 @@ public:
             cache()[k] = DataBlock(v);
             
             if(max_size_ > 0) {
-                _deb("ptr_cache::set[%s]: current size %d/%d", c_name(), items_.size(), max_size_);
+                _deb("ptr_cache::set[%s]: current size %d/%d", c_name(), items().size(), max_size_);
 
-                while( items_.size() >= max_size_) {
+                while( items().size() >= max_size_) {
                     _deb("ptr_cache::set[%s]: max size reached!", c_name());
 
                     switch(mode_) {
+                        case MODE::LRU:
+                            lru_reoder();
+
                         case MODE::FIFO:
                             if(delete_last()) {
                                 _dia("ptr_cache::set[%s]: max size: object removed from cache", c_name());
                             }
                             break;
-
                     }
                 }
 
-                items_.push_back(k);
+                items().push_front(k);
             }
         }
 
@@ -207,6 +230,7 @@ public:
     }
 
     bool delete_last();
+    bool lru_reoder();
     void expiration_check(bool (*fn_expired_check_ptr)(std::shared_ptr<T>)) { fn_expired_check = fn_expired_check_ptr; };
     std::recursive_mutex& getlock() { return lock_; }
 
@@ -233,7 +257,7 @@ template <class K, class T>
 inline bool ptr_cache<K,T>::delete_last() {
     bool to_ret = false;
 
-    K to_delete = items_.front();
+    K to_delete = items().back();
 
     if(!erase(to_delete)) {
         if( opportunistic_removal() == 0 ) {
@@ -245,7 +269,39 @@ inline bool ptr_cache<K,T>::delete_last() {
         _dia("ptr_cache::set[%s]: oldest object removed", c_name());
     }
 
-    items_.pop_front();
+    items().pop_back();
+
+    return to_ret;
+}
+
+template <class K, class T>
+inline bool ptr_cache<K,T>::lru_reoder() {
+    bool to_ret = false;
+
+    auto last_key = items().back();
+    auto const& last_it  = cache().find(last_key);
+
+    auto first_key = items().front();
+    auto const& first_it  = cache().find(first_key);
+
+
+    if(last_it != cache().end() and first_it != cache().end()) {
+        if( last_it->second.count() > first_it->second.count()) {
+            items().push_front(last_key);
+            items().pop_back();
+
+            to_ret = true;
+        }
+    }
+    else {
+        // some cleanup
+        if(last_it == cache().end()) {
+            items().pop_back();
+        }
+        if(first_it == cache().end()) {
+            items().pop_front();
+        }
+    }
 
     return to_ret;
 }
