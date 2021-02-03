@@ -81,21 +81,27 @@ typedef expiring<std::string> expiring_string;
 template <class K, class T>
 class ptr_cache {
 public:
+
+    struct DataBlockStats {
+        uint32_t total_counter = 0;
+    };
+
     struct DataBlock {
 
         using timestamp_t = std::chrono::time_point<std::chrono::system_clock>;
         using count_t = uint32_t;
 
         DataBlock() = default;
-        explicit DataBlock(std::shared_ptr<T> v) : pointer_(v), counter_(0) {}
+        explicit DataBlock(std::shared_ptr<DataBlockStats>dbs, std::shared_ptr<T> v) : dbs_(dbs), pointer_(v), counter_(0) {}
 
         inline std::shared_ptr<T> ptr() { return pointer_; }
         inline std::shared_ptr<T> ptr() const { return pointer_; }
 
-        void touch() { timestamp_ = std::chrono::system_clock::now(); counter_++; }
+        void touch() { timestamp_ = std::chrono::system_clock::now(); counter_++; if(dbs_) dbs_->total_counter++; }
         template<typename TT> TT age() const { return std::chrono::duration<TT>( std::chrono::system_clock::now() ); };
-        count_t count() const { return counter_; }
+        [[nodiscard]] count_t count() const { return counter_; }
     private:
+        std::shared_ptr<DataBlockStats> dbs_;
         std::shared_ptr<T> pointer_;
         timestamp_t timestamp_;
         count_t counter_;
@@ -103,7 +109,7 @@ public:
     };
 
     using cache_t = mp::unordered_map<K, DataBlock>;
-    using queue_t = mp::deque<K>;
+    using queue_t = mp::list<K>;
 
 
     explicit ptr_cache(const char* n): auto_delete_(true), max_size_(0) {
@@ -120,8 +126,8 @@ public:
 
     enum class MODE { FIFO, LRU };
     MODE mode_ = MODE::FIFO;
-    inline void mode(ptr_cache::MODE m) { mode_ = m; }
-    inline void mode_lru() { mode_ = MODE::LRU; }
+
+    inline void mode_lru() { mode_ = MODE::LRU; if(not dbs_) dbs_ = std::make_shared<DataBlockStats>(); }
     inline void mode_fifo() { mode_ = MODE::FIFO; }
 
     void clear() {
@@ -199,11 +205,9 @@ public:
         auto it = cache().find(k);
         if(it != cache().end()) {
             _dia("ptr_cache::set[%s]: existing entry found", c_name());
-            cache()[k] = DataBlock(v);
+            cache()[k] = DataBlock(dbs_, v);
         } else {
-            _dia("ptr_cache::set[%s]: new entry added", c_name());
-            cache()[k] = DataBlock(v);
-            
+
             if(max_size_ > 0) {
                 _deb("ptr_cache::set[%s]: current size %d/%d", c_name(), items().size(), max_size_);
 
@@ -221,9 +225,10 @@ public:
                             break;
                     }
                 }
-
-                items().push_front(k);
             }
+            _dia("ptr_cache::set[%s]: new entry added", c_name());
+            cache()[k] = DataBlock(dbs_, v);
+            items().push_front(k);
         }
 
         return ret;
@@ -239,7 +244,8 @@ private:
     unsigned int max_size_ = 0;
     unsigned int opportunistic_removal_ = 0;
 
-    mp::deque<K> items_;
+    queue_t items_;
+    std::shared_ptr<DataBlockStats> dbs_;
     
     std::shared_ptr<T> default_value_{nullptr};
     cache_t cache_;
@@ -284,9 +290,13 @@ inline bool ptr_cache<K,T>::lru_reoder() {
     auto first_key = items().front();
     auto const& first_it  = cache().find(first_key);
 
+    auto criteria = first_it->second.count();
+    if(dbs_) {
+        criteria = dbs_->total_counter / items().size();
+    }
 
     if(last_it != cache().end() and first_it != cache().end()) {
-        if( last_it->second.count() > first_it->second.count()) {
+        if( last_it->second.count() > criteria) {
             items().push_front(last_key);
             items().pop_back();
 
