@@ -72,7 +72,7 @@ struct SpoofOptions;
 
 
 
-#define CERTSTORE_CACHE_SIZE 100
+#define CERTSTORE_CACHE_SIZE 500
 
 using namespace inet::cert;
 
