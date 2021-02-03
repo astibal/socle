@@ -72,7 +72,7 @@ struct SpoofOptions;
 
 
 
-#define CERTSTORE_CACHE_SIZE 500
+#define CERTSTORE_CACHE_SIZE 100
 
 using namespace inet::cert;
 
@@ -126,7 +126,7 @@ public:
     template<class K, class V>
     using map_type = mp::map<K, V>;
     using X509_PAIR = CertCacheEntry::X509_PAIR;
-    using X509_CACHE = map_type<std::string, CertCacheEntry>;
+    using X509_CACHE = ptr_cache<std::string, CertCacheEntry>;
     using FQDN_CACHE = map_type<std::string, std::string>;
 
     using expiring_verify_result = expiring<VerifyStatus>;
@@ -184,13 +184,18 @@ private:
 
     std::regex re_hostname = std::regex("^[a-zA-Z0-9-]+\\.");
 
-    X509_CACHE cache_;
+    X509_CACHE cert_cache_;
     X509_STORE* trust_store_ = nullptr;
 
     mutable std::recursive_mutex mutex_cache_write_;
 
-    SSLFactory(): verify_cache("verify cache", CERTSTORE_CACHE_SIZE, true) {
+    SSLFactory():
+            cert_cache_("certificate chache", CERTSTORE_CACHE_SIZE, true),
+            verify_cache("verify cache", CERTSTORE_CACHE_SIZE, true)
+    {
+        cert_cache_.mode_lru();
     }
+
 public:
     // avoid having copies of SSLFactory
     SSLFactory(SSLFactory const&) = delete;
@@ -216,8 +221,8 @@ public:
 
 
     // get spoofed certificate cache, based on cert's subject
-    X509_CACHE& cache() { return cache_; };
-    X509_CACHE const& cache() const { return cache_; };
+    X509_CACHE& cache() { return cert_cache_; };
+    X509_CACHE const& cache() const { return cert_cache_; };
     // trusted CA store
     X509_STORE* trust_store() { return trust_store_; };
     X509_STORE const* trust_store() const { return trust_store_; };
@@ -249,8 +254,8 @@ public:
 
     bool add (std::string &store_key, X509_PAIR parek);
 
-    std::optional<const SSLFactory::X509_PAIR> find(std::string const& subject) const;
-    std::optional<std::string> find_subject_by_fqdn(std::string const& fqdn) const;
+    std::optional<const SSLFactory::X509_PAIR> find(std::string const& subject);
+    std::optional<std::string> find_subject_by_fqdn(std::string const& fqdn);
     bool erase(const std::string &subject);
      
 
