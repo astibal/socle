@@ -1192,7 +1192,8 @@ std::string SSLFactory::print_cert(X509* x, int indent) {
     BIO_get_mem_ptr(ext_bio, &bptr);
     BIO_set_close(ext_bio, BIO_CLOSE);
 
-    s << pref << string_format((const char*) bptr->data, bptr->length);
+    std::string it(bptr->data, bptr->length);
+    s << pref << it;
 
     BIO_free(ext_bio);
 
