@@ -60,7 +60,7 @@ public:
     { new ((T*) p) T(val); }
     void              destroy(pointer p) { p->~T(); }
 
-    size_type         max_size() const { return size_t(-1); }
+    [[nodiscard]] size_type max_size() const { return size_t(-1); }
 
     template <class U>
     struct rebind { typedef mp_allocator<U> other; };
@@ -81,7 +81,7 @@ public:
         return true;
     }
 
-    constexpr bool propagate_on_container_move_assignment() const { return true; };
+    [[nodiscard]] constexpr bool propagate_on_container_move_assignment() const { return true; };
 };
 
 #endif //MPALLOCATOR_HPP
