@@ -91,14 +91,15 @@ public:
         using timestamp_t = std::chrono::time_point<std::chrono::system_clock>;
         using count_t = uint32_t;
 
-        DataBlock() = default;
+        DataBlock(): dbs_(nullptr), pointer_(nullptr), counter_(0) {}
         explicit DataBlock(std::shared_ptr<DataBlockStats>dbs, std::shared_ptr<T> v) : dbs_(dbs), pointer_(v), counter_(0) {}
+        ~DataBlock() = default;
 
         inline std::shared_ptr<T> ptr() { return pointer_; }
         inline std::shared_ptr<T> ptr() const { return pointer_; }
 
         void touch() { timestamp_ = std::chrono::system_clock::now(); counter_++; if(dbs_) dbs_->total_counter++; }
-        template<typename TT> TT age() const { return std::chrono::duration<TT>( std::chrono::system_clock::now() ); };
+        [[nodiscard]] int age() const { return std::chrono::duration_cast<std::chrono::seconds>( std::chrono::system_clock::now() - timestamp_).count(); };
         [[nodiscard]] count_t count() const { return counter_; }
     private:
         std::shared_ptr<DataBlockStats> dbs_;
@@ -122,7 +123,7 @@ public:
         expiration_check(fn_exp);
         log = logan::create("socle.ptrcache");
     }
-    virtual ~ptr_cache() = default;
+    virtual ~ptr_cache() { clear(); };
 
     enum class MODE { FIFO, LRU };
     MODE mode_ = MODE::FIFO;
