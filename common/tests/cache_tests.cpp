@@ -104,7 +104,7 @@ TEST(LruPtrCacheTest, CanReorder) {
     c.get("11");
 
     // verify it's still there with correct counter
-    ASSERT_TRUE(c.items().front() == "11" and c.cache()["11"].count() == 3);
+    ASSERT_TRUE(c.items().front() == "11" and c.cache()["11"]->count() == 3);
 
     c.set("new", std::make_shared<SomeObject>(99,99));
     ASSERT_TRUE(c.items().front() == "new");
@@ -141,9 +141,9 @@ TEST(LruPtrCacheTest, CanReorder) {
         auto it = c.items().begin();
         for (unsigned int i = 0; i < c.items().size(); i++, it++) {
             auto key = *it;
-            auto elem = c.cache()[key];
+            auto& elem = c.cache()[key];
 
-            std::cerr << i << " -> " << key << "[" << elem.count() << "] -> " << elem.ptr()->str() << std::endl;
+            std::cerr << i << " -> " << key << "[" << elem->count() << "] -> " << elem->ptr()->str() << std::endl;
         }
     }
 

@@ -117,7 +117,7 @@ public:
             auto entry = ofstream_pool.cache().find(fnm);
             if(entry != ofstream_pool.cache().end()) {
 
-                auto exo = entry->second.ptr();
+                auto exo = entry->second->ptr();
                 _deb("new ofstream entry: 0x%x", exo.get());
 
             } else {

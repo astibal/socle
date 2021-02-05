@@ -265,8 +265,14 @@ public:
 
     ptr_cache<std::string,expiring_verify_result> verify_cache;
 
-    static ptr_cache<std::string,expiring_crl> crl_cache;
-    static ptr_cache<std::string,session_holder> session_cache;
+    static ptr_cache<std::string,expiring_crl>& crl_cache() {
+        static ptr_cache<std::string,SSLFactory::expiring_crl> c("crl cache",CERTSTORE_CACHE_SIZE,true);
+        return c;
+    };
+    static ptr_cache<std::string,session_holder>& session_cache() {
+        static ptr_cache<std::string,session_holder> c("ssl session cache",CERTSTORE_CACHE_SIZE,true);
+        return c;
+    };
 
     void destroy();
     virtual ~SSLFactory();

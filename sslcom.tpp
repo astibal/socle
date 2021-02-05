@@ -764,11 +764,11 @@ int baseSSLCom<L4Proto>::certificate_status_ocsp_check(baseSSLCom* com) {
             X509_CRL* crl_struct = nullptr;
 
 
-            std::lock_guard<std::recursive_mutex> l_(com->factory()->crl_cache.getlock());
+            std::lock_guard<std::recursive_mutex> l_(com->factory()->crl_cache().getlock());
             for(auto crl_url: crls) {
 
                 std::string crl_printable = printable(crl_url);
-                auto crl_cache_entry = factory()->crl_cache.get(crl_url);
+                auto crl_cache_entry = factory()->crl_cache().get(crl_url);
 
                 if(crl_cache_entry != nullptr) {
                     auto crl_struct = crl_cache_entry->value()->ptr;
@@ -811,12 +811,12 @@ int baseSSLCom<L4Proto>::certificate_status_ocsp_check(baseSSLCom* com) {
                         if(crl_struct) {
 
                             _dia("Caching CRL 0x%x", crl_struct);
-                            factory()->crl_cache.set(crl_url.c_str(), SSLFactory::make_expiring_crl(crl_struct));
+                            factory()->crl_cache().set(crl_url.c_str(), SSLFactory::make_expiring_crl(crl_struct));
                             // but because we are locked, we are happy to overwrite it!
                         }
                     } else {
                         _war("downloading CRL from %s failed.",crl_printable.c_str());
-                        factory()->crl_cache.set(crl_url.c_str(), SSLFactory::make_expiring_crl(nullptr));
+                        factory()->crl_cache().set(crl_url.c_str(), SSLFactory::make_expiring_crl(nullptr));
                     }
 
                 }
@@ -2277,7 +2277,7 @@ bool baseSSLCom<L4Proto>::store_session_if_needed() {
 
             if(verify_bitcheck(VRF_OK)) {
 
-                std::lock_guard<std::recursive_mutex> l_(factory()->session_cache.getlock() );
+                std::lock_guard<std::recursive_mutex> l_(factory()->session_cache().getlock() );
 
 #if defined USE_OPENSSL111
                 if(SSL_SESSION_is_resumable(SSL_get0_session(sslcom_ssl))) {
@@ -2285,9 +2285,9 @@ bool baseSSLCom<L4Proto>::store_session_if_needed() {
 
                     // only resumable, crystal OK sessions will be trusted for resumption
                     if(verify_get() == VRF_OK) {
-                        factory()->session_cache.set(key, new session_holder(SSL_get1_session(sslcom_ssl)));
+                        factory()->session_cache().set(key, new session_holder(SSL_get1_session(sslcom_ssl)));
                         _dia("ticketing: key %s: keying material stored, cache size = %d", key.c_str(),
-                             factory()->session_cache.cache().size());
+                             factory()->session_cache().cache().size());
                     } else {
 
                         std::string ext_str;
@@ -2357,9 +2357,9 @@ bool baseSSLCom<L4Proto>::load_session_if_needed() {
             key = string_format("%s:%s",owner_cx()->host().c_str(),owner_cx()->port().c_str());
         }
 
-        std::lock_guard<std::recursive_mutex> l_(factory()->session_cache.getlock());
+        std::lock_guard<std::recursive_mutex> l_(factory()->session_cache().getlock());
 
-        auto h = factory()->session_cache.get(key);
+        auto h = factory()->session_cache().get(key);
         
         if(h != nullptr) {
             _dia("ticketing: key %s:target server TLS ticket found!",key.c_str());

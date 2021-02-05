@@ -32,10 +32,6 @@
 int SSLFactory::ssl_crl_status_ttl  = 86400;
 int SSLFactory::ssl_ocsp_status_ttl = 1800;
 
-ptr_cache<std::string,SSLFactory::expiring_crl> SSLFactory::crl_cache("crl cache",CERTSTORE_CACHE_SIZE,true);
-ptr_cache<std::string,session_holder> SSLFactory::session_cache("ssl session cache",CERTSTORE_CACHE_SIZE,true);
-
-
 unsigned long SSLFactory::def_cl_options = SSL_OP_NO_SSLv3+SSL_OP_NO_SSLv2;
 unsigned long SSLFactory::def_sr_options = SSL_OP_NO_SSLv3+SSL_OP_NO_SSLv2;
 

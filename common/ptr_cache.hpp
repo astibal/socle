@@ -109,7 +109,7 @@ public:
 
     };
 
-    using cache_t = mp::unordered_map<K, DataBlock>;
+    using cache_t = mp::unordered_map<K, std::unique_ptr<DataBlock>>;
     using queue_t = mp::list<K>;
 
 
@@ -179,18 +179,18 @@ public:
         }
         else if (fn_expired_check != nullptr) {
             // check if object isn't expired
-            if(fn_expired_check(it->second.ptr())) {
+            if(fn_expired_check(it->second->ptr())) {
                 erase(k);
                 return default_value();
             }
         }
 
         if(mode_ == MODE::LRU) {
-            it->second.touch();
+            it->second->touch();
             lru_reoder();
         }
         
-        return it->second.ptr();
+        return it->second->ptr();
     }
 
     bool set(const K k, T* v) {
@@ -206,7 +206,7 @@ public:
         auto it = cache().find(k);
         if(it != cache().end()) {
             _dia("ptr_cache::set[%s]: existing entry found", c_name());
-            cache()[k] = DataBlock(dbs_, v);
+            cache()[k] = std::make_unique<DataBlock>(dbs_, v);
         } else {
 
             if(max_size_ > 0) {
@@ -228,7 +228,7 @@ public:
                 }
             }
             _dia("ptr_cache::set[%s]: new entry added", c_name());
-            cache()[k] = DataBlock(dbs_, v);
+            cache()[k] = std::make_unique<DataBlock>(dbs_, v);
             items().push_front(k);
         }
 
@@ -291,13 +291,13 @@ inline bool ptr_cache<K,T>::lru_reoder() {
     auto first_key = items().front();
     auto const& first_it  = cache().find(first_key);
 
-    auto criteria = first_it->second.count();
+    auto criteria = first_it->second->count();
     if(dbs_) {
         criteria = dbs_->total_counter / items().size();
     }
 
     if(last_it != cache().end() and first_it != cache().end()) {
-        if( last_it->second.count() > criteria) {
+        if( last_it->second->count() > criteria) {
             items().push_front(last_key);
             items().pop_back();
 
