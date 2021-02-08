@@ -29,16 +29,6 @@
 
 
 
-int SSLFactory::ssl_crl_status_ttl  = 86400;
-int SSLFactory::ssl_ocsp_status_ttl = 1800;
-
-ptr_cache<std::string,SSLFactory::expiring_crl> SSLFactory::crl_cache("crl cache",CERTSTORE_CACHE_SIZE,true);
-ptr_cache<std::string,session_holder> SSLFactory::session_cache("ssl session cache",CERTSTORE_CACHE_SIZE,true);
-
-
-unsigned long SSLFactory::def_cl_options = SSL_OP_NO_SSLv3+SSL_OP_NO_SSLv2;
-unsigned long SSLFactory::def_sr_options = SSL_OP_NO_SSLv3+SSL_OP_NO_SSLv2;
-
 #pragma GCC diagnostic ignored "-Wwrite-strings"
 #pragma GCC diagnostic push
 
@@ -422,7 +412,7 @@ void SSLFactory::destroy() {
         def_cl_key = nullptr;
     }
 
-    cache_.clear();
+    cert_cache_.clear();
 
     if(trust_store_) {
         X509_STORE_free(trust_store_);
@@ -446,18 +436,17 @@ bool SSLFactory::add(std::string &store_key, X509_PAIR parek) {
         std::lock_guard<std::recursive_mutex> l_(lock());
 
         // free underlying keypair
-        auto it = cache().find(store_key);
-        if(it != cache().end()) {
+        auto it = cache().get(store_key);
+        if(it) {
             _err("SSLFactory::add[%x] keypair associated with store_key '%s' already exists (keeping it there)",this,store_key.c_str());
-            auto const& entry = it->second;
 
-            _deb("SSLFactory::add[%x]         existing pointers:  keyptr=0x%x certptr=0x%x", this, entry.keypair()->first, entry.keypair()->second);
+            _deb("SSLFactory::add[%x]         existing pointers:  keyptr=0x%x certptr=0x%x", this, it->keypair()->first, it->keypair()->second);
             _deb("SSLFactory::add[%x]         offending pointers: keyptr=0x%x certptr=0x%x",this, parek.first, parek.second);
 
             op_status = false;
         } else {
 
-            cache().emplace(store_key, parek);
+            cache().set(store_key, std::make_shared<CertCacheEntry>(parek));
             _dia("SSLFactory::add[%x] new cert '%s' successfully added to cache", this, store_key.c_str());
         }
     }
@@ -547,35 +536,35 @@ std::string SSLFactory::make_store_key(X509* cert_orig, const SpoofOptions& spo)
 
 #endif
 
-std::optional<const SSLFactory::X509_PAIR> SSLFactory::find(std::string const& subject) const {
+std::optional<const SSLFactory::X509_PAIR> SSLFactory::find(std::string const& subject) {
 
     std::lock_guard<std::recursive_mutex> l_(lock());
     auto log = get_log();
 
-    auto entry = cache().find(subject);
-    if (entry == cache().end()) {
+    auto entry = cache().get(subject);
+    if (not entry) {
         _deb("SSLFactory::find[%x]: NOT cached '%s'",this,subject.c_str());
     } else {
         _deb("SSLFactory::find[%x]: found cached '%s'",this,subject.c_str());
         
-        return std::optional(*entry->second.keypair());  //first is the map key (cert subject in our case)
+        return *entry->keypair();  //first is the map key (cert subject in our case)
     }    
     
     return std::nullopt;
 }
 
-std::optional<std::string> SSLFactory::find_subject_by_fqdn(std::string const& fqdn) const {
+std::optional<std::string> SSLFactory::find_subject_by_fqdn(std::string const& fqdn) {
 
     {
         std::lock_guard<std::recursive_mutex> l_(lock());
         auto log = get_log();
 
-        auto entry = cache().find(fqdn);
-        if (entry == cache().end()) {
+        auto entry = cache().get(fqdn);
+        if (not entry) {
             _deb("SSLFactory::find_subject_by_fqdn[%x]: NOT cached '%s'", this, fqdn.c_str());
         } else {
             _deb("SSLFactory::find_subject_by_fqdn[%x]: found cached '%s'", this, fqdn.c_str());
-            return std::optional((*entry).first);
+            return std::optional(fqdn);
         }
     }
 
@@ -587,12 +576,12 @@ std::optional<std::string> SSLFactory::find_subject_by_fqdn(std::string const& f
         std::lock_guard<std::recursive_mutex> l_(lock());
         auto log = get_log();
 
-        auto entry = cache_.find(wildcard_fqdn);
-        if (entry == cache_.end()) {
+        auto entry = cache().get(wildcard_fqdn);
+        if (not entry) {
             _deb("SSLFactory::find_subject_by_fqdn[%x]: wildcard NOT cached '%s'", this, wildcard_fqdn.c_str());
         } else {
             _deb("SSLFactory::find_subject_by_fqdn[%x]: found cached wildcard '%s'", this, fqdn.c_str());
-            return std::optional((*entry).first);
+            return std::optional(wildcard_fqdn);
         }
     }
 
@@ -1193,7 +1182,8 @@ std::string SSLFactory::print_cert(X509* x, int indent) {
     BIO_get_mem_ptr(ext_bio, &bptr);
     BIO_set_close(ext_bio, BIO_CLOSE);
 
-    s << pref << string_format((const char*) bptr->data, bptr->length);
+    std::string it(bptr->data, bptr->length);
+    s << pref << it;
 
     BIO_free(ext_bio);
 

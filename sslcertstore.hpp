@@ -123,11 +123,8 @@ class SSLFactory {
 
 public:
 
-    template<class K, class V>
-    using map_type = mp::map<K, V>;
     using X509_PAIR = CertCacheEntry::X509_PAIR;
-    using X509_CACHE = map_type<std::string, CertCacheEntry>;
-    using FQDN_CACHE = map_type<std::string, std::string>;
+    using X509_CACHE = ptr_cache<std::string, CertCacheEntry>;
 
     using expiring_verify_result = expiring<VerifyStatus>;
     using expiring_crl = expiring_ptr<crl_holder>;
@@ -171,8 +168,8 @@ private:
     SSL_CTX*  def_cl_ctx = nullptr;   // default client ctx
     SSL_CTX*  def_dtls_cl_ctx = nullptr;   // default client ctx for DTLS
 
-    static unsigned long def_cl_options;
-    static unsigned long def_sr_options;
+    static inline unsigned long def_cl_options = SSL_OP_NO_SSLv3+SSL_OP_NO_SSLv2;
+    static inline unsigned long def_sr_options = SSL_OP_NO_SSLv3+SSL_OP_NO_SSLv2;
 
     [[maybe_unused]]
     static int password_callback(char* buf, int size, int rwflag, void*u);
@@ -184,13 +181,18 @@ private:
 
     std::regex re_hostname = std::regex("^[a-zA-Z0-9-]+\\.");
 
-    X509_CACHE cache_;
+    X509_CACHE cert_cache_;
     X509_STORE* trust_store_ = nullptr;
 
     mutable std::recursive_mutex mutex_cache_write_;
 
-    SSLFactory(): verify_cache("verify cache", CERTSTORE_CACHE_SIZE, true) {
+    SSLFactory():
+            cert_cache_("certificate chache", CERTSTORE_CACHE_SIZE, true),
+            verify_cache("verify cache", CERTSTORE_CACHE_SIZE, true)
+    {
+        cert_cache_.mode_lru();
     }
+
 public:
     // avoid having copies of SSLFactory
     SSLFactory(SSLFactory const&) = delete;
@@ -216,8 +218,8 @@ public:
 
 
     // get spoofed certificate cache, based on cert's subject
-    X509_CACHE& cache() { return cache_; };
-    X509_CACHE const& cache() const { return cache_; };
+    X509_CACHE& cache() { return cert_cache_; };
+    X509_CACHE const& cache() const { return cert_cache_; };
     // trusted CA store
     X509_STORE* trust_store() { return trust_store_; };
     X509_STORE const* trust_store() const { return trust_store_; };
@@ -249,19 +251,25 @@ public:
 
     bool add (std::string &store_key, X509_PAIR parek);
 
-    std::optional<const SSLFactory::X509_PAIR> find(std::string const& subject) const;
-    std::optional<std::string> find_subject_by_fqdn(std::string const& fqdn) const;
+    std::optional<const SSLFactory::X509_PAIR> find(std::string const& subject);
+    std::optional<std::string> find_subject_by_fqdn(std::string const& fqdn);
     bool erase(const std::string &subject);
      
 
     // static members must be public
-    static int ssl_ocsp_status_ttl;
-    static int ssl_crl_status_ttl;
+    static inline int ssl_ocsp_status_ttl = 1800;
+    static inline int ssl_crl_status_ttl = 86400;
 
     ptr_cache<std::string,expiring_verify_result> verify_cache;
 
-    static ptr_cache<std::string,expiring_crl> crl_cache;
-    static ptr_cache<std::string,session_holder> session_cache;
+    static ptr_cache<std::string,expiring_crl>& crl_cache() {
+        static ptr_cache<std::string,SSLFactory::expiring_crl> c("crl cache",CERTSTORE_CACHE_SIZE,true);
+        return c;
+    };
+    static ptr_cache<std::string,session_holder>& session_cache() {
+        static ptr_cache<std::string,session_holder> c("ssl session cache",CERTSTORE_CACHE_SIZE,true);
+        return c;
+    };
 
     void destroy();
     virtual ~SSLFactory();
@@ -270,8 +278,6 @@ public:
         static logan_lite l = logan_lite("pki.store");
         return l;
     }
-
-    class CertParseException : public std::exception {};
 
     static std::vector<std::pair<std::string,std::string>> const& extensions() {
 

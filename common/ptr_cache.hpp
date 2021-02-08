@@ -45,7 +45,7 @@ struct expiring {
     time_t& expired_at() { return expired_at_; };
 
     virtual bool expired() { return (this->expired_at_ <= ::time(nullptr)); }
-    static bool is_expired(std::shared_ptr<expiring<T>>& ptr) {  return ptr->expired(); }
+    static bool is_expired(std::shared_ptr<expiring<T>> ptr) {  return ptr->expired(); }
 
 private:
     T value_{0};
@@ -81,17 +81,55 @@ typedef expiring<std::string> expiring_string;
 template <class K, class T>
 class ptr_cache {
 public:
+
+    struct DataBlockStats {
+        uint32_t total_counter = 0;
+    };
+
+    struct DataBlock {
+
+        using timestamp_t = std::chrono::time_point<std::chrono::system_clock>;
+        using count_t = uint32_t;
+
+        DataBlock(): dbs_(nullptr), pointer_(nullptr), counter_(0) {}
+        explicit DataBlock(std::shared_ptr<DataBlockStats>dbs, std::shared_ptr<T> v) : dbs_(dbs), pointer_(v), counter_(0) {}
+        ~DataBlock() = default;
+
+        inline std::shared_ptr<T> ptr() { return pointer_; }
+        inline std::shared_ptr<T> ptr() const { return pointer_; }
+
+        void touch() { timestamp_ = std::chrono::system_clock::now(); counter_++; if(dbs_) dbs_->total_counter++; }
+        [[nodiscard]] int age() const { return std::chrono::duration_cast<std::chrono::seconds>( std::chrono::system_clock::now() - timestamp_).count(); };
+        [[nodiscard]] count_t count() const { return counter_; }
+    private:
+        std::shared_ptr<DataBlockStats> dbs_;
+        std::shared_ptr<T> pointer_;
+        timestamp_t timestamp_;
+        count_t counter_;
+
+    };
+
+    using cache_t = mp::unordered_map<K, std::unique_ptr<DataBlock>>;
+    using queue_t = mp::list<K>;
+
+
     explicit ptr_cache(const char* n): auto_delete_(true), max_size_(0) {
         name(n);
         log = logan::create("socle.ptrcache");
 
     }
-    ptr_cache(const char* n, unsigned int max_size, bool auto_delete, bool (*fn_exp)(std::shared_ptr<T>&) = nullptr ): auto_delete_(auto_delete), max_size_(max_size) {
+    ptr_cache(const char* n, unsigned int max_size, bool auto_delete, bool (*fn_exp)(std::shared_ptr<T>) = nullptr ): auto_delete_(auto_delete), max_size_(max_size) {
         name(n);
         expiration_check(fn_exp);
         log = logan::create("socle.ptrcache");
     }
-    virtual ~ptr_cache() = default;
+    virtual ~ptr_cache() { clear(); };
+
+    enum class MODE { FIFO, LRU };
+    MODE mode_ = MODE::FIFO;
+
+    inline void mode_lru() { mode_ = MODE::LRU; if(not dbs_) dbs_ = std::make_shared<DataBlockStats>(); }
+    inline void mode_fifo() { mode_ = MODE::FIFO; }
 
     void clear() {
         std::lock_guard<std::recursive_mutex> l(lock_);
@@ -100,14 +138,17 @@ public:
         items_.clear();
     }
 
-    mp::unordered_map<K,std::shared_ptr<T>>& cache() { return cache_; }
-    mp::deque<K> const& items() { return items_; };
+    cache_t& cache() { return cache_; }
+    cache_t const& cache() const { return cache_; }
+
+    queue_t& items() { return items_; };
+    queue_t const& items() const { return items_; };
 
     std::shared_ptr<T>   default_value() const { return default_value_; }
     int max_size() const { return max_size_; }
 
     unsigned int opportunistic_removal() const { return opportunistic_removal_; };
-    
+
     bool erase(K k) {
         std::lock_guard<std::recursive_mutex> l(lock_);
         auto it = cache().find(k);
@@ -125,7 +166,7 @@ public:
     }
 
     // shortcut to erase cache iterator
-    typename std::unordered_map<std::string, std::shared_ptr<T>>::iterator erase(typename std::unordered_map<std::string, std::shared_ptr<T>>::iterator& i) {
+    typename cache_t::iterator erase(typename cache_t::iterator& i) {
         std::lock_guard<std::recursive_mutex> l(lock_);
         return cache().erase(i);
     }
@@ -138,13 +179,18 @@ public:
         }
         else if (fn_expired_check != nullptr) {
             // check if object isn't expired
-            if(fn_expired_check(it->second)) {
+            if(fn_expired_check(it->second->ptr())) {
                 erase(k);
                 return default_value();
             }
         }
+
+        if(mode_ == MODE::LRU) {
+            it->second->touch();
+            lru_reoder();
+        }
         
-        return it->second;
+        return it->second->ptr();
     }
 
     bool set(const K k, T* v) {
@@ -160,41 +206,38 @@ public:
         auto it = cache().find(k);
         if(it != cache().end()) {
             _dia("ptr_cache::set[%s]: existing entry found", c_name());
-            auto& ptr = it->second;
-            ret = true;
-            ptr = v;
+            cache()[k] = std::make_unique<DataBlock>(dbs_, v);
         } else {
-            _dia("ptr_cache::set[%s]: new entry added", c_name());
-            cache()[k] = v;
-            
+
             if(max_size_ > 0) {
-                _deb("ptr_cache::set[%s]: current size %d/%d", c_name(), items_.size(), max_size_);
+                _deb("ptr_cache::set[%s]: current size %d/%d", c_name(), items().size(), max_size_);
 
-                while( items_.size() >= max_size_) {
+                while( items().size() >= max_size_) {
                     _deb("ptr_cache::set[%s]: max size reached!", c_name());
-                    K to_delete = items_.front();
-                    
-                    if(!erase(to_delete)) {
-                        if( opportunistic_removal() == 0 ) {
-                            // log.removal errors only if opportunistic removal is enabled
-                            _not("ptr_cache::set[%s]: cannot erase oldest object: not found!", c_name());
-                        }
-                    } else {
-                        _dia("ptr_cache::set[%s]: oldest object removed", c_name());
-                    }
-                    
-                    items_.pop_front();
-                    _dia("ptr_cache::set[%s]: max size: object removed from cache", c_name());
-                }
 
-                items_.push_back(k);
+                    switch(mode_) {
+                        case MODE::LRU:
+                            lru_reoder();
+
+                        case MODE::FIFO:
+                            if(delete_last()) {
+                                _dia("ptr_cache::set[%s]: max size: object removed from cache", c_name());
+                            }
+                            break;
+                    }
+                }
             }
+            _dia("ptr_cache::set[%s]: new entry added", c_name());
+            cache()[k] = std::make_unique<DataBlock>(dbs_, v);
+            items().push_front(k);
         }
 
         return ret;
     }
-    
-    void expiration_check(bool (*fn_expired_check_ptr)(std::shared_ptr<T>&)) { fn_expired_check = fn_expired_check_ptr; };
+
+    bool delete_last();
+    bool lru_reoder();
+    void expiration_check(bool (*fn_expired_check_ptr)(std::shared_ptr<T>)) { fn_expired_check = fn_expired_check_ptr; };
     std::recursive_mutex& getlock() { return lock_; }
 
 private:
@@ -202,17 +245,76 @@ private:
     unsigned int max_size_ = 0;
     unsigned int opportunistic_removal_ = 0;
 
-    mp::deque<K> items_;
+    queue_t items_;
+    std::shared_ptr<DataBlockStats> dbs_;
     
     std::shared_ptr<T> default_value_{nullptr};
-    mp::unordered_map<K,std::shared_ptr<T>> cache_;
+    cache_t cache_;
     mutable std::recursive_mutex lock_;
     
-    bool (*fn_expired_check)(std::shared_ptr<T>&) = nullptr;
+    bool (*fn_expired_check)(std::shared_ptr<T>) = nullptr;
 
     logan_lite log;
 
     DECLARE_C_NAME("object cache");
 };
+
+
+template <class K, class T>
+inline bool ptr_cache<K,T>::delete_last() {
+    bool to_ret = false;
+
+    K to_delete = items().back();
+
+    if(!erase(to_delete)) {
+        if( opportunistic_removal() == 0 ) {
+            // log.removal errors only if opportunistic removal is enabled
+            _not("ptr_cache::set[%s]: cannot erase oldest object: not found!", c_name());
+        }
+    } else {
+        to_ret = true;
+        _dia("ptr_cache::set[%s]: oldest object removed", c_name());
+    }
+
+    items().pop_back();
+
+    return to_ret;
+}
+
+template <class K, class T>
+inline bool ptr_cache<K,T>::lru_reoder() {
+    bool to_ret = false;
+
+    auto last_key = items().back();
+    auto const& last_it  = cache().find(last_key);
+
+    auto first_key = items().front();
+    auto const& first_it  = cache().find(first_key);
+
+    auto criteria = first_it->second->count();
+    if(dbs_) {
+        criteria = dbs_->total_counter / items().size();
+    }
+
+    if(last_it != cache().end() and first_it != cache().end()) {
+        if( last_it->second->count() > criteria) {
+            items().push_front(last_key);
+            items().pop_back();
+
+            to_ret = true;
+        }
+    }
+    else {
+        // some cleanup
+        if(last_it == cache().end()) {
+            items().pop_back();
+        }
+        if(first_it == cache().end()) {
+            items().pop_front();
+        }
+    }
+
+    return to_ret;
+}
 
 #endif
