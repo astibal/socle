@@ -29,12 +29,6 @@
 
 
 
-int SSLFactory::ssl_crl_status_ttl  = 86400;
-int SSLFactory::ssl_ocsp_status_ttl = 1800;
-
-unsigned long SSLFactory::def_cl_options = SSL_OP_NO_SSLv3+SSL_OP_NO_SSLv2;
-unsigned long SSLFactory::def_sr_options = SSL_OP_NO_SSLv3+SSL_OP_NO_SSLv2;
-
 #pragma GCC diagnostic ignored "-Wwrite-strings"
 #pragma GCC diagnostic push
 
