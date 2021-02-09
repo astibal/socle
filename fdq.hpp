@@ -30,7 +30,7 @@ public:
     FdQueue();
     virtual ~FdQueue();
 
-    enum  class sq_type_t { SQ_PIPE = 0, SQ_SOCKETPAIR = 1 } sq_type_;
+    enum  class sq_type_t { SQ_PIPE = 0, SQ_SOCKETPAIR = 1 } sq_type_ = sq_type_t::SQ_SOCKETPAIR;
     sq_type_t sq_type() const { return sq_type_; }
     const char* sq_type_str() const;
 

@@ -225,7 +225,12 @@ inline buffer::~buffer () {
     if (free_ && capacity_ > 0) {
 
         if(use_pool) {
-            memPool::pool().release( {data_, capacity_ } );
+            try {
+                memPool::pool().release({data_, capacity_});
+            }
+            catch(mempool_bad_alloc const& e) {
+                ; // there is nothing to do unfortunately
+            }
         }
         else {
             delete[] data_;
@@ -380,7 +385,12 @@ inline buffer& buffer::operator= (const buffer& x)
       if (free_ and data_ != nullptr ) {
           if(use_pool) {
 
-              memPool::pool().release( { data_, capacity_} );
+              try {
+                 memPool::pool().release( { data_, capacity_} );
+              }
+              catch(mempool_bad_alloc const& e) {
+                ; // there is nothing to do unfortunately
+              }
           }
           else {
               delete[] data_;  // we HAD ownership

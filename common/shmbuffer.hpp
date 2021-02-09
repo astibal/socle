@@ -61,10 +61,10 @@ public:
     shared_buffer(): memory_size(0), memory_fd(-1), data_(nullptr), size_(0), capacity_(0) {}
 
     unsigned char* data()    { return data_; }
-    unsigned int   size()    { return size_; }
-    unsigned int   capacity(){ return capacity_; }
-    
-    bool attached() { return attached_; }
+    [[nodiscard]] unsigned int   size()  const noexcept { return size_; }
+    [[nodiscard]] unsigned int   capacity() const noexcept { return capacity_; }
+
+    [[nodiscard]] bool attached() const noexcept { return attached_; }
     
     bool attach(const char* mem_name, const int mem_size, const char* sem_name, bool create_on_error=true) {
 
@@ -122,18 +122,24 @@ public:
             // we opened to be mapped file, check its size
 
             struct stat st{0};
-            stat(memory_name.c_str(), &st);
-            if(st.st_size == 0) {
-                _dia("shared mem buffer file %s empty - resizing", memory_name.c_str());
-                if(ftruncate(memory_fd, memory_size) != 0) {
-                    _dia("shared mem buffer file %s cannot be truncated: %s", memory_name.c_str(), string_error().c_str());
-                    goto fail;
+
+            if(stat(memory_name.c_str(), &st) != 0) {
+                _dia("shared mem buffer file %s cannot stat: %s", memory_name.c_str(), string_error().c_str());
+            }
+            else {
+                if (st.st_size == 0) {
+                    _dia("shared mem buffer file %s empty - resizing", memory_name.c_str());
+                    if (ftruncate(memory_fd, memory_size) != 0) {
+                        _dia("shared mem buffer file %s cannot be truncated: %s", memory_name.c_str(),
+                             string_error().c_str());
+                        goto fail;
+                    }
                 }
             }
-
         }
-        
+
         shared_memory = (unsigned char*)mmap(nullptr, memory_size, PROT_READ | PROT_WRITE, MAP_SHARED, memory_fd, 0);
+
         if (shared_memory == MAP_FAILED) {
             _war("MMapping the shared memory failed; errno is %d", errno);
             goto fail;

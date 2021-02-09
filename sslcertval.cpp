@@ -373,8 +373,11 @@ namespace inet {
 
             auto log = OcspFactory::log();
 
-            if (cbio && port && use_ssl == 0) {
-                BIO_set_conn_port(cbio, port);
+            if (cbio && use_ssl == 0) {
+                if(port) {
+                    BIO_set_conn_port(cbio, port);
+                }
+
                 resp = ocsp_query_responder(err, cbio, path, host, req, req_timeout);
                 if (!resp) {
                     auto xhost = host ? host : "?";

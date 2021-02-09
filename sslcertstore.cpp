@@ -409,7 +409,7 @@ void SSLFactory::destroy() {
     }
     if(def_sr_key) {
         EVP_PKEY_free(def_sr_key);
-        def_cl_key = nullptr;
+        def_sr_key = nullptr;
     }
 
     cert_cache_.clear();

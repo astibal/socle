@@ -46,7 +46,7 @@ std::string ESC_ (const std::string &s) {
 }
 
 logger_profile::~logger_profile() { 
-    for(auto [ optr, mptr ]: targets_) {
+    for(auto const& [ optr, mptr ]: targets_) {
         if(optr) {
             optr->flush();
         }

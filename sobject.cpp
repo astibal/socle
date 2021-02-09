@@ -163,7 +163,7 @@ std::string sobjectDB::str_stats(const char* criteria) {
                     sum_age += static_cast<float>(a);
 
                     if (a > oldest_age) oldest_age = a;
-                    if (a < youngest_age || youngest_age < 0) youngest_age = a;
+                    if (a < youngest_age) youngest_age = a;
                 }
 
             }
