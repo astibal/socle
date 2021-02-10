@@ -105,6 +105,7 @@ public:
     
     std::string to_string(int verbosity=iINF) const override;
     std::string get_peer_sni() { return sslcom_peer_hello_sni().c_str(); } //return copy of SNI
+    std::string get_peer_id() { return sslcom_peer_hello_id().c_str(); } //return copy of SNI
 
     enum class client_state_t { NONE, INIT, PEER_CLIENTHELLO_WAIT , PEER_CLIENTHELLO_RECVD, CONNECTING, CONNECTED };
     client_state_t client_state_ = client_state_t::NONE;
@@ -212,6 +213,10 @@ protected:
 
     std::string sslcom_peer_hello_sni_;
     std::string& sslcom_peer_hello_sni() { return sslcom_peer_hello_sni_; }
+
+    std::string sslcom_peer_hello_id_;
+    std::string& sslcom_peer_hello_id() { return sslcom_peer_hello_id_; }
+
     std::shared_ptr<std::vector<std::string>> sni_filter_to_bypass_;
     bool sni_filter_to_bypass_matched = false;
     

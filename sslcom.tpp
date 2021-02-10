@@ -2592,6 +2592,8 @@ int baseSSLCom<L4Proto>::parse_peer_hello() {
                 if(session_id_length > 0) {
                     session_id = b.view(curpos,session_id_length);
                     curpos+=session_id_length;
+
+                    sslcom_peer_hello_id_ = hex_print(session_id.data(), session_id.size());
                     _deb("SSLCom::parse_peer_hello: session_id (length %d)",session_id_length);
                     _dum("SSLCom::parse_peer_hello: session_id :\n%s",hex_dump(session_id.data(),session_id.size()).c_str());
                 } else {
