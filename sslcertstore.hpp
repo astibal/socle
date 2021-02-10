@@ -33,6 +33,7 @@
 #include <ptr_cache.hpp>
 #include <mpstd.hpp>
 #include <sslcertval.hpp>
+#include <socle_size.hpp>
 
 #include <regex>
 #include <thread>
@@ -71,8 +72,6 @@ struct session_holder {
 struct SpoofOptions;
 
 
-
-#define CERTSTORE_CACHE_SIZE 500
 
 using namespace inet::cert;
 
@@ -119,9 +118,28 @@ private:
     X509_PAIR value;
 };
 
-class SSLFactory {
+struct SSLFactorySizing {
+#ifdef BUILD_RELEASE
+    constexpr static size_t cert_multi = 5;
+    constexpr static size_t verify_multi = 3;
+    constexpr static size_t session_multi = 2;
+    constexpr static size_t crl_multi = 1;
+#else
+    constexpr static size_t cert_multi = 1;
+    constexpr static size_t verify_multi = 1;
+    constexpr static size_t session_multi = 1;
+    constexpr static size_t crl_multi = 1;
+#endif
+};
+
+class SSLFactory : public SSLFactorySizing {
 
 public:
+
+    constexpr static size_t CERTSTORE_CACHE_SIZE = socle::size::base_table * cert_multi;
+    constexpr static size_t VERIFY_CACHE_SIZE = socle::size::base_table * verify_multi;
+    constexpr static size_t SESSION_CACHE_SIZE = socle::size::base_table * session_multi;
+    constexpr static size_t CRL_CACHE_SIZE = socle::size::base_table * crl_multi;
 
     using X509_PAIR = CertCacheEntry::X509_PAIR;
     using X509_CACHE = ptr_cache<std::string, CertCacheEntry>;
@@ -188,7 +206,7 @@ private:
 
     SSLFactory():
             cert_cache_("certificate chache", CERTSTORE_CACHE_SIZE, true),
-            verify_cache("verify cache", CERTSTORE_CACHE_SIZE, true)
+            verify_cache("verify cache", VERIFY_CACHE_SIZE, true)
     {
         cert_cache_.mode_lru();
     }
@@ -263,11 +281,11 @@ public:
     ptr_cache<std::string,expiring_verify_result> verify_cache;
 
     static ptr_cache<std::string,expiring_crl>& crl_cache() {
-        static ptr_cache<std::string,SSLFactory::expiring_crl> c("crl cache",CERTSTORE_CACHE_SIZE,true);
+        static ptr_cache<std::string,SSLFactory::expiring_crl> c("crl cache",CRL_CACHE_SIZE,true);
         return c;
     };
     static ptr_cache<std::string,session_holder>& session_cache() {
-        static ptr_cache<std::string,session_holder> c("ssl session cache",CERTSTORE_CACHE_SIZE,true);
+        static ptr_cache<std::string,session_holder> c("ssl session cache",SESSION_CACHE_SIZE,true, ptr_cache<std::string,session_holder>::MODE::LRU);
         return c;
     };
 
