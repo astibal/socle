@@ -111,21 +111,29 @@ public:
 
     using cache_t = mp::unordered_map<K, std::unique_ptr<DataBlock>>;
     using queue_t = mp::list<K>;
-
+    enum class MODE { FIFO, LRU };
 
     explicit ptr_cache(const char* n): auto_delete_(true), max_size_(0) {
         name(n);
         log = logan::create("socle.ptrcache");
 
     }
-    ptr_cache(const char* n, unsigned int max_size, bool auto_delete, bool (*fn_exp)(std::shared_ptr<T>) = nullptr ): auto_delete_(auto_delete), max_size_(max_size) {
+    ptr_cache(const char* n, unsigned int max_size, bool auto_delete, bool (*fn_exp)(std::shared_ptr<T>) = nullptr): auto_delete_(auto_delete), max_size_(max_size) {
         name(n);
         expiration_check(fn_exp);
         log = logan::create("socle.ptrcache");
     }
+
+    ptr_cache(const char* n, unsigned int max_size, bool auto_delete, MODE m): auto_delete_(auto_delete), max_size_(max_size) {
+        name(n);
+        if(m == MODE::LRU) mode_lru();
+        log = logan::create("socle.ptrcache");
+    }
+
+
     virtual ~ptr_cache() { clear(); };
 
-    enum class MODE { FIFO, LRU };
+
     MODE mode_ = MODE::FIFO;
 
     inline void mode_lru() { mode_ = MODE::LRU; if(not dbs_) dbs_ = std::make_shared<DataBlockStats>(); }
