@@ -155,16 +155,27 @@ int baseSSLCom<L4Proto>::new_session_callback(SSL* ssl, SSL_SESSION* session) {
     auto* com = static_cast<baseSSLCom*>(data);
     if(com != nullptr) {
         std::string name = com->hr();
-    }
 
-    _inf("new session[%s]: SSL: 0x%x, SSL_SESSION: 0x%x", name.c_str(), ssl, session);
+        _inf("new session[%s]: SSL: 0x%x, SSL_SESSION: 0x%x", name.c_str(), ssl, session);
 
-    if(com->verify_bitcheck(VRF_REVOKED)) {
-        _inf("new session[%s]: SSL: 0x%x, session rejected due verify status: 0x%04x", name.c_str(), ssl, com->verify_get());
+        if (com->verify_bitcheck(VRF_REVOKED)) {
+            _inf("new session[%s]: SSL: 0x%x, session rejected due verify status: 0x%04x", name.c_str(), ssl,
+                 com->verify_get());
+            return 0;
+        }
+
+
+        if(com->store_session_if_needed()) {
+
+            // we stored the session, return 1 to be used
+            return 1;
+        }
+
         return 0;
     }
 
-    return 1;
+    _err("new session[%s]: SSL: 0x%x, SSL_SESSION: 0x%x - cannot cast", name.c_str(), ssl, session);
+    return 0;
 }
 
 
@@ -1676,17 +1687,24 @@ void baseSSLCom<L4Proto>::init_server() {
         }
     }
 
-    SSL_set_session(sslcom_ssl, nullptr);
-    
+    is_server(true);
+
     if(opt_left_no_tickets) {
+        SSL_set_session(sslcom_ssl, nullptr);
         SSL_set_options(sslcom_ssl,SSL_OP_NO_TICKET);
-    }    
-    
-    SSL_set_mode(sslcom_ssl, SSL_MODE_ENABLE_PARTIAL_WRITE|SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
+    } else {
+        // loading sessions for server are automatic done by openssl
+        // loading from here is experimental and wip
+
+        if(left_session_cache_enabled__) {
+            load_session_if_needed();
+        }
+    }
+
+    SSL_set_mode(sslcom_ssl, SSL_MODE_ENABLE_PARTIAL_WRITE|SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER|SSL_MODE_RELEASE_BUFFERS);
 
     SSL_set_fd (sslcom_ssl, socket());
 
-    is_server(true);
 
     init_ssl_callbacks();
     
@@ -1980,6 +1998,10 @@ int baseSSLCom<L4Proto>::handshake_server() {
 
     int op_code = SSL_accept(sslcom_ssl);
 
+    if(op_code == 1) {
+        store_session_if_needed();
+    }
+
     prof_accept_cnt++;
     baseSSLCom::counter_ssl_accept++;
 
@@ -2259,24 +2281,71 @@ ret_handshake baseSSLCom<L4Proto>::handshake() {
 
 template <class L4Proto>
 bool baseSSLCom<L4Proto>::store_session_if_needed() {
+
+    // add quick escape for server (left) side
+    if(is_server() and not left_session_cache_enabled__) {
+        _deb("store_session_if_needed: left-side session cache not enabled");
+        return false;
+    }
+
     bool ret = false;
-    
-    if(!is_server() && factory() && owner_cx() && !opt_right_no_tickets) {
-        std::string sni;
-        
-        if(sslcom_peer_hello_sni().length() > 0)
-            sni = sslcom_peer_hello_sni();
-        
-        std::string key;
-        if (sni.length() > 0) {
-            key = sni;
+    bool proceed  = is_server() ? !opt_left_no_tickets : !opt_right_no_tickets;
+    std::string pref = is_server() ? "l-" : "r-";
+
+    if(proceed and factory() && owner_cx()) {
+        std::string current_sni;
+
+        if(is_server()) {
+            auto peerscom = dynamic_cast<SSLCom*>(peer());
+            if(peerscom) {
+                // this is actually mine SNI :)
+                current_sni = peerscom->get_peer_sni();
+            }
+
+            auto sess = SSL_get0_session(sslcom_ssl);
+            pref += owner_cx()->host() + "-";
+
+            if(sess) {
+                unsigned int sid_len = 0;
+                auto sid = SSL_SESSION_get_id(sess, &sid_len);
+                pref += hex_print((unsigned char*)sid, sid_len) + "-";
+            }
+
+
         } else {
-            key = string_format("%s:%s",owner_cx()->host().c_str(),owner_cx()->port().c_str());
+            if (sslcom_peer_hello_sni().length() > 0) {
+                current_sni = sslcom_peer_hello_sni();
+            }
         }
         
+        std::string key;
+        if (current_sni.length() > 0) {
+            key = pref + current_sni;
+        } else {
+            key = pref + string_format("%s:%s",owner_cx()->host().c_str(),owner_cx()->port().c_str());
+        }
+
         if(!SSL_session_reused(sslcom_ssl)) {
             _dia("ticketing: key %s: full key exchange, connect attempt %d on socket %d",key.c_str(),prof_connect_cnt,owner_cx()->socket());
 
+
+            if(is_server()) {
+                if(SSL_SESSION_is_resumable(SSL_get0_session(sslcom_ssl))
+                   and
+                   SSL_SESSION_has_ticket(SSL_get0_session(sslcom_ssl)) == 0) {
+                    std::lock_guard<std::recursive_mutex> l_(factory()->session_cache().getlock());
+
+                    auto ns = new session_holder(SSL_get0_session(sslcom_ssl));
+                    SSL_SESSION_up_ref(ns->ptr);
+
+                    factory()->session_cache().set(key, ns);
+                    _dia("left no ticket, saving sessionid: key %s: keying material stored, cache size = %d", key.c_str(),
+                         factory()->session_cache().cache().size());
+
+                    ret = true;
+                }
+                return ret;
+            }
             if(verify_bitcheck(VRF_OK)) {
 
                 std::lock_guard<std::recursive_mutex> l_(factory()->session_cache().getlock() );
@@ -2287,8 +2356,11 @@ bool baseSSLCom<L4Proto>::store_session_if_needed() {
 
                     // only resumable, crystal OK sessions will be trusted for resumption
                     if(verify_get() == VRF_OK) {
-                        factory()->session_cache().set(key, new session_holder(SSL_get1_session(sslcom_ssl)));
-                        _dia("ticketing: key %s: keying material stored, cache size = %d", key.c_str(),
+                        auto ns = new session_holder(SSL_get0_session(sslcom_ssl));
+                        SSL_SESSION_up_ref(ns->ptr);
+
+                        factory()->session_cache().set(key, ns);
+                        _dia("right ticketing: key %s: keying material stored, cache size = %d", key.c_str(),
                              factory()->session_cache().cache().size());
                     } else {
 
@@ -2344,19 +2416,44 @@ bool baseSSLCom<L4Proto>::store_session_if_needed() {
 template <class L4Proto>
 bool baseSSLCom<L4Proto>::load_session_if_needed() {
 
+    // add quick escape for server (left) side
+    if(is_server() and not left_session_cache_enabled__) {
+        _deb("store_session_if_needed: left-side session cache not enabled");
+        return false;
+    }
+
     bool ret = false;
-    
-    if(!is_server() && factory() && owner_cx() && !opt_right_no_tickets) {
-        std::string sni;
-        
-        if(sslcom_peer_hello_sni().length() > 0)
-            sni = sslcom_peer_hello_sni();
+    bool proceed  = is_server() ? !opt_left_no_tickets : !opt_right_no_tickets;
+    std::string pref = is_server() ? "l-" : "r-";
+
+    if(proceed and factory() && owner_cx()) {
+        std::string current_sni;
+
+        if(is_server()) {
+            auto peerscom = dynamic_cast<SSLCom*>(peer());
+            if(peerscom) {
+                // this is actually mine SNI :)
+                current_sni = peerscom->get_peer_sni();
+            }
+
+            pref += owner_cx()->host() + "-";
+
+            auto sid = peerscom->get_peer_id();
+            if(sid.length() > 0) {
+                pref += sid + "-";
+            }
+
+        } else {
+            if (sslcom_peer_hello_sni().length() > 0) {
+                current_sni = sslcom_peer_hello_sni();
+            }
+        }
         
         std::string key;
-        if (sni.length() > 0) {
-            key = sni;
+        if (current_sni.length() > 0) {
+            key = pref + current_sni;
         } else {
-            key = string_format("%s:%s",owner_cx()->host().c_str(),owner_cx()->port().c_str());
+            key = pref + string_format("%s:%s",owner_cx()->host().c_str(),owner_cx()->port().c_str());
         }
 
         std::lock_guard<std::recursive_mutex> l_(factory()->session_cache().getlock());
@@ -2371,7 +2468,7 @@ bool baseSSLCom<L4Proto>::load_session_if_needed() {
             ret = true;
         } else {
             _dia("ticketing: key %s:target server TLS ticket not found",key.c_str());
-            SSL_set_session(sslcom_ssl, NULL);
+            SSL_set_session(sslcom_ssl, nullptr);
         }
     }
     
@@ -2590,6 +2687,7 @@ int baseSSLCom<L4Proto>::parse_peer_hello() {
                 }
 
                 if(session_id_length > 0) {
+                    // here
                     session_id = b.view(curpos,session_id_length);
                     curpos+=session_id_length;
 

@@ -513,6 +513,9 @@ public:
 
 private:
     unsigned int verify_status_ = VRF_NOTTESTED;
+
+    // experimental switch to save SESSION data for left connections - WIP code
+    static inline bool left_session_cache_enabled__ = false;
 };
 
 const char* SCT_validation_status_str(sct_validation_status_t const& st);
