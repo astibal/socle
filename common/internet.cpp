@@ -75,7 +75,7 @@ namespace inet {
         sa.sin_port = htons(port);   /* Server Port number */
 
         sd = ::socket(AF_INET, SOCK_STREAM, 0);
-        if (sd > 0) {
+        if (sd >= 0) {
             connect_err = ::connect(sd, (struct sockaddr *) &sa, sizeof(sa));
 
             if (connect_err == 0) {
@@ -201,7 +201,7 @@ namespace inet {
         time_t start_time = time(nullptr);
 
         int sd = socket_connect(ip_address, port);
-        if (sd > 0) {
+        if (sd >= 0) {
             ::send(sd, request.c_str(), request.length(), 0);
             while (bytes_sofar != bytes_expected) {
 
@@ -216,7 +216,7 @@ namespace inet {
                 tv.tv_sec = 1;
                 tv.tv_usec = 0;
 
-                retval = select(sd + 1, &rfds, NULL, NULL, &tv);
+                retval = select(sd + 1, &rfds, nullptr, nullptr, &tv);
                 if (retval) {
                     /* Don't rely on the value of tv now! */
                     bytes_received = ::recv(sd, buffer, sizeof(buffer), 0);

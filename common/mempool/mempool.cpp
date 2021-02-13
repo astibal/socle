@@ -24,7 +24,7 @@
 
 
 memPool::memPool(std::size_t sz256, std::size_t sz1k, std::size_t sz5k, std::size_t sz10k, std::size_t sz20k):
-        sz32(0), sz64(0), sz128(0), sz256(0), sz1k(0), sz5k(0), sz10k(0), sz20k(0)
+        sz32(0), sz64(0), sz128(0), sz256(0), sz1k(0), sz5k(0), sz10k(0), sz20k(0), sz35k(0), sz50k(0)
 {
     stat_acq = 0;
     stat_acq_size = 0;
