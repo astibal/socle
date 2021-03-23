@@ -135,11 +135,11 @@ typedef struct mem_chunk
 class memPool {
 
     std::size_t sz32;
-    constexpr static unsigned int m32 = 20;
+    constexpr static unsigned int m32 = 16;
     std::size_t sz64;
-    constexpr static unsigned int m64 = 10;
+    constexpr static unsigned int m64 = 8;
     std::size_t sz128;
-    constexpr static unsigned int m128 = 5;
+    constexpr static unsigned int m128 = 4;
     std::size_t sz256;
     std::size_t sz1k;
     std::size_t sz5k;
@@ -209,7 +209,7 @@ public:
     static inline bool bailing = false;
 
     static memPool& pool() {
-        static memPool m = memPool(5000,10000,10000,1000,800);
+        static memPool m = memPool(100,50,50,10,8);
         return m;
     }
 
@@ -226,23 +226,23 @@ public:
     void release(mem_chunk_t to_ret);
     std::size_t find_ptr_size(void* ptr);
 
-    std::atomic<unsigned long long> stat_acq;
-    std::atomic<unsigned long long> stat_acq_size;
+    std::atomic<unsigned long long> stat_acq{0};
+    std::atomic<unsigned long long> stat_acq_size{0};
 
-    std::atomic<unsigned long long> stat_ret;
-    std::atomic<unsigned long long> stat_ret_size;
+    std::atomic<unsigned long long> stat_ret{0};
+    std::atomic<unsigned long long> stat_ret_size{0};
 
-    std::atomic<unsigned long long> stat_alloc;
-    std::atomic<unsigned long long> stat_alloc_size;
+    std::atomic<unsigned long long> stat_alloc{0};
+    std::atomic<unsigned long long> stat_alloc_size{0};
 
-    std::atomic<unsigned long long> stat_free;
-    std::atomic<unsigned long long> stat_free_size;
+    std::atomic<unsigned long long> stat_free{0};
+    std::atomic<unsigned long long> stat_free_size{0};
 
-    std::atomic<unsigned long long> stat_out_free;
-    std::atomic<unsigned long long> stat_out_free_size;
+    std::atomic<unsigned long long> stat_out_free{0};
+    std::atomic<unsigned long long> stat_out_free_size{0};
 
-    std::atomic<unsigned long long> stat_out_pool_miss;
-    std::atomic<unsigned long long> stat_out_pool_miss_size;
+    std::atomic<unsigned long long> stat_out_pool_miss{0};
+    std::atomic<unsigned long long> stat_out_pool_miss_size{0};
 
 
     long unsigned int mem_32_av() const { return static_cast<long unsigned int>(available_32.size()); };

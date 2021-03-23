@@ -17,7 +17,6 @@
 */
 
 #include <mempool/mempool.hpp>
-#include <utils/mem.hpp>
 
 #include <unordered_map>
 #include "buffer.hpp"
@@ -26,22 +25,32 @@
 memPool::memPool(std::size_t sz256, std::size_t sz1k, std::size_t sz5k, std::size_t sz10k, std::size_t sz20k):
         sz32(0), sz64(0), sz128(0), sz256(0), sz1k(0), sz5k(0), sz10k(0), sz20k(0), sz35k(0), sz50k(0)
 {
-    stat_acq = 0;
-    stat_acq_size = 0;
+    auto get_env_size = []() -> int {
 
-    stat_ret = 0;
-    stat_ret_size = 0;
+        auto ptr_str_size = std::getenv("SX_MEMSIZE");
 
-    stat_alloc = 0;
-    stat_alloc_size = 0;
+        // size is mentioned as percent of default values, which are:
+        // 5000,10000,10000,1000,800
+        int size = 100;
 
-    stat_free = 0;
-    stat_free_size = 0;
+        if (ptr_str_size) {
+            auto new_size = safe_val(ptr_str_size);
 
-    stat_out_free = 0;
-    stat_out_free_size = 0;
+            // accept 10% - 10000%, meaning one tenth to 100-multiple of default value
+            if (new_size >= 10 && new_size <= 100 * 100) {
+                size = new_size;
+            } else {
+                std::cerr << "accepting values 10 - 10000" << std::endl;
+                std::cerr << "value is understood as percent of default size" << std::endl;
+            }
+        }
 
-    allocate(sz256, sz1k, sz5k, sz10k, sz20k);
+        return size;
+    };
+
+    auto size = get_env_size();
+
+    allocate(sz256*size, sz1k*size, sz5k*size, sz10k*size, sz20k*size);
     is_ready() = true; // mark memPool ready for use
 }
 
@@ -91,16 +100,16 @@ void memPool::allocate(std::size_t n_sz256, std::size_t n_sz1k, std::size_t n_sz
 
     std::lock_guard<std::mutex> l_(lock);
 
-    sz32  += n_sz256 * m32;
-    sz64  += n_sz256 * m64;
-    sz128 += n_sz256 * m128;
-    sz256 += n_sz256;
-    sz1k  += n_sz1k;
-    sz5k  += n_sz5k;
-    sz10k += n_sz10k;
-    sz20k += n_sz20k;
-    sz35k += n_sz20k;
-    sz50k += n_sz20k;
+    sz32  = n_sz256 * m32;
+    sz64  = n_sz256 * m64;
+    sz128 = n_sz256 * m128;
+    sz256 = n_sz256;
+    sz1k  = n_sz1k;
+    sz5k  = n_sz5k;
+    sz10k = n_sz10k;
+    sz20k = n_sz20k;
+    sz35k = n_sz20k;
+    sz50k = n_sz20k;
 
 #ifdef MEMPOOL_DEBUG
     get_canary().canary_sz = 8; // add 8 bytes of canary
