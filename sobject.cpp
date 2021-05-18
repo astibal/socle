@@ -219,10 +219,19 @@ long unsigned int meter::update(unsigned long val) {
         last_update_copy = last_update;
     }
 
-    if( now - last_update_copy > std::chrono::seconds(interval_)) {
+    if( now - last_update_copy >= std::chrono::seconds(interval_)) {
 
-        int missed_scores = (now - last_update_copy)/std::chrono::seconds(interval_);
-        if(missed_scores > scoreboard_sz) missed_scores = scoreboard_sz;
+        if( now - last_update_copy >= std::chrono::seconds(2 * interval_)) {
+
+            unsigned int missed_scores = (now - last_update_copy) / std::chrono::seconds(interval_) - 1;
+
+            if (missed_scores > scoreboard_sz) missed_scores = scoreboard_sz;
+
+            // push zero for missed values
+            for (unsigned int i = 0; i < missed_scores; i++) {
+                push_score(0);
+            }
+        }
 
         {
             auto l_ = std::unique_lock(_chrono_lock);
@@ -230,13 +239,8 @@ long unsigned int meter::update(unsigned long val) {
             last_update = now;
         }
 
+
         push_score(prev_counter_);
-
-        // push zero for missed values
-        for(int i = 0; i < missed_scores ; i++) {
-            push_score(0);
-        }
-
         unsigned long temp = curr_counter_;
         prev_counter_  = temp;
         
@@ -262,10 +266,10 @@ unsigned long meter::get() const {
         }
     }
 
-    unsigned long divisor = (1+scoreboard_sz )*interval_;
+    unsigned long divisor = static_cast<unsigned long>(1+scoreboard_sz ) * interval_;
 
     if(cnt_updates < 1 + scoreboard_sz) {
-        divisor = cnt_updates*interval_;
+        divisor = static_cast<unsigned long>(cnt_updates) * interval_;
     }
 
     if(! divisor) {
