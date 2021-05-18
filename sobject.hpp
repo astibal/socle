@@ -64,23 +64,23 @@ protected:
 struct meter {
 
 private:
-    std::atomic_long total_{};
+    std::atomic_ulong total_{};
 
-    std::atomic_long prev_counter_{};
-    std::atomic_long  curr_counter_{};
+    std::atomic_ulong prev_counter_{};
+    std::atomic_ulong  curr_counter_{};
 
-    constexpr static int scoreboard_sz = 3;
-    std::atomic_long scoreboard[scoreboard_sz] = {0};
+    constexpr static unsigned int scoreboard_sz = 3;
+    std::atomic_ulong scoreboard[scoreboard_sz] = {0};
 
     std::chrono::system_clock::time_point last_update{};
-    std::atomic_int  interval_{1};
+    std::atomic_uint interval_{1};
 
-    std::atomic_int cnt_updates = 0;       // count no. of updates and shorten avg division if smaller than ( 2 + scoreboard_sz)
+    std::atomic_uint cnt_updates = 0;       // count no. of updates and shorten avg division if smaller than ( 2 + scoreboard_sz)
 
     mutable std::shared_mutex _chrono_lock;
 public:
 
-    explicit meter(int interval=1): interval_(interval) { last_update = std::chrono::system_clock::now(); };
+    explicit meter(unsigned int interval=1): interval_(interval) { last_update = std::chrono::system_clock::now(); };
 
     unsigned long update(unsigned long val);
     [[nodiscard]] unsigned long get() const;
