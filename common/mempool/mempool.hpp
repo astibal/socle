@@ -49,9 +49,9 @@ typedef struct mem_chunk
 
 #ifdef MEMPOOL_ALL
     // mempool should avoid using new() operator - in MEMPOOL_ALL mode it will recurse and dies
-    explicit mem_chunk(std::size_t s): capacity(s) { ptr = (unsigned char*)::malloc(s); pool_type = type::HEAP; };
+    explicit mem_chunk(std::size_t s): capacity(s) { ptr = (unsigned char*)::malloc(s); pool_type = type::HEAP; };   // lgtm[cpp/resource-not-released-in-destructor]
 #else
-    explicit mem_chunk(std::size_t s): capacity(s) { ptr = new unsigned char[s]; pool_type = type::HEAP; };
+    explicit mem_chunk(std::size_t s): capacity(s) { ptr = new unsigned char[s]; pool_type = type::HEAP; }; // lgtm[cpp/resource-not-released-in-destructor]
 #endif
     mem_chunk(unsigned char* p, std::size_t c): ptr(p), capacity(c) {};
 
