@@ -182,7 +182,7 @@ private:
 
 class fileWriter : public baseFileWriter {
 
-    std::ofstream* writer_;
+    std::unique_ptr<std::ofstream> writer_;
     bool opened_;
     std::string filename_;
 
@@ -210,7 +210,7 @@ public:
             return false;
         }
 
-        writer_ = new std::ofstream(fnm , std::ofstream::out | std::ofstream::app);
+        writer_ = std::make_unique<std::ofstream>(fnm , std::ofstream::out | std::ofstream::app);
         if(writer_->is_open()) {
             filename_ = fnm;
             opened(true);
@@ -235,8 +235,6 @@ public:
                 writer_->close();
             }
 
-            delete writer_;
-            writer_ = nullptr;
             filename_.clear();
         }
     }
