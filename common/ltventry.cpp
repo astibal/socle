@@ -216,7 +216,7 @@ std::string LTVEntry::data_str_ip() const {
 
 void LTVEntry::clear() {
 	if (data_ != nullptr && owner()) {
-		free(data_);
+		delete[] data_;
 	}
 	len(0);
 	id(0);
