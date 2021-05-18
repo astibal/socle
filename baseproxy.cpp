@@ -456,7 +456,15 @@ bool baseProxy::handle_cx_write(unsigned char side, baseHostCX* cx) {
             return false;
         } else {
             stats_.last_write += wrt;
-            if(wrt > 0) {
+
+            if(wrt > 0 and stats_.do_rate_meter) {
+                if (stats_.do_rate_meter) {
+                    if (side == 'l' or side == 'x') {
+                        stats_.mtr_down.update(wrt);
+                    } else if (side == 'r' or side == 'y') {
+                        stats_.mtr_up.update(wrt);
+                    }
+                }
                 _deb("baseProxy::handle_cx_write[%c]: %d bytes processed", side, wrt);
             }
         }

@@ -31,6 +31,7 @@
 #include <log/logger.hpp>
 #include <hostcx.hpp>
 #include <mpstd.hpp>
+#include <sobject.hpp>
 
 /*
 TCPProxy: proxy left<->right socket bytes
@@ -177,6 +178,11 @@ protected:
         int counter_generic_handler = 0;
         int counter_back_handler = 0;
         int counter_hint_handler = 0;
+
+        // opt-out metering feature
+        bool do_rate_meter = true;
+        socle::meter mtr_down;
+        socle::meter mtr_up;
     };
     metering stats_;
 
