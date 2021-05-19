@@ -39,7 +39,7 @@ loglevel* logan_lite::level() const {
     return my_loglevel;
 }
 
-void logan_lite::level(loglevel l) {
+void logan_lite::level(loglevel const& l) {
     auto l_ = std::unique_lock(lock_);
 
     if(!my_loglevel) {

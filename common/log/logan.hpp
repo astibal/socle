@@ -128,7 +128,7 @@ public:
         auto l_ = std::shared_lock(lock_);
         return topic_;
     }
-    virtual void topic(std::string s) {
+    virtual void topic(std::string const& s) {
         auto l_ = std::unique_lock(lock_);
         topic_ = s;
     }
@@ -138,14 +138,14 @@ public:
         auto l_ = std::shared_lock(lock_);
         return prefix_;
     }
-    virtual void prefix(std::string s) {
+    virtual void prefix(std::string const& s) {
         auto l_ = std::unique_lock(lock_);
         prefix_ = s;
     }
 
 
     virtual loglevel* level() const;
-    virtual void     level(loglevel l);
+    virtual void     level(loglevel const& l);
 
     template<class ... Args>
     void fat(const char* fmt, Args ... args) const {
@@ -237,7 +237,7 @@ public:
 
         return "(nullptr)";
     }
-    void topic(std::string s) override {
+    void topic(std::string const& s) override {
         logan_lite::topic(s);
     }
 
@@ -254,8 +254,8 @@ public:
     }
 
     loglevel* level() const override;
-    void level(loglevel l) override;
-    virtual void this_level(loglevel l);
+    void level(loglevel const& l) override;
+    virtual void this_level(loglevel const& l);
 
     void area(const std::string& ref);
     [[nodiscard]] std::string area() const {
@@ -282,7 +282,6 @@ public:
 
     long delta() const {
         auto now = std::chrono::high_resolution_clock::now();
-        auto delta = now - start_;
 
         std::chrono::microseconds d = std::chrono::duration_cast<std::chrono::microseconds>(now - start_);
         return d.count();
@@ -511,14 +510,14 @@ loglevel* logan_attached<T>::level() const {
 }
 
 template <class T>
-void logan_attached<T>::level(loglevel l) {
+void logan_attached<T>::level(loglevel const& l) {
     auto l_ = std::unique_lock(lock_);
     if(ptr_)
         ptr_->log_level_ref() = l;
 }
 
 template <class T>
-void logan_attached<T>::this_level(loglevel l) {
+void logan_attached<T>::this_level(loglevel const& l) {
     auto l_ = std::unique_lock(lock_);
     if(ptr_)
         ptr_->get_this_log_level() = l;
@@ -532,7 +531,6 @@ void logan_attached<T>::area(const std::string& ref) {
 
     area_ = ref;
 
-//    if(logan::get().topic_db_.find(area_) == logan::get().topic_db_.end()) {
       if(! my_area_loglevel) {
         my_area_loglevel = logan::get()[area_];
     }
