@@ -110,13 +110,16 @@ public:
         my_loglevel = r.my_loglevel;
     }
     logan_lite& operator=(logan_lite const& r) {
-        auto l_ = std::unique_lock(lock_);
 
-        topic_  = r.topic_;
-        prefix_ = r.prefix_;
+        if(&r != this) {
+            auto l_ = std::unique_lock(lock_);
 
-        // even if my_loglevel can be non-null, we don't own it, so don't delete it here
-        my_loglevel = r.my_loglevel;
+            topic_ = r.topic_;
+            prefix_ = r.prefix_;
+
+            // even if my_loglevel can be non-null, we don't own it, so don't delete it here
+            my_loglevel = r.my_loglevel;
+        }
 
         return *this;
     }
