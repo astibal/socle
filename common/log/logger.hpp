@@ -229,15 +229,35 @@ void logger::log(loglevel l, const std::string& fmt,  Args ... args) {
             );
   
     auto usec   = (usec_total.count() % (1000 * 1000));
+    std::tm tm{0};
 
+#ifndef _POSIX_C_SOURCE
     auto tt = std::chrono::system_clock::to_time_t(now);
+#else
+    time_t tt = time(nullptr);
+#endif
 
 
     // protect thread-unsafe function  (it returns pointer to its internal state)
-    auto get_tm = [&tt]() -> auto {
+    auto get_tm = [&tt, &tm]() -> std::tm const& {
+#ifndef _POSIX_C_SOURCE
         static std::mutex m;
         auto l_ = std::scoped_lock(m);
-        return *std::localtime(&tt);
+        tm = *std::localtime(&tt);
+
+        return tm;
+#else
+        struct tm time_result{0};
+        auto* r = localtime_r(&tt, &time_result);
+        tm.tm_hour = r->tm_hour;
+        tm.tm_min = r->tm_min;
+        tm.tm_sec = r->tm_sec;
+        tm.tm_year = r->tm_year;
+        tm.tm_mon = r->tm_mon;
+        tm.tm_mday = r->tm_mday;
+
+        return tm;
+#endif
     };
 
     std::string str = string_format(fmt.c_str(), args...);
