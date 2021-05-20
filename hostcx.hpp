@@ -58,8 +58,11 @@ public:
 	}
 
 	Host& operator=(Host const& r) {
-        host_ = r.host_;
-        port_ = r.port_;
+
+	    if(&r != this) {
+            host_ = r.host_;
+            port_ = r.port_;
+        }
 
         return *this;
     }
