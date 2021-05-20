@@ -142,7 +142,6 @@ int MasterProxy::handle_sockets_once(baseCom* xcom) {
 void MasterProxy::shutdown() {
 	
 	_inf("MasterProxy::shutdown");
-	baseProxy::shutdown();
 	
 	int i = 0;
 

@@ -47,7 +47,7 @@ handle_last_status(0)
 
 
 baseProxy::~baseProxy() {
-	shutdown(); 
+	baseProxy::shutdown();
     
     if (com_ != nullptr) {
         _dum("Proxy: deleting com");
