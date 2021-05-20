@@ -30,8 +30,9 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <fcntl.h>
-#include <time.h>
 #include <unistd.h>
+
+#include <ctime>
 
 #include <buffer.hpp>
 #include <log/logger.hpp>
@@ -235,11 +236,12 @@ public:
     // allow older kernels to use UDP -- we have to set bind_sock_family to IPv4 variant
     static inline unsigned int default_sock_family = AF_INET6;
 
+    std::string to_string(int verbosity) const override { return class_name(); }
+    std::string shortname() const override { static  std::string s("udp"); return s; }
+
     DECLARE_C_NAME("UDPCom");
     DECLARE_LOGGING(to_string);
 
-    std::string to_string(int verbosity=iINF) const override { return class_name(); }
-    std::string shortname() const override { static  std::string s("udp"); return s; }
 };
 
 #endif

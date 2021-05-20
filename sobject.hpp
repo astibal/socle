@@ -51,7 +51,9 @@ struct sobject_info {
     time_t created_ = 0;
     unsigned int age() const { return time(nullptr) - created_; }
 
-    std::string to_string(int verbosity=iINF) const;
+    std::string to_string(int verbosity) const;
+    [[nodiscard]] inline std::string str() const { return to_string(iINF); };
+
     virtual ~sobject_info() { delete bt_; };
     
     DECLARE_C_NAME("sobject_info");
@@ -115,8 +117,11 @@ public:
 
 
 class base_sobject {
-    virtual std::string to_string(int verbosity=iINF) const = 0;
+public:
+    virtual std::string to_string(int verbosity) const = 0;
+    [[nodiscard]] inline std::string str() const { return to_string(iINF); }
 };
+
 class sobject;
 
 // Singleton class - used as central sobject storage
@@ -158,9 +163,9 @@ public:
     // ask object to destruct itself
     static int ask_destroy(void* ptr);
 
-    std::string to_string(int verbosity=iINF) const override { return this->class_name(); };
-
     DECLARE_C_NAME("sobjectDB");
+    std::string to_string(int verbosity) const override { return this->class_name(); };
+
     DECLARE_LOGGING(to_string);
 
 protected:
@@ -184,7 +189,7 @@ public:
     virtual bool ask_destroy() = 0;
 
     // return string representation of the object on single line
-    std::string to_string(int verbosity=iINF) const override { std::stringstream ss; ss << this->class_name() << "-" << oid(); return ss.str(); };
+    std::string to_string(int verbosity) const override { std::stringstream ss; ss << this->class_name() << "-" << oid(); return ss.str(); };
 
     static meter& mtr_created() { static meter mtr_created_; return mtr_created_; } ;
     static meter& mtr_deleted() { static meter mtr_deleted_; return mtr_deleted_; } ;

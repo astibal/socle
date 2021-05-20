@@ -154,7 +154,7 @@ protected:
     vector_type<baseHostCX*> left_bind_sockets;
     vector_type<baseHostCX*> right_bind_sockets;
     
-    // permantenty maintained connections (if the socket is closed, it will be reconnected) PC => Permanent Connection
+    // permanently maintained connections (if the socket is closed, it will be reconnected) PC => Permanent Connection
     vector_type<baseHostCX*> left_pc_cx;
     vector_type<baseHostCX*> right_pc_cx;
 
@@ -328,7 +328,7 @@ public:
     unsigned int change_monitor_for_cx_vec(std::vector<baseHostCX*>* cx_vec, bool ifread, bool ifwrite,int pause_read, int pause_write);
     unsigned int change_side_monitoring(char side, bool ifread, bool ifwrite, int pause_read, int pause_write);
 
-    std::string to_string(int verbosity=iINF) const override;
+    std::string to_string(int verbosity) const override;
 protected:
 
     struct clicker {

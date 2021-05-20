@@ -103,7 +103,7 @@ class baseSSLCom : public L4Proto, public virtual baseCom {
 public:
     baseSSLCom();
     
-    std::string to_string(int verbosity=iINF) const override;
+    std::string to_string(int verbosity) const override;
     std::string get_peer_sni() { return sslcom_peer_hello_sni().c_str(); } //return copy of SNI
     std::string get_peer_id() { return sslcom_peer_hello_id().c_str(); } //return copy of SNI
 

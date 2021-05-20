@@ -97,8 +97,8 @@ public:
 	    return port_;
 	}
 
-    virtual std::string to_string(int verbosity=iINF) const { return string_format("%s:%s", chost().c_str(), cport().c_str()); };
-	
+    virtual std::string to_string(int verbosity) const { return string_format("%s:%s", chost().c_str(), cport().c_str()); };
+	[[nodiscard]] inline std::string str() const { return to_string(iINF); };
 };
 
 namespace std
@@ -418,7 +418,7 @@ public:
     void on_delay_socket(int fd);
 	
     // return human readable details of this object
-	std::string to_string(int verbosity=iINF) const override;
+	std::string to_string(int verbosity) const override;
     std::string full_name(unsigned char);
     
     // debug options

@@ -153,7 +153,7 @@ public:
   size_type rfind (unsigned char, size_type pos = npos) const;
 
   //ast additions
-  std::string to_string();
+  std::string str();
   
   void flush (size_type);
   buffer view(unsigned int, buffer::size_type);
@@ -770,7 +770,7 @@ inline buffer buffer::view() {
 }
 
 
-inline std::string buffer::to_string() {
+inline std::string buffer::str() {
     return std::string((const char*)data(),size());
 }
 

@@ -46,7 +46,7 @@
 
 #define DECLARE_LOGGING(get_name_func)  \
 public:                                      \
-    std::string hr() const { hr(get_name_func()); return hr_; }; \
+    std::string hr() const { hr(get_name_func(iINF)); return hr_; }; \
     void hr(std::string const& s) const { \
        std::scoped_lock<std::mutex> l(hr_lock_.mtx_);  \
        hr_ = s;   \
@@ -85,7 +85,7 @@ public:                                             \
 
 
 #define DECLARE_DEF_TO_STRING \
-    std::string to_string(int verbosity=iINF) const override { return this->class_name(); };
+    std::string to_string(int verbosity) const override { return this->class_name(); };
 
 
 #endif //LOGGERMAC_HPP

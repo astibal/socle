@@ -23,7 +23,7 @@
 
 struct proxyType {
     enum class proxy_type_t { NONE, TRANSPARENT, PROXY, REDIRECT } type_;
-    std::string to_string() const;
+    std::string str() const;
 
     bool is_none() const { return type_ == proxy_type_t::NONE; };
     bool is_transparent() const { return type_ == proxy_type_t::TRANSPARENT; };
@@ -49,7 +49,7 @@ public:
 
 };
 
-inline std::string proxyType::to_string() const {
+inline std::string proxyType::str() const {
     switch(type_) {
         case proxy_type_t::NONE:
             return "none";

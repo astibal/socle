@@ -76,6 +76,10 @@ public:
 
     void on_new_socket(int _fd) override;
 
+
+    std::string shortname() const override { static std::string s("tcp"); return s; }
+    std::string to_string(int verbosity) const override { return class_name(); };
+
 protected:
     int connect_sock_family = AF_UNSPEC;
     int connect_sock_type = SOCK_STREAM;
@@ -86,8 +90,6 @@ protected:
     DECLARE_C_NAME("TCPCom")
     DECLARE_LOGGING(to_string)
     
-    std::string shortname() const override { static std::string s("tcp"); return s; }
-    std::string to_string(int verbosity=iINF) const override { return class_name(); };
 };
 
 #endif

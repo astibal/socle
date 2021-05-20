@@ -65,7 +65,9 @@ public:
     void subject(std::string const& str) { subject_ = str; }
     void area(std::string const& str) { area_ = str; }
 
-    std::string to_string(int verbosity=iINF) const { return string_format("level:%d topic:%d",level_,topic_); };
+    [[nodiscard]] inline std::string str() const { return to_string(iINF); }
+    [[nodiscard]] std::string to_string(int verbosity) const { return string_format("level:%d topic:%d",level_,topic_); };
+
 private:
     unsigned int level_ {iINF};
     unsigned int topic_ {iNON};

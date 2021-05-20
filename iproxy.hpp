@@ -27,7 +27,8 @@ public:
     virtual int handle_sockets_once(baseCom*) = 0;
     virtual int run() = 0;
     virtual void shutdown() = 0;
-    virtual std::string to_string(int verbosity) const = 0; //string name representing the proxy
+    [[nodiscard]] virtual std::string to_string(int verbosity) const = 0; //string name representing the proxy
+    [[nodiscard]] inline std::string str() const { return to_string(iINF); }
     virtual ~Proxy() = default;
 };
 

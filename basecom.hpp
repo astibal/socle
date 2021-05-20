@@ -450,12 +450,14 @@ public:
     inline void l3_proto(int p) { l3_proto_ = p; }
     
     inline int l4_proto() const { return l4_proto_; };
-    inline void l4_proto(int p) { l4_proto_ = p; }    
+    inline void l4_proto(int p) { l4_proto_ = p; }
+
+    virtual std::string to_string(int verbosity) const = 0;
+    [[nodiscard]] inline std::string str() const { return to_string(iINF); }
 
     DECLARE_C_NAME("baseCom")
     DECLARE_LOGGING(to_string)
 
-    virtual std::string to_string(int verbosity=iINF) const = 0;
     virtual std::string shortname() const = 0;
 
 protected:
