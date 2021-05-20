@@ -193,18 +193,18 @@ protected:
 public:
     proxy_state& state() { return status_; }
 
-    static const unsigned int HANDLE_OK = 0;
-    static const unsigned int HANDLE_LEFT_ERROR = -1;
-    static const unsigned int HANDLE_RIGHT_ERROR = -2;
-    static const unsigned int HANDLE_LEFT_PC_ERROR = -5;
-    static const unsigned int HANDLE_RIGHT_PC_ERROR = -6;
+    static constexpr unsigned int HANDLE_OK = 0;
+    static constexpr unsigned int HANDLE_LEFT_ERROR = -1;
+    static constexpr unsigned int HANDLE_RIGHT_ERROR = -2;
+    static constexpr unsigned int HANDLE_LEFT_PC_ERROR = -5;
+    static constexpr unsigned int HANDLE_RIGHT_PC_ERROR = -6;
     
-    static const unsigned int HANDLE_NONE = 1;
-    static const unsigned int HANDLE_LEFT_NEW = 2;
-    static const unsigned int HANDLE_RIGHT_NEW = 4;
+    static constexpr unsigned int HANDLE_NONE = 1;
+    static constexpr unsigned int HANDLE_LEFT_NEW = 2;
+    static constexpr unsigned int HANDLE_RIGHT_NEW = 4;
     
-    static const unsigned int DIE_LEFT_EMPTY = 2;
-    static const unsigned int DIE_RIGHT_EMPTY = 1;
+    static constexpr unsigned int DIE_LEFT_EMPTY = 2;
+    static constexpr unsigned int DIE_RIGHT_EMPTY = 1;
     
     baseCom* com_;
     baseCom* com() const { return com_; };
