@@ -58,9 +58,6 @@ public:
     // 1: session key
     bool add_first_datagrams(int sock, SocketInfo& pinfo);
     void on_left_new_raw(int) override;
-
-
-    void on_left_new_raw_old(int);
     void on_right_new_raw(int) override;
     
     int run() override;

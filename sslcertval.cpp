@@ -146,7 +146,7 @@ namespace inet {
                         GENERAL_NAME *gen = sk_GENERAL_NAME_value(distpoint->name.fullname, k);
                         ASN1_IA5STRING *asn1_str = gen->d.uniformResourceIdentifier;
 #ifdef USE_OPENSSL11
-                        list.push_back(
+                        list.emplace_back(
                                 std::string((char *) ASN1_STRING_get0_data(asn1_str), ASN1_STRING_length(asn1_str)));
 #else
                         list.push_back( std::string( (char*)ASN1_STRING_data(asn1_str), ASN1_STRING_length(asn1_str) ) );
@@ -159,7 +159,7 @@ namespace inet {
                         X509_NAME_ENTRY *e = sk_X509_NAME_ENTRY_value(sk_relname, k);
                         ASN1_STRING *d = X509_NAME_ENTRY_get_data(e);
 #ifdef USE_OPENSSL11
-                        list.push_back(std::string((char *) ASN1_STRING_get0_data(d), ASN1_STRING_length(d)));
+                        list.emplace_back(std::string((char *) ASN1_STRING_get0_data(d), ASN1_STRING_length(d)));
 #else
                         list.push_back( std::string( (char*)ASN1_STRING_data(d), ASN1_STRING_length(d) ) );
 #endif
@@ -217,11 +217,13 @@ namespace inet {
     namespace ocsp {
 
         std::vector<std::string> ocsp_urls (X509 *x509) {
-            std::vector<std::string> list;
             STACK_OF(OPENSSL_STRING) *ocsp_list = X509_get1_ocsp(x509);
+            std::size_t ocsp_list_len = sk_OPENSSL_STRING_num(ocsp_list);
+
+            std::vector<std::string> list(ocsp_list_len);
             for (int j = 0; j < sk_OPENSSL_STRING_num(ocsp_list); j++) {
 
-                list.push_back(std::string(sk_OPENSSL_STRING_value(ocsp_list, j)));
+                list.emplace_back(std::string(sk_OPENSSL_STRING_value(ocsp_list, j)));
             }
             X509_email_free(ocsp_list);
             return list;
