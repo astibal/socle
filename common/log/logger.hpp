@@ -110,7 +110,9 @@ protected:
 
 public:
     logger() { level_=NON; period_ =5; target_names_[0]="unknown";};
-    virtual ~logger() {};
+    virtual ~logger() {
+        for(auto x: target_profiles_) { delete x.second; }
+    };
 
     inline void level(loglevel l) { level_ = l; };
     inline loglevel level(void) const { return level_; };
