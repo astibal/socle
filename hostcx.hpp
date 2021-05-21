@@ -319,6 +319,7 @@ public:
 
 	inline int unblock() const { return com()->unblock(fds_); }
 
+	void unhandle();
 	virtual void shutdown();
 	inline bool valid() const { return ( fds_ > 0 && !error() ); };
 	inline bool error() const {

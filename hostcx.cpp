@@ -239,19 +239,40 @@ bool baseHostCX::is_connected() {
     return status;
 }
 
+
+void baseHostCX::unhandle() {
+
+    if (com()) {
+        int closed_s = closed_socket();
+        if (closed_s != 0) {
+            com()->unset_monitor(closed_s);
+            com()->set_poll_handler(closed_s, nullptr);
+        }
+        else {
+            int opened_s = socket();
+            if (opened_s != 0) {
+                com()->unset_monitor(opened_s);
+                com()->set_poll_handler(opened_s, nullptr);
+            }
+        }
+    }
+}
+
 void baseHostCX::shutdown() {
 
     parent_proxy(nullptr, '-');
 
     if(fds_ != 0) {
-        com()->shutdown(fds_);
-        _deb("baseHostCX::shutdown[%s]: socket shutdown",c_name());
         closing_fds_ = fds_;
-        fds_ = 0;
 
         if(com()) {
-            com()->master()->unset_monitor(com()->translate_socket(closing_fds_));
+            com()->shutdown(closing_fds_);
+            _deb("baseHostCX::shutdown[%s]: socket shutdown on com", c_name());
+
+            unhandle();
+            _deb("baseHostCX::shutdown[%s]: socket unhandled on com", c_name());
         }
+        fds_ = 0;
     } else {
         _deb("baseHostCX::shutdown[%s]: no-op, cannot be shutdown",c_name());
     }
