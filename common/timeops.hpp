@@ -20,8 +20,8 @@
 #ifndef _TIMEOPS_HPP
 	#define _TIMEOPS_HPP
 
-int timeval_msdelta (struct timeval  *x,struct timeval  *y);
-int timeval_msdelta_now(struct timeval  *x);
+[[maybe_unused]] long timeval_msdelta (struct timeval  *x,struct timeval  *y);
+[[maybe_unused]]long timeval_msdelta_now(struct timeval  *x);
 std::string uptime_string(unsigned int uptime);
 
 unsigned long time_update_counter_sec(time_t* last_time, unsigned long* prev_counter, unsigned long* curr_counter, int seconds, int increment=1);

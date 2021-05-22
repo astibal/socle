@@ -24,21 +24,21 @@
 #include <timeops.hpp>
 #include <sys/time.h>
 
-int timeval_msdelta (struct timeval  *x,struct timeval  *y)  {
+long timeval_msdelta (struct timeval  *x,struct timeval  *y)  {
 
-    int sec_delta = (x->tv_sec - y->tv_sec) * 1000;
-    int usec_delta = (x->tv_usec - y->tv_usec)/1000;
+    long sec_delta = (x->tv_sec - y->tv_sec) * 1000;
+    long usec_delta = (x->tv_usec - y->tv_usec)/1000;
     
     return sec_delta + usec_delta;
 }
 
-int timeval_msdelta_now (struct timeval  *x)  {
+long timeval_msdelta_now (struct timeval  *x)  {
 
-    timeval now;
+    timeval now{};
     gettimeofday(&now,nullptr);
     
-    int sec_delta = (now.tv_sec - x->tv_sec) * 1000;
-    int usec_delta = (now.tv_usec - x->tv_usec)/1000;
+    long sec_delta = (now.tv_sec - x->tv_sec) * 1000;
+    long usec_delta = (now.tv_usec - x->tv_usec)/1000;
     
     return sec_delta + usec_delta;
 }
@@ -47,11 +47,7 @@ int timeval_msdelta_now (struct timeval  *x)  {
 std::string uptime_string(unsigned int uptime) {
 
     double diff = uptime;
-    if ( diff < 0 )
-
-        diff*=-1;
     std::ostringstream o;
-
 
     if ( diff < 60 )
     {
