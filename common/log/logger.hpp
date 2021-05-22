@@ -114,7 +114,7 @@ public:
         for(auto x: target_profiles_) { delete x.second; }
     };
 
-    inline void level(loglevel l) { level_ = l; };
+    inline void level(loglevel const& l) { level_ = l; };
     inline loglevel level(void) const { return level_; };
 
     inline void dup2_cout(bool b) { dup_to_cout_ = b; }
@@ -145,18 +145,18 @@ public:
     void log_simple(std::stringstream& ss);
 
     template <class ... Args>
-    void log(loglevel l, const std::string& fmt, Args ... args);
+    void log(loglevel const& l, const std::string& fmt, Args ... args);
     //void log_w_name(loglevel l, const char* n, const std::string& fmt, ...);
 
     template <class ... Args>
-    void log_w_name(loglevel l, std::string n, const std::string& fmt, Args ... args);
+    void log_w_name(loglevel const& l, std::string n, const std::string& fmt, Args ... args);
 
     template <class ... Args>
-    void log2(loglevel l, const char* f, int li, const std::string& fmt, Args ... args);
+    void log2(loglevel const& l, const char* f, int li, const std::string& fmt, Args ... args);
     //void log2_w_name(loglevel l, const char* f, int li, const char* n, const std::string& fmt, ...);
 
     template <class ... Args>
-    void log2_w_name(loglevel l, const char* f, int li, std::string n, const std::string& fmt, Args ... args);
+    void log2_w_name(loglevel const& l, const char* f, int li, std::string n, const std::string& fmt, Args ... args);
 
     std::map<uint64_t,logger_profile*>& target_profiles() { return target_profiles_; }
     std::map<uint64_t,std::string>& target_names() { return target_names_; }
@@ -221,7 +221,7 @@ void logger::log_simple(std::stringstream& ss) {
 }
 
 template <class ... Args>
-void logger::log(loglevel l, const std::string& fmt,  Args ... args) {
+void logger::log(loglevel const& l, const std::string& fmt,  Args ... args) {
 
 
     auto now = std::chrono::system_clock::now();
@@ -295,7 +295,7 @@ void logger::log(loglevel l, const std::string& fmt,  Args ... args) {
 
 
 template <class ... Args>
-void logger::log2(loglevel l, const char* src, int line, const std::string& fmt, Args ... args ) {
+void logger::log2(loglevel const& l, const char* src, int line, const std::string& fmt, Args ... args ) {
 
     std::lock_guard<std::recursive_mutex> lck(mtx_lout);
 
@@ -308,7 +308,7 @@ void logger::log2(loglevel l, const char* src, int line, const std::string& fmt,
 
 
 template <class ... Args>
-void logger::log_w_name(loglevel l, std::string name, const std::string& fmt, Args ... args) {
+void logger::log_w_name(loglevel const& l, std::string name, const std::string& fmt, Args ... args) {
 
     std::lock_guard<std::recursive_mutex> lck(mtx_lout);
 
@@ -317,7 +317,7 @@ void logger::log_w_name(loglevel l, std::string name, const std::string& fmt, Ar
 }
 
 template <class ... Args>
-void logger::log2_w_name(loglevel l, const char* f, int li, std::string name, const std::string& fmt, Args ... args) {
+void logger::log2_w_name(loglevel const&  l, const char* f, int li, std::string name, const std::string& fmt, Args ... args) {
 
     std::lock_guard<std::recursive_mutex> lck(mtx_lout);
 
