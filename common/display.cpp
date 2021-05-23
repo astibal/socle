@@ -265,7 +265,9 @@ void chr_cstrlit(unsigned char u, char *buffer, size_t buflen, bool to_print = f
             if(to_print) {
                 strcpy(buffer, "%%"); break;
             }
-        
+
+        [[ fallthrough ]];
+
         default:
             if (buflen < 5)
                 *buffer = '\0';

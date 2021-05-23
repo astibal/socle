@@ -55,7 +55,7 @@ namespace mp {
         //explicit basic_string(const Allocator& alloc ): std::basic_string<CharT, Traits, Allocator>(alloc) {};
 
         explicit basic_string( const Allocator& alloc ) noexcept
-                : std::basic_string<CharT, Traits, Allocator>(alloc) {};
+                : std::basic_string<CharT, Traits, Allocator>(alloc) {}
 
         basic_string() noexcept( noexcept( Allocator() ))
                 : basic_string<CharT, Traits, Allocator>( Allocator() ) {}
@@ -68,12 +68,12 @@ namespace mp {
                       size_type pos,
                       size_type count = std::basic_string<CharT, Traits, Allocator>::npos,
                       const Allocator& alloc = Allocator() )
-                      :std::basic_string<CharT, Traits, Allocator>(other, pos, count, alloc) {};
+                      :std::basic_string<CharT, Traits, Allocator>(other, pos, count, alloc) {}
 
         basic_string( const basic_string& other,
                       size_type pos,
                       const Allocator& alloc = Allocator() )
-              : std::basic_string<CharT, Traits, Allocator>(other, pos, alloc ) {};
+              : std::basic_string<CharT, Traits, Allocator>(other, pos, alloc ) {}
 
 //        basic_string( const basic_string& other,
 //                      size_type pos,
@@ -84,40 +84,40 @@ namespace mp {
         basic_string( const CharT* s,
                       size_type count,
                       const Allocator& alloc = Allocator() )
-              : std::basic_string<CharT, Traits, Allocator>(s, count, alloc) {};
+              : std::basic_string<CharT, Traits, Allocator>(s, count, alloc) {}
 
         explicit basic_string( const CharT* s, const Allocator& alloc = Allocator() )
-              : std::basic_string<CharT, Traits, Allocator>(s, alloc) {};
+              : std::basic_string<CharT, Traits, Allocator>(s, alloc) {}
 
         template< class InputIt >
         basic_string( InputIt first, InputIt last,
                       const Allocator& alloc = Allocator() )
-              : std::basic_string<CharT, Traits, Allocator>(first, last, alloc) {};
+              : std::basic_string<CharT, Traits, Allocator>(first, last, alloc) {}
 
         basic_string( const basic_string& other )
-                : std::basic_string<CharT, Traits, Allocator>(other) {};
+                : std::basic_string<CharT, Traits, Allocator>(other) {}
 
         basic_string( const basic_string& other, const Allocator& alloc )
-                : std::basic_string<CharT, Traits, Allocator>(other, alloc) {};
+                : std::basic_string<CharT, Traits, Allocator>(other, alloc) {}
 
         basic_string( basic_string&& other ) noexcept
-                : std::basic_string<CharT, Traits, Allocator>(other) {};
+                : std::basic_string<CharT, Traits, Allocator>(other) {}
 
         basic_string( basic_string&& other, const Allocator& alloc )
-                : std::basic_string<CharT, Traits, Allocator>(other, alloc) {};
+                : std::basic_string<CharT, Traits, Allocator>(other, alloc) {}
 
         basic_string( std::initializer_list<CharT> ilist,
                       const Allocator& alloc = Allocator() )
-                : std::basic_string<CharT, Traits, Allocator>(ilist, alloc) {};
+                : std::basic_string<CharT, Traits, Allocator>(ilist, alloc) {}
 
         template < class T >
         explicit basic_string( const T& t, const Allocator& alloc = Allocator() )
-               : std::basic_string<CharT, Traits, Allocator>(t, alloc ) {};
+               : std::basic_string<CharT, Traits, Allocator>(t, alloc ) {}
 
         template < class T >
         basic_string( const T& t, size_type pos, size_type n,
                       const Allocator& alloc = Allocator() )
-               : std::basic_string<CharT, Traits, Allocator>(t, pos, n, alloc ) {};
+               : std::basic_string<CharT, Traits, Allocator>(t, pos, n, alloc ) {}
 
         basic_string& operator=(std::basic_string<CharT, Traits, Allocator> const& r) {
             std::basic_string<CharT, Traits, Allocator>::assign(r);

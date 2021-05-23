@@ -44,7 +44,7 @@ void SimpleLRProxy::on_left_bytes(baseHostCX* left) {
 	
 	// move away copied data from left read buffer -> they were processed and now even copied to another side
 	left->finish();
-};
+}
 
 void SimpleLRProxy::on_right_bytes(baseHostCX* right) {
 	_deb("LRProxy::on_right_bytes[%d]",right->socket());
@@ -61,5 +61,5 @@ void SimpleLRProxy::on_right_bytes(baseHostCX* right) {
 	
 	// move away copied data from left read buffer -> they were processed and now even copied to another side
 	right->finish();
-};
+}
 

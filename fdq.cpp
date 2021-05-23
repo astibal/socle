@@ -88,7 +88,7 @@ int FdQueue::push_all(int s) {
     }
 
     return sq_.size();
-};
+}
 
 int FdQueue::pop(uint32_t worker_id) {
 

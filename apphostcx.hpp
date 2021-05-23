@@ -95,8 +95,8 @@ private:
     sensorType starttls_sensor_;
     mode_t mode_ = MODE_NONE;
 
-    DECLARE_C_NAME("AppHostCX");
-    DECLARE_LOGGING(to_string);
+    DECLARE_C_NAME("AppHostCX")
+    DECLARE_LOGGING(to_string)
 };
 
 

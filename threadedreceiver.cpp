@@ -256,7 +256,7 @@ void ThreadedReceiver<Worker>::on_left_new_raw(int sock) {
 
         unsigned char recv_buf_[recv_buff_sz];
         char cmbuf[cmbuf_sz];
-        sockaddr_storage from{0};
+        sockaddr_storage from{};
         iovec io{};
 
         msghdr msg{};

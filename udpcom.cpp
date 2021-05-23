@@ -64,7 +64,7 @@ int UDPCom::accept(int sockfd, sockaddr* addr, socklen_t* addrlen_) {
 
 int UDPCom::bind(short unsigned int port) {
     int s;
-    sockaddr_storage sa {0};
+    sockaddr_storage sa {};
 
     sa.ss_family = bind_sock_family;
     //sa.ss_family = AF_INET;
@@ -123,7 +123,7 @@ bool UDPCom::com_status() {
 }
 
 int UDPCom::connect(const char* host, const char* port) {
-    struct addrinfo hints {0};
+    struct addrinfo hints {};
     struct addrinfo *gai_result, *rp;
     int sfd = -1;
     int gai;
@@ -597,7 +597,7 @@ int UDPCom::write_to_pool(int _fd, const void* _buf, size_t _n, int _flags) {
         unsigned short port_src, port_dst;
         SocketInfo::inet_ss_address_unpack(&record->src, &ip_src, &port_src);
         
-        sockaddr_storage record_src_4fix{0};
+        sockaddr_storage record_src_4fix{};
 
         SocketInfo::inet_ss_address_unpack(&record->dst, &ip_dst, &port_dst);
         std::string af_src = SocketInfo::inet_family_str(record->src_family());
@@ -682,8 +682,8 @@ int UDPCom::write_to_pool(int _fd, const void* _buf, size_t _n, int _flags) {
         int l = 0;
         int ret_bind = 0;
 
-        sockaddr_storage ss_s {0};
-        sockaddr_storage ss_d {0};
+        sockaddr_storage ss_s {};
+        sockaddr_storage ss_d {};
         SocketInfo::inet_ss_address_remap(&record->dst, &ss_d);
         SocketInfo::inet_ss_address_remap(&record->src, &ss_s);
 

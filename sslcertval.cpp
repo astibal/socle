@@ -859,6 +859,8 @@ namespace inet {
                     state_ = OcspQuery::ST_REQ_INPROGRESS;
                     _dia("OcspQuery::do_send_request[0x%lx]: state REQ_INPROGRESS", ref_id);
 
+                    [[ fallthrough ]];
+
                 case OcspQuery::ST_REQ_INPROGRESS:
 
                     rv = OCSP_sendreq_nbio(&ocsp_resp, ocsp_req_ctx);
@@ -954,6 +956,8 @@ namespace inet {
 
                     do_init();
 
+                    [[ fallthrough ]];
+
                 case OcspQuery::ST_CONNECTING:
 
                     // return only on IO blocking (can connect immediately)
@@ -966,7 +970,12 @@ namespace inet {
                     }
                     state_ = ST_CONNECTED;
 
+                    [[ fallthrough ]];
+
                 case OcspQuery::ST_CONNECTED:
+
+                    [[ fallthrough ]];
+
                 case OcspQuery::ST_REQ_INPROGRESS:
 
                     // break on IO retry
@@ -976,9 +985,13 @@ namespace inet {
                         state_ = ST_REQ_SENT;
                     }
 
+                    [[ fallthrough ]];
+
                 case OcspQuery::ST_RESP_RECEIVED:
                     do_process_response();
                     // processing response is not blocking operation - transit to next
+
+                    [[ fallthrough ]];
 
                 case OcspQuery::ST_FINISHED:
                     return false;

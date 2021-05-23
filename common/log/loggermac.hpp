@@ -60,7 +60,7 @@ public:                                      \
        lock_struct() = default;             \
        lock_struct(lock_struct const& r) {} \
        lock_struct& operator=(lock_struct const&) { return *this; } \
-       std::mutex mtx_;                \
+       std::mutex mtx_;                     \
     };                                      \
 private:                                                       \
     mutable std::string hr_;                                   \

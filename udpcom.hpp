@@ -72,8 +72,8 @@ struct Datagram {
         return *this;
     }
 
-    sockaddr_storage dst{0};
-    sockaddr_storage src{0};
+    sockaddr_storage dst{};
+    sockaddr_storage src{};
 
     mutable std::mutex rx_queue_lock;
     std::array<buffer,5> rx_queue;
@@ -172,7 +172,7 @@ public:
     
     int connect(const char* host, const char* port) override;
     int bind(unsigned short port) override;
-    int bind(const char* path) override { return -1; };
+    int bind([[maybe_unused]] const char* path) override { return -1; };
     int accept ( int sockfd, sockaddr* addr, socklen_t* addrlen_ ) override;
     int translate_socket(int vsock) const override;
     
@@ -217,7 +217,7 @@ protected:
     int bind_sock_type = SOCK_DGRAM;
     int bind_sock_protocol = IPPROTO_UDP;
     
-    sockaddr_storage udpcom_addr {0};
+    sockaddr_storage udpcom_addr {};
     socklen_t udpcom_addrlen {0};
     
     // Connection socket pool
@@ -239,8 +239,8 @@ public:
     std::string to_string(int verbosity) const override { return class_name(); }
     std::string shortname() const override { static  std::string s("udp"); return s; }
 
-    DECLARE_C_NAME("UDPCom");
-    DECLARE_LOGGING(to_string);
+    DECLARE_C_NAME("UDPCom")
+    DECLARE_LOGGING(to_string)
 
 };
 

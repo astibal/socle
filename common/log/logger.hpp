@@ -231,7 +231,7 @@ void logger::log(loglevel const& l, const std::string& fmt,  Args ... args) {
             );
   
     auto usec   = (usec_total.count() % (1000 * 1000));
-    std::tm tm{0};
+    std::tm tm{};
 
 #ifndef _POSIX_C_SOURCE
     auto tt = std::chrono::system_clock::to_time_t(now);
@@ -249,7 +249,7 @@ void logger::log(loglevel const& l, const std::string& fmt,  Args ... args) {
 
         return tm;
 #else
-        struct tm time_result{0};
+        struct tm time_result{};
         auto* r = localtime_r(&tt, &time_result);
         tm.tm_hour = r->tm_hour;
         tm.tm_min = r->tm_min;
@@ -291,7 +291,7 @@ void logger::log(loglevel const& l, const std::string& fmt,  Args ... args) {
     //std::lock_guard<std::recursive_mutex> lck(mtx_lout);
 
     write_log(l,sss);
-};
+}
 
 
 template <class ... Args>
@@ -326,6 +326,6 @@ void logger::log2_w_name(loglevel const&  l, const char* f, int li, std::string 
 
     std::string str = string_format(fmt.c_str(), args...);
     log(l,src_info+c_name+str);
-};
+}
 
 #endif // LOGGER_HPP

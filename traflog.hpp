@@ -194,7 +194,7 @@ public:
 
     inline std::string filename() const { return filename_; };
 
-    std::size_t write(std::string const&fnm, std::string const& str) override {
+    std::size_t write([[maybe_unused]] std::string const&fnm, std::string const& str) override {
 
         if(! writer_) return 0;
 
@@ -221,7 +221,7 @@ public:
         return false;
     }
 
-    bool close(std::string const& fnm) override {
+    bool close([[maybe_unused]]  std::string const& fnm) override {
         close();
 
         return !opened();
@@ -239,7 +239,7 @@ public:
         }
     }
 
-    bool flush(std::string const& fnm) override {
+    bool flush([[maybe_unused]] std::string const& fnm) override {
         if(writer_) {
             writer_->flush();
 
@@ -272,7 +272,7 @@ class threadedPoolFileWriter : public poolFileWriter {
         add_worker();
     }
 
-    ~threadedPoolFileWriter() {
+    ~threadedPoolFileWriter() override {
         stop_signal_ = true;
         for( auto& t: threads_) {
             if(t.joinable())
@@ -523,7 +523,7 @@ private:
         mkdir(hostdir.c_str(),0750);
 
         time_t now = time(nullptr);
-        tm loc{0};
+        tm loc{};
 
         localtime_r(&now,&loc);
 
@@ -563,7 +563,7 @@ public:
 
 	virtual void write(char side, std::string const& s) {
 		
-		timeval now{0};
+		timeval now{};
 		gettimeofday(&now, nullptr);
 		char d[64];
 		memset(d,0,64);
@@ -605,12 +605,12 @@ public:
 	}
 	
 	
-    std::string to_string(int verbosity) const override {
+    std::string to_string([[maybe_unused]] int verbosity) const override {
         return string_format("Traflog: file=%s opened=%d",writer_key_.c_str(),writer_->opened());
     }
 	
-    DECLARE_C_NAME("trafLog");
-    DECLARE_LOGGING(to_string);	
+    DECLARE_C_NAME("trafLog")
+    DECLARE_LOGGING(to_string)
 };
 
 }

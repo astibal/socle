@@ -508,8 +508,8 @@ public:
     static int ct_verify_callback(const CT_POLICY_EVAL_CTX *ctx, const STACK_OF(SCT) *scts, void *arg);
 
 
-    DECLARE_C_NAME("SSLCom");
-    DECLARE_LOGGING(to_string);
+    DECLARE_C_NAME("SSLCom")
+    DECLARE_LOGGING(to_string)
 
 private:
     unsigned int verify_status_ = VRF_NOTTESTED;

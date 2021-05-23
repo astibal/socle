@@ -687,7 +687,7 @@ DH* baseSSLCom<L4Proto>::ssl_dh_callback(SSL* s, int is_export, int key_length) 
 
 
 template <class L4Proto>
-EC_KEY* baseSSLCom<L4Proto>::ssl_ecdh_callback(SSL* s, int is_export, int key_length) {
+EC_KEY* baseSSLCom<L4Proto>::ssl_ecdh_callback(SSL* s, [[maybe_unused]] int is_export, [[maybe_unused]] int key_length) {
     void* data = SSL_get_ex_data(s, sslcom_ssl_extdata_index);
     std::string name = "unknown_cx";
 
@@ -1177,7 +1177,7 @@ bool baseSSLCom<L4Proto>::is_verify_status_opt_allowed() {
 
     // exceptions are not satisfied - more handling is needed
     return false;
-};
+}
 
 
 
@@ -1781,7 +1781,7 @@ bool baseSSLCom<L4Proto>::readable(int s) {
     }
 
     return r;
-};
+}
 
 template <class L4Proto>
 bool baseSSLCom<L4Proto>::writable(int s) {
@@ -1800,7 +1800,7 @@ bool baseSSLCom<L4Proto>::writable(int s) {
     }
 
     return r;
-};
+}
 
 template <class L4Proto>
 bool baseSSLCom<L4Proto>::bypass_me_and_peer() {
@@ -2116,7 +2116,7 @@ void baseSSLCom<L4Proto>::handshake_dia_error2(int op_code, int err, unsigned in
             char err_desc[sz]; memset(err_desc, 0, sz);
             ERR_error_string(err2, err_desc);
 
-            _dia("SSLCom::handshake:   error code: %s", err_desc);
+            _dia("SSLCom::handshake:  opcode: %d, error1: %d, error2: %d code2: %s", op_code, err, err2, err_desc);
             err2 = ERR_get_error();
         }
 
@@ -3222,7 +3222,7 @@ int baseSSLCom<L4Proto>::write (int _fd, const void* _buf, size_t _n, int _flags
 
     _dia("SSLCom::write[%d]: %4d bytes written", _fd, r);
     return r;
-};
+}
 
 #pragma GCC diagnostic pop
 

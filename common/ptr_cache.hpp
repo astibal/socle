@@ -227,6 +227,8 @@ public:
                         case MODE::LRU:
                             lru_reoder();
 
+                            [[fallthrough]];
+
                         case MODE::FIFO:
                             if(delete_last()) {
                                 _dia("ptr_cache::set[%s]: max size: object removed from cache", c_name());
@@ -264,7 +266,7 @@ private:
 
     logan_lite log;
 
-    DECLARE_C_NAME("object cache");
+    DECLARE_C_NAME("object cache")
 };
 
 

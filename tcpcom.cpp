@@ -186,7 +186,7 @@ bool TCPCom::is_connected(int s) {
     // fstating with stat struct buffer wasn't working too!
     // 2016-01-16: seems not needed anymore. But keep to easy revert in case.
 
-    struct stat stb{0};
+    struct stat stb{};
     fstat(s, &stb);
 
     int r_getsockopt = getsockopt(s, SOL_SOCKET, SO_ERROR, &error_code, &l);

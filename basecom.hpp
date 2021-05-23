@@ -108,7 +108,7 @@ protected:
     bool nonlocal_dst_resolved_ = false;
     std::string nonlocal_dst_host_;
     unsigned short nonlocal_dst_port_ = 0;
-    struct sockaddr_storage nonlocal_dst_peer_info_{0};
+    struct sockaddr_storage nonlocal_dst_peer_info_{};
     
     int l3_proto_ = AF_INET;
     int l4_proto_ = 0;
@@ -236,7 +236,7 @@ public:
     // those two need to be virtual, since e.g. OpenSSL read/write cannot be managed only with FD_SET due reads 
     // sometimes do writes on themselves and another read is necessary
     virtual bool readable(int s) { return true; };
-    virtual bool writable(int s) { return true; }; 
+    virtual bool writable(int s) { return true; };
     
     // check if socket is changed
     virtual bool in_readset(int s) { return master()->poller.in_read_set(s); };

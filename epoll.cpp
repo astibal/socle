@@ -205,7 +205,7 @@ bool epoll::add(int socket, int mask) {
 bool epoll::modify(int socket, int mask) {
 
     int fd = epoll_socket();
-    epoll_event ev{0};
+    epoll_event ev{};
     ev.events = mask;
     ev.data.fd = socket;
 
@@ -430,7 +430,7 @@ bool epoller::add(int socket, int mask)
     }
     
     return false;
-};
+}
 
 bool epoller::modify(int socket, int mask)
 {
@@ -441,7 +441,7 @@ bool epoller::modify(int socket, int mask)
     }
     
     return false;
-};
+}
 
 bool epoller::del(int socket)
 {
@@ -453,7 +453,7 @@ bool epoller::del(int socket)
     clear_handler(socket);
     
     return false;
-};
+}
 
 bool epoller::rescan_in(int socket)
 {
@@ -464,7 +464,7 @@ bool epoller::rescan_in(int socket)
     }
     
     return false;
-};
+}
 
 bool epoller::enforce_in(int socket) {
     init_if_null();
@@ -485,7 +485,7 @@ unsigned long epoller::cancel_rescan_in(int socket)
     }
 
     return 0;
-};
+}
 
 bool epoller::rescan_out(int socket)
 {
@@ -496,7 +496,8 @@ bool epoller::rescan_out(int socket)
     }
     
     return false;
-};
+}
+
 unsigned long epoller::cancel_rescan_out(int socket)
 {
     init_if_null();
@@ -506,10 +507,7 @@ unsigned long epoller::cancel_rescan_out(int socket)
     }
 
     return 0;
-};
-
-
-
+}
 
 bool epoller::click_timer_now ()
 {
@@ -532,7 +530,7 @@ bool epoller::hint_socket(int socket)
     }
     
     return false;
-};
+}
 
 
 bool epoller::in_read_set(int check)
@@ -682,7 +680,7 @@ void socket_state::update(int s) {
         state_ = s;
     }
 
-};
+}
 
 
 void socket_state::mon_read() {

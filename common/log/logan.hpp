@@ -307,7 +307,7 @@ public:
 
         auto p = std::make_pair(delta(), s.str());
         records().push_back(p);
-    };
+    }
 
 
     const std::string &name() const {
@@ -353,7 +353,7 @@ public:
         get()[r.name()] = r.get_this_log_level();
 
         return r.name();
-    };
+    }
 
     // return specifically crafted logger for the object (must be created with DECLARE_ and DEFINE_LOGGING!)
     // take current hr() and use it as the topic. Due its nature it's safer to use.
@@ -365,19 +365,19 @@ public:
         l.prefix_ = ref.hr();
 
         return l;
-    };
+    }
 
     template<class T>
     static logan_attached<T> attach(T* ptr) {
         logan_attached<T> l = logan_attached<T>(ptr);
         return l;
-    };
+    }
 
     template<class T>
     static logan_attached<T> attach(T* ptr, std::string area) {
         logan_attached<T> l = logan_attached<T>(ptr, area);
         return l;
-    };
+    }
 
 
     static logan_lite create(std::string const& s) {

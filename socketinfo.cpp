@@ -28,7 +28,7 @@ void SocketInfo::unpack_src_ss() {
     if(! src_ss.has_value()) throw socket_info_error("cannot obtain source details");
 
     src_family = inet_ss_address_unpack(& src_ss.value(), &str_src_host, &sport);
-};
+}
 
 
 void SocketInfo::unpack_dst_ss() {
@@ -36,12 +36,12 @@ void SocketInfo::unpack_dst_ss() {
     if(! dst_ss.has_value()) throw socket_info_error("cannot obtain destination details");
 
     dst_family = inet_ss_address_unpack(& dst_ss.value(), &str_dst_host, &dport);
-};
+}
 
 
 sockaddr_storage pack_ss(int family, const char* host, unsigned short port) {
 
-    sockaddr_storage ss{0};
+    sockaddr_storage ss{};
 
     if(family == AF_INET6) {
         auto p_ip6_src = (sockaddr_in6 *) &ss;

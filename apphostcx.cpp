@@ -60,13 +60,13 @@ int AppHostCX::make_sig_states(sensorType& sig_states, std::vector<std::shared_p
 
     _deb("AppHostCX::zip_signatures: loaded %d of %d",r, source_signatures.size());
     return r;
-};
+}
 
 bool AppHostCX::detect(sensorType& cur_sensor,char side) {
 
     bool matched = false;
     
-    if(cur_sensor.size() <= 0) {
+    if(cur_sensor.empty()) {
         _dia("AppHostCX::detect[%s]: Sensor %x is empty!",c_name(), &sensor());
     }
     

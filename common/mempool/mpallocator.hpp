@@ -66,7 +66,7 @@ public:
     struct rebind { typedef mp_allocator<U> other; };
 
     template <class U>
-    explicit mp_allocator(const mp_allocator<U>&) {};
+    explicit mp_allocator(const mp_allocator<U>&) {}
 
     template <class U>
     mp_allocator& operator=(const mp_allocator<U>&) { return *this; }

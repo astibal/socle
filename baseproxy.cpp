@@ -43,7 +43,7 @@ handle_last_status(0)
 {
     com_ = c;
     log = logan_attached(this, "proxy");
-};
+}
 
 
 baseProxy::~baseProxy() {
@@ -703,7 +703,7 @@ bool baseProxy::handle_cx_write_once(unsigned char side, baseCom* xcom, baseHost
 
 bool baseProxy::handle_sockets_accept(unsigned char side, baseCom* xcom, baseHostCX* thiscx) {
     
-    sockaddr_in clientInfo{0};
+    sockaddr_in clientInfo{};
     socklen_t addrlen = sizeof(clientInfo);
 
     int client = com()->accept(thiscx->socket(), (sockaddr*)&clientInfo, &addrlen);
@@ -962,7 +962,7 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
                 for (auto i: right_bind_sockets) {
                     int s = i->socket();
                     if (xcom->in_readset(s)) {
-                        sockaddr_in clientInfo{0};
+                        sockaddr_in clientInfo{};
                         socklen_t addrlen = sizeof(clientInfo);
 
                         int client = com()->accept(s, (sockaddr *) &clientInfo, &addrlen);

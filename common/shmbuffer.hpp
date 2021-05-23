@@ -121,7 +121,7 @@ public:
         } else {
             // we opened to be mapped file, check its size
 
-            struct stat st{0};
+            struct stat st{};
 
             if(stat(memory_name.c_str(), &st) != 0) {
                 _dia("shared mem buffer file %s cannot stat: %s", memory_name.c_str(), string_error().c_str());

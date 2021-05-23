@@ -31,7 +31,7 @@ int UxCom::connect(const char* host, const char* noop_port) {
         return sfd;
     }
 
-    sockaddr_un server{0};
+    sockaddr_un server{};
     server.sun_family = connect_sock_family;
     strcpy(server.sun_path, host);
     
@@ -75,7 +75,7 @@ int UxCom::bind(short unsigned int port) {
 int UxCom::bind(const char* name) {
     int s;
 
-    sockaddr_un server{0};
+    sockaddr_un server{};
     server.sun_family = bind_sock_family;
     strcpy(server.sun_path, name);
 
