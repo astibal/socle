@@ -194,7 +194,7 @@ public:
 
     inline std::string filename() const { return filename_; };
 
-    std::size_t write([[maybe_unused]] std::string const&fnm, std::string const& str) override {
+    std::size_t write(std::string const&fnm, std::string const& str) override {
 
         if(! writer_) return 0;
 
@@ -221,7 +221,7 @@ public:
         return false;
     }
 
-    bool close([[maybe_unused]]  std::string const& fnm) override {
+    bool close(std::string const& fnm) override {
         close();
 
         return !opened();
@@ -239,7 +239,7 @@ public:
         }
     }
 
-    bool flush([[maybe_unused]] std::string const& fnm) override {
+    bool flush(std::string const& fnm) override {
         if(writer_) {
             writer_->flush();
 
@@ -605,7 +605,7 @@ public:
 	}
 	
 	
-    std::string to_string([[maybe_unused]] int verbosity) const override {
+    std::string to_string(int verbosity) const override {
         return string_format("Traflog: file=%s opened=%d",writer_key_.c_str(),writer_->opened());
     }
 	

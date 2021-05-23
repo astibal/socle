@@ -93,7 +93,7 @@ void ThreadedAcceptor<Worker>::on_run_round() {
 
 
 template<class SubWorker>
-int ThreadedAcceptorProxy<SubWorker>::handle_sockets_once([[maybe_unused]] baseCom* xcom) {
+int ThreadedAcceptorProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
 	
 	auto *p = (ThreadedAcceptor<ThreadedAcceptorProxy<SubWorker>> *)MasterProxy::parent();
 	if(p == nullptr) {

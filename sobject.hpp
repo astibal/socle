@@ -164,7 +164,7 @@ public:
     static int ask_destroy(void* ptr);
 
     DECLARE_C_NAME("sobjectDB")
-    std::string to_string([[maybe_unused]] int verbosity) const override { return this->class_name(); };
+    std::string to_string(int verbosity) const override { return this->class_name(); };
 
     DECLARE_LOGGING(to_string)
 
@@ -189,7 +189,7 @@ public:
     virtual bool ask_destroy() = 0;
 
     // return string representation of the object on single line
-    std::string to_string([[maybe_unused]] int verbosity) const override { std::stringstream ss; ss << this->class_name() << "-" << oid(); return ss.str(); };
+    std::string to_string(int verbosity) const override { std::stringstream ss; ss << this->class_name() << "-" << oid(); return ss.str(); };
 
     static meter& mtr_created() { static meter mtr_created_; return mtr_created_; } ;
     static meter& mtr_deleted() { static meter mtr_deleted_; return mtr_deleted_; } ;

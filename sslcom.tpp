@@ -687,7 +687,7 @@ DH* baseSSLCom<L4Proto>::ssl_dh_callback(SSL* s, int is_export, int key_length) 
 
 
 template <class L4Proto>
-EC_KEY* baseSSLCom<L4Proto>::ssl_ecdh_callback(SSL* s, [[maybe_unused]] int is_export, [[maybe_unused]] int key_length) {
+EC_KEY* baseSSLCom<L4Proto>::ssl_ecdh_callback(SSL* s, int is_export, int key_length) {
     void* data = SSL_get_ex_data(s, sslcom_ssl_extdata_index);
     std::string name = "unknown_cx";
 
