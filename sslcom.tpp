@@ -49,6 +49,8 @@
 #include <internet.hpp>
 #include "hostcx.hpp"
 
+using namespace socle;
+
 inline void set_timer_now(struct timeval* t) {
     gettimeofday(t,nullptr);
 }
@@ -1921,7 +1923,7 @@ void baseSSLCom<L4Proto>::ssl_keylog_callback(const SSL* ssl, const char* line) 
     baseSSLCom* com = static_cast<baseSSLCom*>(data);
 
     if(com && com->sslkeylog) {
-        com->log.log(loglevel(NON,flag_add(iNOT,CRT|KEYS),&LOG_EXEXACT,LOG_FLRAW),"com.ssl.callback.keys",line);
+        com->log.log(loglevel(NON,flag_add(iNOT,CRT|KEYS),&log::level::LOG_EXEXACT,LOG_FLRAW),"com.ssl.callback.keys",line);
     }
 }
 
@@ -1957,7 +1959,7 @@ void baseSSLCom<L4Proto>::dump_keys() {
 
         #endif // USE_OPENSSL11
 
-        log.log(loglevel(NON, flag_add(iNOT,CRT|KEYS), &LOG_EXEXACT, LOG_FLRAW),"com.ssl.keys",ret.c_str());
+        log.log(loglevel(NON, flag_add(iNOT,CRT|KEYS), &log::level::LOG_EXEXACT, LOG_FLRAW),"com.ssl.keys",ret.c_str());
     }
 }
 

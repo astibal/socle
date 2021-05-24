@@ -26,6 +26,9 @@
 #include <utility>
 #include <shared_mutex>
 
+using namespace log::level;
+
+
 #ifdef BUILD_RELEASE
 #define  xext(x)  if(false) (x).ext
 #define  xdum(x)  if(false) (x).dum

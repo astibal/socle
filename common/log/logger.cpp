@@ -167,7 +167,7 @@ int logger::write_log(loglevel level, std::string& sss) {
     if(really_dup) {
         std::ostream* o = &std::cout;
 
-        if( level <= ERR) {
+        if( level <= log::level::ERR) {
             o = &std::cerr;
         }
         *o << sss << std::endl;
@@ -222,7 +222,7 @@ bool logger::click_timer (const std::string &xname, int interval) {
 loglevel logger::adjust_level() {
 
     loglevel curr_level = level();
-    loglevel max_common_level = NON;
+    loglevel max_common_level = log::level::NON;
     
     for( auto [ rem_target, mut ]: remote_targets() ) {
         loglevel this_level = target_profiles()[(uint64_t)rem_target]->level_;

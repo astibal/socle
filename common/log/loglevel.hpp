@@ -32,10 +32,6 @@ struct logger_adv_info {
 };
 typedef logger_adv_info loglevelmore;
 
-extern loglevelmore LOG_EXTOPIC;
-extern loglevelmore LOG_EXEXACT;
-
-
 class loglevel {
 
 public:
@@ -114,19 +110,23 @@ loglevel operator-(const loglevel& a, const unsigned int& b);
 loglevel operator+(const loglevel& a, const unsigned int& b);
 
 
-
-extern loglevel NON;
-extern loglevel FAT;
-extern loglevel CRI;
-extern loglevel ERR;
-extern loglevel WAR;
-extern loglevel NOT;
-extern loglevel INF;
-extern loglevel DIA;
-extern loglevel DEB;
-extern loglevel DUM;
-extern loglevel EXT;
+namespace socle::log::level {
 
 
+    extern loglevel NON;
+    extern loglevel FAT;
+    extern loglevel CRI;
+    extern loglevel ERR;
+    extern loglevel WAR;
+    extern loglevel NOT;
+    extern loglevel INF;
+    extern loglevel DIA;
+    extern loglevel DEB;
+    extern loglevel DUM;
+    extern loglevel EXT;
+
+    extern loglevelmore LOG_EXTOPIC;
+    extern loglevelmore LOG_EXEXACT;
+}
 
 #endif

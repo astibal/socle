@@ -40,6 +40,7 @@
 #include <display.hpp>
 #include <stringformat.hpp>
 
+using namespace socle;
 
 
 std::string ESC_ (const std::string &s);
@@ -57,7 +58,7 @@ struct logger_profile_syslog {
     int facility = 23; // local7
     int severity = 6;  // information;
     
-    inline int prival() const { return facility * 8 + ( (severity > DEB) ? DEB.level() : severity ); };
+    inline int prival() const { return facility * 8 + ( (severity > log::level::DEB) ? log::level::DEB.level() : severity ); };
 };
 
 
@@ -72,7 +73,7 @@ public:
     logger_profile_syslog syslog_settings;
     
     virtual ~logger_profile();    
-    loglevel level_ = INF;
+    loglevel level_ = log::level::INF;
     unsigned int period_ = 5;
     time_t last_period = 0;
     bool last_period_status = false;
@@ -109,7 +110,7 @@ protected:
     std::map<uint64_t,std::string> target_names_;
 
 public:
-    logger() { level_=NON; period_ =5; target_names_[0]="unknown";};
+    logger() { level_= log::level::NON; period_ =5; target_names_[0]="unknown";};
     virtual ~logger() {
         for(auto x: target_profiles_) { delete x.second; }
     };
