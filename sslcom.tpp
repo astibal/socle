@@ -2709,28 +2709,31 @@ int baseSSLCom<L4Proto>::parse_peer_hello() {
                 curpos += ciphers_length; //skip ciphers
                 unsigned char compression_length = b.get_at<unsigned char>(curpos);
                 curpos+=sizeof(unsigned char);
-                if(curpos + compression_length > b.size())
+                if(curpos + compression_length > b.size()) {
                     throw socle::ex::SSL_clienthello_malformed();
+                }
+                else {
+
+                    curpos += compression_length; // skip compression methods
+
+                    _deb("SSLCom::parse_peer_hello: ciphers length %d, compression length %d", ciphers_length,
+                         compression_length);
+
+                    /* extension section */
+                    unsigned short extensions_length = ntohs(b.get_at<unsigned short>(curpos));
+                    curpos += sizeof(unsigned short);
+                    if (curpos + extensions_length > b.size())
+                        throw socle::ex::SSL_clienthello_malformed();
 
 
-                curpos += compression_length; // skip compression methods
+                    _deb("SSLCom::parse_peer_hello: extensions payload length %d", extensions_length);
 
-                _deb("SSLCom::parse_peer_hello: ciphers length %d, compression length %d",ciphers_length,compression_length);
+                    if (extensions_length > 0) {
 
-                /* extension section */
-                unsigned short extensions_length = ntohs(b.get_at<unsigned short>(curpos));
-                curpos+=sizeof(unsigned short);
-                if(curpos + extensions_length > b.size())
-                    throw socle::ex::SSL_clienthello_malformed();
-
-
-                _deb("SSLCom::parse_peer_hello: extensions payload length %d",extensions_length);
-
-                if(extensions_length > 0) {
-
-                    // minimal extension size is 5 (2 for ID, 2 for len)
-                    while(curpos + 4 < b.size()) {
-                        curpos += parse_peer_hello_extensions(b,curpos);
+                        // minimal extension size is 5 (2 for ID, 2 for len)
+                        while (curpos + 4 < b.size()) {
+                            curpos += parse_peer_hello_extensions(b, curpos);
+                        }
                     }
                 }
             } 
