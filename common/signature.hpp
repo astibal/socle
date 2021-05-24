@@ -436,16 +436,21 @@ public:
     // expr is ignored, regex is already compiled
     range search_function(std::string &expr, std::string &str) override {
         std::smatch m;
-        std::regex_search ( str , m, expr_comp_ );
+        if (std::regex_search ( str , m, expr_comp_ )) {
 
-        _dum("regexMatch::search_function: \nexpr:\n%s\ndata:\n%s", expr.c_str(), hex_dump((unsigned char*)str.c_str(),str.size()).c_str());
-        _deb("regexMatch::search_function: matches %d times.", m.size());
-        
-        for ( unsigned int i = 0; i < m.size(); ++i ) {
-            // we need just single(first) result 
-            return range(m.position(i),m.str().size());
+            _dum("regexMatch::search_function: \nexpr:\n%s\ndata:\n%s", expr.c_str(),
+                 hex_dump((unsigned char *) str.c_str(), str.size()).c_str());
+            _deb("regexMatch::search_function: matches %d times.", m.size());
+
+            for (unsigned int i = 0; i < m.size(); i++) {
+                // we need just single(first) result
+                return range(m.position(i), m.str().size());
+            }
         }
-        
+        else {
+            _deb("regexMatch::search_function: no match.");
+        }
+
         return NULLRANGE;
     }
 };
