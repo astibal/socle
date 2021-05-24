@@ -76,7 +76,7 @@ baseHostCX::baseHostCX(baseCom* c, const char* h, const char* p): Host(h, p) {
         throw socle::com_is_null();
     }
 
-    com_ = c;
+    com_ = std::unique_ptr<baseCom>(c);
     com()->init(this);
 }
 
@@ -111,7 +111,7 @@ baseHostCX::baseHostCX(baseCom* c, int s) {
         throw socle::com_is_null();
     }
 
-    com_ = c;
+    com_ = std::unique_ptr<baseCom>(c);
     com()->init(this);
 }
 
@@ -127,19 +127,11 @@ baseHostCX::~baseHostCX() {
         com()->set_poll_handler(closing_fds_,nullptr);
         com()->close(closing_fds_);
     }
-    delete com_;
 }
 
 
 void baseHostCX::com(baseCom* c) {
-
-    com_ = c;
-    if(c != nullptr) {
-        com_->init(this);
-    }
-    else {
-        _deb("baseHostCX:com: setting com_ to nullptr");
-    }
+    com_ = std::unique_ptr<baseCom>(c);
 }
 
 int baseHostCX::connect() {

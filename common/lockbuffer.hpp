@@ -35,7 +35,7 @@ public:
     lockbuffer (const void* data, size_type size, size_type capacity) : buffer(data, size, capacity) {};
     lockbuffer (void* data, size_type size, size_type capacity, bool assume_ownership) : buffer(data,size,capacity,assume_ownership) {};
           
-    virtual ~lockbuffer() = default;
+    ~lockbuffer() override = default;
     
     lockbuffer& operator= (const lockbuffer& x);
 };

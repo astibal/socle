@@ -238,8 +238,9 @@ class baseHostCX : public Host
     // Setting is not enforced to prevent EAGAIN loops
     bool io_disabled_ = false;
 protected:
-    
-    baseCom* com_ = nullptr;
+
+    // owned Com resource
+    std::unique_ptr<baseCom> com_ = nullptr;
     Proxy* parent_proxy_ = nullptr;
     unsigned char parent_flag_ = '0';
 
@@ -248,7 +249,8 @@ protected:
     logan_lite log = logan_lite("proxy");
 public:
 
-    baseCom* com() const { return com_; }
+    // return raw pointer for temporary use
+    baseCom* com() const { return com_.get(); }
     void com(baseCom* c);
     void rename(const char* str) {
         auto l_ = std::scoped_lock(name_mutex_);
