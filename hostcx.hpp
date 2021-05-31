@@ -295,7 +295,7 @@ public:
 	// forcing rename or calling name with force=true is ok for const, name is mutable and protected by mutex
     void rename() const { name(true); }
 	std::string& name(bool force=false) const;
-	const char* c_name() const;
+	const char* c_type() const;
 	
     inline ssize_t processed_bytes() const noexcept { return processed_bytes_; };
     

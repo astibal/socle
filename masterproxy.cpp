@@ -20,7 +20,6 @@
 
 #include "masterproxy.hpp"
 #include "baseproxy.hpp"
-#include "baseproxy.hpp"
 #include "log/logger.hpp"
 
 

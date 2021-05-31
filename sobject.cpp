@@ -31,7 +31,7 @@ std::string sobject_info::to_string(int verbosity) const {
     std::stringstream r;
     
     if(verbosity > INF) {
-        r << "    " << name() << ": age: " << age() << "s";
+        r << "    " << c_type() << ": age: " << age() << "s";
         
         if(verbosity >= DEB ) {
             std::string ex = extra_string();
@@ -104,8 +104,8 @@ std::string sobjectDB::str_list(const char* class_criteria, const char* delimite
                 matched = (std::to_string(ptr->oid()) == find_oid );
             }
             else {
-                _deb("comparing classname: %s and %s",ptr->class_name().c_str(), criteria.c_str());
-                matched = (ptr->class_name() == criteria || criteria == "*");
+                _deb("comparing classname: %s and %s",ptr->c_type(), criteria.c_str());
+                matched = (ptr->c_type() == criteria || criteria == "*");
             }
         }
         
@@ -153,8 +153,8 @@ std::string sobjectDB::str_stats(const char* criteria) {
             if (!ptr) {
                 continue;
             }
-            _deb("comparing classname: %s and %s", ptr->c_class_name(), criteria);
-            if (criteria == nullptr || ptr->class_name() == criteria) {
+            _deb("comparing classname: %s and %s", ptr->c_type(), criteria);
+            if (criteria == nullptr || ptr->c_type() == criteria) {
                 auto const & si = it.second;
                 object_counter++;
 

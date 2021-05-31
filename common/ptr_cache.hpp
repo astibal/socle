@@ -114,18 +114,15 @@ public:
     enum class MODE { FIFO, LRU };
 
     explicit ptr_cache(const char* n): auto_delete_(true), max_size_(0) {
-        name(n);
         log = logan::create("socle.ptrcache");
 
     }
     ptr_cache(const char* n, unsigned int max_size, bool auto_delete, bool (*fn_exp)(std::shared_ptr<T>) = nullptr): auto_delete_(auto_delete), max_size_(max_size) {
-        name(n);
         expiration_check(fn_exp);
         log = logan::create("socle.ptrcache");
     }
 
     ptr_cache(const char* n, unsigned int max_size, bool auto_delete, MODE m): auto_delete_(auto_delete), max_size_(max_size) {
-        name(n);
         if(m == MODE::LRU) mode_lru();
         log = logan::create("socle.ptrcache");
     }
@@ -161,13 +158,13 @@ public:
         std::lock_guard<std::recursive_mutex> l(lock_);
         auto it = cache().find(k);
         if(it != cache().end()) {
-            _deb("ptr_cache::erase[%s]: erase: key found ", c_name());
+            _deb("ptr_cache::erase[%s]: erase: key found ", c_type());
             cache().erase(k);
-            _dia("ptr_cache::erase[%s]: erase: key erased", c_name());
+            _dia("ptr_cache::erase[%s]: erase: key erased", c_type());
             
             return true;
         } else {
-            _dia("ptr_cache::erase[%s]: cannot erase: key not found ", c_name());
+            _dia("ptr_cache::erase[%s]: cannot erase: key not found ", c_type());
         }
         
         return false;
@@ -213,15 +210,15 @@ public:
         
         auto it = cache().find(k);
         if(it != cache().end()) {
-            _dia("ptr_cache::set[%s]: existing entry found", c_name());
+            _dia("ptr_cache::set[%s]: existing entry found", c_type());
             cache()[k] = std::make_unique<DataBlock>(dbs_, v);
         } else {
 
             if(max_size_ > 0) {
-                _deb("ptr_cache::set[%s]: current size %d/%d", c_name(), items().size(), max_size_);
+                _deb("ptr_cache::set[%s]: current size %d/%d", c_type(), items().size(), max_size_);
 
                 while( items().size() >= max_size_) {
-                    _deb("ptr_cache::set[%s]: max size reached!", c_name());
+                    _deb("ptr_cache::set[%s]: max size reached!", c_type());
 
                     switch(mode_) {
                         case MODE::LRU:
@@ -231,13 +228,13 @@ public:
 
                         case MODE::FIFO:
                             if(delete_last()) {
-                                _dia("ptr_cache::set[%s]: max size: object removed from cache", c_name());
+                                _dia("ptr_cache::set[%s]: max size: object removed from cache", c_type());
                             }
                             break;
                     }
                 }
             }
-            _dia("ptr_cache::set[%s]: new entry added", c_name());
+            _dia("ptr_cache::set[%s]: new entry added", c_type());
             cache()[k] = std::make_unique<DataBlock>(dbs_, v);
             items().push_front(k);
         }
@@ -266,7 +263,7 @@ private:
 
     logan_lite log;
 
-    DECLARE_C_NAME("object cache")
+    TYPENAME_BASE("object cache")
 };
 
 
@@ -279,11 +276,11 @@ inline bool ptr_cache<K,T>::delete_last() {
     if(!erase(to_delete)) {
         if( opportunistic_removal() == 0 ) {
             // log.removal errors only if opportunistic removal is enabled
-            _not("ptr_cache::set[%s]: cannot erase oldest object: not found!", c_name());
+            _not("ptr_cache::set[%s]: cannot erase oldest object: not found!", c_type());
         }
     } else {
         to_ret = true;
-        _dia("ptr_cache::set[%s]: oldest object removed", c_name());
+        _dia("ptr_cache::set[%s]: oldest object removed", c_type());
     }
 
     items().pop_back();

@@ -347,7 +347,7 @@ protected:
     bool on_cx_timer(baseHostCX*);
     
     // implement advanced logging
-    DECLARE_C_NAME("baseProxy")
+    TYPENAME_BASE("baseProxy")
     DECLARE_LOGGING(to_string)
 
 protected:

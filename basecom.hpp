@@ -168,7 +168,6 @@ public:
     };
 
     virtual baseCom* replicate() = 0;
-//     virtual std::string& name() = 0;
     
     virtual int connect(const char* , const char*) = 0;
     virtual int read(int _fd, void* _buf, size_t _n, int _flags) = 0;
@@ -455,7 +454,7 @@ public:
     virtual std::string to_string(int verbosity) const = 0;
     [[nodiscard]] inline std::string str() const { return to_string(iINF); }
 
-    DECLARE_C_NAME("baseCom")
+    TYPENAME_BASE("baseCom")
     DECLARE_LOGGING(to_string)
 
     virtual std::string shortname() const = 0;

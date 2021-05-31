@@ -40,9 +40,9 @@ public:
     baseCom* replicate() override { return new baseSSLMitmCom(); };
 
     std::string shortname() const override { static std::string s("ssli"); return s; }
+    std::string to_string([ [maybe_unused]] int verbosity) const override { return "SSLMitmCom"; };
 
-    DECLARE_C_NAME("baseSSLMitmCom")
-    DECLARE_DEF_TO_STRING
+    TYPENAME_OVERRIDE("baseSSLMitmCom")
     DECLARE_LOGGING(to_string)
 
     static logan_lite& log_mitm() {

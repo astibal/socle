@@ -56,7 +56,7 @@ struct sobject_info {
 
     virtual ~sobject_info() { delete bt_; };
     
-    DECLARE_C_NAME("sobject_info")
+    TYPENAME_BASE("sobject_info")
     DECLARE_LOGGING(to_string)
 
 protected:
@@ -163,8 +163,8 @@ public:
     // ask object to destruct itself
     static int ask_destroy(void* ptr);
 
-    DECLARE_C_NAME("sobjectDB")
-    std::string to_string(int verbosity) const override { return this->class_name(); };
+    TYPENAME_BASE("sobjectDB")
+    std::string to_string(int verbosity) const override { return this->c_type(); };
 
     DECLARE_LOGGING(to_string)
 
@@ -189,12 +189,12 @@ public:
     virtual bool ask_destroy() = 0;
 
     // return string representation of the object on single line
-    std::string to_string(int verbosity) const override { std::stringstream ss; ss << this->class_name() << "-" << oid(); return ss.str(); };
+    std::string to_string(int verbosity) const override { std::stringstream ss; ss << this->c_type() << "-" << oid(); return ss.str(); };
 
     static meter& mtr_created() { static meter mtr_created_; return mtr_created_; } ;
     static meter& mtr_deleted() { static meter mtr_deleted_; return mtr_deleted_; } ;
 
-    DECLARE_C_NAME("sobject")
+    TYPENAME_BASE("sobject")
     DECLARE_LOGGING(to_string)
 
 protected:

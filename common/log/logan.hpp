@@ -216,7 +216,7 @@ public:
     logan_attached() = default;
     explicit logan_attached(T* ptr) : logan_lite(), ptr_(ptr) {}
     logan_attached(T* ptr, std::string  area) : logan_lite(), ptr_(ptr), area_(std::move(area)) {
-        if(ptr_) topic(ptr->class_name());
+        if(ptr_) topic(ptr->c_type());
     }
 
     inline logan_attached override() {
@@ -236,7 +236,7 @@ public:
             return topic_;
 
         if(ptr_)
-            return ptr_->class_name();
+            return ptr_->c_type();
 
         return "(nullptr)";
     }

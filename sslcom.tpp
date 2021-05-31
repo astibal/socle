@@ -3369,7 +3369,7 @@ template <class L4Proto>
 int baseSSLCom<L4Proto>::connect(const char* host, const char* port)  {
     int sock = L4Proto::connect( host, port);
 
-    _dia("SSLCom::connect[%d]: %s connected",sock,L4Proto::name().c_str());
+    _dia("SSLCom::connect[%d]: %s connected",sock,L4Proto::c_type());
     sock = upgrade_client_socket(sock);
 
 //     _err("DIABLING MEM CHECK");

@@ -68,24 +68,22 @@ private:                                                       \
     loglevel this_log_level_ = NON;
 
 
-
-#define DECLARE_C_NAME(string_name)     \
+#define TYPENAME_BASE(string_name)     \
 private:                                \
-    static inline std::string name_ = string_name;   \
+    static constexpr const char* type_name_ = string_name; \
+                                                    \
 public:                                             \
-    virtual std::string const& name() const  { return this->name_; }          \
-    virtual const char* c_name() const { return this->name_.c_str(); }; \
-    virtual void name(const char* n) { name_ = n; };        \
-    virtual void name(std::string const& n) { name_ = n; };        \
-    \
-                    \
-    virtual const std::string& class_name() const { static const std::string c(string_name); return c; } \
-    virtual const char* c_class_name() const { return class_name().c_str(); } \
-    /*virtual int size_of() { return sizeof (*this);  } */
+    [[nodiscard]] virtual const char* c_type() const { return type_name_; };    \
 
 
-#define DECLARE_DEF_TO_STRING \
-    std::string to_string(int verbosity) const override { return this->class_name(); };
+
+#define TYPENAME_OVERRIDE(string_name)     \
+private:                                \
+    static constexpr const char* type_name_ = string_name; \
+                                                    \
+public:                                             \
+    [[nodiscard]] const char* c_type() const override { return type_name_; };    \
+
 
 
 #endif //LOGGERMAC_HPP

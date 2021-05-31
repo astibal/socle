@@ -66,7 +66,7 @@ void baseProxy::ladd(baseHostCX* cs) {
     com()->set_poll_handler(s,this);
     left_sockets.push_back(cs);
     cs->parent_proxy(this, 'L');
-    _dia("baseProxy::ladd: added socket: %s", cs->c_name());
+    _dia("baseProxy::ladd: added socket: %s", cs->c_type());
 }
 
 
@@ -79,7 +79,7 @@ void baseProxy::radd(baseHostCX* cs) {
     com()->set_poll_handler(s,this);
     right_sockets.push_back(cs);
     cs->parent_proxy(this, 'R');
-    _dia("baseProxy::radd: added socket: %s", cs->c_name());
+    _dia("baseProxy::radd: added socket: %s", cs->c_type());
 }
 
 
@@ -91,7 +91,7 @@ void baseProxy::lbadd(baseHostCX* cs) {
     com()->set_poll_handler(s,this);
     left_bind_sockets.push_back(cs);
     cs->parent_proxy(this, 'L');
-	_dia("baseProxy::lbadd: added bound socket: %s", cs->c_name());
+	_dia("baseProxy::lbadd: added bound socket: %s", cs->c_type());
 }
 
 
@@ -103,7 +103,7 @@ void baseProxy::rbadd(baseHostCX* cs) {
     com()->set_poll_handler(s,this);
     right_bind_sockets.push_back(cs);
     cs->parent_proxy(this, 'R');
-	_dia("baseProxy::rbadd: added bound socket: %s", cs->c_name());
+	_dia("baseProxy::rbadd: added bound socket: %s", cs->c_type());
 }
 
 
@@ -115,7 +115,7 @@ void baseProxy::lpcadd(baseHostCX* cx) {
     com()->set_poll_handler(s,this);
     left_pc_cx.push_back(cx);
     cx->parent_proxy(this, 'L');
-    _dia("baseProxy::lpcadd: added perma socket: %s", cx->c_name());
+    _dia("baseProxy::lpcadd: added perma socket: %s", cx->c_type());
 }
 
 
@@ -128,7 +128,7 @@ void baseProxy::rpcadd(baseHostCX* cx) {
     
     right_pc_cx.push_back(cx);
     cx->parent_proxy(this,'R');
-    _dia("baseProxy::rpcadd: added perma socket %s", cx->c_name());
+    _dia("baseProxy::rpcadd: added perma socket %s", cx->c_type());
 }
 
 
@@ -141,7 +141,7 @@ void baseProxy::ldaadd(baseHostCX* cs) {
 
     left_delayed_accepts.push_back(cs);
     cs->parent_proxy(this,'l');
-    _dia("baseProxy::ldaadd: added delayed socket: %s", cs->c_name());
+    _dia("baseProxy::ldaadd: added delayed socket: %s", cs->c_type());
 }
 
 
@@ -154,7 +154,7 @@ void baseProxy::rdaadd(baseHostCX* cs) {
     
     right_delayed_accepts.push_back(cs);
     cs->parent_proxy(this,'r');
-    _dia("baseProxy::rdaadd: added delayed socket: %s", cs->c_name());
+    _dia("baseProxy::rdaadd: added delayed socket: %s", cs->c_type());
 }
 
 
@@ -947,7 +947,7 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
                             ladd(p);
                             left_delayed_accepts.erase(i);
 
-                            _dia("baseProxy::run_once: %s removed from delayed", p->c_name());
+                            _dia("baseProxy::run_once: %s removed from delayed", p->c_type());
                             // restart iterator
                             no_suc = false;
                             break;
@@ -1033,38 +1033,38 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
 
 
 void baseProxy::on_left_bytes(baseHostCX* cx) {
-	_deb("Left context bytes: %s, bytes in buffer: %d", cx->c_name(), cx->readbuf()->size());
+	_deb("Left context bytes: %s, bytes in buffer: %d", cx->c_type(), cx->readbuf()->size());
 }
 
 
 void baseProxy::on_right_bytes(baseHostCX* cx) {
-	_deb("Right context bytes: %s, bytes in buffer: %d", cx->c_name(), cx->readbuf()->size());
+	_deb("Right context bytes: %s, bytes in buffer: %d", cx->c_type(), cx->readbuf()->size());
 }
 
 
 void baseProxy::on_left_error(baseHostCX* cx) {
 	if (cx->opening()) {
-		_err("Left socket connection timeout %s:", cx->c_name());
+		_err("Left socket connection timeout %s:", cx->c_type());
 	} else {
-		_not("Left socket error: %s", cx->c_name());
+		_not("Left socket error: %s", cx->c_type());
 	}
 }
 
 
 void baseProxy::on_right_error(baseHostCX* cx) {
 	if (cx->opening()) {
-		_err("Right socket connection timeout %s:", cx->c_name());
+		_err("Right socket connection timeout %s:", cx->c_type());
 	} else {	
-		_not("Right socket error: %s", cx->c_name());
+		_not("Right socket error: %s", cx->c_type());
 	}
 }
 
 
 void baseProxy::on_left_pc_error(baseHostCX* cx) {
-	_dum("Left permanent-connect socket error: %s", cx->c_name());
+	_dum("Left permanent-connect socket error: %s", cx->c_type());
 	
 	if (cx->opening()) {
-		_err("Left permanent socket connection timeout %s:", cx->c_name());
+		_err("Left permanent socket connection timeout %s:", cx->c_type());
 	}
 	else if ( cx->reconnect()) {
 		_inf("reconnecting");
@@ -1076,14 +1076,14 @@ void baseProxy::on_left_pc_error(baseHostCX* cx) {
 
 
 void baseProxy::on_right_pc_error(baseHostCX* cx) {
-	_dum("Right permanent-connect socket error: %s", cx->c_name());
+	_dum("Right permanent-connect socket error: %s", cx->c_type());
 
 	if (cx->opening()) {
-		_dia("Right permanent socket connection timeout %s:", cx->c_name());
+		_dia("Right permanent socket connection timeout %s:", cx->c_type());
 	}
 	
 	if ( cx->reconnect()) {
-		_dia("Reconnecting %s", cx->c_name());
+		_dia("Reconnecting %s", cx->c_type());
 	} 
 	else {
 		_dum("reconnection postponed");
@@ -1092,7 +1092,7 @@ void baseProxy::on_right_pc_error(baseHostCX* cx) {
 
 
 void baseProxy::on_left_pc_restore(baseHostCX* cx) {
-    _dia("Left permanent connection restored: %s", cx->c_name());
+    _dia("Left permanent connection restored: %s", cx->c_type());
     cx->opening(false);
     com()->set_monitor(cx->socket());
     com()->set_poll_handler(cx->socket(),this);
@@ -1100,7 +1100,7 @@ void baseProxy::on_left_pc_restore(baseHostCX* cx) {
 
 
 void baseProxy::on_right_pc_restore(baseHostCX* cx) {
-    _dia("Right permanent connection restored: %s", cx->c_name());
+    _dia("Right permanent connection restored: %s", cx->c_type());
     cx->opening(false);
     com()->set_monitor(cx->socket());
     com()->set_poll_handler(cx->socket(),this);    

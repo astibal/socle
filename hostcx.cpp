@@ -142,16 +142,16 @@ int baseHostCX::connect() {
 
     opening(true);
 
-    _deb("HostCX::connect[%s]: blocking=%d",c_name(), baseCom::GLOBAL_IO_BLOCKING());
+    _deb("HostCX::connect[%s]: blocking=%d",c_type(), baseCom::GLOBAL_IO_BLOCKING());
     fds_ = com()->connect(host_.c_str(),port_.c_str());
     error_ = false;
 
     if (fds_ > 0 && baseCom::GLOBAL_IO_BLOCKING()) {
-        _deb("HostCX::connect[%s]: blocking, connected successfully, socket %d",c_name(),fds_);
+        _deb("HostCX::connect[%s]: blocking, connected successfully, socket %d",c_type(),fds_);
         opening(false);
     }
     else if (baseCom::GLOBAL_IO_BLOCKING()) {
-        _deb("HostCX::connect[%s]: blocking, failed!",c_name());
+        _deb("HostCX::connect[%s]: blocking, failed!",c_type());
         opening(false);
     }
 
@@ -208,7 +208,7 @@ bool baseHostCX::write_waiting_for_peercom () {
     if(write_waiting_for_peercom_) {
         if(peercom()) {
             if(peercom()->com_status()) {
-                _dia("baseHostCX::write_waiting_for_peercom[%s]: peer's com status ok, un-pausing write", c_name());
+                _dia("baseHostCX::write_waiting_for_peercom[%s]: peer's com status ok, un-pausing write", c_type());
                 write_waiting_for_peercom(false);
             }
         }
@@ -226,7 +226,7 @@ bool baseHostCX::write_waiting_for_peercom () {
 
 bool baseHostCX::is_connected() {
     bool status = com()->is_connected(socket());
-    _dia("baseHostCX::is_connected[%s]: getsockopt(%d,SOL_SOCKET,SO_ERROR,..,..) reply %d", c_name(), socket(), status);
+    _dia("baseHostCX::is_connected[%s]: getsockopt(%d,SOL_SOCKET,SO_ERROR,..,..) reply %d", c_type(), socket(), status);
 
     return status;
 }
@@ -259,14 +259,14 @@ void baseHostCX::shutdown() {
 
         if(com()) {
             com()->shutdown(closing_fds_);
-            _deb("baseHostCX::shutdown[%s]: socket shutdown on com", c_name());
+            _deb("baseHostCX::shutdown[%s]: socket shutdown on com", c_type());
 
             unhandle();
-            _deb("baseHostCX::shutdown[%s]: socket unhandled on com", c_name());
+            _deb("baseHostCX::shutdown[%s]: socket unhandled on com", c_type());
         }
         fds_ = 0;
     } else {
-        _deb("baseHostCX::shutdown[%s]: no-op, cannot be shutdown",c_name());
+        _deb("baseHostCX::shutdown[%s]: no-op, cannot be shutdown",c_type());
     }
 }
 
@@ -279,7 +279,7 @@ std::string& baseHostCX::name(bool force) const {
         if (reduced()) {
             std::string com_name = "?";
             if(com() != nullptr) {
-                com_name = com()->name();
+                com_name = com()->c_type();
             }
 
             std::string res_host;
@@ -319,7 +319,7 @@ std::string& baseHostCX::name(bool force) const {
 }
 
 
-const char* baseHostCX::c_name() const {
+const char* baseHostCX::c_type() const {
     name();
     return name_.c_str();
 }
@@ -330,17 +330,17 @@ bool baseHostCX::reconnect(int delay) {
         shutdown();
         connect();
 
-        _deb("baseHostCX::reconnect[%s]: reconnect attempt (previous at %u)",c_name(),last_reconnect_);
+        _deb("baseHostCX::reconnect[%s]: reconnect attempt (previous at %u)",c_type(),last_reconnect_);
         last_reconnect_ = time(nullptr);
 
         return true;
     }
     else if (!permanent()) {
-        _not("baseHostCX::reconnect: attempt to reconnect non-permanent CX: %s",c_name());
+        _not("baseHostCX::reconnect: attempt to reconnect non-permanent CX: %s",c_type());
         return false;
     }
     else if (reduced() ) {
-        _err("baseHostCX::reconnect[%s]: reconnecting reduced CX is not possible",c_name());
+        _err("baseHostCX::reconnect[%s]: reconnecting reduced CX is not possible",c_type());
         last_reconnect_ = time(nullptr);
         return false;
     }
@@ -361,7 +361,7 @@ int baseHostCX::read() {
     }
 
     if(read_waiting_for_peercom()) {
-        _dum("baseHostCX::read[%s]: read operation is waiting_for_peercom, returning -1",c_name());
+        _dum("baseHostCX::read[%s]: read operation is waiting_for_peercom, returning -1",c_type());
         return -1;
     }
 
@@ -374,7 +374,7 @@ int baseHostCX::read() {
     buffer_guard bg(readbuf());
 
 
-    _dum("HostCX::read[%s]: calling pre_read",c_name());
+    _dum("HostCX::read[%s]: calling pre_read",c_type());
     pre_read();
 
     if(next_read_limit_ < 0) {
@@ -382,7 +382,7 @@ int baseHostCX::read() {
         return -1;
     }
 
-    _dum("HostCX::read[%s]: readbuf_ size=%d, capacity=%d, previously processed=%d finished",c_name(),
+    _dum("HostCX::read[%s]: readbuf_ size=%d, capacity=%d, previously processed=%d finished",c_type(),
             readbuf_.size(), readbuf_.capacity(), processed_bytes_);
 
     if (auto_finish()) {
@@ -400,11 +400,11 @@ int baseHostCX::read() {
         ssize_t cur_read_max = readbuf_.capacity()-readbuf_.size();
 
         if (cur_read_max + l > next_read_limit() && next_read_limit() > 0) {
-            _deb("HostCX::read[%s]: read buffer limiter: %d",c_name(), next_read_limit() - l);
+            _deb("HostCX::read[%s]: read buffer limiter: %d",c_type(), next_read_limit() - l);
             cur_read_max = next_read_limit() - l;
         }
 
-        _ext("HostCX::read[%s]: readbuf_ base=%x, wr at=%x, maximum to write=%d", c_name(),
+        _ext("HostCX::read[%s]: readbuf_ base=%x, wr at=%x, maximum to write=%d", c_type(),
                 readbuf_.data(), cur_read_ptr,cur_read_max);
 
 
@@ -421,7 +421,7 @@ int baseHostCX::read() {
             break;
         }
         else if(cur_l == 0) {
-            _dia("baseHostCX::read[%s]: error while reading. %d bytes read.", c_name(), l);
+            _dia("baseHostCX::read[%s]: error while reading. %d bytes read.", c_type(), l);
             error(true);
 
             break;
@@ -435,7 +435,7 @@ int baseHostCX::read() {
         l += cur_l;
 
         if(next_read_limit_ > 0 &&  l >= next_read_limit_) {
-            _dia("baseHostCX::read[%s]: read limiter hit on %d bytes.", c_name(), l);
+            _dia("baseHostCX::read[%s]: read limiter hit on %d bytes.", c_type(), l);
             break;
         }
 
@@ -449,21 +449,21 @@ int baseHostCX::read() {
         // break;
 
         if(readbuf_.size() >= readbuf_.capacity()) {
-            _dia("baseHostCX::read[%s]: read buffer reached it's current capacity %d/%d bytes", c_name(),
+            _dia("baseHostCX::read[%s]: read buffer reached it's current capacity %d/%d bytes", c_type(),
                     readbuf_.size(), readbuf_.capacity());
 
             if(readbuf_.capacity() * 2  <= HOSTCX_BUFFMAXSIZE) {
 
                 if (readbuf_.capacity(readbuf_.capacity() * 2)) {
-                    _dia("baseHostCX::read[%s]: read buffer resized capacity %d/%d bytes", c_name(),
+                    _dia("baseHostCX::read[%s]: read buffer resized capacity %d/%d bytes", c_type(),
                             readbuf_.size(), readbuf_.capacity());
 
                 } else {
-                    _not("baseHostCX::read[%s]: memory tension: read buffer cannot be resized!", c_name());
+                    _not("baseHostCX::read[%s]: memory tension: read buffer cannot be resized!", c_type());
                 }
             }
             else {
-                _dia("baseHostCX::read[%s]: buffer already reached it's maximum capacity.", c_name());
+                _dia("baseHostCX::read[%s]: buffer already reached it's maximum capacity.", c_type());
             }
         }
 
@@ -480,30 +480,30 @@ int baseHostCX::read() {
 
         // claim opening socket already opened
         if (opening()) {
-            _dia("baseHostCX::read[%s]: connection established", c_name());
+            _dia("baseHostCX::read[%s]: connection established", c_type());
             opening(false);
         }
 
 
 
-        _ext("baseHostCX::read[%s]: readbuf_ read %d bytes", c_name(), l);
+        _ext("baseHostCX::read[%s]: readbuf_ read %d bytes", c_type(), l);
 
         processed_bytes_ = process_();
         _deb("baseHostCX::read[%s]: readbuf_ read %d bytes, process()-ed %d bytes, incomplete readbuf_ %d bytes",
-                c_name(), l, processed_bytes_, l - processed_bytes_);
+                c_type(), l, processed_bytes_, l - processed_bytes_);
 
 
         // data are already processed
-        _deb("baseHostCX::read[%s]: calling post_read",c_name());
+        _deb("baseHostCX::read[%s]: calling post_read",c_type());
         post_read();
 
         if(com()->debug_log_data_crc) {
-            _deb("baseHostCX::read[%s]: after: buffer crc = %X", c_name(),
+            _deb("baseHostCX::read[%s]: after: buffer crc = %X", c_type(),
                      socle::tools::crc32::compute(0, readbuf()->data(), readbuf()->size()));
         }
 
     } else if (l == 0) {
-        _dia("baseHostCX::read[%s]: error while reading", c_name());
+        _dia("baseHostCX::read[%s]: error while reading", c_type());
         error(true);
     } else {
         processed_bytes_ = 0;
@@ -533,7 +533,7 @@ int baseHostCX::write() {
 
 
     if(write_waiting_for_peercom()) {
-        _deb("baseHostCX::write[%s]: write operation is waiting_for_peercom, returning 0", c_name());
+        _deb("baseHostCX::write[%s]: write operation is waiting_for_peercom, returning 0", c_type());
         return 0;
     }
 
@@ -546,18 +546,18 @@ int baseHostCX::write() {
     int tx_size = writebuf_.size();
 
     if (tx_size != tx_size_orig) {
-        _deb("baseHostCX::write[%s]: calling pre_write modified data, size %d -> %d",c_name(),tx_size_orig,tx_size);
+        _deb("baseHostCX::write[%s]: calling pre_write modified data, size %d -> %d",c_type(),tx_size_orig,tx_size);
     }
 
     if (tx_size <= 0) {
-        _deb("baseHostCX::write[%s]: writebuf_ %d bytes pending %s", c_name(), tx_size, opening() ? "(opening)" : "");
+        _deb("baseHostCX::write[%s]: writebuf_ %d bytes pending %s", c_type(), tx_size, opening() ? "(opening)" : "");
         // return 0; // changed @ 20.9.2014 by astib.
         // Let com() decide what to do if we want to send 0 (or less :) bytes
         // keep it here for studying purposes.
         // For example, if we stop here, no SSL_connect won't happen!
     }
     else {
-        _deb("baseHostCX::write[%s]: writebuf_ %d bytes pending",c_name(),tx_size);
+        _deb("baseHostCX::write[%s]: writebuf_ %d bytes pending",c_type(),tx_size);
     }
 
     ssize_t l = io_write(writebuf_.data(), tx_size, MSG_NOSIGNAL);
@@ -568,21 +568,21 @@ int baseHostCX::write() {
         time(&w_activity);
 
         if (opening()) {
-            _deb("baseHostCX::write[%s]: connection established", c_name());
+            _deb("baseHostCX::write[%s]: connection established", c_type());
             opening(false);
         }
-        _deb("baseHostCX::write[%s]: %d from %d bytes sent from tx buffer at %x", c_name(), l, tx_size, writebuf_.data());
+        _deb("baseHostCX::write[%s]: %d from %d bytes sent from tx buffer at %x", c_type(), l, tx_size, writebuf_.data());
         if (l < tx_size) {
             // rather log this: not a big deal, but we couldn't have sent all data!
-            _dia("baseHostCX::write[%s]: only %d from %d bytes sent from tx buffer!", c_name(), l, tx_size);
+            _dia("baseHostCX::write[%s]: only %d from %d bytes sent from tx buffer!", c_type(), l, tx_size);
         }
 
-        _dum("baseHostCX::write[%s]: calling post_write", c_name());
+        _dum("baseHostCX::write[%s]: calling post_write", c_type());
         post_write();
 
         if(l < static_cast<ssize_t>(writebuf_.size())) {
             _dia("baseHostCX::write[%s]: %d bytes written out of %d -> setting socket write monitor",
-                    c_name(), l, writebuf_.size());
+                    c_type(), l, writebuf_.size());
             // we need to check once more when socket is fully writable
 
             com()->set_write_monitor(socket());
@@ -602,7 +602,7 @@ int baseHostCX::write() {
         writebuf_.flush(l);
 
         if(com()->debug_log_data_crc) {
-            _deb("baseHostCX::write[%s]: after: buffer crc = %X", c_name(),
+            _deb("baseHostCX::write[%s]: after: buffer crc = %X", c_type(),
                     socle::tools::crc32::compute(0, writebuf()->data(), writebuf()->size()));
         }
 
@@ -613,7 +613,7 @@ int baseHostCX::write() {
     else if(l == 0 && writebuf()->size() > 0) {
         // write unsuccessful, we have to try immediately socket is writable!
         _dia("baseHostCX::write[%s]: %d bytes written out of %d -> setting socket write monitor",
-                c_name(), l, writebuf_.size());
+                c_type(), l, writebuf_.size());
         //com()->set_write_monitor(socket());
 
         // write was not successful, wait a while
@@ -621,7 +621,7 @@ int baseHostCX::write() {
         rescan_out_flag_ = true;
     }
     else if(l < 0) {
-        _dia("baseHostCX::write[%s] write failed: %s, unrecoverable.", c_name(), string_error().c_str());
+        _dia("baseHostCX::write[%s] write failed: %s, unrecoverable.", c_type(), string_error().c_str());
     }
 
     return l;
@@ -642,15 +642,15 @@ int baseHostCX::process() {
 
 ssize_t baseHostCX::finish() {
     if( readbuf()->size() >= (unsigned int)processed_bytes_ && processed_bytes_ > 0) {
-        _deb("baseHostCX::finish[%s]: flushing %d bytes in readbuf_ size %d", c_name(), processed_bytes_, readbuf()->size());
+        _deb("baseHostCX::finish[%s]: flushing %d bytes in readbuf_ size %d", c_type(), processed_bytes_, readbuf()->size());
         readbuf()->flush(processed_bytes_);
         return processed_bytes_;
     } else if (readbuf()->empty()) {
-        _dum("baseHostCX::finish[%s]: already flushed",c_name());
+        _dum("baseHostCX::finish[%s]: already flushed",c_type());
         return 0;
     } else {
-        _war("baseHostCX::finish[%s]: attempt to flush more data than in buffer", c_name());
-        _war("baseHostCX::finish[%s]: best-effort recovery: flushing all", c_name());
+        _war("baseHostCX::finish[%s]: attempt to flush more data than in buffer", c_type());
+        _war("baseHostCX::finish[%s]: best-effort recovery: flushing all", c_type());
         auto s = readbuf()->size();
         readbuf()->flush(s);
         return s;
@@ -658,28 +658,28 @@ ssize_t baseHostCX::finish() {
 }
 
 buffer baseHostCX::to_read() {
-    _deb("baseHostCX::to_read[%s]: returning buffer::view for %d bytes", c_name(), processed_bytes_);
+    _deb("baseHostCX::to_read[%s]: returning buffer::view for %d bytes", c_type(), processed_bytes_);
     return readbuf()->view(0,processed_bytes_);
 }
 
 void baseHostCX::to_write(buffer b) {
     writebuf_.append(b);
     com()->set_write_monitor(socket());
-    _deb("baseHostCX::to_write(buf)[%s]: appending %d bytes, buffer size now %d bytes", c_name(), b.size(), writebuf_.size());
+    _deb("baseHostCX::to_write(buf)[%s]: appending %d bytes, buffer size now %d bytes", c_type(), b.size(), writebuf_.size());
 }
 
 void baseHostCX::to_write(const std::string& s) {
 
     writebuf_.append((unsigned char*)s.data(), s.size());
     com()->set_write_monitor(socket());
-    _deb("baseHostCX::to_write(ptr)[%s]: appending %d bytes, buffer size now %d bytes", c_name(), s.size(), writebuf_.size());
+    _deb("baseHostCX::to_write(ptr)[%s]: appending %d bytes, buffer size now %d bytes", c_type(), s.size(), writebuf_.size());
 
 }
 
 void baseHostCX::to_write(unsigned char* c, unsigned int l) {
     writebuf_.append(c,l);
     com()->set_write_monitor(socket());
-    _deb("baseHostCX::to_write(ptr)[%s]: appending %d bytes, buffer size now %d bytes", c_name(), l, writebuf_.size());
+    _deb("baseHostCX::to_write(ptr)[%s]: appending %d bytes, buffer size now %d bytes", c_type(), l, writebuf_.size());
 }
 
 void baseHostCX::on_accept_socket(int fd) {

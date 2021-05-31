@@ -508,7 +508,7 @@ public:
     static int ct_verify_callback(const CT_POLICY_EVAL_CTX *ctx, const STACK_OF(SCT) *scts, void *arg);
 
 
-    DECLARE_C_NAME("SSLCom")
+    TYPENAME_OVERRIDE("SSLCom")
     DECLARE_LOGGING(to_string)
 
 private:

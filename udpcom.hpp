@@ -236,10 +236,10 @@ public:
     // allow older kernels to use UDP -- we have to set bind_sock_family to IPv4 variant
     static inline unsigned int default_sock_family = AF_INET6;
 
-    std::string to_string(int verbosity) const override { return class_name(); }
+    std::string to_string(int verbosity) const override { return c_type(); }
     std::string shortname() const override { static  std::string s("udp"); return s; }
 
-    DECLARE_C_NAME("UDPCom")
+    TYPENAME_OVERRIDE("UDPCom")
     DECLARE_LOGGING(to_string)
 
 };

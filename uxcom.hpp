@@ -59,9 +59,9 @@ public:
     int connect(const char* host, const char* port) override;
     int bind(unsigned short port) final;  //this bind is deprecated, returning always -1. Use bind(const char*).
     int bind(const char* name) override;
-    
-    DECLARE_C_NAME("UxCom")
-    DECLARE_DEF_TO_STRING
+
+    TYPENAME_OVERRIDE("UxCom")
+    std::string to_string([ [maybe_unused]] int verbosity) const override { return c_type(); };
 
     std::string shortname() const override { return std::string("ux"); }
 };

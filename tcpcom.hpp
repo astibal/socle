@@ -66,7 +66,7 @@ public:
     void shutdown(int _fd) override {
         int r = ::shutdown(_fd, SHUT_RDWR);
         if(r > 0)
-            _dia("%s::shutdown[%d]: %s", name().c_str(), _fd, string_error().c_str());
+            _dia("%s::shutdown[%d]: %s", c_type(), _fd, string_error().c_str());
     };
     
     void cleanup() override {};
@@ -78,7 +78,7 @@ public:
 
 
     std::string shortname() const override { static std::string s("tcp"); return s; }
-    std::string to_string(int verbosity) const override { return class_name(); };
+    std::string to_string(int verbosity) const override { return c_type(); };
 
 protected:
     int connect_sock_family = AF_UNSPEC;
@@ -87,7 +87,7 @@ protected:
     int bind_sock_type = SOCK_STREAM;
     int bind_sock_protocol = IPPROTO_TCP;
     
-    DECLARE_C_NAME("TCPCom")
+    TYPENAME_OVERRIDE("TCPCom")
     DECLARE_LOGGING(to_string)
     
 };
