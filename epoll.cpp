@@ -110,18 +110,21 @@ int epoll::wait(int timeout) {
         _ext("epoll::wait: %d socket events", nfds);
     }
     
-    
-    if(( *log.level() >= DEB) && nfds > 0) {
-        std::string ports;
-        for(int xi = 0; xi < nfds; ++xi) {
-            ports += std::to_string(events[xi].data.fd);
-            
-            if(events[xi].events & EPOLLIN) ports += "r";
-            if(events[xi].events & EPOLLOUT) ports += "w";
-            ports += " ";
-            
+
+    // optimized-out in Release builds
+    _if_deb {
+        if (nfds > 0) {
+            std::string ports;
+            for (int xi = 0; xi < nfds; ++xi) {
+                ports += std::to_string(events[xi].data.fd);
+
+                if (events[xi].events & EPOLLIN) ports += "r";
+                if (events[xi].events & EPOLLOUT) ports += "w";
+                ports += " ";
+
+            }
+            _deb("ports: %s", ports.c_str());
         }
-        _deb("ports: %s",ports.c_str());
     }
     
     for(int i = 0; i < nfds; ++i) {

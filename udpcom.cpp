@@ -220,7 +220,8 @@ int UDPCom::connect(const char* host, const char* port) {
         _ext("UDPCom::connect: sizeof udpcom_add = %d",sizeof(udpcom_addr));
         _ext("UDPCom::connect: sizeof sockaddr_storage = %d",sizeof(sockaddr_storage));
 
-        if(*log.level() >= DEB) {
+        // optimized-out in Release
+        _if_deb {
             std::string rps;
             unsigned short rp_port;
 

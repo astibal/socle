@@ -203,7 +203,8 @@ bool TCPCom::is_connected(int s) {
         
         if(error_code == EINPROGRESS) return false;
 
-        if(*log.level() >= DEB) {
+        // optimized-out in Release
+        _if_deb {
             if(master()->poller.in_write_set(s)) {
                 _deb("TCP::is_connected[%d]: writable", s);
             } else {
