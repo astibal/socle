@@ -76,10 +76,10 @@ protected:
     void pre_write() override;
     
     bool detect(sensorType&,char side); // signature detection engine
-    virtual void inspect(char side) { }; // to be overridden for ALG inspectors
+    virtual void inspect(char side) = 0; // to be overridden for ALG inspectors
     
-    virtual void on_detect(std::shared_ptr<duplexFlowMatch>, flowMatchState&, vector_range&);
-    virtual void on_starttls() {};
+    virtual void on_detect(std::shared_ptr<duplexFlowMatch>, flowMatchState&, vector_range&) = 0;
+    virtual void on_starttls() = 0;
 
 
 private:

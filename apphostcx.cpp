@@ -337,5 +337,4 @@ void AppHostCX::pre_write() {
 }
 
 
-void AppHostCX::on_detect(std::shared_ptr<duplexFlowMatch> sig_sig, flowMatchState& s, vector_range& r) {}
 
