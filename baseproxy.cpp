@@ -581,7 +581,7 @@ unsigned int baseProxy::change_monitor_for_cx_vec(std::vector<baseHostCX*>* cx_v
     return sockets_changed;
 }
 
-unsigned int baseProxy::change_side_monitoring(char side, bool ifread, bool ifwrite, int pause_read, int pause_write) {
+unsigned int baseProxy::change_side_monitoring(unsigned char side, bool ifread, bool ifwrite, int pause_read, int pause_write) {
 
     std::string str_side = "unknown";
     std::vector<baseHostCX*>* normal = nullptr;

@@ -497,9 +497,11 @@ int baseHostCX::read() {
         _deb("baseHostCX::read[%s]: calling post_read",c_type());
         post_read();
 
-        if(com()->debug_log_data_crc) {
-            _deb("baseHostCX::read[%s]: after: buffer crc = %X", c_type(),
+        _if_deb {
+            if (baseCom::debug_log_data_crc) {
+                _deb("baseHostCX::read[%s]: after: buffer crc = %X", c_type(),
                      socle::tools::crc32::compute(0, readbuf()->data(), readbuf()->size()));
+            }
         }
 
     } else if (l == 0) {
@@ -662,7 +664,7 @@ buffer baseHostCX::to_read() {
     return readbuf()->view(0,processed_bytes_);
 }
 
-void baseHostCX::to_write(buffer b) {
+void baseHostCX::to_write(buffer const& b) {
     writebuf_.append(b);
     com()->set_write_monitor(socket());
     _deb("baseHostCX::to_write(buf)[%s]: appending %d bytes, buffer size now %d bytes", c_type(), b.size(), writebuf_.size());

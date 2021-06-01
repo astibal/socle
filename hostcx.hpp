@@ -398,7 +398,7 @@ public:
 	//
 	virtual int process();
 	
-	virtual void to_write(buffer b);
+	virtual void to_write(buffer const& b);
     virtual void to_write(const std::string&);
 	virtual void to_write(unsigned char* c, unsigned int l); 
 	inline bool close_after_write() const { return close_after_write_; };
