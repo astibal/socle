@@ -26,7 +26,6 @@
 #include <hostcx.hpp>
 #include <signature.hpp>
 
-typedef typename std::vector<std::pair<flowMatchState,std::shared_ptr<duplexFlowMatch>>> sensorType;
 
 
 class AppHostCX: public baseHostCX {
@@ -45,8 +44,8 @@ public:
     mode_t mode() const { return mode_; }
     void mode(mode_t m) { mode_ = m; }
     
-    sensorType& starttls_sensor() { return starttls_sensor_; };
-    sensorType& sensor() { return sensor_; };
+    sensorType& starttls_sensor() { return *signatures_.sensors_[1]; };
+    sensorType& base_sensor() { return *signatures_.sensors_[0]; };
 
     // create pairs of results and pointers to (somewhere, already created) signatures.
     int make_sig_states(sensorType& sig_states, std::vector<std::shared_ptr<duplexFlowMatch>>& source_signatures);
@@ -91,8 +90,7 @@ private:
 
     bool upgrade_starttls = false;
 
-    sensorType sensor_;
-    sensorType starttls_sensor_;
+    SignatureTree signatures_;
     mode_t mode_ = MODE_NONE;
 
     TYPENAME_BASE("AppHostCX")

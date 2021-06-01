@@ -18,7 +18,7 @@
 
 #include <apphostcx.hpp>
 
-AppHostCX::AppHostCX(baseCom* c, const char* h, const char* p) :baseHostCX(c,h,p) {
+AppHostCX::AppHostCX(baseCom* c, const char* h, const char* p) : baseHostCX(c,h,p), signatures_(2) {
 
     log = logan::attach(this, "inspect");
 
@@ -26,7 +26,7 @@ AppHostCX::AppHostCX(baseCom* c, const char* h, const char* p) :baseHostCX(c,h,p
         flow().domain(c->l4_proto());
     }
 }
-AppHostCX::AppHostCX(baseCom* c, unsigned int s) :baseHostCX(c,s) {
+AppHostCX::AppHostCX(baseCom* c, unsigned int s) :baseHostCX(c,s), signatures_(2) {
 
     log = logan::attach(this, "inspect");
 
@@ -54,6 +54,7 @@ int AppHostCX::make_sig_states(sensorType& sig_states, std::vector<std::shared_p
         a.second = std::shared_ptr<duplexFlowMatch>(sh_ptr);
 
 
+
         sig_states.push_back(a);
         ++r;
     }
@@ -67,7 +68,7 @@ bool AppHostCX::detect(sensorType& cur_sensor,char side) {
     bool matched = false;
     
     if(cur_sensor.empty()) {
-        _dia("AppHostCX::detect[%s]: Sensor %x is empty!",c_type(), &sensor());
+        _dia("AppHostCX::detect[%s]: Sensor %x is empty!",c_type(), &base_sensor());
     }
     
     for (auto& sig: cur_sensor) {
@@ -77,7 +78,7 @@ bool AppHostCX::detect(sensorType& cur_sensor,char side) {
         flowMatchState& sig_res = std::get<0>(sig);
         
         if (! sig_res.hit()) {
-            _dia("AppHostCX::detect[%s]: Sensor %x, signature name %s",c_type(), &sensor(), sig_sig->name().c_str());
+            _dia("AppHostCX::detect[%s]: Sensor %x, signature name %s", c_type(), &base_sensor(), sig_sig->name().c_str());
             
             bool r = sig_res.update(this->flowptr(),sig_sig);
             
@@ -116,7 +117,7 @@ void AppHostCX::post_read() {
             _dia("AppHostCX::post_read[%s]: side %c, flow path: %s", c_type(), 'r', flow().hr().c_str());
 
             // we can't detect starttls in POST mode
-            detect(sensor(), 'r');
+            detect(base_sensor(), 'r');
             inspect('r');
         }
         else {
@@ -156,7 +157,7 @@ void AppHostCX::post_write() {
 
             // we can't detect starttls in POST mode
             _dia("AppHostCX::post_write[%s]: side %c, flow path: %s", c_type(), 'w', flow().hr().c_str());
-            detect(sensor(), 'w');
+            detect(base_sensor(), 'w');
             inspect('w');
         }
         else {
@@ -277,7 +278,7 @@ void AppHostCX::pre_read() {
             if (detect(starttls_sensor(),'r')) {
                 upgrade_starttls = true;
             }
-            detect(sensor(),'r');
+            detect(base_sensor(), 'r');
             inspect('r');
         }
     }
@@ -330,7 +331,7 @@ void AppHostCX::pre_write() {
             if(detect(starttls_sensor(),'w')) {
                 upgrade_starttls = true;
             }
-            detect(sensor(),'w');
+            detect(base_sensor(), 'w');
             inspect('w');
         }
     }

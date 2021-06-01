@@ -478,4 +478,41 @@ public:
     }
 };
 
+
+typedef typename std::vector<std::pair<flowMatchState,std::shared_ptr<duplexFlowMatch>>> sensorType;
+
+
+struct SignatureTree {
+    static constexpr const unsigned int max_groups = 128;
+
+    std::bitset<max_groups> filter_;
+    std::array<std::unique_ptr<sensorType>, max_groups> sensors_;
+    std::unordered_map<std::string, int> name_index;
+
+    SignatureTree() = default;
+    SignatureTree(int prealloc_count) {
+
+        for(int i = 0; i < prealloc_count; ++i)
+            add_group();
+    }
+
+    unsigned int add_group() noexcept  {
+        sensors_[last_alloc_index] = std::make_unique<sensorType>();
+        last_alloc_index++;
+
+        return last_alloc_index;
+    }
+
+    unsigned int add_group(const char* name) noexcept {
+        sensors_[last_alloc_index] = std::make_unique<sensorType>();
+        name_index[name] = last_alloc_index;
+        last_alloc_index++;
+
+        return last_alloc_index;
+    }
+
+private:
+    unsigned int last_alloc_index = 0;
+};
+
 #endif
