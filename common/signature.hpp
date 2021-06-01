@@ -490,25 +490,33 @@ struct SignatureTree {
     std::unordered_map<std::string, int> name_index;
 
     SignatureTree() = default;
-    SignatureTree(int prealloc_count) {
+    explicit SignatureTree(int prealloc_count) {
 
         for(int i = 0; i < prealloc_count; ++i)
             add_group();
     }
 
     unsigned int add_group() noexcept  {
-        sensors_[last_alloc_index] = std::make_unique<sensorType>();
-        last_alloc_index++;
+        auto ret = last_alloc_index;
 
-        return last_alloc_index;
+        sensors_[last_alloc_index] = std::make_unique<sensorType>();
+        // unnamed
+        filter_.set(last_alloc_index, true);
+
+        last_alloc_index++;
+        return ret;
     }
 
     unsigned int add_group(const char* name) noexcept {
-        sensors_[last_alloc_index] = std::make_unique<sensorType>();
-        name_index[name] = last_alloc_index;
-        last_alloc_index++;
+        auto ret = last_alloc_index;
 
-        return last_alloc_index;
+        sensors_[last_alloc_index] = std::make_unique<sensorType>();
+        filter_.set(last_alloc_index, true);
+        name_index[name] = last_alloc_index;
+
+
+        last_alloc_index++;
+        return ret;
     }
 
 private:
