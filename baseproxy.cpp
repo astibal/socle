@@ -675,12 +675,12 @@ bool baseProxy::handle_cx_write_once(unsigned char side, baseCom* xcom, baseHost
                 if(state().write_left_bottleneck() && (side == 'l' || side == 'L' || side == 'x' || side == 'X')) {
                     _inf("left write bottleneck stop!");
                     state().write_left_bottleneck(false);
-                    change_side_monitoring('r',true,false, -1, 0); //FIXME: write monitor enable?
+                    change_side_monitoring('r',true,false, -1, 0); //NOTE: write monitor enable?
                 } else
                 if( state().write_right_bottleneck() && (side == 'r' || side == 'R' || side == 'y' || side == 'Y')) {
                     _inf("right write bottleneck stop!");
                     state().write_right_bottleneck(false);
-                    change_side_monitoring('l',true,false, -1, 0); //FIXME: write monitor enable?
+                    change_side_monitoring('l',true,false, -1, 0); //NOTE: write monitor enable?
 
                 }
             } else {
@@ -693,7 +693,7 @@ bool baseProxy::handle_cx_write_once(unsigned char side, baseCom* xcom, baseHost
     // on failure, skip all operations and go here
     failure:
     
-    // errors are proucts of operations above. Act on them.
+    // errors are products of operations above. Act on them.
     if(! handle_cx_events(side,cx))
         ret = false;    
     
@@ -720,33 +720,19 @@ bool baseProxy::handle_sockets_accept(unsigned char side, baseCom* xcom, baseHos
     }
     else {
         auto* cx = new_cx(client);
-        
-        // propagate nonlocal setting
-        // FIXME: this call is a bit strange, is it?
-        // cx->com()->nonlocal_dst(cx->com()->nonlocal_dst());
-        
+
         if(!cx->read_waiting_for_peercom()) {
             _dia("baseProxy::handle_sockets_accept[%c]: new unpaused socket %d -> accepting", side, client);
-            
             cx->on_accept_socket(client);
-            //  DON'T: you don't know if this proxy does have child proxy, or wants to handle situation different way.
-            //        if(side == 'l') { ladd(cx); }
-            //   else if(side == 'r') { radd(cx); }
-            
+
         } else {
             _dia("baseProxy::handle_sockets_accept[%c]: new waiting_for_peercom socket %d -> delaying", side, client);
-            
             cx->on_delay_socket(client);
-            //  DON'T: you don't know if this proxy does have child proxy, or wants to handle situation different way.
-            //      if(side == 'l') { ldaadd(cx); }
-            // else if(side == 'r') { rdaadd(cx); }
         }
         
         if     (side == 'l') { on_left_new(cx); }
         else if(side == 'r') { on_right_new(cx); }
     }
-    
-    handle_last_status |= HANDLE_LEFT_NEW;
     
     return true;
 }
@@ -909,6 +895,30 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
 		// no sense to loop through bound sockets.
 		
 		if (xcom->poll_result > 0) {
+
+            auto accepted = [] (baseHostCX *p, auto action) -> bool {
+                if (!p->read_waiting_for_peercom()) {
+                    p->on_accept_socket(p->socket());
+
+                    action(p);
+
+                    return true;
+                }
+                return false;
+            };
+
+            auto accept_from = [&accepted] (vector_type<baseHostCX*>& v, auto action) {
+
+                if (!v.empty()) {
+                    for (auto *&ptr_ref: v) {
+                        if (accepted(ptr_ref, action)) {
+                            ptr_ref = nullptr;
+                        }
+                    }
+                    v.erase(std::remove_if(v.begin(), v.end(), [] (auto *ptr) { return ptr == nullptr; }), v.end());
+                }
+            };
+
             // now operate bound sockets to create accepted sockets
             
             if( ! left_bind_sockets.empty() ) {
@@ -926,95 +936,42 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
                             handle_sockets_accept('l', xcom, (i));
                             throw  std::runtime_error("mutex unprotected accept");
                         }
+
+                        handle_last_status |= HANDLE_LEFT_NEW;
                     }
                 }
             }
             
             
-            // iterate and if unpaused, run the accept_socket and release (add them to regular socket list)
+            // iterate and if un-paused, run the accept_socket and release (add them to regular socket list)
             // we will try to remove them all to not have delays
-            
-            while(true) {
-                bool no_suc = true;
-                
-                if(! left_delayed_accepts.empty() ) {
-                    for (auto i = left_delayed_accepts.begin(); i != left_delayed_accepts.end() ; ++i) {
 
-                        baseHostCX* p = *i;
-                        if (! p->read_waiting_for_peercom() ) {
-                            p->on_accept_socket(p->socket());
+            accept_from(left_delayed_accepts, [this] (auto x) { ladd(x); });
 
-                            ladd(p);
-                            left_delayed_accepts.erase(i);
-
-                            _dia("baseProxy::run_once: %s removed from delayed", p->c_type());
-                            // restart iterator
-                            no_suc = false;
-                            break;
-                        }
-                    }
-                }
-                
-                if(no_suc) break;
-            }
-            
             if(! right_bind_sockets.empty() ) {
                 for (auto i: right_bind_sockets) {
                     int s = i->socket();
                     if (xcom->in_readset(s)) {
-                        sockaddr_in clientInfo{};
-                        socklen_t addrlen = sizeof(clientInfo);
 
-                        int client = com()->accept(s, (sockaddr *) &clientInfo, &addrlen);
+                        auto m = locks::fd().lock(s);
 
-                        if (new_raw()) {
-                            on_right_new_raw(client);
-                        } else {
-                            baseHostCX *cx = new_cx(client);
-
-                            // propagate nonlocal setting
-                            cx->com()->nonlocal_dst(i->com()->nonlocal_dst());
-
-                            if (!cx->read_waiting_for_peercom()) {
-                                cx->on_accept_socket(client);
-                            } else {
-                                cx->on_delay_socket(client);
-                                // dealayed accept in effect -- carrier is accepted, but we will postpone higher level accept_socket
-                                _deb("baseProxy::handle_sockets_once[%d]: adding to right delayed sockets", client);
-                                rdaadd(cx);
-                            }
-                            on_right_new(cx);
+                        if(m) {
+                            auto l_ = std::unique_lock(*m);
+                            handle_sockets_accept('r', xcom, (i));
                         }
+                        else {
+                            handle_sockets_accept('r', xcom, (i));
+                            throw  std::runtime_error("mutex unprotected accept");
+                        }
+
 
                         handle_last_status |= HANDLE_RIGHT_NEW;
                     }
                 }
             }
 
-            // iterate and if unpaused, run the accept_socket and release (add them to regular socket list)
-            // we will try to remove them all to not have delays
-            
-            while(true) {
-                bool no_suc = true;
-                
-                if(! right_delayed_accepts.empty() ) {
-                    for (auto i = right_delayed_accepts.begin(); i != right_delayed_accepts.end() ; ++i ) {
+            accept_from(right_delayed_accepts, [this] (auto x) { radd(x); });
 
-                        baseHostCX* p = *i;
-                        if (! p->read_waiting_for_peercom() ) {
-                            p->on_accept_socket(p->socket());
-                            radd(p);
-                            right_delayed_accepts.erase(i);
-
-                            // restart iterator
-                            no_suc = false;
-                            break;
-                        }
-                    }
-                }
-
-                if(no_suc) break;
-            }		
         }
 
 		
