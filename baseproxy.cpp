@@ -619,85 +619,85 @@ unsigned int baseProxy::change_side_monitoring(unsigned char side, bool ifread, 
 
 bool baseProxy::handle_cx_write_once(unsigned char side, baseCom* xcom, baseHostCX* cx) {
 
-    bool ret = true;
-    
     if(cx->socket() == 0) {
         _dia("baseProxy::handle_cx_write_once[%c]: monitored socket changed to zero - terminating.",side);
         cx->error(true);
-        ret = false;
-        goto failure;
+
+        handle_cx_events(side,cx);
+        return false;
     }    
 
-    if(!cx->write_waiting_for_peercom()) {
-        if( xcom->in_writeset(cx->socket()) || cx->com()->forced_write_reset() || ( !cx->writebuf()->empty() ) ) {
+    if(cx->write_waiting_for_peercom()) {
+        return handle_cx_events(side,cx);
+    }
 
-            ssize_t  orig_writebuf_size = cx->writebuf()->size();
-            ssize_t  cur_writebuf_size = orig_writebuf_size;
+    bool in_writeset = xcom->in_writeset(cx->socket());
+    bool in_force_writeset = cx->com()->forced_write_reset();
 
-            if(! handle_cx_write(side, cx)) {
-                ret = false;
-                goto failure;
+
+    if( in_writeset || in_force_writeset || ( ! cx->writebuf()->empty() ) ) {
+
+        bool side_left = side == 'l' || side == 'L' || side == 'x' || side == 'X';
+        bool side_right = side == 'r' || side == 'R' || side == 'y' || side == 'Y';
+
+        auto  orig_bytes_sz = cx->writebuf()->size();
+        auto  pending_bytes_sz = orig_bytes_sz;
+
+        if(! handle_cx_write(side, cx)) {
+            handle_cx_events(side,cx);
+            return false;
+        }
+        pending_bytes_sz = cx->writebuf()->size();
+        auto written_sz = orig_bytes_sz - pending_bytes_sz;
+
+        if(cx->com()->forced_read_on_write()) {
+            _dia("baseProxy::handle_cx_write_once[%c]: read on write enforced on socket %d", side, cx->socket());
+            if(! handle_cx_read(side, cx)) {
+
+                handle_cx_events(side,cx);
+                return false;
+
             }
-            cur_writebuf_size = cx->writebuf()->size();
+        }
 
+        // if we wanted to write something, but after write we have some left-overs
+        if (orig_bytes_sz > 0) {
 
-            if(cx->com()->forced_read_on_write()) {
-                _dia("baseProxy::handle_cx_write_once[%c]: read on write enforced on socket %d", side, cx->socket());
-                if(! handle_cx_read(side, cx)) {
-                    ret = false;
-                    goto failure;
-                }
-            }
+            if (pending_bytes_sz > 0) {
 
-            // if we wanted to write something, but after write we have some left-overs
-            if (orig_writebuf_size > 0 && cur_writebuf_size > 0) {
 
                 // on bottleneck, we monitor write on this socket to flush buffered data
                 cx->com()->set_write_monitor(cx->socket());
 
-                if (side == 'l' || side == 'L' || side == 'x' || side == 'X') {
-                    _inf("left write bottleneck %s!", state().write_left_bottleneck() ? "continuing" : "start");
+                if (side_left) {
+                    _dia("left write bottleneck %s, written %d, pending %d bytes!", state().write_left_bottleneck() ? "continuing" : "start", written_sz, pending_bytes_sz);
                     state().write_left_bottleneck(true);
                     change_side_monitoring('r', false, false, 1, 0);
+                    change_side_monitoring('l', true, true, -1, -1);
 
-                }
-                else
-                if(side == 'r' || side == 'R' || side == 'y' || side == 'Y') {
-                    _inf("right write bottleneck %s!", state().write_right_bottleneck() ? "continuing" : "start");
+                } else if (side_right) {
+                    _dia("right write bottleneck %s, written %d, pending %d bytes!", state().write_right_bottleneck() ? "continuing" : "start", written_sz, pending_bytes_sz);
                     state().write_right_bottleneck(true);
                     change_side_monitoring('l', false, false, 1, 0);
-                }
-            } else
-            if(orig_writebuf_size > 0 && cur_writebuf_size <= 0){
-
-                // we emptied write buffer!
-
-                if(state().write_left_bottleneck() && (side == 'l' || side == 'L' || side == 'x' || side == 'X')) {
-                    _inf("left write bottleneck stop!");
-                    state().write_left_bottleneck(false);
-                    change_side_monitoring('r',true,false, -1, 0); //NOTE: write monitor enable?
-                } else
-                if( state().write_right_bottleneck() && (side == 'r' || side == 'R' || side == 'y' || side == 'Y')) {
-                    _inf("right write bottleneck stop!");
-                    state().write_right_bottleneck(false);
-                    change_side_monitoring('l',true,false, -1, 0); //NOTE: write monitor enable?
-
+                    change_side_monitoring('r', true, true, -1, -1);
                 }
             } else {
-                // orig_writebuf_size == 0
-                // not interesting - nothing to write
+
+                if (state().write_left_bottleneck() && side_left) {
+                    _dia("left write bottleneck stop!");
+                    state().write_left_bottleneck(false);
+                    change_side_monitoring('r', true, false, -1, 0); //NOTE: write monitor enable?
+                } else if (state().write_right_bottleneck() && side_right) {
+                    _dia("right write bottleneck stop!");
+                    state().write_right_bottleneck(false);
+                    change_side_monitoring('l', true, false, -1, 0); //NOTE: write monitor enable?
+
+                }
             }
         }
     }
-    
-    // on failure, skip all operations and go here
-    failure:
-    
-    // errors are products of operations above. Act on them.
-    if(! handle_cx_events(side,cx))
-        ret = false;    
-    
-    return ret;
+
+    return true;
 }
 
 
@@ -1127,7 +1127,7 @@ int baseProxy::run_poll() {
             }
         }
         for (auto cur_socket: copied) {
-            //FIXME
+
             _deb("baseProxy::run: %s socket %d ", setname.at(name_iter).c_str(), cur_socket);
             epoll_handler* p_handler = com()->poller.get_handler(cur_socket);
 
