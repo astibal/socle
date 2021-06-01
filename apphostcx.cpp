@@ -63,7 +63,40 @@ int AppHostCX::make_sig_states(sensorType& sig_states, std::vector<std::shared_p
     return r;
 }
 
-bool AppHostCX::detect(sensorType& cur_sensor,char side) {
+
+// iterate over all enabled signature trees
+bool AppHostCX::detect(char side) {
+
+    bool ret = false;
+
+    // start with 1 - skip starttls signatures
+    for(unsigned int i = 1; i < SignatureTree::max_groups ; ++i) {
+
+        auto* sensor_raw = signatures_.sensors_[i].get();
+
+        if(sensor_raw) {
+            _dia("AppHostCX::detect: tree group %d valid", i);
+
+            if (signatures_.filter_.test(i)) {
+                _dia("AppHostCX::detect: tree group %d enabled", i);
+
+                auto &sensor = *signatures_.sensors_[i].get();
+                if( detect(sensor, side) ) {
+                    ret = true;
+                }
+            }
+        }
+        else {
+            _dia("AppHostCX::detect: tree group %d - no signatures", i);
+            break;
+            // end of first nullptr sensor
+        }
+    }
+
+    return ret;
+}
+
+bool AppHostCX::detect(sensorType& cur_sensor, char side) {
 
     bool matched = false;
     
@@ -117,7 +150,7 @@ void AppHostCX::post_read() {
             _dia("AppHostCX::post_read[%s]: side %c, flow path: %s", c_type(), 'r', flow().hr().c_str());
 
             // we can't detect starttls in POST mode
-            detect(base_sensor(), 'r');
+            detect('r');
             inspect('r');
         }
         else {
@@ -157,7 +190,7 @@ void AppHostCX::post_write() {
 
             // we can't detect starttls in POST mode
             _dia("AppHostCX::post_write[%s]: side %c, flow path: %s", c_type(), 'w', flow().hr().c_str());
-            detect(base_sensor(), 'w');
+            detect('w');
             inspect('w');
         }
         else {
@@ -278,7 +311,7 @@ void AppHostCX::pre_read() {
             if (detect(starttls_sensor(),'r')) {
                 upgrade_starttls = true;
             }
-            detect(base_sensor(), 'r');
+            detect('r');
             inspect('r');
         }
     }
@@ -331,7 +364,7 @@ void AppHostCX::pre_write() {
             if(detect(starttls_sensor(),'w')) {
                 upgrade_starttls = true;
             }
-            detect(base_sensor(), 'w');
+            detect('w');
             inspect('w');
         }
     }

@@ -44,8 +44,8 @@ public:
     mode_t mode() const { return mode_; }
     void mode(mode_t m) { mode_ = m; }
     
-    sensorType& starttls_sensor() { return *signatures_.sensors_[1]; };
-    sensorType& base_sensor() { return *signatures_.sensors_[0]; };
+    sensorType& starttls_sensor() { return *signatures_.sensors_[0]; };
+    sensorType& base_sensor() { return *signatures_.sensors_[1]; };
 
     // create pairs of results and pointers to (somewhere, already created) signatures.
     int make_sig_states(sensorType& sig_states, std::vector<std::shared_ptr<duplexFlowMatch>>& source_signatures);
@@ -75,6 +75,7 @@ protected:
     void pre_write() override;
     
     bool detect(sensorType&,char side); // signature detection engine
+    bool detect(char side);
     virtual void inspect(char side) = 0; // to be overridden for ALG inspectors
     
     virtual void on_detect(std::shared_ptr<duplexFlowMatch>, flowMatchState&, vector_range&) = 0;
