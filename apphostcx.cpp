@@ -41,21 +41,14 @@ int AppHostCX::make_sig_states(sensorType& sig_states, std::vector<std::shared_p
     
     _deb("AppHostCX::zip_signatures: zipper start");
     for( auto& sh_ptr: source_signatures ) {
-        
         if(! sh_ptr ) {
             _deb("AppHostCX::zip_signatures: attempt to zip nullptr signature");
             continue;
         }
 
         _deb("AppHostCX::zip_signatures: sensor 0x%x, adding %s at 0x%x",&sig_states, sh_ptr->name().c_str(), sh_ptr.get());
-        
-        std::pair<flowMatchState, std::shared_ptr<duplexFlowMatch>> a;
-        a.first = flowMatchState();
-        a.second = std::shared_ptr<duplexFlowMatch>(sh_ptr);
 
-
-
-        sig_states.push_back(a);
+        sig_states.emplace_back(flowMatchState(),sh_ptr);
         ++r;
     }
 
