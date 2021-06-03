@@ -35,12 +35,13 @@ AppHostCX::AppHostCX(baseCom* c, unsigned int s) :baseHostCX(c,s), signatures_(2
     }
 }
 
-int AppHostCX::make_sig_states(sensorType& sig_states, std::vector<std::shared_ptr<duplexFlowMatch>>& source_signatures) {
-    sig_states.clear();
+int AppHostCX::make_sig_states(std::shared_ptr<sensorType> sig_states, std::shared_ptr<sensorType> source_signatures) {
+    sig_states->clear();
     int r = 0;
     
     _deb("AppHostCX::zip_signatures: zipper start");
-    for( auto& sh_ptr: source_signatures ) {
+    auto& ref = *source_signatures;
+    for( auto& [ _, sh_ptr ] : ref ) {
         if(! sh_ptr ) {
             _deb("AppHostCX::zip_signatures: attempt to zip nullptr signature");
             continue;
@@ -48,11 +49,12 @@ int AppHostCX::make_sig_states(sensorType& sig_states, std::vector<std::shared_p
 
         _deb("AppHostCX::zip_signatures: sensor 0x%x, adding %s at 0x%x",&sig_states, sh_ptr->name().c_str(), sh_ptr.get());
 
-        sig_states.emplace_back(flowMatchState(),sh_ptr);
+        // copy over only signature shared pointers, flow match state is fresh one
+        sig_states->emplace_back(flowMatchState(),sh_ptr);
         ++r;
     }
 
-    _deb("AppHostCX::zip_signatures: loaded %d of %d",r, source_signatures.size());
+    _deb("AppHostCX::zip_signatures: loaded %d of %d",r, source_signatures->size());
     return r;
 }
 
@@ -65,16 +67,15 @@ bool AppHostCX::detect(char side) {
     // start with 1 - skip starttls signatures
     for(unsigned int i = 1; i < SignatureTree::max_groups ; ++i) {
 
-        auto* sensor_raw = signatures_.sensors_[i].get();
+        auto sensor_ptr = signatures_.sensors_[i];
 
-        if(sensor_raw) {
+        if(sensor_ptr) {
             _dia("AppHostCX::detect: tree group %d valid", i);
 
             if (signatures_.filter_.test(i)) {
                 _dia("AppHostCX::detect: tree group %d enabled", i);
 
-                auto &sensor = *signatures_.sensors_[i].get();
-                if( detect(sensor, side) ) {
+                if( detect(sensor_ptr, side) ) {
                     ret = true;
                 }
             }
@@ -89,22 +90,25 @@ bool AppHostCX::detect(char side) {
     return ret;
 }
 
-bool AppHostCX::detect(sensorType& cur_sensor, char side) {
+bool AppHostCX::detect(const std::shared_ptr<sensorType> &cur_sensor, char side) {
+
+    if(not cur_sensor) return false;
 
     bool matched = false;
     
-    if(cur_sensor.empty()) {
-        _dia("AppHostCX::detect[%s]: Sensor %x is empty!",c_type(), &base_sensor());
+    if(cur_sensor->empty()) {
+        _dia("AppHostCX::detect[%s]: Sensor %x is empty!",c_type(), base_sensor().get());
     }
-    
-    for (auto& sig: cur_sensor) {
+
+    auto& ref = *cur_sensor;
+    for (auto& sig: ref) {
         
         // get zipped results with signature pointers
         std::shared_ptr<duplexFlowMatch> sig_sig = std::get<1>(sig);
         flowMatchState& sig_res = std::get<0>(sig);
         
         if (! sig_res.hit()) {
-            _dia("AppHostCX::detect[%s]: Sensor %x, signature name %s", c_type(), &base_sensor(), sig_sig->name().c_str());
+            _dia("AppHostCX::detect[%s]: Sensor %x, signature name %s", c_type(), base_sensor().get(), sig_sig->name().c_str());
             
             bool r = sig_res.update(this->flowptr(),sig_sig);
             

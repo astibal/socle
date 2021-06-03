@@ -479,48 +479,70 @@ public:
 };
 
 
-typedef typename std::vector<std::pair<flowMatchState,std::shared_ptr<duplexFlowMatch>>> sensorType;
-
 
 struct SignatureTree {
+
+    using sensorType = std::vector<std::pair<flowMatchState,std::shared_ptr<duplexFlowMatch>>>;
+
     static constexpr const unsigned int max_groups = 128;
 
     std::bitset<max_groups> filter_;
-    std::array<std::unique_ptr<sensorType>, max_groups> sensors_;
+    std::array<std::shared_ptr<sensorType>, max_groups> sensors_;
     std::unordered_map<std::string, int> name_index;
 
     SignatureTree() = default;
     explicit SignatureTree(int prealloc_count) {
 
         for(int i = 0; i < prealloc_count; ++i)
-            add_group();
+            group_add(true);
     }
 
-    unsigned int add_group() noexcept  {
-        auto ret = last_alloc_index;
-
-        sensors_[last_alloc_index] = std::make_unique<sensorType>();
-        // unnamed
-        filter_.set(last_alloc_index, true);
-
+    int group_add(bool allowed=false) noexcept  {
         last_alloc_index++;
-        return ret;
+
+        sensors_[last_alloc_index] = std::make_shared<sensorType>();
+        // unnamed
+        filter_.set(last_alloc_index, allowed);
+
+        return last_alloc_index;
     }
 
-    unsigned int add_group(const char* name) noexcept {
-        auto ret = last_alloc_index;
+    int group_add(const char* name, bool allowed=false) noexcept {
+        last_alloc_index++;
 
-        sensors_[last_alloc_index] = std::make_unique<sensorType>();
-        filter_.set(last_alloc_index, true);
+        sensors_[last_alloc_index] = std::make_shared<sensorType>();
+        filter_.set(last_alloc_index, allowed);
         name_index[name] = last_alloc_index;
 
 
-        last_alloc_index++;
-        return ret;
+        return last_alloc_index;
     }
 
+    std::optional<unsigned int> group_index(const char* name) {
+        if(name_index.find(name) != name_index.end()) {
+
+            return name_index[name];
+        }
+        return std::nullopt;
+    }
+
+    std::shared_ptr<sensorType> group(const char* name, bool allowed_only=true) {
+        auto index = group_index(name);
+        if(index.has_value()) {
+            if(allowed_only and filter_.test(index.value())) {
+                return sensors_[index.value()];
+            }
+            return sensors_[index.value()];
+        }
+        return nullptr;
+    }
+
+    inline int size() const { return last_alloc_index; }
+    inline bool check(size_t index) const { return filter_.test(index); }
+    inline void set(size_t index, bool val) noexcept { if (index < max_groups) filter_.set(index, val); } // check boundaries to not throw
+
 private:
-    unsigned int last_alloc_index = 0;
+    int last_alloc_index = -1;
 };
 
 #endif
