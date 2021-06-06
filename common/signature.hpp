@@ -490,7 +490,7 @@ struct SignatureTree {
     std::array<std::shared_ptr<sensorType>, max_groups> sensors_;
     std::unordered_map<std::string, int> name_index;
 
-    SignatureTree() = default;
+    SignatureTree() = delete;
     explicit SignatureTree(int prealloc_count) {
 
         for(int i = 0; i < prealloc_count; ++i)
@@ -540,6 +540,36 @@ struct SignatureTree {
     inline int size() const { return last_alloc_index; }
     inline bool check(size_t index) const { return filter_.test(index); }
     inline void set(size_t index, bool val) noexcept { if (index < max_groups) filter_.set(index, val); } // check boundaries to not throw
+
+    /// @brief add signature into requested named sensor
+    /// @param sig 'sig' shared pointer with the signature
+    /// @param group_name 'group_name' desired named sensor - will be created if it doesn't exist
+    /// @param allowed 'allowed' set to true if created sensor shall be marked as allowed
+    /// @return return true if a new sensor has been created
+    bool signature_add(std::shared_ptr<duplexFlowMatch> sig, const char* group_name, bool allowed = false) {
+
+        auto created = false;
+
+        auto gi = group_index(group_name);
+        if(not gi) {
+            gi = group_add(group_name, allowed);
+            created = true;
+        }
+
+        auto sensor = sensors_[gi.value_or(0)];
+        sensor->emplace_back(flowMatchState(), sig);
+
+        return created;
+    }
+
+    void reset() {
+        last_alloc_index = -1;
+        name_index.clear();
+
+
+
+        std::for_each(sensors_.begin(), sensors_.end(), []( std::shared_ptr<sensorType >& x) { x.reset(); });
+    }
 
 private:
     int last_alloc_index = -1;
