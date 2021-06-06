@@ -42,6 +42,7 @@ class Flow {
 
     logan_lite log;
 public:
+    unsigned int exchanges = 0; // count how many times flow changed side
 
     explicit Flow() {
         log = logan::create("inspect");
@@ -99,6 +100,7 @@ public:
             std::pair<SourceType,buffer*> t(src,b);
             flow_.push_back(t);
             update_counters_.push_back(1);
+            exchanges++;
         }
         
         return len;

@@ -32,13 +32,14 @@ class AppHostCX: public baseHostCX {
 public:
     using sensorType = SignatureTree::sensorType;
 
+    struct config {
+        static inline unsigned int max_starttls_exchanges = 10;
+        static inline unsigned int max_detect_bytes = 20000;
+    };
+
     AppHostCX(baseCom* c, unsigned int s);
     AppHostCX(baseCom* c, const char* h, const char* p);
 
-    static unsigned int& max_detect_bytes() {
-        static unsigned int DETECT_MAX_BYTES = 20000;
-        return DETECT_MAX_BYTES;
-    }
 
     typedef enum { MODE_NONE = 0, MODE_PRE = 1, MODE_POST = 2 } mode_t;
 

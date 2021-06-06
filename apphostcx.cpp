@@ -139,7 +139,7 @@ bool AppHostCX::detect(const std::shared_ptr<sensorType> &cur_sensor, char side)
 void AppHostCX::post_read() {
     
     if ( mode() == MODE_POST) {
-        if(this->meter_read_bytes <= max_detect_bytes()) {
+        if(this->meter_read_bytes <= config::max_detect_bytes) {
             auto b = this->to_read();
             this->flow().append('r', b);
 
@@ -164,7 +164,7 @@ void AppHostCX::post_write() {
     
     if ( mode() == MODE_POST ) {
         
-        if(this->meter_write_bytes <= max_detect_bytes()) {
+        if(this->meter_write_bytes <= config::max_detect_bytes) {
             auto b = this->writebuf();
 
             int f_s = flow().flow().size();
@@ -217,7 +217,7 @@ void AppHostCX::pre_read() {
     bool behind_read = false;
     
     if (mode() == MODE_PRE) {
-        if(this->meter_read_bytes <= max_detect_bytes() && peek_read_counter <= this->meter_read_bytes  ) {
+        if(this->meter_read_bytes <= config::max_detect_bytes && peek_read_counter <= this->meter_read_bytes  ) {
 
             if (peek_read_counter < this->meter_read_bytes) {
                 behind_read = true;
@@ -264,7 +264,7 @@ void AppHostCX::pre_read() {
             }
         }
 
-        if(meter_read_bytes < max_detect_bytes()) {
+        if(meter_read_bytes < config::max_detect_bytes) {
             buffer b(5000);
             b.size(0);
             int l = this->peek(b);
@@ -305,8 +305,10 @@ void AppHostCX::pre_read() {
         if(updated) {
             _dia("AppHostCX::pre_read[%s]: side %c, flow path: %s",c_type(), 'r', flow().hr().c_str());
 
-            if (detect(starttls_sensor(),'r')) {
-                upgrade_starttls = true;
+            if(flow().exchanges < config::max_starttls_exchanges) {
+                if (detect(starttls_sensor(), 'r')) {
+                    upgrade_starttls = true;
+                }
             }
             detect('r');
             inspect('r');
@@ -320,7 +322,7 @@ void AppHostCX::pre_write() {
     if ( mode() == MODE_PRE ) {
         buffer* b = this->writebuf();
         
-        if(this->meter_write_bytes <= max_detect_bytes() && b->size() > 0) {
+        if(this->meter_write_bytes <= config::max_detect_bytes && b->size() > 0) {
             
             int  f_s = flow().flow().size();
             int  f_last_data_size = 0;
@@ -358,8 +360,10 @@ void AppHostCX::pre_write() {
 
             _dia("AppHostCX::pre_write[%s]: side %c, flow path: %s",c_type(), 'w', flow().hr().c_str());
 
-            if(detect(starttls_sensor(),'w')) {
-                upgrade_starttls = true;
+            if(flow().exchanges < config::max_starttls_exchanges) {
+                if (detect(starttls_sensor(), 'w')) {
+                    upgrade_starttls = true;
+                }
             }
             detect('w');
             inspect('w');
