@@ -191,6 +191,7 @@ protected:
     bool pollroot_ = false;    
 
 public:
+    metering const& stats() const { return stats_; }
     proxy_state& state() { return status_; }
 
     static constexpr unsigned int HANDLE_OK = 0;
