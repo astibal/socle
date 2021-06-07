@@ -205,7 +205,7 @@ void memPool::allocate(std::size_t n_sz256, std::size_t n_sz1k, std::size_t n_sz
 
 std::size_t memPool::find_ptr_size(void* xptr) {
 
-    unsigned char* ptr = static_cast<unsigned char*>(xptr);
+    auto* ptr = static_cast<unsigned char*>(xptr);
 
     if      (ptr >= bigptr_32 && ptr < bigptr_32 + alloc32) { return 32; }
     else if (ptr >= bigptr_64 && ptr < bigptr_64 + alloc64) { return 64; }

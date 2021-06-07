@@ -17,6 +17,7 @@
 */
 
 #include <apphostcx.hpp>
+#include <sslcom.hpp>
 
 AppHostCX::AppHostCX(baseCom* c, const char* h, const char* p) : baseHostCX(c,h,p), signatures_(2) {
 
@@ -305,7 +306,9 @@ void AppHostCX::pre_read() {
         if(updated) {
             _dia("AppHostCX::pre_read[%s]: side %c, flow path: %s",c_type(), 'r', flow().hr().c_str());
 
-            if(flow().exchanges < config::max_starttls_exchanges) {
+            // check first few exchanges to upgrade socket, but only if com is not SSL already
+            if(flow().exchanges < config::max_starttls_exchanges and dynamic_cast<TCPCom*>(com()) and not dynamic_cast<SSLCom*>(com())) {
+
                 if (detect(starttls_sensor(), 'r')) {
                     upgrade_starttls = true;
                 }
@@ -360,7 +363,9 @@ void AppHostCX::pre_write() {
 
             _dia("AppHostCX::pre_write[%s]: side %c, flow path: %s",c_type(), 'w', flow().hr().c_str());
 
-            if(flow().exchanges < config::max_starttls_exchanges) {
+            // check first few exchanges to upgrade socket, but only if com is not SSL already
+            if(flow().exchanges < config::max_starttls_exchanges and dynamic_cast<TCPCom*>(com()) and not dynamic_cast<SSLCom*>(com())) {
+
                 if (detect(starttls_sensor(), 'w')) {
                     upgrade_starttls = true;
                 }
