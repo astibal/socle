@@ -1,5 +1,6 @@
 #include <internet.hpp>
 #include <log/logger.hpp>
+#include <epoll.hpp>
 
 namespace inet {
 
@@ -58,7 +59,7 @@ namespace inet {
         return inet_pton(AF_INET, str.c_str(), &(sa.sin_addr)) != 0;
     }
 
-    int socket_connect (std::string ip_address, int port) {
+    int socket_connect (std::string const& ip_address, int port) {
 
         auto log = Factory::log();
 
@@ -113,19 +114,27 @@ namespace inet {
         path = pos1 == std::string::npos ? "" : url.substr(pos1);
         domain = std::string(url.begin() + offset, pos1 != std::string::npos ? url.begin() + pos1 : url.end());
         path = (pos2 = path.find("#")) != std::string::npos ? path.substr(0, pos2) : path;
-        url_port = (pos3 = domain.find(":")) != std::string::npos ? domain.substr(pos3 + 1) : "";
+        url_port = (pos3 = domain.find(":")) != std::string::npos ? domain.substr(pos3 + 1) : "80";
         domain = domain.substr(0, pos3 != std::string::npos ? pos3 : domain.length());
         protocol = offset > 0 ? url.substr(0, offset - 3) : "";
         query = (pos4 = path.find("?")) != std::string::npos ? path.substr(pos4 + 1) : "";
         path = pos4 != std::string::npos ? path.substr(0, pos4) : path;
 
+        if(path.empty()) {
+            path = "/";
+        }
+
         if (query.length() > 0) {
             path.reserve(path.length() + 1 + query.length());
             path.append("?").append(query);
         }
-        if (url_port.length() == 0 && protocol.length() > 0) {
-            url_port = protocol == "http" ? "80" : "443";
-
+        if(protocol.length() > 0) {
+            if(protocol == "http") {
+                url_port = "80";
+            }
+            else if(protocol == "https") {
+                url_port = "443";
+            }
         }
         _deb("inet:download: using %s on port %s", protocol.c_str(), url_port.c_str());
 
@@ -140,11 +149,11 @@ namespace inet {
             }
         }
         _deb("inet:download: domain %s", domain.c_str());
-        for(auto s: ip_addresses) {
+        for(auto const& s: ip_addresses) {
             _deb("inet::download: IP: %s", s.c_str());
         }
 
-        if (ip_addresses.size() > 0) {
+        if (not ip_addresses.empty()) {
             port = std::stoi(url_port);
 
             std::string request = "GET " + path + " HTTP/1.0\r\n";
@@ -186,40 +195,57 @@ namespace inet {
     }
 
     int http_get (const std::string &request, const std::string &ip_address, int port, buffer &buf, int timeout) {
-        std::string header;
-        char delim[] = "\r\n\r\n";
-        char buffer[16384];
 
-        int bytes_received = -1;
-        int bytes_sofar = 0;
-        int bytes_expected = -1;
-        int bytes_total = 0;
-        int state = 0;
 
         auto log = Factory::log();
 
-        time_t start_time = time(nullptr);
+        auto send_request = [&request](auto sd) -> int{
+            unsigned attempts = 10;
+            buffer send_buf(request.length());
+            send_buf.size(0);
+            std::memcpy(send_buf.data(), request.c_str(), request.length());
 
-        int sd = socket_connect(ip_address, port);
-        if (sd >= 0) {
-            ::send(sd, request.c_str(), request.length(), 0);
+            std::size_t sent = 0;
+            do {
+                auto str_send = request.substr(sent);
+                auto ret = ::send(sd, str_send.c_str(), str_send.length(), 0);
+                if (ret > 0) {
+                    sent += ret;
+                } else {
+                    return -1;
+                }
+            } while (sent < request.length() and attempts > 0);
+
+            return request.length();
+        };
+
+
+        auto receive_response = [&log, &request](auto sd, auto timeout, auto& buf) -> int{
+
+            epoll e;
+            e.init();
+            e.add(sd);
+
+
+            std::string header;
+            char constexpr delim[] = "\r\n\r\n";
+            char recv_buffer[16384];
+
+            int bytes_received = -1;
+            int bytes_sofar = 0;
+            int bytes_expected = -1;
+            int bytes_total = 0;
+            int state = 0;
+
+            time_t start_time = time(nullptr);
+
             while (bytes_sofar != bytes_expected) {
 
-                fd_set rfds;
-                struct timeval tv;
-                int retval;
+                int nfds = e.wait(1000);
 
-                FD_ZERO(&rfds);
-                FD_SET(sd, &rfds);
-
-                // Wait up to defined timeout
-                tv.tv_sec = 1;
-                tv.tv_usec = 0;
-
-                retval = select(sd + 1, &rfds, nullptr, nullptr, &tv);
-                if (retval) {
+                if (nfds > 0 and e.in_read_set(sd)) {
                     /* Don't rely on the value of tv now! */
-                    bytes_received = ::recv(sd, buffer, sizeof(buffer), 0);
+                    bytes_received = ::recv(sd, recv_buffer, sizeof(recv_buffer), 0);
                     bytes_total += bytes_received;
 
                     _deb("internet::http_get(%s): received %dB, %dB total", request.c_str(), bytes_received,
@@ -252,8 +278,8 @@ namespace inet {
                 {
                     int i = 0;
                     for (; i < bytes_received && state + 1 < (signed int) sizeof(delim); i++) {
-                        header += buffer[i];
-                        state = buffer[i] == delim[state] ? state + 1 : 0;
+                        header += recv_buffer[i];
+                        state = recv_buffer[i] == delim[state] ? state + 1 : 0;
                     }
 
                     if (state == sizeof(delim) - 1) {
@@ -264,21 +290,36 @@ namespace inet {
                 if (bytes_expected == -1 && state == sizeof(delim) - 1) //parse header
                 {
                     bytes_expected = -2;
-                    std::string h = header;
-                    std::stringstream(header_value(h, "Content-Length")) >> bytes_expected;
+                    std::stringstream(header_value(header, "Content-Length")) >> bytes_expected;
                 }
                 if (state == sizeof(delim) - 1)//read body
                 {
                     bytes_sofar += bytes_received;
-                    buf.append(buffer + body_index, bytes_received);
+                    buf.append(recv_buffer + body_index, bytes_received);
                 }
             }
+
+            return bytes_sofar;
+
+        };
+
+
+        int response_size = 0;
+        int sd = socket_connect(ip_address, port);
+        if (sd >= 0) {
+
+            if(send_request(sd) < static_cast<int>(request.length())) {
+                _err("internet::http_get: failed to send request: %s", request.c_str());
+                return -1;
+            }
+
+            response_size = receive_response(sd, timeout, buf);
 
             ::close(sd);
         } else {
             _err("inet::http_get: socket_connect failed: %d", sd);
         }
-        return bytes_sofar;
+        return response_size;
     }
 
 }

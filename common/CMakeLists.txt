@@ -35,7 +35,8 @@ add_library(
 		mpdisplay.hpp
 		mpdisplay.cpp
         biomem.hpp
-		socle_size.hpp)
+		socle_size.hpp
+		epoll.cpp)
 
 if(UNIX)
 	IF(NOT CMAKE_BUILD_TYPE)

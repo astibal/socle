@@ -31,8 +31,6 @@ add_library(socle_lib
         sslcertstore.cpp
         traflog.hpp
         apphostcx.cpp
-        epoll.hpp
-        epoll.cpp
         sobject.cpp
         uxcom.cpp
         sslcertval.cpp
