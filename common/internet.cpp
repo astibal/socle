@@ -334,6 +334,7 @@ namespace inet {
 
             if(send_request(sd) < static_cast<int>(request.length())) {
                 _err("internet::http_get: failed to send request: %s", request.c_str());
+                ::close(sd);
                 return -1;
             }
 
