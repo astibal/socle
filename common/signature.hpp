@@ -531,8 +531,11 @@ struct SignatureTree {
     std::shared_ptr<sensorType> group(const char* name, bool allowed_only=true) {
         auto index = group_index(name);
         if(index.has_value()) {
-            if(allowed_only and filter_.test(index.value())) {
-                return sensors_[index.value()];
+            if(allowed_only) {
+                if(filter_.test(index.value())) {
+                    return sensors_[index.value()];
+                }
+                return nullptr;
             }
             return sensors_[index.value()];
         }
