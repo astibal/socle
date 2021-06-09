@@ -40,21 +40,45 @@
 namespace inet {
 
     struct Factory {
-        static const logan_lite& log() {
+        static logan_lite& log() {
             static logan_lite l("inet");
             return l;
         }
     };
 
-    std::vector<std::string> dns_lookup(const std::string &host_name, int ipv=4); //ipv: default=4
-    bool is_ipv6_address(const std::string& str);
-    bool is_ipv4_address(const std::string& str);
-    int socket_connect(std::string const& ip_address, int port);
-    int http_get(const std::string& request, const std::string& ip_address, int port, buffer& buf, int timout=10);
-    int download(const std::string& url, buffer& buf, int timout=10);
+    /// @brief retrieve vector of strings from getaddrinfo() respecting IP version parameter
+    /// @param host_name 'host_name' to resolve to IP address list
+    /// @param ipv 'ipv' specify IP version. Can be 4 or 6. Anything else implies IPv4.
+    /// @return list of strings with IP addresses of desired IP family.
+    std::vector<std::string> dns_lookup(const std::string &host_name, int ipv = 4);
 
-    inline sockaddr_in* to_sockaddr_in(sockaddr_storage* st) { auto* ptr = (sockaddr_in*)st; return ptr; }
-    inline sockaddr_in6* to_sockaddr_in6(sockaddr_storage* st) { auto* ptr = (sockaddr_in6*)st; return ptr; }
+
+    /// @brief download resource via HTTP/1.0. All magic included.
+    /// @param url 'url' full resource URL
+    /// @param buf 'buf' buffer where to save the content. Note: buffer doesn't have to be pre-allocated.
+    /// @param ipv 'ipv' specify IP version. Can be 4 or 6. Anything else implies IPv4.
+    /// @param timout 'timeout' timeout of the operation
+    /// @return returns the size of retrieved content bytes (not size of data received on socket). Negative on error.
+    int download(const std::string& url, buffer& buf, int timout, int ipv = 4);
+
+    /// @brief Opens a socket to IP address and sends raw bytes. Expects HTTP response.
+    /// @param request 'request' raw string with request body
+    /// @param port 'port' port number to connect to
+    /// @param buf 'buf' buffer where to save the content. Note: buffer doesn't have to be pre-allocated.
+    /// @param timout 'timeout' timeout of the operation
+    /// @return returns the size of retrieved content bytes (not size of data received on socket). Negative on error.
+    int http_get(const std::string& request, const std::string& ip_address, int port, buffer& buf, int timout=10);
+
+    /// @brief is it IPv4?
+    bool is_ipv4_address(const std::string& str);
+    /// @brief is it IPv6?
+    bool is_ipv6_address(const std::string& str);
+    int socket_connect(std::string const& ip_address, int port);
+
+    /// @brief convert conveniently sockaddr_storage pointer to sockaddr_in pointer
+    inline sockaddr_in* to_sockaddr_in(sockaddr_storage* st) { return reinterpret_cast<sockaddr_in*>(st); }
+    /// @brief convert conveniently sockaddr_storage pointer to sockaddr_in6 pointer
+    inline sockaddr_in6* to_sockaddr_in6(sockaddr_storage* st) { return reinterpret_cast<sockaddr_in6*>(st); }
 
 }
 

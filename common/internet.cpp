@@ -4,13 +4,15 @@
 
 namespace inet {
 
-    std::vector<std::string> dns_lookup (const std::string &host_name, int ipv) //ipv: default=4
+    std::vector<std::string> dns_lookup (const std::string &host_name, int ipv)
     {
         std::vector<std::string> output;
 
         auto log = Factory::log();
 
-        struct addrinfo hints, *res, *p;
+        addrinfo hints{};
+        addrinfo* res = nullptr;
+
         int status, ai_family;
         char ip_address[INET6_ADDRSTRLEN];
 
@@ -27,13 +29,13 @@ namespace inet {
 
         _deb("inet::dns_lookup: %s ipv: %d", host_name.c_str(), ipv);
 
-        for (p = res; p != nullptr; p = p->ai_next) {
+        for (auto* p = res; p != nullptr; p = p->ai_next) {
             void *addr;
             if (p->ai_family == AF_INET) { // IPv4
-                struct sockaddr_in *ipv4 = (struct sockaddr_in *) p->ai_addr;
+                auto* ipv4 = reinterpret_cast<sockaddr_in*>(p->ai_addr);
                 addr = &(ipv4->sin_addr);
             } else { // IPv6
-                struct sockaddr_in6 *ipv6 = (struct sockaddr_in6 *) p->ai_addr;
+                auto* ipv6 = reinterpret_cast<sockaddr_in6*>(p->ai_addr);
                 addr = &(ipv6->sin6_addr);
             }
 
@@ -41,7 +43,7 @@ namespace inet {
             inet_ntop(p->ai_family, addr, ip_address, sizeof ip_address);
             _deb("inet::dns_lookup: ->%s", ip_address);
 
-            output.push_back(ip_address);
+            output.emplace_back(ip_address);
         }
 
         freeaddrinfo(res); // free the linked list
@@ -50,12 +52,12 @@ namespace inet {
     }
 
     bool is_ipv6_address (const std::string &str) {
-        struct sockaddr_in6 sa;
+        sockaddr_in6 sa{};
         return inet_pton(AF_INET6, str.c_str(), &(sa.sin6_addr)) != 0;
     }
 
     bool is_ipv4_address (const std::string &str) {
-        struct sockaddr_in sa;
+        sockaddr_in sa{};
         return inet_pton(AF_INET, str.c_str(), &(sa.sin_addr)) != 0;
     }
 
@@ -65,19 +67,30 @@ namespace inet {
 
         _dia("inet::socket_connect: connecting to %s:%d", ip_address.c_str(), port);
 
-        int sd = -1;
-        int connect_err = -1;
+        sockaddr_storage final_sa{};
+        int family = AF_UNSPEC;
 
-        struct sockaddr_in sa;
+        if(is_ipv4_address(ip_address)) {
+            auto* sa = to_sockaddr_in(&final_sa);
+            inet_pton(AF_INET, ip_address.c_str(), &(sa->sin_addr));
+            sa->sin_family = AF_INET;
+            family = AF_INET;
+            sa->sin_port = htons(port);
+        }
+        else if(is_ipv6_address(ip_address)) {
+            auto* sa = to_sockaddr_in6(&final_sa);
+            inet_pton(AF_INET6, ip_address.c_str(), &(sa->sin6_addr));
+            sa->sin6_family = AF_INET6;
+            family = AF_INET6;
+            sa->sin6_port = htons(port);
+        }
+        else  {
+            return -1;
+        }
 
-        memset(&sa, '\0', sizeof(sa));
-        sa.sin_family = AF_INET;
-        sa.sin_addr.s_addr = inet_addr(ip_address.c_str());   /* Server IP */
-        sa.sin_port = htons(port);   /* Server Port number */
-
-        sd = ::socket(AF_INET, SOCK_STREAM, 0);
+        int sd = ::socket(family, SOCK_STREAM, 0);
         if (sd >= 0) {
-            connect_err = ::connect(sd, (struct sockaddr *) &sa, sizeof(sa));
+            auto connect_err = ::connect(sd, (struct sockaddr *) &final_sa, sizeof(final_sa));
 
             if (connect_err == 0) {
                 // success - connected
@@ -95,29 +108,33 @@ namespace inet {
         }
     }
 
-    int download (const std::string &url, buffer &buf, int timeout) {
+    int download (const std::string &url, buffer &buf, int timeout, int ipv) {
 
         auto log = Factory::log();
         _dia("inet::download: getting file %s", url.c_str());
 
         int ret = 0;
 
-        int ipv, port;
+        unsigned short port;
         std::string protocol, domain, path, query, url_port;
         std::vector<std::string> ip_addresses;
 
         int offset = 0;
         size_t pos1, pos2, pos3, pos4;
-        offset = offset == 0 && url.compare(0, 8, "https://") == 0 ? 8 : offset;
+        offset = url.compare(0, 8, "https://") == 0 ? 8 : offset;
         offset = offset == 0 && url.compare(0, 7, "http://") == 0 ? 7 : offset;
+
         pos1 = url.find_first_of('/', offset + 1);
+
         path = pos1 == std::string::npos ? "" : url.substr(pos1);
         domain = std::string(url.begin() + offset, pos1 != std::string::npos ? url.begin() + pos1 : url.end());
-        path = (pos2 = path.find("#")) != std::string::npos ? path.substr(0, pos2) : path;
-        url_port = (pos3 = domain.find(":")) != std::string::npos ? domain.substr(pos3 + 1) : "80";
+
+        path = (pos2 = path.find('#')) != std::string::npos ? path.substr(0, pos2) : path;
+        url_port = (pos3 = domain.find(':')) != std::string::npos ? domain.substr(pos3 + 1) : "80";
         domain = domain.substr(0, pos3 != std::string::npos ? pos3 : domain.length());
+
         protocol = offset > 0 ? url.substr(0, offset - 3) : "";
-        query = (pos4 = path.find("?")) != std::string::npos ? path.substr(pos4 + 1) : "";
+        query = (pos4 = path.find('?')) != std::string::npos ? path.substr(pos4 + 1) : "";
         path = pos4 != std::string::npos ? path.substr(0, pos4) : path;
 
         if(path.empty()) {
@@ -139,13 +156,17 @@ namespace inet {
         _deb("inet:download: using %s on port %s", protocol.c_str(), url_port.c_str());
 
 
-        if (domain.length() > 0 && !is_ipv6_address(domain)) {
+        if (domain.length()) {
             if (is_ipv4_address(domain)) {
                 ip_addresses.push_back(domain);
 
-            } else //if (!is_ipv4_address(domain))
+            }
+            else if(is_ipv6_address(domain)) {
+                ip_addresses.push_back(domain);
+            }
+            else
             {
-                ip_addresses = dns_lookup(domain, ipv = 4);
+                ip_addresses = dns_lookup(domain, ipv);
             }
         }
         _deb("inet:download: domain %s", domain.c_str());
@@ -160,7 +181,7 @@ namespace inet {
             request += "Host: " + domain + "\r\n\r\n";
 
             for (int i = 0, r = 0, ix = ip_addresses.size(); i < ix && r == 0; i++) {
-                _dia("inet::download: GETting %s at IP:%s PORT: %d, timeout %d", request.c_str(), ip_addresses[i].c_str(), port, timeout);
+                _deb("inet::download: GETting %s at IP:%s PORT: %d, timeout %d", request.c_str(), ip_addresses[i].c_str(), port, timeout);
                 r = http_get(request, ip_addresses[i], port, buf, timeout);
                 _dia("inet::download: finished");
                 ret = r;
@@ -174,6 +195,9 @@ namespace inet {
                     _err("inet::download: download failed");
                 }
             }
+        }
+        else {
+            _err("internet::download: no address to connect to");
         }
 
         _deb("internet::download: returning %d", ret);
