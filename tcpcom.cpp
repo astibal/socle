@@ -126,6 +126,11 @@ int TCPCom::connect(const char* host, const char* port) {
 
 int TCPCom::bind(unsigned short port) {
 
+    auto sso_error = [this](int rv, const char* msg) {
+        _err("TCPCom::bind: setsockopt error: %d, %s when setting %s", rv, string_error().c_str(), msg);
+    };
+
+
     sockaddr_storage sa{};
 
     sa.ss_family = bind_sock_family;
@@ -145,12 +150,14 @@ int TCPCom::bind(unsigned short port) {
         return -129;
     
     int optval = 1;
-    setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof optval);
+    int sso = setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof optval);
+    if(sso != 0) sso_error(sso, "SOL_SOCKET/SO_SEUSEADDR");
     
     if(nonlocal_dst_) {
         // allows socket to accept connections for non-local IPs
         _dia("TCPCom::bind[%d]: setting it transparent", sock);
         setsockopt(sock, SOL_IP, IP_TRANSPARENT, &optval, sizeof(optval));
+        if(sso != 0) sso_error(sso, "SOL_IP/IP_TRANSPARENT");
     }
     
     if (::bind(sock, (sockaddr *)&sa, sizeof(sa)) == -1) {
