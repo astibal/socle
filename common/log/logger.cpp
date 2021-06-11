@@ -26,7 +26,7 @@
 
 
 std::shared_ptr<logger> LogOutput::get() {
-    return instance().lout_;
+    return instance()->lout_;
 }
 
 std::shared_ptr<logger> LogOutput::default_logger() {
@@ -34,8 +34,8 @@ std::shared_ptr<logger> LogOutput::default_logger() {
     return r;
 }
 
-void LogOutput::set(std::shared_ptr<logger>&& l) {
-    instance().lout_ = l;
+void LogOutput::set(std::shared_ptr<logger> l) {
+    instance()->lout_ = l;
 }
 
 
@@ -46,12 +46,10 @@ std::string ESC_ (const std::string &s) {
 }
 
 logger_profile::~logger_profile() { 
-    for(auto const& [ optr, mptr ]: targets_) {
+    for(auto& [ optr, mptr ]: targets_) {
         if(optr) {
             optr->flush();
         }
-        delete optr;
-        delete mptr;
     }
 }
 
@@ -118,14 +116,14 @@ int logger::write_log(loglevel level, std::string& sss) {
     bool really_dup = dup2_cout();
 
     // targets are ostream pointers
-    for( auto [ target, mut ] : targets()) {
+    for( auto const& [ target, mut ] : targets()) {
 
 
-        if(target_profiles().find((uint64_t) target) != target_profiles().end()) {
-            if(target_profiles()[(uint64_t)  target]->level_ < level) { continue; }
+        if(target_profiles().find((uint64_t) target.get()) != target_profiles().end()) {
+            if(target_profiles()[(uint64_t)  target.get()]->level_ < level) { continue; }
         }
         
-        if (!should_log_topic(target_profiles()[(uint64_t) target]->level_,level)) continue;
+        if (!should_log_topic(target_profiles()[(uint64_t) target.get()]->level_,level)) continue;
 
         auto l_ = std::scoped_lock(*mut);
         *target << sss << std::endl;
@@ -224,14 +222,14 @@ loglevel logger::adjust_level() {
     loglevel curr_level = level();
     loglevel max_common_level = log::level::NON;
     
-    for( auto [ rem_target, mut ]: remote_targets() ) {
+    for( auto const& [ rem_target, mut ]: remote_targets() ) {
         loglevel this_level = target_profiles()[(uint64_t)rem_target]->level_;
         if ( this_level > max_common_level ) {
             max_common_level = this_level;
         }
     }
-    for(auto [ optr, mut ]: targets()) {
-        loglevel this_level = target_profiles()[(uint64_t)optr]->level_;
+    for(auto const& [ optr, mut ]: targets()) {
+        loglevel this_level = target_profiles()[(uint64_t)optr.get()]->level_;
         if ( this_level > max_common_level ) {
             max_common_level = this_level;
         }

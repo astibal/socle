@@ -90,7 +90,7 @@ public:
 
     // where to log?
 
-    using ostream_list_t = std::list<std::pair<std::ostream*, std::mutex*>>;
+    using ostream_list_t = std::list<std::pair<std::unique_ptr<std::ostream>, std::unique_ptr<std::mutex>>>;
     ostream_list_t targets_;
 
     using fd_list_t = std::list<std::pair<int, std::mutex*>>;
@@ -106,14 +106,12 @@ protected:
     mutable std::mutex mtx_timers;
 
 
-    std::map<uint64_t,logger_profile*> target_profiles_;
+    std::map<uint64_t,std::unique_ptr<logger_profile>> target_profiles_;
     std::map<uint64_t,std::string> target_names_;
 
 public:
     logger() { level_= log::level::NON; period_ =5; target_names_[0]="unknown";};
-    virtual ~logger() {
-        for(auto x: target_profiles_) { delete x.second; }
-    };
+    virtual ~logger() = default;
 
     inline void level(loglevel const& l) { level_ = l; };
     inline loglevel level(void) const { return level_; };
@@ -159,7 +157,7 @@ public:
     template <class ... Args>
     void log2_w_name(loglevel const& l, const char* f, int li, std::string n, const std::string& fmt, Args ... args);
 
-    std::map<uint64_t,logger_profile*>& target_profiles() { return target_profiles_; }
+    auto& target_profiles() { return target_profiles_; }
     std::map<uint64_t,std::string>& target_names() { return target_names_; }
     const char* target_name(uint64_t k) {
         auto it = target_names().find(k);
@@ -196,16 +194,19 @@ class LogOutput {
 public:
     static std::shared_ptr<logger> default_logger ();
 
-    static LogOutput& instance() { static LogOutput l; return l; }
+    static std::shared_ptr<LogOutput> instance() { return self; }
     static std::shared_ptr<logger> get();
-    static void set(std::shared_ptr<logger>&& l);
+    static void set(std::shared_ptr<logger> l);
 
     static inline const std::string levels[] = {"None    ", "Fatal   ", "Critical", "Error   ", "Warning ", "Notify  ",
                                                 "Informat", "Diagnose", "Debug   ", "Dumpit  ", "Extreme "};
+
+    static void init() { self = std::make_shared<LogOutput>(); }
+    LogOutput() : lout_(default_logger()) {};
 private:
 
-    LogOutput() : lout_(default_logger()) {};
     std::shared_ptr<logger> lout_;
+    static inline std::shared_ptr<LogOutput> self;
 };
 
 template <class ... Args>
