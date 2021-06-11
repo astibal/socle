@@ -86,7 +86,7 @@ int UxCom::bind(const char* name) {
         _err("cannot set SO_REUSEADDR");
     }
 
-    if (::bind(s, (sockaddr *) &server, sizeof(server)) == -1) {
+    if (::bind(s, reinterpret_cast<sockaddr*>(&server), sizeof(server)) == -1) {
         ::close(s);
         return -130;
     }

@@ -680,7 +680,7 @@ int UDPCom::write_to_pool(int _fd, const void* _buf, size_t _n, int _flags) {
             }
         }
 
-        int l = 0;
+        ssize_t l = 0;
         int ret_bind = 0;
 
         sockaddr_storage ss_s {};
@@ -746,7 +746,7 @@ int UDPCom::write_to_pool(int _fd, const void* _buf, size_t _n, int _flags) {
         }
         
         //l = send(record.socket,__buf,__n,__flags);
-        return l;
+        return static_cast<int>(l);
         
     } else {
         return -1;

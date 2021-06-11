@@ -139,7 +139,7 @@ struct epoll {
     int idle_timeout_ms = 1000;
 
     // incremented each click and reset on trigger (if greater than idle_timeout_ms)
-    int idle_counter = 0;
+    long idle_counter = 0;
     // if round is 0, we are waiting. If 1 - we will trigger on watched sockets
     // make it 1, so on start it will flip to 0
     bool idle_round = true;
