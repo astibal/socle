@@ -205,7 +205,14 @@ public:
             }
             ms << string_format(fmt, args...);
 
-            LogOutput::get()->log(lev, ms.str());
+            auto lout = LogOutput::get();
+
+            if(lout) {
+                lout->log(lev, ms.str());
+            }
+            else {
+                std::cerr << "no LogOutput target\n";
+            }
         }
     }
 };
