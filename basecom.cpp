@@ -19,6 +19,8 @@
 #include <basecom.hpp>
 #include <hostcx.hpp>
 #include <internet.hpp>
+
+#include <netinet/tcp.h>
 #include <linux/in6.h>
 #include <linux/netfilter_ipv4.h>
 #include <linux/netfilter_ipv6.h>
@@ -71,28 +73,32 @@ int baseCom::unblock(int s) const {
 
 int baseCom::namesocket(int sockfd, std::string& addr, unsigned short port, sa_family_t family) {
     sockaddr_storage sa {};
-    
     sa.ss_family = family;
     
-    if(family == AF_INET) {
+    if(family == AF_INET or family == AF_UNSPEC) {
         inet::to_sockaddr_in(&sa)->sin_port = htons(port);
         inet_pton(family,addr.c_str(),&inet::to_sockaddr_in(&sa)->sin_addr);
-        
-    } else if(family == AF_INET6) {
-        inet::to_sockaddr_in6(&sa)->sin6_port = htons(port);
-        inet_pton(family,addr.c_str(),&inet::to_sockaddr_in6(&sa)->sin6_addr);
+
+        if(so_transparent_v4(sockfd) != 0) {
+            _err("baseCom::namesocket[%d]: making transparent failed (IPv4)", sockfd);
+        }
+    }
+    else if(family == AF_INET6) {
+        if(so_transparent_v6(sockfd) != 0) {
+            _err("baseCom::namesocket[%d]: making transparent failed (IPv6)", sockfd);
+        }
+    }
+    else {
+        _err("cannot name socket: unsupported protocol family");
     }
 
-    
-    int optval = 1;
-    setsockopt(sockfd, SOL_IP, IP_TRANSPARENT, &optval, sizeof(optval));
-    setsockopt(sockfd, SOL_IPV6, IPV6_TRANSPARENT, &optval, sizeof(optval));
-    
-    if (::bind(sockfd, (sockaddr*)&sa, sizeof(sockaddr_storage)) == 0) {
-        return 0;
+    int ret_bind = ::bind(sockfd, (sockaddr*)&sa, sizeof(sockaddr_storage));
+    if(ret_bind != 0) {
+        err_errno(string_format("baseCom::namesocket[%d]: bind", sockfd).c_str(), "<nil>", ret_bind);
+        ret_bind = errno;
     }
     
-    return errno;
+    return ret_bind;
 }
 
 
@@ -297,4 +303,84 @@ std::string baseCom::full_flags_str() {
     }
     
     return msg;
+}
+
+void baseCom::err_errno(const char* fn, const char* params, int rv) const {
+    _err("%s: error: %d params: %s: %s", fn, rv, params, string_error().c_str());
+};
+
+
+
+int baseCom::so_reuseaddr(int sock) const {
+    constexpr int optval = 1;
+    int sso = setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof optval);
+    if(sso != 0) err_errno(string_format("baseCom::so_reuseaddr: setsockopt[%d]", sock).c_str(),
+                           "SOL_SOCKET/SO_REUSEADDR", sso);
+
+    return sso;
+}
+
+int baseCom::so_broadcast(int sock) const {
+    constexpr int optval = 1;
+    int sso = setsockopt(sock, SOL_SOCKET, SO_BROADCAST, &optval, sizeof optval);
+    if(sso != 0) err_errno(string_format("baseCom::so_broadcast: setsockopt[%d]", sock).c_str(),
+                           "SOL_SOCKET/SO_BROADCAST", sso);
+
+    return sso;
+}
+
+int baseCom::so_nodelay(int sock) const {
+    constexpr int optval = 1;
+    int sso = setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, &optval, sizeof optval);
+    if(sso != 0) err_errno(string_format("baseCom::so_nodelay: setsockopt[%d]", sock).c_str(),
+                           "IPPROTO_TCP/TCP_NODELAY", sso);
+
+    return sso;
+}
+
+int baseCom::so_quickack(int sock) const {
+    constexpr int optval = 1;
+    int sso = setsockopt(sock, IPPROTO_TCP, TCP_QUICKACK , &optval, sizeof optval);
+    if(sso != 0) err_errno(string_format("baseCom::so_quickack: setsockopt[%d]", sock).c_str(),
+                            "IPPROTO_TCP/TCP_QUICKACK", sso);
+
+    return sso;
+}
+
+int baseCom::so_transparent_v4(int sock) const {
+    constexpr int optval = 1;
+    int sso = setsockopt(sock, SOL_IP, IP_TRANSPARENT, &optval, sizeof(optval));
+    if(sso != 0) err_errno(string_format("baseCom::so_transparent_v4: setsockopt[%d]", sock).c_str(),
+                           "SOL_IP/IP_TRANSPARENT", sso);
+
+    return sso;
+}
+
+int baseCom::so_transparent_v6(int sock) const {
+    constexpr int optval = 1;
+    int sso = setsockopt(sock, SOL_IPV6, IPV6_TRANSPARENT, &optval, sizeof(optval));
+    if(sso != 0) err_errno(string_format("baseCom::so_transparent_v6: setsockopt[%d]", sock).c_str(),
+                           "SOL_IPV6/IPV6_TRANSPARENT", sso);
+
+    return sso;
+}
+
+int baseCom::so_recvorigdstaddr_v4(int sock) const {
+    constexpr int optval = 1;
+    int sso = setsockopt(sock, SOL_IP, IP_RECVORIGDSTADDR, &optval, sizeof optval);
+    if (sso != 0)
+        err_errno(string_format("baseCom::so_recvorigdstaddr_v4[%d]", sock).c_str(),
+                  "SOL_IP/IP_RECVORIGDSTADDR", sso);
+
+    return sso;
+}
+
+int baseCom::so_recvorigdstaddr_v6(int sock) const {
+    constexpr int optval = 1;
+    int sso = setsockopt(sock, SOL_IPV6, IPV6_RECVORIGDSTADDR, &optval, sizeof optval);
+    if (sso != 0)
+        err_errno(string_format("baseCom::so_recvorigdstaddr_v6[%d]", sock).c_str(),
+                  "SOL_IPV6/IPV6_RECVORIGDSTADDR", sso);
+
+    return sso;
 }

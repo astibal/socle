@@ -56,16 +56,15 @@ public:
     int     poll_result = 0;
     baseHostCX* owner_cx_ = nullptr;
     inline baseHostCX* owner_cx() const { return owner_cx_; }
-    
-    virtual int poll();
+
     [[maybe_unused]] static void polltime(int msec) { poll_msec = msec; }
 
     bool _static_init = false;
 
     // my master: add me to the poll monitor at the right time
     baseCom* master_ = nullptr;
-    baseCom* master(baseCom* b) { master_ = b; return b; }
-    baseCom* master() { 
+    baseCom* master(baseCom* b) noexcept { master_ = b; return b; }
+    baseCom* master() noexcept {
         if(master_ != nullptr) 
             return master_->master(); 
         return this;
@@ -170,6 +169,7 @@ public:
     virtual baseCom* replicate() = 0;
     
     virtual int connect(const char* , const char*) = 0;
+    virtual int accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen_) = 0;
     virtual int read(int _fd, void* _buf, size_t _n, int _flags) = 0;
     virtual int peek(int _fd, void* _buf, size_t _n, int _flags) = 0;
     virtual int write(int _fd, const void* _buf, size_t _n, int _flags) = 0;
@@ -177,15 +177,29 @@ public:
     virtual void close(int _fd);
     virtual int bind(unsigned short _port) = 0;
     virtual int bind(const char* _path) = 0;
-    
-    // support for pseudo-socket, we call it virtual socket. It's negative numbered socket 
-    // which can ne used by Com classes for socket translations (see UDPCom, for example)
+
+    /// @brief poll socket with supported poll technique. Works automagically.
+    virtual int poll();
+
+    /// @brief standardized error log with description from errno
+    void err_errno(const char* fn, const char* params, int rv) const;
+
+    /// @brief so_<> functions set some well-known socket feature, typically using **setsockopt**
+    int so_reuseaddr(int sock) const;
+    int so_broadcast(int sock) const;
+    int so_nodelay(int sock) const;
+    int so_quickack(int sock) const;
+    int so_transparent_v4(int sock) const;
+    int so_transparent_v6(int sock) const;
+    int so_recvorigdstaddr_v4(int sock) const;
+    int so_recvorigdstaddr_v6(int sock) const;
+
+    /// @brief - support for pseudo-socket, so called 'virtual socket'. Com's socket can be negative numbered
+    /// which indicates socket is virtual identifier which should be looked for somewhere else.
+    /// It is known UDPCom is using this feature.
+    /// This base version is just returning back the original value.
     virtual int translate_socket(int vsock) const { return vsock; };
-
-
-    virtual int socket() const {
-        return fd_;
-    }
+    virtual int socket() const { return fd_; }
 
     // sets a socket and closes previous socket if set
     virtual int socket(int sock) {
@@ -209,7 +223,6 @@ public:
     virtual void on_new_socket(int _fd) {};
 
     // syscall wrapper 
-    virtual int accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen_) = 0;
 
     // call to init already accepted socket
     virtual void accept_socket(int sockfd) {

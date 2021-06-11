@@ -63,7 +63,7 @@ int UDPCom::accept(int sockfd, sockaddr* addr, socklen_t* addrlen_) {
 }
 
 int UDPCom::bind(short unsigned int port) {
-    int s;
+    int new_socket;
     sockaddr_storage sa {};
 
     sa.ss_family = bind_sock_family;
@@ -78,44 +78,46 @@ int UDPCom::bind(short unsigned int port) {
         inet::to_sockaddr_in6(&sa)->sin6_addr = in6addr_any;
     }
 
-    if ((s = ::socket(sa.ss_family, bind_sock_type, bind_sock_protocol)) == -1)
+    if ((new_socket = ::socket(sa.ss_family, bind_sock_type, bind_sock_protocol)) == -1)
         return -129;
+
+    so_reuseaddr(new_socket);
+    so_broadcast(new_socket);
     
-    int optval = 1;
-    setsockopt(s, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof optval);
-    
-    optval = 1;
-    
-    if(nonlocal_dst_) {
-        // allows socket to accept connections for non-local IPs
-        _dia("UDPCom::bind[%d]: setting it transparent",s);
-        setsockopt(s, SOL_IP, IP_TRANSPARENT, &optval, sizeof(optval));
-        if(sa.ss_family == AF_INET6) {
-            setsockopt(s, SOL_IPV6, IPV6_TRANSPARENT, &optval, sizeof(optval));
+    // NOTE: by default is family AF_INET6, which will work for AF_INET too.
+    // Bound sockets must be therefore set for all, IPv4 and IPv6 transparency.
+
+    if(sa.ss_family == AF_INET or sa.ss_family == AF_INET6 or sa.ss_family == AF_UNSPEC) {
+        if(nonlocal_dst_) {
+            _dia("UDPCom::bind[%d]: setting socket transparent (IPv4)", new_socket);
+            so_transparent_v4(new_socket);
+        }
+
+        if(so_recvorigdstaddr_v4(new_socket) != 0) {
+            ::close(new_socket);
+            return -131;
         }
     }
-
-    optval = 1;
-//     setsockopt(s, IPPROTO_IP,IP_RECVORIGDSTADDR, &optval, sizeof optval);
-    if (setsockopt(s, SOL_IP,IP_RECVORIGDSTADDR, &optval, sizeof optval) != 0) {
-        ::close(s);  // coverity: 1408014
-        return -131;
-    }
     if(sa.ss_family == AF_INET6) {
-        if (setsockopt(s, SOL_IPV6,IPV6_RECVORIGDSTADDR, &optval, sizeof optval) != 0) {
-            ::close(s); // coverity: 1408014
+        if(nonlocal_dst_) {
+            _dia("UDPCom::bind[%d]: setting socket transparent (IPv6)", new_socket);
+            so_transparent_v6(new_socket);
+        }
+
+        if(so_recvorigdstaddr_v6(new_socket) != 0) {
+            ::close(new_socket);
             return -132;
         }
     }
     
-    if (::bind(s, (sockaddr *)&sa, sizeof(sa)) == -1) {
-        ::close(s);  // coverity: 1408014
+    if (::bind(new_socket, (sockaddr *)&sa, sizeof(sa)) == -1) {
+        ::close(new_socket);  // coverity: 1408014
         return -130;
     }
 
     
-    _dia("UDPCom::bind[%d]: successful", s);
-    return s;    
+    _dia("UDPCom::bind[%d]: successful", new_socket);
+    return new_socket;
 }
 
 bool UDPCom::com_status() {
@@ -158,16 +160,12 @@ int UDPCom::connect(const char* host, const char* port) {
             continue;
         }
 
-        int optval = 1;
-        
-        if(l3_proto() == AF_INET)
-            if(setsockopt(sfd, SOL_IP, IP_TRANSPARENT, &optval, sizeof(optval)) != 0) {
-                _war("UDPCom::connect[%d]: cannot set IPv4 transparency sockopt: %s",sfd,string_error().c_str());
-            }
-        if(l3_proto() == AF_INET6)
-            if(setsockopt(sfd, SOL_IPV6, IPV6_TRANSPARENT, &optval, sizeof(optval)) != 0) {
-                _war("UDPCom::connect[%d]: cannot set IPv6 transparency sockopt: %s",sfd,string_error().c_str());
-            }
+        if(l3_proto() == AF_INET) {
+            so_transparent_v4(sfd);
+        }
+        else if(l3_proto() == AF_INET6) {
+            so_transparent_v6(sfd);
+        }
         
         if(nonlocal_src()) {
             
@@ -699,38 +697,24 @@ int UDPCom::write_to_pool(int _fd, const void* _buf, size_t _n, int _flags) {
         _deb("UDPCom::write_to_pool[%d]: about to write %d bytes into socket %d", _fd, _n, record->socket_left);
         _deb("UDPCom::write_to_pool[%d]: custom transparent socket: %d", _fd, da_socket);
 
-
-        int n = 1;
+        if(ss_d.ss_family == AF_INET or ss_d.ss_family == AF_INET6 or ss_d.ss_family == AF_UNSPEC) {
+            so_transparent_v4(da_socket);
+        }
         if(ss_d.ss_family == AF_INET6) {
-            if(0 != setsockopt(da_socket, SOL_IPV6, IPV6_TRANSPARENT, &n, sizeof(n))) {
-                _err("UDPCom::write_to_pool[%d]: socket %d cannot set option IPV6_TRANSPARENT: %s", _fd, da_socket, string_error().c_str());
-            }
-            n = 1;
+            so_transparent_v6(da_socket);
         }
-        if(ss_d.ss_family == AF_INET ) {
-            if(0 != setsockopt(da_socket, SOL_IP, IP_TRANSPARENT, &n, sizeof(n))) {
-                _err("UDPCom::write_to_pool[%d]: socket: %d: cannot set option IP_TRANSPARENT: %s", _fd, da_socket, string_error().c_str());
-            }
-            n = 1;
-        }
-        if(0 != setsockopt(da_socket, SOL_SOCKET, SO_REUSEADDR, &n, sizeof(n))) {
-            _err("UDPCom::write_to_pool[%d]: socket: %d: cannot set option SO_REUSEADDR: %s", _fd, da_socket, string_error().c_str());
-        }
-        n = 1;
 
-        if(0 != setsockopt(da_socket, SOL_SOCKET, SO_BROADCAST, &n, sizeof(n))) {
-            _err("UDPCom::write_to_pool[%d]: socket: %d: cannot set option SO_BROADCAST: %s", _fd, da_socket, string_error().c_str());
-        }
+        so_reuseaddr(da_socket);
+        so_broadcast(da_socket);
 
         ret_bind = ::bind (da_socket, (struct sockaddr*)&(ss_d), sizeof (struct sockaddr_storage));
         if(0 != ret_bind) {
-            _err("UDPCom::write_to_pool[%d]: socket: %d: cannot bind: %s", _fd, da_socket, string_error().c_str());
+            err_errno(string_format("UDPCom::write_to_pool[%d]: bind:", da_socket).c_str(), "<nil>", ret_bind);
         }
 
         int ret_conn = ::connect(da_socket, (struct sockaddr*)&(ss_s), sizeof (struct sockaddr_storage));
-
         if(ret_conn != 0) {
-            _err("UDPCom::write_to_pool[%d]: socket: %d: connect error: %s", _fd, da_socket, string_error().c_str());
+            err_errno(string_format("UDPCom::write_to_pool[%d]: connect:", da_socket).c_str(), "<nil>", ret_conn);
         }
 
         l = ::sendmsg(da_socket, &message_header, 0);

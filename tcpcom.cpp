@@ -15,7 +15,6 @@
     You  should have received a copy of the GNU Lesser General Public
     License along with this library.
 */
-#include <netinet/tcp.h>
 #include <tcpcom.hpp>
 #include <socketinfo.hpp>
 #include <internet.hpp>
@@ -126,11 +125,6 @@ int TCPCom::connect(const char* host, const char* port) {
 
 int TCPCom::bind(unsigned short port) {
 
-    auto sso_error = [this](int rv, const char* msg) {
-        _err("TCPCom::bind: setsockopt error: %d, %s when setting %s", rv, string_error().c_str(), msg);
-    };
-
-
     sockaddr_storage sa{};
 
     sa.ss_family = bind_sock_family;
@@ -148,16 +142,22 @@ int TCPCom::bind(unsigned short port) {
 
     if (sock == -1)
         return -129;
-    
-    int optval = 1;
-    int sso = setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof optval);
-    if(sso != 0) sso_error(sso, "SOL_SOCKET/SO_SEUSEADDR");
+
+    so_reuseaddr(sock);
     
     if(nonlocal_dst_) {
         // allows socket to accept connections for non-local IPs
         _dia("TCPCom::bind[%d]: setting it transparent", sock);
-        setsockopt(sock, SOL_IP, IP_TRANSPARENT, &optval, sizeof(optval));
-        if(sso != 0) sso_error(sso, "SOL_IP/IP_TRANSPARENT");
+
+
+        // NOTE: we need to set both, IPv4 and IPv6 on bound socket to get correct transparency.
+        // leave matching INET6 twice, it's correct!
+        if(sa.ss_family == AF_INET or sa.ss_family == AF_INET6 or sa.ss_family == AF_UNSPEC) {
+            so_transparent_v4(sock);
+        }
+        if (sa.ss_family == AF_INET6) {
+            so_transparent_v6(sock);
+        }
     }
     
     if (::bind(sock, (sockaddr *)&sa, sizeof(sa)) == -1) {
@@ -241,15 +241,8 @@ bool TCPCom::com_status() {
 }
 
 void TCPCom::on_new_socket(int _fd) {
-    int optval = 1;
-
-    if(0 != setsockopt(_fd, IPPROTO_TCP, TCP_NODELAY , &optval, sizeof optval)) {
-        _err("TCPCom::on_new_socket[%d]: setsockopt TCP_NODELAY failed: %s", _fd, string_error().c_str());
-    }
-    optval = 1;
-    if(0 != setsockopt(_fd, IPPROTO_TCP, TCP_QUICKACK , &optval, sizeof optval)) {
-        _err("TCPCom::on_new_socket[%d]: setsockopt TCP_QUICKACK failed: %s", _fd, string_error().c_str());
-    }
+    so_nodelay(_fd);
+    so_quickack(_fd);
 
     baseCom::on_new_socket(_fd);
 }

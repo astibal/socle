@@ -1844,12 +1844,21 @@ void baseSSLCom<L4Proto>::accept_socket (int sockfd) {
                 socket(::socket(record->dst_family(), SOCK_DGRAM, IPPROTO_UDP));
 
                 if(socket() > 0) {
-                    int n = 1;
-                    int ret_opt4 = setsockopt(socket(), SOL_IP, IP_TRANSPARENT, &n, sizeof(n));
-                    int ret_opt6 = setsockopt(socket(), SOL_IPV6, IPV6_TRANSPARENT, &n, sizeof(n));
+
+                    int ret_opt4 = 0;
+                    int ret_opt6 = 0;
+
+                    if(record->dst_family() == AF_INET or record->dst_family() == AF_INET6 or record->dst_family() == AF_UNSPEC) {
+                        ret_opt4 = so_transparent_v4(sockfd);
+                    }
+
+                    if(record->dst_family() == AF_INET6) {
+                        ret_opt6 = so_transparent_v6(sockfd);
+                    }
+
                     int ret_con = ::connect(socket(), (sockaddr *) &record->src, sizeof(sockaddr_storage));
                     int ret_bind = ::bind(socket(), (sockaddr *) &record->dst, sizeof(sockaddr_storage));
-                    _inf("Masked socket: connect=%d, bind=%d, transp4=%d, transp6=%d",
+                    _dia("Masked socket: connect=%d, bind=%d, transp4=%d, transp6=%d",
                          ret_con == 0, ret_bind == 0, ret_opt4 == 0, ret_opt6 == 0);
                 }
                 else {
