@@ -41,7 +41,7 @@ std::string string_csv(const std::vector<std::string>& str_list_ref, char delim 
 
 std::string number_suffixed(unsigned long n);
 std::string hex_print(unsigned char* data, unsigned int len);
-std::string hex_dump(unsigned char *data, int size, unsigned int=0, unsigned char=0);
+std::string hex_dump(unsigned char *data, size_t size, unsigned int=0, unsigned char=0);
 std::string hex_dump(buffer&, unsigned int=0, unsigned char=0);
 std::string hex_dump(buffer*, unsigned int=0, unsigned char=0);
 std::string string_error();

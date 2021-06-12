@@ -19,14 +19,12 @@
 #include <string>
 #include <vector>
 #include <mutex>
-#include <sstream>
 #include <iostream>
 #include <algorithm>
 #include <cstring>
 
 #include <execinfo.h>
 #include <sys/utsname.h>
-#include <arpa/inet.h>
 
 #include "display.hpp"
 #include "buffer.hpp"
@@ -76,11 +74,16 @@ std::string hex_print(unsigned char* data, unsigned int len) {
     return ss.str();
 }
 
-std::string hex_dump(buffer* b, unsigned int ltrim, unsigned char prefix) { return hex_dump((unsigned char*)b->data(),b->size(),ltrim,prefix); }
-std::string hex_dump(buffer& b, unsigned int ltrim, unsigned char prefix) { return hex_dump((unsigned char*)b.data(),b.size(),ltrim,prefix); }
+std::string hex_dump(buffer* b, unsigned int ltrim, unsigned char prefix) {
 
+    return hex_dump(const_cast<unsigned char*>(b->data()), b->size(), ltrim, prefix);
+}
+std::string hex_dump(buffer& b, unsigned int ltrim, unsigned char prefix) {
 
-std::string hex_dump(unsigned char *data, int size,unsigned int ltrim, unsigned char prefix)
+    return hex_dump(const_cast<unsigned char*>(b.data()), b.size(), ltrim, prefix);
+}
+
+std::string hex_dump(unsigned char *data, size_t size,unsigned int ltrim, unsigned char prefix)
 {
     /* dumps size bytes of *data to stdout. Looks like:
      * [0000] 75 6E 6B 6E 6F 77 6E 20 30 FF 00 00 00 00 39 00 unknown 0.....9.
@@ -89,7 +92,7 @@ std::string hex_dump(unsigned char *data, int size,unsigned int ltrim, unsigned 
 
     unsigned char *p = data;
 
-    int n;
+    unsigned int n;
     char bytestr[4] = {0};
     char addrstr[10] = {0};
     char hexstr[ 16*3 + 5] = {0};
@@ -111,7 +114,7 @@ std::string hex_dump(unsigned char *data, int size,unsigned int ltrim, unsigned 
 	for (int i=0; i<tr; i++) { pref += ' ';}
 
 	if (prefix != 0) {
-		pref += prefix;
+		pref += static_cast<char>(prefix);
 	}
 	
     for(n=1;n<=size;n++) {
