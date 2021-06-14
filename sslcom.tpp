@@ -117,7 +117,7 @@ std::string baseSSLCom<L4Proto>::to_string(int verbosity) const {
         online = owner_cx()->online_name;
     }
 
-    if( ( !hr().empty() ) && ! online) {
+    if( ( not hr_.empty() ) && ! online) {
         return hr();
     }
 
@@ -127,9 +127,8 @@ std::string baseSSLCom<L4Proto>::to_string(int verbosity) const {
     }
 
     // last resort
-    
     hr("baseSSLCom");
-    return hr();
+    return hr_;
 }
 
 // server callback on internal cache miss
