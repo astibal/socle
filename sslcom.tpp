@@ -2709,42 +2709,40 @@ int baseSSLCom<L4Proto>::parse_peer_hello() {
                 }
 
                 unsigned short ciphers_length = ntohs(b.get_at<unsigned short>(curpos));
-                curpos+=sizeof(unsigned short);
+                curpos += sizeof(unsigned short);
                 if(curpos + ciphers_length > b.size())
                     throw socle::ex::SSL_clienthello_malformed();
 
-
                 curpos += ciphers_length; //skip ciphers
+                _deb("SSLCom::parse_peer_hello: ciphers length %d", ciphers_length);
+
                 unsigned char compression_length = b.get_at<unsigned char>(curpos);
-                curpos+=sizeof(unsigned char);
-                if(curpos + compression_length > b.size()) {
+                curpos += sizeof(unsigned char);
+                if(curpos + compression_length > b.size())
                     throw socle::ex::SSL_clienthello_malformed();
-                }
-                else {
 
-                    curpos += compression_length; // skip compression methods
+                curpos += compression_length; // skip compression methods
+                _deb("SSLCom::parse_peer_hello: compression length %d", compression_length);
 
-                    _deb("SSLCom::parse_peer_hello: ciphers length %d, compression length %d", ciphers_length,
-                         compression_length);
+                /* extension section */
+                unsigned short extensions_length = ntohs(b.get_at<unsigned short>(curpos));
+                curpos += sizeof(unsigned short);
 
-                    /* extension section */
-                    unsigned short extensions_length = ntohs(b.get_at<unsigned short>(curpos));
-                    curpos += sizeof(unsigned short);
-                    if (curpos + extensions_length > b.size())
-                        throw socle::ex::SSL_clienthello_malformed();
+                if (curpos + extensions_length > b.size())
+                    throw socle::ex::SSL_clienthello_malformed();
 
 
-                    _deb("SSLCom::parse_peer_hello: extensions payload length %d", extensions_length);
+                _deb("SSLCom::parse_peer_hello: extensions payload length %d", extensions_length);
 
-                    if (extensions_length > 0) {
+                if (extensions_length > 0) {
 
-                        // minimal extension size is 5 (2 for ID, 2 for len)
-                        while (curpos + 4 < b.size()) {
-                            curpos += parse_peer_hello_extensions(b, curpos);
-                        }
+                    // minimal extension size is 5 (2 for ID, 2 for len)
+                    while (curpos + 4 < b.size()) {
+                        _deb("SSLCom::parse_peer_hello: parsing extension at position %d", curpos);
+                        curpos += parse_peer_hello_extensions(b, curpos);
                     }
                 }
-            } 
+            }
             else if(message_type == 22 && handshake_type != 1) {
                 _err("SSLCom::parse_peer_hello: handshake message, but not ClientHello; message_type %d, handshake_type %d", message_type, handshake_type);
                 ret = 1; // we need to assume we are late, so let continue without SNI.
@@ -2790,31 +2788,41 @@ unsigned short baseSSLCom<L4Proto>::parse_peer_hello_extensions(buffer& b, unsig
 
     _deb("SSLCom::parse_peer_hello_extensions: extension id 0x%x, length %d", ext_id, ext_length);
 
-    switch(ext_id) {
+    if(ext_id == 0) {
 
-        /* server name*/
-        case 0:
-            [[maybe_unused]]
-            unsigned short sn_list_length = htons(b.get_at<unsigned short>(curpos));
-            curpos+= sizeof(unsigned short);
-            unsigned  char sn_type = b.get_at<unsigned char>(curpos);
-            curpos+= sizeof(unsigned char);
+        // SNI
 
-            /* type is hostname*/
-            if(sn_type == 0) {
-                unsigned short sn_hostname_length = htons(b.get_at<unsigned short>(curpos));
-                curpos+= sizeof(unsigned short);
-                std::string s;
-                s.append((const char*)b.data()+curpos,(size_t)sn_hostname_length);
+        [[maybe_unused]]
+        unsigned short sn_list_length = htons(b.get_at<unsigned short>(curpos));
+        curpos += sizeof(unsigned short);
+        unsigned char sn_type = b.get_at<unsigned char>(curpos);
+        curpos += sizeof(unsigned char);
 
-                _dia("SSLCom::parse_peer_hello_extensions:    SNI hostname: %s",s.c_str());
+        /* type is hostname*/
+        if (sn_type == 0) {
+            unsigned short sn_hostname_length = htons(b.get_at<unsigned short>(curpos));
+            curpos += sizeof(unsigned short);
+            std::string s;
+            s.append((const char *) b.data() + curpos, (size_t) sn_hostname_length);
 
-                sslcom_peer_hello_sni_ = s;
-                //SSL_set_tlsext_host_name(sslcom_ssl,s.c_str());
-            }
+            _dia("SSLCom::parse_peer_hello_extensions:    SNI hostname: %s", s.c_str());
 
-            break;
+            sslcom_peer_hello_sni_ = s;
+            //SSL_set_tlsext_host_name(sslcom_ssl,s.c_str());
+        }
     }
+    else if(ext_id == 16) {
+
+        unsigned short alpn_length = htons(b.get_at<unsigned short>(curpos));
+        curpos += sizeof(unsigned short);
+
+        std::string s;
+        s.append((const char *) b.data() + curpos, (size_t) alpn_length);
+        _dia("SSLCom::parse_peer_hello_extensions:    ALPN: %s",
+             hex_print(reinterpret_cast<unsigned char *>(s.data()), s.size()).c_str());
+        sslcom_peer_hello_alpn_ = s;
+    }
+
 
     return ext_length + 4;  // +4 for ext_id and ext_length
 }
@@ -3294,7 +3302,7 @@ int baseSSLCom<L4Proto>::upgrade_client_socket(int sock) {
         }
         //  SSL_set_fd (sslcom_ssl, sock);
 
-        if(sslcom_peer_hello_sni_.size() > 0) {
+        if(not sslcom_peer_hello_sni_.empty()) {
             _dia("SSLCom::upgrade_client_socket[%d]: set sni extension to: %s",sock, sslcom_peer_hello_sni_.c_str());
             SSL_set_tlsext_host_name(sslcom_ssl, sslcom_peer_hello_sni_.c_str());
         }
