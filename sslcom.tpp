@@ -620,6 +620,44 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int lib_preverify, X509_STORE_
     return callback_return;
 }
 
+template <class L4Proto>
+int baseSSLCom<L4Proto>::ssl_alpn_select_callback(SSL *s, const unsigned char **out, unsigned char *outlen,
+                                                  const unsigned char *in, unsigned int inlen,
+                                                  void *arg) {
+
+    if(auto* this_com = static_cast<baseSSLCom*>(arg); this_com and this_com->peer()) {
+
+        auto& log = this_com->log;
+
+        const unsigned char *in;
+        unsigned inlen;
+
+        if(auto* peer_com = dynamic_cast<baseSSLCom*>(this_com->peer()); peer_com) {
+            SSL_get0_alpn_selected(peer_com->sslcom_ssl, &in, &inlen);
+
+            if(inlen > 0) {
+
+                _dia("SSLCom::ssl_alpn_select_callback:: server offered alpn: \n%s",
+                     hex_dump((unsigned char *) in, inlen).c_str());
+
+                *out = in;
+                *outlen = inlen;
+
+                this_com->sslcom_alpn_.assign(reinterpret_cast<const char*>(in), inlen);
+                peer_com->sslcom_alpn_.assign(reinterpret_cast<const char*>(in), inlen);
+
+                return SSL_TLSEXT_ERR_OK;
+            } else {
+
+                _dia("SSLCom::ssl_alpn_select_callback:: no alpn from server");
+                *out = nullptr;
+                outlen = 0;
+            }
+        }
+    }
+
+    return SSL_TLSEXT_ERR_NOACK;
+}
 
 template <class L4Proto>
 long int baseSSLCom<L4Proto>::log_if_error(unsigned int level, const char* prefix) {
@@ -1538,7 +1576,12 @@ void baseSSLCom<L4Proto>::init_ssl_callbacks() {
             }
 
         }
-    } 
+
+    }
+    else {
+        // set server cx (left-side) callback to set ALPN
+        SSL_CTX_set_alpn_select_cb(sslcom_ctx, ssl_alpn_select_callback, this);
+    }
 }
 
 template <class L4Proto>
@@ -3305,6 +3348,13 @@ int baseSSLCom<L4Proto>::upgrade_client_socket(int sock) {
         if(not sslcom_peer_hello_sni_.empty()) {
             _dia("SSLCom::upgrade_client_socket[%d]: set sni extension to: %s",sock, sslcom_peer_hello_sni_.c_str());
             SSL_set_tlsext_host_name(sslcom_ssl, sslcom_peer_hello_sni_.c_str());
+        }
+
+        if(not sslcom_peer_hello_alpn_.empty()) {
+            _dia("SSLCom::upgrade_client_socket[%d]: set alpn extension to: %s",sock,
+                 hex_print(reinterpret_cast<unsigned char*>(sslcom_peer_hello_alpn_.data()), sslcom_peer_hello_alpn_.size()).c_str());
+
+            SSL_set_alpn_protos(sslcom_ssl, reinterpret_cast<unsigned char*>(sslcom_peer_hello_alpn_.data()), sslcom_peer_hello_alpn_.size());
         }
 
         sslcom_sbio = BIO_new_socket(sock,BIO_NOCLOSE);

@@ -104,6 +104,9 @@ public:
     baseSSLCom();
     
     std::string to_string(int verbosity) const override;
+
+    // get_peer_* return values as captured on the network
+    // note: get_peer* don't necessarily return used values
     std::string get_peer_sni() { return sslcom_peer_hello_sni().c_str(); } //return copy of SNI
     std::string get_peer_id() { return sslcom_peer_hello_id().c_str(); } //return copy of SNI
     std::string get_peer_alpn() { return sslcom_peer_hello_alpn(); } //return copy of ALPN
@@ -119,6 +122,9 @@ public:
     X509* target_cert() const { return sslcom_target_cert; }
     X509* target_issuer() const { return sslcom_target_issuer; };
     X509* target_issuer_issuer() const { return sslcom_target_issuer_issuer; };
+
+    // return ALPN (next protocol) really negotiated
+    std::string const& alpn() { return sslcom_alpn_; }
 protected:
 
 	SSL_CTX* sslcom_ctx = nullptr;
@@ -218,6 +224,7 @@ protected:
     std::string sslcom_peer_hello_alpn_;
     std::string& sslcom_peer_hello_alpn() { return sslcom_peer_hello_alpn_; }
 
+    std::string sslcom_alpn_;
 
     std::string sslcom_peer_hello_id_;
     std::string& sslcom_peer_hello_id() { return sslcom_peer_hello_id_; }
@@ -299,6 +306,9 @@ public:
     static int status_resp_callback(SSL *s, void *arg);
     static int ssl_client_cert_callback(SSL *ssl, X509 **x509, EVP_PKEY **pkey);
     static int ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx);
+    static int ssl_alpn_select_callback(SSL *s, const unsigned char **out, unsigned char *outlen,
+                                        const unsigned char *in, unsigned int inlen,
+                                        void *arg);
     static int check_server_dh_size(SSL* ssl);
     long log_if_error(unsigned int level, const char* prefix);
     static long log_if_error2(unsigned int level, const char* prefix);
