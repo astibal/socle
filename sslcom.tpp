@@ -625,7 +625,7 @@ int baseSSLCom<L4Proto>::ssl_alpn_select_callback(SSL *s, const unsigned char **
                                                   const unsigned char *in, unsigned int inlen,
                                                   void *arg) {
 
-    if(auto* this_com = static_cast<baseSSLCom*>(arg); this_com and this_com->peer()) {
+    if(auto* this_com = static_cast<baseSSLCom*>(arg); this_com and this_com->peer() and not this_com->opt_alpn_block) {
 
         auto& log = this_com->log;
 
@@ -3350,7 +3350,7 @@ int baseSSLCom<L4Proto>::upgrade_client_socket(int sock) {
             SSL_set_tlsext_host_name(sslcom_ssl, sslcom_peer_hello_sni_.c_str());
         }
 
-        if(not sslcom_peer_hello_alpn_.empty()) {
+        if(not opt_alpn_block and not sslcom_peer_hello_alpn_.empty()) {
             _dia("SSLCom::upgrade_client_socket[%d]: set alpn extension to: %s",sock,
                  hex_print(reinterpret_cast<unsigned char*>(sslcom_peer_hello_alpn_.data()), sslcom_peer_hello_alpn_.size()).c_str());
 

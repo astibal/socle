@@ -522,6 +522,7 @@ public:
     bool opt_ct_enable = true;
     static int ct_verify_callback(const CT_POLICY_EVAL_CTX *ctx, const STACK_OF(SCT) *scts, void *arg);
 
+    bool opt_alpn_block = false;
 
     TYPENAME_OVERRIDE("SSLCom")
     DECLARE_LOGGING(to_string)
