@@ -707,9 +707,9 @@ bool baseProxy::handle_sockets_accept(unsigned char side, baseCom* xcom, baseHos
     socklen_t addrlen = sizeof(clientInfo);
 
     int client = com()->accept(thiscx->socket(), (sockaddr*)&clientInfo, &addrlen);
-    
+
     if(client < 0) {
-        _dia("baseProxy::handle_sockets_accept[%c]: bound socket accept failed: %s", side, strerror(errno));
+        _dia("baseProxy::handle_sockets_accept[%c]: bound socket accept failed: %s", side, string_error(errno).c_str());
         return true; // still, it's not the error which should break socket list iteration
     }
     

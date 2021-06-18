@@ -163,11 +163,14 @@ std::string hex_dump(unsigned char *data, size_t size,unsigned int ltrim, unsign
 }
 
 std::string string_error() {
+    return string_error(errno);
+}
 
-    int e = errno;
+std::string string_error(int code) {
+
     char msg[255];
     memset(msg,0,255);
-    return string_format("error %d: %s",e,strerror_r(e,msg,255));
+    return string_format("error %d: %s", code, strerror_r(code,msg,255));
 }
 
 

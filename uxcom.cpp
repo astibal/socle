@@ -45,7 +45,7 @@ int UxCom::connect(const char* host, const char* noop_port) {
             } else {
                 close(sfd);
                 sfd = 0;
-                _not("UxCom::connect[%s:%s]: socket[%d]: connnect errno: %s", host, port, sfd, strerror(errno));
+                _not("UxCom::connect[%s:%s]: socket[%d]: connnect errno: %s", host, port, sfd, string_error().c_str());
             }
 
         }

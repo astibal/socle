@@ -45,6 +45,7 @@ std::string hex_dump(unsigned char *data, size_t size, unsigned int=0, unsigned 
 std::string hex_dump(buffer&, unsigned int=0, unsigned char=0);
 std::string hex_dump(buffer*, unsigned int=0, unsigned char=0);
 std::string string_error();
+std::string string_error(int code);
 std::string bt(bool add_r=false);
 
 std::string escape(const std::string &orig, bool to_print = false);

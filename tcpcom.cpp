@@ -63,7 +63,8 @@ int TCPCom::connect(const char* host, const char* port) {
             _deb("TCPCom::connect[%s:%s]: about to name socket[%d] after: %s:%d", host, port, sfd, nonlocal_src_host().c_str(), nonlocal_src_port());
             int bind_status = namesocket(sfd, nonlocal_src_host(), nonlocal_src_port(), l3_proto());
             if (bind_status != 0) {
-                    _war("cannot bind this %s socket to %s:%d: %s", SocketInfo::inet_family_str(l3_proto()).c_str(), nonlocal_src_host().c_str(), nonlocal_src_port(), strerror(bind_status));
+                    _war("cannot bind this %s socket to %s:%d: %s", SocketInfo::inet_family_str(l3_proto()).c_str(),
+                         nonlocal_src_host().c_str(), nonlocal_src_port(), string_error(bind_status).c_str());
             } else {
                 _dia("TCPCom::connect[%s:%s]: socket[%d] transparency for %s:%d OK", host, port, sfd, nonlocal_src_host().c_str(), nonlocal_src_port());
             }
@@ -91,7 +92,7 @@ int TCPCom::connect(const char* host, const char* port) {
                     close(sfd);
                     sfd = 0;
 
-                    _not("TCPCom::connect[%s:%s]: socket[%d]: connnect errno: %s", host, port, sfd, strerror(errno));
+                    _not("TCPCom::connect[%s:%s]: socket[%d]: connnect errno: %s", host, port, sfd, string_error(errno).c_str());
                 }
 
                 _dum("new attempt, socket reset");
@@ -202,10 +203,10 @@ bool TCPCom::is_connected(int s) {
     if ( r_getsockopt == 0 ) {
                                 
         if(error_code != 0) {
-                _deb("TCPCom::is_connected[%d]: getsockopt errno %d = %s", s, error_code, strerror_r(error_code, str_err, 256));
+                _deb("TCPCom::is_connected[%d]: getsockopt errno %d = %s", s, error_code, string_error(error_code).c_str());
         }
         else {
-                _dum("TCPCom::is_connected[%d]: getsockopt errno %d = %s", s, error_code, strerror_r(error_code, str_err, 256));
+                _dum("TCPCom::is_connected[%d]: getsockopt errno %d = %s", s, error_code, string_error(error_code).c_str());
         }
         
         if(error_code == EINPROGRESS) return false;
@@ -222,7 +223,7 @@ bool TCPCom::is_connected(int s) {
         return true;
 
     } else {
-        _dia("TCPCom::is_connected[%d]: getsockopt failed, returned %d = %s", s, r_getsockopt, strerror_r(r_getsockopt, str_err, 256));
+        _dia("TCPCom::is_connected[%d]: getsockopt failed, returned %d = %s", s, r_getsockopt, string_error(error_code).c_str());
         return false;
     } 
 }
