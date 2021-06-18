@@ -43,6 +43,12 @@ public:
         log.sub_area("com.tcp");
     };
     ~TCPCom() override = default;
+
+    struct config_t {
+        unsigned char _x;
+        static inline int listen_backlog = 50;
+
+    } config;
     
     void init(baseHostCX* owner) override;
     baseCom* replicate() override { return new TCPCom(); };
@@ -52,16 +58,16 @@ public:
     int bind(const char* _path) override { return -1; };
     int accept (int sockfd, sockaddr* addr, socklen_t* addrlen_) override;
     
-    int read(int _fd, void* _buf, size_t _n, int _flags) override { return ::recv(_fd, _buf, _n, _flags); };
+    int read(int _fd, void* _buf, size_t _n, int _flags) override { return static_cast<int>(::recv(_fd, _buf, _n, _flags)); };
     int peek(int _fd, void* _buf, size_t _n, int _flags) override { return read(_fd, _buf, _n, _flags | MSG_PEEK );};
     int write(int _fd, const void* _buf, size_t _n, int _flags) override {
-        int r = ::send(_fd, _buf, _n, _flags);
+        auto r = ::send(_fd, _buf, _n, _flags);
         if(r < 0) {
             if(errno == EAGAIN || errno == EWOULDBLOCK) {
                 return 0;
             }
         }
-        return r;
+        return static_cast<int>(r);
     };
     void shutdown(int _fd) override {
         int r = ::shutdown(_fd, SHUT_RDWR);

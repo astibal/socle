@@ -1336,7 +1336,7 @@ int baseSSLCom<L4Proto>::status_resp_callback(SSL* ssl, void* arg) {
     if (opt_ocsp_require) {
         com->verify_bitset(VRF_DEFERRED);
         com->verify_bitreset(VRF_OK);
-        _err("[%s] cert status unknown, but OCSP required", name.c_str());
+        _dia("[%s] cert status (stapling) not received, but OCSP required", name.c_str());
 
         int cb_status = baseSSLCom::certificate_status_oob_check(com, 0);
         _dia("SSLCom::ocsp_resp_callback: required OCSP returned %d", cb_status);

@@ -56,6 +56,14 @@ int TCPCom::connect(const char* host, const char* port) {
         sfd = ::socket(rp->ai_family, rp->ai_socktype,
                     rp->ai_protocol);
 
+
+        if(sfd <= 0) {
+            _err("TCPCom::connect[%s:%s]: gai info found, but socket can't be created", host, port);
+            _err("TCPCom::connect[%s:%s]: family %d, socktype %d, protocol %d", host, port,
+                                                    rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+            continue;
+        }
+
         on_new_socket(sfd);
         // Keep it here: would be good if we can do something like this in the future
         
@@ -165,7 +173,7 @@ int TCPCom::bind(unsigned short port) {
         ::close(sock);   // coverity: 1407959
         return -130;
     }
-    if (listen(sock, 10) == -1)  return -131;
+    if (listen(sock, config.listen_backlog) == -1)  return -131;
     
     return sock;
 }
@@ -173,8 +181,16 @@ int TCPCom::bind(unsigned short port) {
 
 int TCPCom::accept ( int sockfd, sockaddr* addr, socklen_t* addrlen_ ) {
     int news = ::accept(sockfd, addr, addrlen_);
-    on_new_socket(news);
 
+    if(news < 0) {
+        if(not (errno == EAGAIN or errno == EWOULDBLOCK)) {
+            // report uncommon error
+            _err("failed to accept socket: %s", string_error().c_str());
+        }
+        return -1;
+    }
+
+    on_new_socket(news);
     return news;
 }
 
@@ -187,8 +203,7 @@ bool TCPCom::is_connected(int s) {
     
     int error_code = 0;
     socklen_t l = sizeof(error_code);
-    char str_err[256];
-    
+
     // tcp socket will stay in EINPROGRESS unless there is ANY stat call! Don't ask why. 
     // fstating socket seemed to me cheapest/fastest.
     // fstating with stat struct buffer wasn't working too!
