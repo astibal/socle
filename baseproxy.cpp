@@ -703,7 +703,7 @@ bool baseProxy::handle_cx_write_once(unsigned char side, baseCom* xcom, baseHost
 
 bool baseProxy::handle_sockets_accept(unsigned char side, baseCom* xcom, baseHostCX* thiscx) {
     
-    sockaddr_in clientInfo{};
+    sockaddr_storage clientInfo{};
     socklen_t addrlen = sizeof(clientInfo);
 
     int client = com()->accept(thiscx->socket(), (sockaddr*)&clientInfo, &addrlen);
