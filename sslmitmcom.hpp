@@ -51,9 +51,11 @@ public:
     }
 };
 
-#include <sslmitmcom.tpp>
-
 typedef baseSSLMitmCom<SSLCom> SSLMitmCom;
 typedef baseSSLMitmCom<DTLSCom> DTLSMitmCom;
 
 #endif // __SSLMITMCOM_HPP__
+
+#include <sslmitmcom.tpp>
+
+
