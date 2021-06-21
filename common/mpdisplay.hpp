@@ -45,7 +45,7 @@ namespace mp {
         int cap = 512;
         int mul = 1;
         int max = 20;
-        void* b = nullptr;
+        unsigned char* b = nullptr;
 
         // data written to buffer
         int w = 0;
@@ -55,8 +55,13 @@ namespace mp {
 
             cursize = cap*mul;
 
-            b = mempool_realloc(b, cursize);
-            memset(b, 0, cursize);
+            auto tmp = mempool_realloc(b, cursize);
+            if(tmp)
+                b = static_cast<unsigned char*>(tmp);
+            else
+                break;
+
+            std::memset(b, 0, cursize);
 
             //  man snprintf:
             //  The functions snprintf() and vsnprintf() write at most size bytes (including the terminating null byte ('\0')) to str.
@@ -67,15 +72,19 @@ namespace mp {
 
 
         // w counts in also \0 terminator
-        mp::string ret((const char*)b, w);
-        mempool_free(b);
+        mp::string ret;
+
+        if(b) {
+            ret.assign(reinterpret_cast<const char*>(b), w);
+            mempool_free(b);
+        }
 
         return ret;
     }
 
 
     mp::vector<mp::string>
-    string_split(mp::string str, char delimiter) {
+    string_split(mp::string const& str, char delimiter) {
         mp::vector<mp::string> internal;
         mp::stringstream ss(str); // Turn the string into a stream.
         mp::string tok;

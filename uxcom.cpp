@@ -33,7 +33,7 @@ int UxCom::connect(const char* host, const char* noop_port) {
 
     sockaddr_un server{};
     server.sun_family = connect_sock_family;
-    strcpy(server.sun_path, host);
+    strncpy(server.sun_path, host, sizeof(server.sun_path)-1);
     
     if (not GLOBAL_IO_BLOCKING()) {
         unblock(sfd);
@@ -77,7 +77,7 @@ int UxCom::bind(const char* name) {
 
     sockaddr_un server{};
     server.sun_family = bind_sock_family;
-    strcpy(server.sun_path, name);
+    strncpy(server.sun_path, name, sizeof(server.sun_path)-1);
 
     if ((s = ::socket(bind_sock_family, bind_sock_type, bind_sock_protocol)) == -1) return -129;
 

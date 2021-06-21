@@ -45,7 +45,7 @@ public:
     ~TCPCom() override = default;
 
     struct config_t {
-        unsigned char _x;
+        unsigned char _x{0};
         static inline int listen_backlog = 50;
 
     } config;
