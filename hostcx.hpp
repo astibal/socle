@@ -30,6 +30,7 @@
 
 
 #include <basecom.hpp>
+#include <peering.hpp>
 #include <log/logger.hpp>
 #include <lockbuffer.hpp>
 #include <display.hpp>
@@ -209,7 +210,10 @@ class baseHostCX : public Host
 	lockbuffer writebuf_; //!< write buffer
 	
 	
-	ssize_t processed_bytes_; //!< number of bytes processed by last process()
+	ssize_t processed_in_;    /// Number of bytes processed by last process_in(), which is called by read(). Processed bytes are flushed from
+	                          /// buffer prior reading operation by finish() call. if autofinish feature is enabled (default on).
+	                          /// Note: while there is process_out() called by write(), all written bytes to socket are flushed from the buffer,
+	                          ///       therefore no similar mechanic is needed when sending data out.
 	int next_read_limit_;     // limit next read() operation to this number. Zero means no restrictions.
 	                          // <0 means don't read at all
 	
@@ -297,7 +301,7 @@ public:
 	std::string& name(bool force=false) const;
 	const char* c_type() const;
 	
-    inline ssize_t processed_bytes() const noexcept { return processed_bytes_; };
+    inline ssize_t processed_bytes() const noexcept { return processed_in_; };
     
 
 	inline bool opening() const { return opening_; }
@@ -321,7 +325,7 @@ public:
 
 	inline int unblock() const { return com()->unblock(fds_); }
 
-	void unhandle();
+	void unhandle() const;
 	virtual void shutdown();
 	inline bool valid() const { return ( fds_ > 0 && !error() ); };
 	inline bool error() const {
@@ -389,15 +393,17 @@ public:
 	int read();
 	int io_read(void* where, size_t len, int flags);
 
-	int process_() { return process(); };
+	std::size_t process_in_() { return process_in(); };
+    std::size_t process_out_() { return process_out(); };
 	int write();
 	int io_write(unsigned char* data, size_t tx_size, int flags) const;
 	
 	
 	//overide this, and return number of bytes to be possible to passed to application/another hostcx
 	//
-	virtual int process();
-	
+	virtual std::size_t process_in();
+    virtual std::size_t process_out();
+
 	virtual void to_write(buffer const& b);
     virtual void to_write(const std::string&);
 	virtual void to_write(unsigned char* c, unsigned int l); 

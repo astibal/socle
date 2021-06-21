@@ -58,7 +58,7 @@ baseHostCX::baseHostCX(baseCom* c, const char* h, const char* p): Host(h, p) {
 
     readbuf_ = lockbuffer(HOSTCX_BUFFSIZE);
     readbuf_.clear();
-    processed_bytes_ = 0;
+    processed_in_ = 0;
     next_read_limit_ = 0;
     auto_finish_ = true;
     read_waiting_for_peercom_ = false;
@@ -93,7 +93,7 @@ baseHostCX::baseHostCX(baseCom* c, int s) {
 
     readbuf_ = lockbuffer(HOSTCX_BUFFSIZE);
     readbuf_.clear();
-    processed_bytes_ = 0;
+    processed_in_ = 0;
     next_read_limit_ = 0;
     auto_finish_ = true;
     read_waiting_for_peercom_ = false;
@@ -232,7 +232,7 @@ bool baseHostCX::is_connected() {
 }
 
 
-void baseHostCX::unhandle() {
+void baseHostCX::unhandle() const {
 
     if (com()) {
         int closed_s = closed_socket();
@@ -382,8 +382,8 @@ int baseHostCX::read() {
         return -1;
     }
 
-    _dum("HostCX::read[%s]: readbuf_ size=%d, capacity=%d, previously processed=%d finished",c_type(),
-            readbuf_.size(), readbuf_.capacity(), processed_bytes_);
+    _dum("HostCX::read[%s]: readbuf_ size=%d, capacity=%d, previously processed=%d finished", c_type(),
+         readbuf_.size(), readbuf_.capacity(), processed_in_);
 
     if (auto_finish()) {
         finish();
@@ -488,9 +488,9 @@ int baseHostCX::read() {
 
         _ext("baseHostCX::read[%s]: readbuf_ read %d bytes", c_type(), l);
 
-        processed_bytes_ = process_();
+        processed_in_ = process_in_();
         _deb("baseHostCX::read[%s]: readbuf_ read %d bytes, process()-ed %d bytes, incomplete readbuf_ %d bytes",
-                c_type(), l, processed_bytes_, l - processed_bytes_);
+             c_type(), l, processed_in_, l - processed_in_);
 
 
         // data are already processed
@@ -508,7 +508,7 @@ int baseHostCX::read() {
         _dia("baseHostCX::read[%s]: error while reading", c_type());
         error(true);
     } else {
-        processed_bytes_ = 0;
+        processed_in_ = 0;
     }
 
     // before return, don't forget to reset read limiter
@@ -529,6 +529,14 @@ int baseHostCX::io_write(unsigned char* data, size_t tx_size, int flags = 0) con
 
 int baseHostCX::write() {
 
+    auto _debug_tx_size = [this](auto tx_size_orig, auto tx_size, const char* fname) {
+        if (tx_size != tx_size_orig) {
+            _deb("baseHostCX::write[%s]: calling %s modified data, size %d -> %d",c_type(), fname, tx_size_orig,tx_size);
+        }
+
+        _deb("baseHostCX::write[%s]: writebuf_ %d bytes pending %s", c_type(), tx_size, opening() ? "(opening)" : "");
+    };
+
     if(io_disabled()) {
         _war("io is disabled, but write() called");
     }
@@ -542,27 +550,29 @@ int baseHostCX::write() {
     buffer_guard bg(writebuf());
 
 
-    int tx_size_orig = writebuf_.size();
+    // pre-write operation
+
+    auto tx_size_orig = writebuf_.size();
     pre_write();
+    auto tx_size = writebuf_.size();
 
-    int tx_size = writebuf_.size();
+    _if_deb _debug_tx_size(tx_size_orig, tx_size, "pre_write");
 
-    if (tx_size != tx_size_orig) {
-        _deb("baseHostCX::write[%s]: calling pre_write modified data, size %d -> %d",c_type(),tx_size_orig,tx_size);
-    }
+    // process-out operation
 
-    if (tx_size <= 0) {
-        _deb("baseHostCX::write[%s]: writebuf_ %d bytes pending %s", c_type(), tx_size, opening() ? "(opening)" : "");
-        // return 0; // changed @ 20.9.2014 by astib.
-        // Let com() decide what to do if we want to send 0 (or less :) bytes
-        // keep it here for studying purposes.
-        // For example, if we stop here, no SSL_connect won't happen!
-    }
-    else {
-        _deb("baseHostCX::write[%s]: writebuf_ %d bytes pending",c_type(),tx_size);
-    }
+    tx_size_orig = writebuf_.size();
+    auto processed_bytes = static_cast<std::size_t>(process_out_());
+    tx_size = writebuf_.size();
 
-    ssize_t l = io_write(writebuf_.data(), tx_size, MSG_NOSIGNAL);
+    _if_deb {
+        _debug_tx_size(tx_size_orig, tx_size, "process_out");
+        if(processed_bytes != tx_size) {
+            _deb("baseHostCX::write[%s]: process_out processed %d of %d bytes in writebuf", c_type(), tx_size_orig, processed_bytes);
+        }
+    };
+
+
+    ssize_t l = io_write(writebuf_.data(), std::min(tx_size, processed_bytes), MSG_NOSIGNAL);
 
     if (l > 0) {
         meter_write_bytes += l;
@@ -574,7 +584,7 @@ int baseHostCX::write() {
             opening(false);
         }
         _deb("baseHostCX::write[%s]: %d from %d bytes sent from tx buffer at %x", c_type(), l, tx_size, writebuf_.data());
-        if (l < tx_size) {
+        if (l < static_cast<ssize_t>(tx_size)) {
             // rather log this: not a big deal, but we couldn't have sent all data!
             _dia("baseHostCX::write[%s]: only %d from %d bytes sent from tx buffer!", c_type(), l, tx_size);
         }
@@ -637,16 +647,20 @@ void baseHostCX::pre_write() {
 void baseHostCX::post_write() {
 }
 
-int baseHostCX::process() {
+std::size_t baseHostCX::process_in() {
     return readbuf()->size();
+}
+
+std::size_t baseHostCX::process_out() {
+    return writebuf()->size();
 }
 
 
 ssize_t baseHostCX::finish() {
-    if( readbuf()->size() >= (unsigned int)processed_bytes_ && processed_bytes_ > 0) {
-        _deb("baseHostCX::finish[%s]: flushing %d bytes in readbuf_ size %d", c_type(), processed_bytes_, readbuf()->size());
-        readbuf()->flush(processed_bytes_);
-        return processed_bytes_;
+    if( readbuf()->size() >= (unsigned int)processed_in_ && processed_in_ > 0) {
+        _deb("baseHostCX::finish[%s]: flushing %d bytes in readbuf_ size %d", c_type(), processed_in_, readbuf()->size());
+        readbuf()->flush(processed_in_);
+        return processed_in_;
     } else if (readbuf()->empty()) {
         _dum("baseHostCX::finish[%s]: already flushed",c_type());
         return 0;
@@ -660,8 +674,8 @@ ssize_t baseHostCX::finish() {
 }
 
 buffer baseHostCX::to_read() {
-    _deb("baseHostCX::to_read[%s]: returning buffer::view for %d bytes", c_type(), processed_bytes_);
-    return readbuf()->view(0,processed_bytes_);
+    _deb("baseHostCX::to_read[%s]: returning buffer::view for %d bytes", c_type(), processed_in_);
+    return readbuf()->view(0, processed_in_);
 }
 
 void baseHostCX::to_write(buffer const& b) {
