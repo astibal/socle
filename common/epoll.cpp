@@ -152,8 +152,14 @@ int epoll::wait(int timeout) {
                 modify(socket,EPOLLIN);
             }
 
-        } else {
-            _dia("epoll::wait: uncaught event value %d", eventset);
+        }
+        else if( eventset & EPOLLERR or eventset & EPOLLHUP ) {
+            _dia("epoll::wait: error event %d for socket %d", eventset, socket);
+            err_set.insert(socket);
+        }
+        else {
+            _dia("epoll::wait: uncaught event value %d for socket %d", eventset, socket);
+            err_set.insert(socket);
         }
     }
 

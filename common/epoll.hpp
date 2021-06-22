@@ -122,6 +122,7 @@ struct epoll {
     bool auto_epollout_remove = true;
     set_type in_set;
     set_type out_set;
+    set_type err_set;
     set_type enforce_in_set;
 
     // this set is used for sockets where ARE already some data, but we wait for more.
@@ -173,7 +174,7 @@ struct epoll {
 
     virtual bool click_timer_now (); // return true if we should add them back to in_set (scan their readability again). If yes, reset timer.
 
-    inline void clear() { memset(events,0,EPOLLER_MAX_EVENTS*sizeof(epoll_event)); in_set.clear(); out_set.clear(); idle_set.clear(); }
+    inline void clear() { memset(events,0,EPOLLER_MAX_EVENTS*sizeof(epoll_event)); in_set.clear(); out_set.clear(); idle_set.clear(); err_set.clear(); }
 
     bool hint_socket(int socket); // this is the socket which will be additionally monitored for EPOLLIN; each time it's readable, single byte is read from it.
     [[nodiscard]] inline int hint_socket() const { return hint_fd_.load(); }

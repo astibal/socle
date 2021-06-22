@@ -1097,9 +1097,11 @@ int baseProxy::run_poll() {
     sets.push_back(&poller()->in_set);
     sets.push_back(&poller()->out_set);
     sets.push_back(&poller()->idle_set);
+    sets.push_back(&poller()->err_set);
 
-    std::vector<std::string> setname = { "inset", "outset", "idleset" };
+    std::vector<std::string> setname = { "inset", "outset", "idleset", "errset" };
     int name_iter = 0;
+    enum name_id { INSET=0, OUTSET=1, IDLESET=2, ERRSET=3 };
 
     bool virt_global_hack = false;
     epoll::set_type udp_in_set;
@@ -1154,6 +1156,11 @@ int baseProxy::run_poll() {
                         // call poller-carried proxy handler!
                         proxy->handle_sockets_once(com());
                         _deb("baseProxy::run_poll: socket %d -> handler 0x%x : finished", cur_socket, proxy);
+
+                        if(name_iter == ERRSET) {
+                            proxy->state().dead(true);
+                            _dia("Proxy 0x%x dead, socket %d in error state.", proxy, cur_socket);
+                        }
 
                         if(proxy->state().dead()) {
                             proxy->shutdown();
