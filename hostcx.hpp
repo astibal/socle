@@ -30,7 +30,6 @@
 
 
 #include <basecom.hpp>
-#include <peering.hpp>
 #include <log/logger.hpp>
 #include <lockbuffer.hpp>
 #include <display.hpp>
