@@ -64,7 +64,7 @@ TEST(PeeringTest, YThread) {
 
     std::thread y_deleter([y]() {
 
-        std::this_thread::sleep_for(1000ms); // wait lock is acquired
+        std::this_thread::sleep_for(500ms); // wait lock is acquired
 
         std::cout << std::time(nullptr) << ": deleting y\n";
         delete y;
@@ -72,18 +72,23 @@ TEST(PeeringTest, YThread) {
     });
 
 
+    bool test_result = false;
+
     {
         auto[ptr, l_] = x->peering.peer();
         std::cout << std::time(nullptr) << ": having lock\n";
-        std::this_thread::sleep_for(5000ms); // wait y is deleted
+        std::this_thread::sleep_for(1600ms); // wait y is deleted
 
         if (ptr) {
             std::cout << "Y is valid\n";
             std::cout << "Y.a = " << ptr->a << "\n";
+
+            test_result = ptr and ptr->a == 20 and dynamic_cast<B*>(ptr->peering.peer().first) == x;
         } else {
             std::cout << "Y is NOT valid\n";
         }
     }
     y_deleter.join();
 
+    ASSERT_TRUE(test_result);
 }
