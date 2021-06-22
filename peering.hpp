@@ -61,10 +61,10 @@ struct Peering {
             auto shr = f->other.lock();
             if(shr) {
                 T* ptr = shr->self;
-                auto l_ = std::unique_lock(shr->lok);
                 if(shr.use_count() == 1) {
                     return { nullptr, std::unique_lock<std::mutex>() };
                 } else {
+                    auto l_ = std::unique_lock(shr->lok);
                     return std::pair<T *, std::unique_lock<std::mutex>>{ptr, std::move(l_)};
                 }
             }
