@@ -2876,7 +2876,7 @@ unsigned short baseSSLCom<L4Proto>::parse_peer_hello_extensions(buffer& b, unsig
 #pragma GCC diagnostic push
 
 template <class L4Proto>
-int baseSSLCom<L4Proto>::read (int _fd, void* _buf, size_t _n, int _flags )  {
+ssize_t baseSSLCom<L4Proto>::read (int _fd, void* _buf, size_t _n, int _flags )  {
 
     int total_r = 0;
     int rounds = 0;
@@ -3105,7 +3105,7 @@ int baseSSLCom<L4Proto>::read (int _fd, void* _buf, size_t _n, int _flags )  {
 
 
 template <class L4Proto>
-int baseSSLCom<L4Proto>::write (int _fd, const void* _buf, size_t _n, int _flags )  {
+ssize_t baseSSLCom<L4Proto>::write (int _fd, const void* _buf, size_t _n, int _flags )  {
 
     if(_n == 0) {
         _ext("SSLCom::write[%d]: called: about to write %d bytes", _fd, _n);

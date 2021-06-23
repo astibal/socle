@@ -170,9 +170,9 @@ public:
     
     virtual int connect(const char* , const char*) = 0;
     virtual int accept(int sockfd, struct sockaddr *addr, socklen_t *addrlen_) = 0;
-    virtual int read(int _fd, void* _buf, size_t _n, int _flags) = 0;
-    virtual int peek(int _fd, void* _buf, size_t _n, int _flags) = 0;
-    virtual int write(int _fd, const void* _buf, size_t _n, int _flags) = 0;
+    virtual ssize_t read(int _fd, void* _buf, size_t _n, int _flags) = 0;
+    virtual ssize_t peek(int _fd, void* _buf, size_t _n, int _flags) = 0;
+    virtual ssize_t write(int _fd, const void* _buf, size_t _n, int _flags) = 0;
     virtual void shutdown(int _fd) = 0;
     virtual void close(int _fd);
     virtual int bind(unsigned short _port) = 0;

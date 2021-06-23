@@ -180,14 +180,14 @@ public:
     bool in_writeset(int s) override;
     virtual bool in_exset(int s);
     int poll() override ;
-    int read(int _fd, void* _buf, size_t _n, int _flags) override;
+    ssize_t read(int _fd, void* _buf, size_t _n, int _flags) override;
     virtual int read_from_pool(int _fd, void* _buf, size_t _n, int _flags);
-    virtual int recv(int _fd, void* _buf, size_t _n, int _flags) { return ::recv(_fd,_buf,_n,_flags); }
-    int peek(int _fd, void* _buf, size_t _n, int _flags) override { return read(_fd,_buf,_n, _flags | MSG_PEEK );};
+    virtual ssize_t recv(int _fd, void* _buf, size_t _n, int _flags) { return ::recv(_fd, _buf, _n, _flags); }
+    ssize_t peek(int _fd, void* _buf, size_t _n, int _flags) override { return read(_fd, _buf, _n, static_cast<uint8_t>(_flags) | MSG_PEEK );};
     
     
-    int write(int _fd, const void* _buf, size_t _n, int _flags) override;
-    virtual int write_to_pool(int _fd, const void* _buf, size_t _n, int _flags);
+    ssize_t write(int _fd, const void* _buf, size_t _n, int _flags) override;
+    virtual ssize_t write_to_pool(int _fd, const void* _buf, size_t _n, int _flags);
     
     void shutdown(int _fd) override;
     

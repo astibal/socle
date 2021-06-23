@@ -335,8 +335,8 @@ public:
     std::shared_ptr<std::vector<std::string>>& sni_filter_to_bypass() { return sni_filter_to_bypass_; }
     
     int connect( const char* host, const char* port) override;
-	int read ( int _fd, void* _buf, size_t _n, int _flags ) override;
-	int write ( int _fd, const void* _buf, size_t _n, int _flags ) override;
+	ssize_t read (int _fd, void* _buf, size_t _n, int _flags ) override;
+	ssize_t write (int _fd, const void* _buf, size_t _n, int _flags ) override;
 	
 	void cleanup() override;
 

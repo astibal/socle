@@ -58,9 +58,9 @@ public:
     int bind(const char* _path) override { return -1; };
     int accept (int sockfd, sockaddr* addr, socklen_t* addrlen_) override;
     
-    int read(int _fd, void* _buf, size_t _n, int _flags) override { return static_cast<int>(::recv(_fd, _buf, _n, _flags)); };
-    int peek(int _fd, void* _buf, size_t _n, int _flags) override { return read(_fd, _buf, _n, _flags | MSG_PEEK );};
-    int write(int _fd, const void* _buf, size_t _n, int _flags) override {
+    ssize_t read(int _fd, void* _buf, size_t _n, int _flags) override { return static_cast<int>(::recv(_fd, _buf, _n, _flags)); };
+    ssize_t peek(int _fd, void* _buf, size_t _n, int _flags) override { return read(_fd, _buf, _n, _flags | MSG_PEEK );};
+    ssize_t write(int _fd, const void* _buf, size_t _n, int _flags) override {
         auto r = ::send(_fd, _buf, _n, _flags);
         if(r < 0) {
             if(errno == EAGAIN || errno == EWOULDBLOCK) {

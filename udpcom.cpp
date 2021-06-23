@@ -420,7 +420,7 @@ int UDPCom::poll() {
 
 
 
-int UDPCom::read(int _fd, void* _buf, size_t _n, int _flags) {
+ssize_t UDPCom::read(int _fd, void* _buf, size_t _n, int _flags) {
 
     _deb("UDPCom::read[%d] read", _fd);
 
@@ -539,7 +539,7 @@ int UDPCom::read_from_pool(int _fd, void* _buf, size_t _n, int _flags) {
     return 0;
 }
 
-int UDPCom::write(int _fd, const void* _buf, size_t _n, int _flags)
+ssize_t UDPCom::write(int _fd, const void* _buf, size_t _n, int _flags)
 {
     if(_n <= 0) {
         return 0;
@@ -554,7 +554,7 @@ int UDPCom::write(int _fd, const void* _buf, size_t _n, int _flags)
         unsigned short port;
         int fa = SocketInfo::inet_ss_address_unpack(&udpcom_addr, &rps, &port);
         
-        int ret =  ::sendto(_fd, _buf, _n, _flags, (sockaddr*)&udpcom_addr, sizeof(sockaddr_storage));
+        ssize_t ret =  ::sendto(_fd, _buf, _n, _flags, (sockaddr*)&udpcom_addr, sizeof(sockaddr_storage));
         _deb("write[%d]: sendto %s/%s:%d returned %d", _fd, SocketInfo::inet_family_str(fa).c_str(), rps.c_str(), port, ret);
         
         if(ret < 0) {
@@ -567,7 +567,7 @@ int UDPCom::write(int _fd, const void* _buf, size_t _n, int _flags)
     return -1;
 }
 
-int UDPCom::write_to_pool(int _fd, const void* _buf, size_t _n, int _flags) {
+ssize_t UDPCom::write_to_pool(int _fd, const void* _buf, size_t _n, int _flags) {
     
     std::scoped_lock<std::recursive_mutex> l_(DatagramCom::lock);
     
@@ -578,7 +578,7 @@ int UDPCom::write_to_pool(int _fd, const void* _buf, size_t _n, int _flags) {
 
         if(record->socket_left.has_value()) {
             _dia("UDPCom::write_to_pool[%d]: about to write %d bytes into real socket %d", _fd, _n, record->socket_left.value());
-            int l = ::send(record->socket_left.value(), _buf, _n, 0);
+            ssize_t l = ::send(record->socket_left.value(), _buf, _n, 0);
 
             //_deb("UDPCom::write_to_pool[%d]: %d written to socket %d", _fd , l, record->socket_left.value());
 
