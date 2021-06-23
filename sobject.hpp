@@ -48,8 +48,8 @@ struct sobject_info {
         }
     }
 
-    time_t created_ = 0;
-    unsigned int age() const { return time(nullptr) - created_; }
+    time_t created_ = 0L;
+    time_t age() const { return time(nullptr) - created_; }
 
     std::string to_string(int verbosity) const;
     [[nodiscard]] inline std::string str() const { return to_string(iINF); };

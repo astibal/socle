@@ -361,7 +361,7 @@ public:
 	bool reconnect(int delay=5);
 	inline int reconnect_delay() const { return reconnect_delay_; }
 	inline int idle_delay() const { return idle_delay_; };
-        inline void idle_delay(int d) { idle_delay_ = d; };
+    inline void idle_delay(unsigned short d) { idle_delay_ = d; };
     
 	inline bool should_reconnect_now() const { time_t now = time(nullptr); return (now - last_reconnect_ > reconnect_delay() && !reduced()); }
 	

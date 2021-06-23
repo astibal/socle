@@ -178,7 +178,7 @@ public:
     unsigned int match_limits_bytes = 0;
     
     virtual ~baseMatch() = default;
-    virtual range match(const char* str, unsigned int max_len = 0) = 0;
+    virtual range match(const char* str, size_t max_len = 0) = 0;
     virtual range match(buffer& b) {
         return match((const char*)b.data(),b.size());
     }
@@ -197,7 +197,7 @@ public:
     explicit simpleMatch(std::string& e) : baseMatch(e) { }
     simpleMatch(std::string& e, unsigned int o, unsigned int b) : baseMatch(e,o,b) {}
     
-    range match(const char* str, unsigned int len = 0) override {
+    range match(const char* str, size_t len = 0) override {
         
         range result;
         
@@ -223,7 +223,7 @@ public:
     };
         
     virtual range search_function(std::string &expr, std::string &str) { 
-        int where = str.find(expr);
+        auto where = str.find(expr);
 
         if(*log.level() >= DUM) {
             _dum("simpleMatch::search_function: \nexpr:\n%s\ndata:\n%s",expr.c_str(),
@@ -233,10 +233,10 @@ public:
             _deb("simpleMatch::search_function: \nexpr: '%s'", expr.c_str());
         }
         
-        if (where < 0) {
+        if (where == std::string::npos) {
             return NULLRANGE;
         } else {
-            return range(where,str.size()); 
+            return range(where, str.size());
         }
     };
     

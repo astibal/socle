@@ -78,8 +78,9 @@ struct Datagram {
     mutable std::mutex rx_queue_lock;
     std::array<buffer,5> rx_queue;
 
-    inline int queue_bytes() const {
-        int elem_bytes = 0;
+    inline size_t queue_bytes() const {
+        size_t elem_bytes = 0;
+
         for(auto const& r: rx_queue) {
             if (!r.empty()) {
                 elem_bytes += r.size();
@@ -89,7 +90,7 @@ struct Datagram {
         return elem_bytes;
     }
 
-    int queue_bytes_l() const {
+    size_t queue_bytes_l() const {
         auto l_ = std::scoped_lock(rx_queue_lock);
         return queue_bytes();
     }
@@ -102,7 +103,7 @@ struct Datagram {
         return (queue_bytes_l() == 0);
     }
 
-    inline int enqueue(unsigned char* data, size_t len) {
+    inline size_t enqueue(unsigned char* data, size_t len) {
         for(auto& elem: rx_queue) {
             if(elem.empty()) {
                 elem.append(data, len);
@@ -152,7 +153,7 @@ public:
     static inline std::recursive_mutex lock;
     static inline std::map<uint64_t,std::shared_ptr<Datagram>> datagrams_received;
   
-    // set with all virtal sockets which have data to read
+    // set with all virtual sockets which have data to read
     static inline epoll::set_type in_virt_set;
 };
 

@@ -948,7 +948,7 @@ void UDPCom::shutdown(int _fd) {
 
     } else {
 
-        int remc = UDPCom::in_virt_set.erase(_fd);
+        auto remc = UDPCom::in_virt_set.erase(_fd);
         _dia("UDPCom::shutdown[%d]: removed %d entries from in_virt_set on shutdown", _fd, remc);
 
         remc = kill_datagram_entry(_fd);
@@ -962,7 +962,7 @@ void UDPCom::shutdown(int _fd) {
 
 
     if(embryonics().id != 0) {
-        int remc = UDPCom::in_virt_set.erase(embryonics().id);
+        auto remc = UDPCom::in_virt_set.erase(embryonics().id);
         _dia("UDPCom::shutdown[%d]: removed embryonic id=%d from in_virt_set on shutdown (%d entries)", _fd, embryonics().id, remc);
 
         remc = kill_datagram_entry(embryonics().id);

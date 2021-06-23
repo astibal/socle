@@ -78,8 +78,8 @@ public:
 	inline std::vector<LTVEntry*>& contains() { return contains_; }
 	inline void add(LTVEntry* e) { contains().push_back(e); }
 	
-	inline int size() { return contains().size(); }
-	inline LTVEntry* at(int i) {
+	inline size_t size() { return contains().size(); }
+	inline LTVEntry* at(size_t i) {
 		if (i < size()) {
 			return contains().at(i);
 		} else {

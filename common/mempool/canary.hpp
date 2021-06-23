@@ -24,7 +24,7 @@
 struct mp_canary {
 
     // canary content template string
-    const char* txt = "CaNaRy";
+    constexpr static const char* txt = "CaNaRy";
 
     // canary content template size
     std::size_t sz = 6;
@@ -32,24 +32,24 @@ struct mp_canary {
     // actual size of the canary (which will be filled with template pattern)
     std::size_t canary_sz = 0;
 
-    unsigned char gen_canary_byte(int index){
+    [[nodiscard]] unsigned char gen_canary_byte(std::size_t index) const {
         if(canary_sz) {
             const char* canary = txt;
-            const int xsz = sz;
-            return canary[index % xsz];
+            const std::size_t xsz = sz;
+            return static_cast<unsigned char>(canary[index % xsz]);
         }
 
         throw mempool_bad_alloc("generating canary bytes for zero size canary");
     };
 
     // fill first canary
-    void write_canary(unsigned char* ptr) {
+    void write_canary(unsigned char* ptr) const {
         for (unsigned int i = 0; i < canary_sz; i++) {
             ptr[i] = gen_canary_byte(i);
         }
     };
 
-    bool check_canary(unsigned char* ptr) {
+    bool check_canary(unsigned const char* ptr) const {
         for (unsigned int i = 0; i < canary_sz; i++) {
             if(ptr[i] == gen_canary_byte(i))
                 continue;
@@ -59,6 +59,6 @@ struct mp_canary {
 
         return true;
     }
-};
+} __attribute__((aligned(16)));
 
 #endif
