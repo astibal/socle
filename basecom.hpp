@@ -256,12 +256,12 @@ public:
     virtual bool in_idleset(int s) { return master()->poller.in_idle_set(s); };
 
     inline void set_monitor(int xs) {
-        _dia("basecom::set_monitor: called to add %d", xs);
+        _deb("basecom::set_monitor: called to add %d", xs);
 
         int s = xs;
         if(xs < 0) {
             s = master()->translate_socket(s);
-            _dia("   virtual socket, translated to real %d", s);
+            _deb("   virtual socket, translated to real %d", s);
         }
 
         if (s > 0) {
@@ -269,12 +269,12 @@ public:
         } 
     };
     inline void set_enforce(int xs) {
-        _dia("basecom::set_enforce: called to add %d", xs);
+        _deb("basecom::set_enforce: called to add %d", xs);
 
         int s = xs;
         if(xs < 0) {
             s = master()->translate_socket(s);
-            _dia("   virtual socket, translated to real %d", s);
+            _deb("   virtual socket, translated to real %d", s);
         }
 
         if (s > 0 ) {
@@ -283,12 +283,12 @@ public:
     };
 
     inline void unset_monitor(int xs) {
-        _dia("basecom::unset_monitor: called to remove %d", xs);
+        _deb("basecom::unset_monitor: called to remove %d", xs);
 
         int s = xs;
         if(xs < 0) {
             s = master()->translate_socket(s);
-            _dia("   virtual socket, translated to real %d", s);
+            _deb("   virtual socket, translated to real %d", s);
         }
 
         if (s > 0 ) { 
@@ -298,12 +298,12 @@ public:
         } 
     };    
     inline void set_write_monitor(int xs) {
-        _dia("basecom::set_write_monitor: called to add EPOLLOUT %d", xs);
+        _deb("basecom::set_write_monitor: called to add EPOLLOUT %d", xs);
 
         int s = xs;
         if(xs < 0) {
             s = master()->translate_socket(s);
-            _dia("   virtual socket, translated to real %d", s);
+            _deb("   virtual socket, translated to real %d", s);
         }
 
         if (s > 0 ) { 
@@ -311,12 +311,12 @@ public:
         } 
     }
     inline void set_write_monitor_only(int xs) {
-        _dia("basecom::set_write_monitor: called to add EPOLLOUT %d only", xs);
+        _deb("basecom::set_write_monitor: called to add EPOLLOUT %d only", xs);
 
         int s = xs;
         if(xs < 0) {
             s = master()->translate_socket(s);
-            _dia("   virtual socket, translated to real %d", s);
+            _deb("   virtual socket, translated to real %d", s);
         }
 
         if (s > 0 ) { 
@@ -325,12 +325,12 @@ public:
     }    
 
     inline void change_monitor(int xs, int new_mode) {
-        _dia("basecom::change_monitor: change mode of %d to %d", xs, new_mode);
+        _deb("basecom::change_monitor: change mode of %d to %d", xs, new_mode);
 
         int s = xs;
         if(xs < 0) {
             s = master()->translate_socket(s);
-            _dia("   virtual socket, translated to real %d", s);
+            _deb("   virtual socket, translated to real %d", s);
         }
 
         if (s > 0 ) { 
@@ -339,43 +339,43 @@ public:
     };       
     
     inline void set_hint_monitor(int s) {
-        _dia("basecom::set_hint_monitor: called: %d", s);
+        _deb("basecom::set_hint_monitor: called: %d", s);
         master()->poller.hint_socket(s); 
     }
 
     inline void set_poll_handler(int xs, epoll_handler* h) {
-        _dia("basecom::set_poll_handler: called to add %d monitored by 0x%x", xs, h);
+        _deb("basecom::set_poll_handler: add %d monitored by 0x%x", xs, h);
 
         int s = xs;
         if(xs < 0) {
             s = master()->translate_socket(s);
-            _dia("   virtual socket, translated to real %d", s);
+            _deb("   virtual socket, translated to real %d", s);
         }
 
         master()->poller.set_handler(s, h);
 
         // add also virtual handler
         if(xs < 0) {
-            _dia("basecom::set_poll_handler: called to add also virtual %d monitored by 0x%x", xs, h);
+            _deb("basecom::set_poll_handler: add also virtual %d monitored by 0x%x", xs, h);
             master()->poller.set_handler(xs, h);
         }
     };
 
     inline epoll_handler* get_poll_handler(int s) {
-        _deb("basecom::get_poll_handler: called to get handler of %d", s);
+        _dum("basecom::get_poll_handler: called to get handler of %d", s);
         epoll_handler* h =  master()->poller.get_handler(s);
-        _dia("basecom::get_poll_handler: handler of %d is 0x%x", s, h);
+        _deb("basecom::get_poll_handler: handler of %d is 0x%x", s, h);
         return h;
     };
 
     inline void set_idle_watch(int xs) {
 
-        _dia("basecom::set_idle_watch: called: %d", xs);
+        _deb("basecom::set_idle_watch: called: %d", xs);
 
         int s = xs;
         if(xs < 0) {
             s = master()->translate_socket(s);
-            _dia("   virtual socket, translated to real %d", s);
+            _deb("   virtual socket, translated to real %d", s);
         }
 
         if(s > 0) {
@@ -383,12 +383,12 @@ public:
         }
     }
     inline void clear_idle_watch(int xs) {
-        _dia("basecom::clear_idle_watch: called: %d", xs);
+        _deb("basecom::clear_idle_watch: called: %d", xs);
 
         int s = xs;
         if(xs < 0) {
             s = master()->translate_socket(s);
-            _dia("   virtual socket, translated to real %d", s);
+            _deb("   virtual socket, translated to real %d", s);
         }
 
         if(s > 0) {
@@ -398,12 +398,12 @@ public:
 
 
     inline void rescan_read(int xs) {
-        _dia("basecom::rescan_read: called to rescan EPOLLIN %d", xs);
+        _deb("basecom::rescan_read: called to rescan EPOLLIN %d", xs);
 
         int s = xs;
         if(xs < 0) {
             s = master()->translate_socket(s);
-            _dia("   virtual socket, translated to real %d", s);
+            _deb("   virtual socket, translated to real %d", s);
         }
 
         if (s > 0 ) { 
@@ -412,12 +412,12 @@ public:
     }
 
     inline void rescan_write(int xs) {
-        _dia("basecom::rescan_read: called to rescan EPOLLOUT %d", xs);
+        _deb("basecom::rescan_read: called to rescan EPOLLOUT %d", xs);
 
         int s = xs;
         if(xs < 0) {
             s = master()->translate_socket(s);
-            _dia("   virtual socket, translated to real %d", s);
+            _deb("   virtual socket, translated to real %d", s);
         }
 
         if (s > 0 ) { 

@@ -205,7 +205,7 @@ bool epoll::add(int socket, int mask) {
             return false;
         } 
     } else {
-        _dia("epoll:add:%x: epoll_ctl(%d): socket added %d",this, fd, socket);
+        _deb("epoll:add:%x: epoll_ctl(%d): socket added %d",this, fd, socket);
     }
     
     return true;
