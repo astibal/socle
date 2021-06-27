@@ -627,17 +627,24 @@ int baseSSLCom<L4Proto>::ssl_alpn_select_callback(SSL *s, const unsigned char **
 
     if(auto* this_com = static_cast<baseSSLCom*>(arg); this_com and this_com->peer() and not this_com->opt_alpn_block) {
 
-        auto& log = this_com->log;
+        auto log = logan::create("com.ssl.callback.alpn");
 
-        const unsigned char *in;
-        unsigned inlen;
+        if(not this_com->sslcom_alpn_.empty()) {
+
+            *out = reinterpret_cast<const unsigned char*>(this_com->sslcom_alpn_.data());
+            *outlen = this_com->sslcom_alpn_.length();
+
+            _dia("SSLCom::ssl_alpn_select_callback: alpn already set, setting again: %s", this_com->sslcom_alpn_.c_str());
+
+            return SSL_TLSEXT_ERR_OK;
+        }
 
         if(auto* peer_com = dynamic_cast<baseSSLCom*>(this_com->peer()); peer_com) {
             SSL_get0_alpn_selected(peer_com->sslcom_ssl, &in, &inlen);
 
             if(inlen > 0) {
 
-                _dia("SSLCom::ssl_alpn_select_callback:: server offered alpn: \n%s",
+                _dia("SSLCom::ssl_alpn_select_callback: server offered alpn: \n%s",
                      hex_dump((unsigned char *) in, inlen).c_str());
 
                 *out = in;
@@ -649,9 +656,9 @@ int baseSSLCom<L4Proto>::ssl_alpn_select_callback(SSL *s, const unsigned char **
                 return SSL_TLSEXT_ERR_OK;
             } else {
 
-                _dia("SSLCom::ssl_alpn_select_callback:: no alpn from server");
+                _dia("SSLCom::ssl_alpn_select_callback: no alpn from server");
                 *out = nullptr;
-                outlen = 0;
+                *outlen = 0;
             }
         }
     }
