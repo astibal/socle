@@ -295,12 +295,12 @@ void chr_cstrlit(unsigned char u, char *buffer, size_t buflen, bool to_print = f
  * For internal only, it will escape everything to be escaped, except formating character '%'
  * For printing purposes, it will escape only non-printables, + formatting character '%'
  */
-std::string escape(const std::string &orig, bool to_print) {
-    std::string ret;
+std::string escape(const std::string &orig, bool ascii_only) {
+    std::stringstream ret;
     
     for (char c : orig) {
         if (isprint(c) && c != '\'' && c != '\"' && c != '\\' && c != '\?' && c != '%') {
-            ret += c;        
+            ret << c;
         }
         else {
             switch (c)
@@ -308,69 +308,69 @@ std::string escape(const std::string &orig, bool to_print) {
                 
             // escape in all cases
             case '\a':  
-                ret += "\\a"; 
+                ret << "\\a";
                 break;
             case '\b':  
-                ret += "\\b"; 
+                ret << "\\b";
                 break;
             case '\f':  
-                ret += "\\f"; 
+                ret << "\\f";
                 break;
             case '\v':  
-                ret += "\\v"; 
+                ret << "\\v";
                 break;
             case '\\':  
-                ret += "\\\\"; 
+                ret << "\\\\";
                 break;
 
             
             // escape only when we want to print string out
             case '%':
-                if(to_print) 
-                    ret += "%%"; 
+                if(ascii_only)
+                    ret << "%%";
                 break;
                 
             
             // escape if full escape requested
             case '\n':  
-                if(! to_print) 
-                    ret += "\\n"; 
+                if(! ascii_only)
+                    ret << "\\n";
                 break;
                 
             case '\t':  
-                if(! to_print) 
-                    ret += "\\t"; 
+                if(! ascii_only)
+                    ret << "\\t";
                 break;
                 
             case '\r':  
-                if(! to_print) 
-                    ret += "\\r"; 
+                if(! ascii_only)
+                    ret << "\\r";
                 break;
             
 
             case '\'':  
-                if(! to_print) 
-                    ret += "\\'"; 
+                if(! ascii_only)
+                    ret << "\\'";
                 break;
 
             case '\"':  
-                if(! to_print) 
-                    ret += "\\\""; 
+                if(! ascii_only)
+                    ret << "\\\"";
                 break;
 
             case '\?':  
-                if(! to_print) 
-                    ret += "\\\?"; 
+                if(! ascii_only)
+                    ret << "\\\?";
                 break;
             
             
             default:
-                if(! to_print) ret += string_format("\\%03o", c);
+                if(! ascii_only) ret << string_format("\\%03o", c);
             }
         }
     }
     
-    return ret;
+    return ret.str();
 }
 
 

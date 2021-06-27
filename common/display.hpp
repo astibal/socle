@@ -48,7 +48,7 @@ std::string string_error();
 std::string string_error(int code);
 std::string bt(bool add_r=false);
 
-std::string escape(const std::string &orig, bool to_print = false);
+std::string escape(const std::string &orig, bool ascii_only = false);
 [[maybe_unused]] inline std::string printable(const std::string &orig) {
     return escape(orig,true);
 }
