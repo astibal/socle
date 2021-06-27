@@ -30,7 +30,7 @@ std::shared_ptr<LogMux> Log::get() {
 }
 
 std::shared_ptr<LogMux> Log::default_logger() {
-    static auto r = std::make_shared<LogMux>();
+    static auto r = std::shared_ptr<LogMux>(new LogMux);
     return r;
 }
 
@@ -111,7 +111,7 @@ bool LogMux::should_log_topic(loglevel& writer, loglevel& msg) {
     return true;
 }
 
-int LogMux::write_log(loglevel level, std::string& sss) {
+size_t LogMux::write_log(loglevel level, std::string& sss) {
 
     bool really_dup = dup2_cout();
 
@@ -160,15 +160,18 @@ int LogMux::write_log(loglevel level, std::string& sss) {
         
         //if(target_profiles()[(uint64_t)*i]->dup_to_cout_) really_dup = true;
     }
-    
-    // if set, log extra to stdout/stderr
-    if(really_dup) {
-        std::ostream* o = &std::cout;
 
-        if( level <= log::level::ERR) {
-            o = &std::cerr;
+
+    if(level <= level_) {
+        // if set, log extra to stdout/stderr
+        if (really_dup) {
+            std::ostream *o = &std::cout;
+
+            if (level <= log::level::ERR) {
+                o = &std::cerr;
+            }
+            *o << sss << std::endl;
         }
-        *o << sss << std::endl;
     }
     return sss.size();
 }

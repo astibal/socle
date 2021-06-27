@@ -97,6 +97,8 @@ public:
     fd_list_t remote_targets_;
 };
 
+class Log;
+
 // inherit default setting from logger_profile
 class LogMux : public logger_profile {
 protected:
@@ -109,12 +111,13 @@ protected:
     std::map<uint64_t,std::unique_ptr<logger_profile>> target_profiles_;
     std::map<uint64_t,std::string> target_names_;
 
-public:
+    friend class Log;
     LogMux() { level_= log::level::NON; period_ =5; target_names_[0]="unknown";};
-    virtual ~LogMux() = default;
+public:
+    ~LogMux() override = default;
 
     inline void level(loglevel const& l) { level_ = l; };
-    inline loglevel level(void) const { return level_; };
+    inline loglevel level() const { return level_; };
 
     inline void dup2_cout(bool b) { dup_to_cout_ = b; }
     inline bool dup2_cout() { return dup_to_cout_; }
@@ -133,7 +136,7 @@ public:
     logger_profile::fd_list_t& remote_targets() { return remote_targets_; }
     void remote_targets(std::string name, int s) { remote_targets_.emplace_back(s, new std::mutex()); target_names_[s] = name; }
 
-    virtual int write_log(loglevel level, std::string& sss);
+    virtual size_t write_log(loglevel level, std::string& sss);
 
     bool should_log_topic(loglevel& writer, loglevel& msg);
 
