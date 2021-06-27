@@ -118,7 +118,7 @@ std::string baseSSLCom<L4Proto>::to_string(int verbosity) const {
     }
 
     if( ( not hr_.empty() ) && ! online) {
-        return hr();
+        return hr_;
     }
 
     if(owner_cx() != nullptr) {
