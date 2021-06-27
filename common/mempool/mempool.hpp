@@ -28,7 +28,7 @@
 #include <execinfo.h>
 
 #include <display.hpp>
-#include <log/LogMux.hpp>
+#include <log/logger.hpp>
 
 #include <mempool/canary.hpp>
 #include <mempool/malloc_allocator.hpp>

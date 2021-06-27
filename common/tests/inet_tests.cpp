@@ -1,16 +1,19 @@
 #include <socle/common/internet.hpp>
 #include <gtest/gtest.h>
 
-constexpr auto& LEVEL = socle::log::level::DIA;
+
+static auto const LEVEL = loglevel(iDEB);
+static void init_log() {
+    Log::init();
+    Log::get()->level(LEVEL);
+    Log::get()->dup2_cout(true);
+}
 
 TEST(InetTest, CanResolveVany) {
 
     std::string host = "root.cz";
 
-    LogOutput::init();
-    logger().dup2_cout(true);
-    inet::Factory::log().level(LEVEL);
-
+    init_log();
 
     auto x = inet::dns_lookup(host, 0);
 
@@ -30,10 +33,7 @@ TEST(InetTest, CanResolveV4) {
 
     std::string host = "root.cz";
 
-    LogOutput::init();
-    logger().dup2_cout(true);
-    inet::Factory::log().level(LEVEL);
-
+    init_log();
 
     auto x = inet::dns_lookup(host);
 
@@ -49,10 +49,7 @@ TEST(InetTest, CanResolveV6) {
 
     std::string host = "root.cz";
 
-    LogOutput::init();
-    logger().dup2_cout(true);
-    inet::Factory::log().level(LEVEL);
-
+    init_log();
 
     auto x = inet::dns_lookup(host, 6);
 
@@ -68,8 +65,8 @@ TEST(InetTest, CanDownload1_ipv4) {
 
     std::string uri = "http://root.cz/index.html";
 
-    LogOutput::init();
-    logger().dup2_cout(true);
+
+    init_log();
     inet::Factory::log().level(LEVEL);
 
 
@@ -88,8 +85,7 @@ TEST(InetTest, CanDownload2_ipv4) {
 
     std::string uri = "http://root.cz:80/index.html";
 
-    LogOutput::init();
-    logger().dup2_cout(true);
+    init_log();
     inet::Factory::log().level(LEVEL);
 
     buffer b(16000);
@@ -106,8 +102,7 @@ TEST(InetTest, CanDownload3_ipv4) {
 
     std::string uri = "root.cz/index.html";
 
-    LogOutput::init();
-    logger().dup2_cout(true);
+    init_log();
     inet::Factory::log().level(LEVEL);
 
     buffer b(16000);
@@ -124,8 +119,7 @@ TEST(InetTest, CanDownload4_ipv4) {
 
     std::string uri = "root.cz";
 
-    LogOutput::init();
-    logger().dup2_cout(true);
+    init_log();
     inet::Factory::log().level(LEVEL);
 
     buffer b(16000);
@@ -145,8 +139,7 @@ TEST(InetTest, CanDownload1_ipv6) {
 
     std::string uri = "http://root.cz/index.html";
 
-    LogOutput::init();
-    logger().dup2_cout(true);
+    init_log();
     inet::Factory::log().level(LEVEL);
 
     buffer b(16); // allocate small buffer to test append
@@ -162,9 +155,8 @@ TEST(InetTest, CanDownload1_ipv6) {
 TEST(InetTest, CanDownload2_ipv6) {
 
     std::string uri = "http://root.cz:80/index.html";
-    LogOutput::init();
-    logger().dup2_cout(true);
 
+    init_log();
     inet::Factory::log().level(LEVEL);
 
     buffer b(16000);
@@ -180,7 +172,8 @@ TEST(InetTest, CanDownload2_ipv6) {
 TEST(InetTest, CanDownload3_ipv6) {
 
     std::string uri = "root.cz/index.html";
-    logger().dup2_cout(true);
+
+    init_log();
     inet::Factory::log().level(LEVEL);
 
     buffer b(16000);
@@ -196,7 +189,8 @@ TEST(InetTest, CanDownload3_ipv6) {
 TEST(InetTest, CanDownload4_ipv6) {
 
     std::string uri = "root.cz";
-    logger().dup2_cout(true);
+
+    init_log();
     inet::Factory::log().level(LEVEL);
 
     buffer b(16000);

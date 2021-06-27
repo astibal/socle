@@ -98,7 +98,7 @@ public:
 };
 
 // inherit default setting from logger_profile
-class logger : public logger_profile {
+class LogMux : public logger_profile {
 protected:
 
     mutable std::recursive_mutex mtx_lout;
@@ -110,8 +110,8 @@ protected:
     std::map<uint64_t,std::string> target_names_;
 
 public:
-    logger() { level_= log::level::NON; period_ =5; target_names_[0]="unknown";};
-    virtual ~logger() = default;
+    LogMux() { level_= log::level::NON; period_ =5; target_names_[0]="unknown";};
+    virtual ~LogMux() = default;
 
     inline void level(loglevel const& l) { level_ = l; };
     inline loglevel level(void) const { return level_; };
@@ -189,33 +189,33 @@ public:
 
 
 
-class LogOutput {
+class Log {
 
 public:
-    static std::shared_ptr<logger> default_logger ();
+    static std::shared_ptr<LogMux> default_logger ();
 
-    static std::shared_ptr<LogOutput> instance() { return self; }
-    static std::shared_ptr<logger> get();
-    static void set(std::shared_ptr<logger> l);
+    static std::shared_ptr<Log> instance() { return self; }
+    static std::shared_ptr<LogMux> get();
+    static void set(std::shared_ptr<LogMux> l);
 
     static inline const std::string levels[] = {"None    ", "Fatal   ", "Critical", "Error   ", "Warning ", "Notify  ",
                                                 "Informat", "Diagnose", "Debug   ", "Dumpit  ", "Extreme "};
 
-    static void init() { self = std::make_shared<LogOutput>(); }
-    LogOutput() : lout_(default_logger()) {};
+    static void init() { self = std::make_shared<Log>(); }
+    Log() : lout_(default_logger()) {};
 private:
 
-    std::shared_ptr<logger> lout_;
-    static inline std::shared_ptr<LogOutput> self;
+    std::shared_ptr<LogMux> lout_;
+    static inline std::shared_ptr<Log> self;
 };
 
 template <class ... Args>
-void logger::log_simple(const char* str) {
+void LogMux::log_simple(const char* str) {
     std::cerr << str << std::endl;
 }
 
 template <class ... Args>
-void logger::log_simple(std::stringstream& ss) {
+void LogMux::log_simple(std::stringstream& ss) {
     std::string s = ss.str();
     ss.clear();
 
@@ -223,7 +223,7 @@ void logger::log_simple(std::stringstream& ss) {
 }
 
 template <class ... Args>
-void logger::log(loglevel const& l, const std::string& fmt,  Args ... args) {
+void LogMux::log(loglevel const& l, const std::string& fmt, Args ... args) {
 
 
     auto now = std::chrono::system_clock::now();
@@ -267,12 +267,12 @@ void logger::log(loglevel const& l, const std::string& fmt,  Args ... args) {
     std::string str = string_format(fmt.c_str(), args...);
 
 
-    std::string desc = std::string(LogOutput::levels[0]);
+    std::string desc = std::string(Log::levels[0]);
 
-    if (l > sizeof(LogOutput::LogOutput::levels) - 1) {
+    if (l > sizeof(Log::Log::levels) - 1) {
         desc = string_format("%d", l.level());
     } else {
-        desc = LogOutput::levels[l.level()];
+        desc = Log::levels[l.level()];
     }
 
 
@@ -297,7 +297,7 @@ void logger::log(loglevel const& l, const std::string& fmt,  Args ... args) {
 
 
 template <class ... Args>
-void logger::log2(loglevel const& l, const char* src, int line, const std::string& fmt, Args ... args ) {
+void LogMux::log2(loglevel const& l, const char* src, int line, const std::string& fmt, Args ... args ) {
 
     std::lock_guard<std::recursive_mutex> lck(mtx_lout);
 
@@ -310,7 +310,7 @@ void logger::log2(loglevel const& l, const char* src, int line, const std::strin
 
 
 template <class ... Args>
-void logger::log_w_name(loglevel const& l, std::string name, const std::string& fmt, Args ... args) {
+void LogMux::log_w_name(loglevel const& l, std::string name, const std::string& fmt, Args ... args) {
 
     std::lock_guard<std::recursive_mutex> lck(mtx_lout);
 
@@ -319,7 +319,7 @@ void logger::log_w_name(loglevel const& l, std::string name, const std::string& 
 }
 
 template <class ... Args>
-void logger::log2_w_name(loglevel const&  l, const char* f, int li, std::string name, const std::string& fmt, Args ... args) {
+void LogMux::log2_w_name(loglevel const&  l, const char* f, int li, std::string name, const std::string& fmt, Args ... args) {
 
     std::lock_guard<std::recursive_mutex> lck(mtx_lout);
 

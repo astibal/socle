@@ -120,6 +120,13 @@ unsigned char tls_sni_smithproxy_alpn[] = {
 };
 
 
+static auto const LEVEL = loglevel(iDEB);
+static void init_log() {
+    Log::init();
+    Log::get()->level(LEVEL);
+    Log::get()->dup2_cout(true);
+}
+
 struct SSLCom_Buddy : public SSLCom {
     void test_peer_hello_buffer(buffer const& b) { sslcom_peer_hello_buffer.assign( (void*)b.data(), b.size(), b.size(), false); }
     void test_parse_sni() { parse_peer_hello(); }
@@ -129,8 +136,8 @@ struct SSLCom_Buddy : public SSLCom {
 
 
 TEST(TLS_Tests, ParseClientHello_SNI) {
-    logger().dup2_cout(true);
 
+    init_log();
     auto& data =  tls_sni_smithproxy;
 
 
@@ -138,17 +145,21 @@ TEST(TLS_Tests, ParseClientHello_SNI) {
     b.assign(data, sizeof(data), sizeof(data), false);
 
     SSLCom_Buddy s;
+    logan::get()["com.ssl"]->level(iDEB);
+
     s.test_peer_hello_buffer(b);
     s.test_parse_sni();
 
     std::stringstream ss;
 
     std::cout << s.hr() << " SNI: " << s.get_peer_sni() << "\n";
+
+    ASSERT_TRUE(s.get_peer_sni() == "smithproxy.org");
 }
 
 TEST(TLS_Tests, ParseClientHello_ALPN) {
-    constexpr auto& LEVEL = socle::log::level::DIA;
-    logger().dup2_cout(true);
+
+    init_log();
 
     auto& data =  tls_sni_smithproxy_alpn;
 
@@ -156,10 +167,20 @@ TEST(TLS_Tests, ParseClientHello_ALPN) {
     b.assign(data, sizeof(data), sizeof(data), false);
 
     SSLCom_Buddy s;
+    logan::get()["com.ssl"]->level(iDEB);
+
     s.test_peer_hello_buffer(b);
     s.test_parse_sni();
 
     std::stringstream ss;
 
     std::cout << s.hr() << " SNI: " << s.get_peer_sni() << " ALPN: " << s.get_peer_alpn() << "\n";
+
+    std::stringstream exp;
+    exp << static_cast<unsigned char>(0x02);
+    exp << "h2";
+    exp << static_cast<unsigned char>(0x08);
+    exp << "http/1.1";
+
+    ASSERT_TRUE(s.get_peer_alpn() == exp.str());
 }

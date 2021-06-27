@@ -25,16 +25,16 @@
 #include <sys/socket.h>
 
 
-std::shared_ptr<logger> LogOutput::get() {
+std::shared_ptr<LogMux> Log::get() {
     return instance()->lout_;
 }
 
-std::shared_ptr<logger> LogOutput::default_logger() {
-    static auto r = std::make_shared<logger>();
+std::shared_ptr<LogMux> Log::default_logger() {
+    static auto r = std::make_shared<LogMux>();
     return r;
 }
 
-void LogOutput::set(std::shared_ptr<logger> l) {
+void Log::set(std::shared_ptr<LogMux> l) {
     instance()->lout_ = l;
 }
 
@@ -53,7 +53,7 @@ logger_profile::~logger_profile() {
     }
 }
 
-bool logger::periodic_start(unsigned int s) {
+bool LogMux::periodic_start(unsigned int s) {
 	auto now = static_cast<unsigned long>(time(nullptr));
 
     last_period_status = now > static_cast<unsigned long>(last_period) + s;
@@ -62,7 +62,7 @@ bool logger::periodic_start(unsigned int s) {
 }
 
 
-bool logger::periodic_end() {
+bool LogMux::periodic_end() {
 	if (last_period_status) {
 		time_t now = time(nullptr);
 		last_period = now;
@@ -74,7 +74,7 @@ bool logger::periodic_end() {
 }
 
 
-bool logger::should_log_topic(loglevel& writer, loglevel& msg) {
+bool LogMux::should_log_topic(loglevel& writer, loglevel& msg) {
 
     // writer loglevel
     unsigned int t = writer.topic();
@@ -111,7 +111,7 @@ bool logger::should_log_topic(loglevel& writer, loglevel& msg) {
     return true;
 }
 
-int logger::write_log(loglevel level, std::string& sss) {
+int LogMux::write_log(loglevel level, std::string& sss) {
 
     bool really_dup = dup2_cout();
 
@@ -175,7 +175,7 @@ int logger::write_log(loglevel level, std::string& sss) {
 
 
 
-bool logger::click_timer (const std::string &xname, int interval) {
+bool LogMux::click_timer (const std::string &xname, int interval) {
 	
 	std::lock_guard<std::mutex> lck(mtx_timers);
 	
@@ -217,7 +217,7 @@ bool logger::click_timer (const std::string &xname, int interval) {
 
 // DEPRECATED: we don't need adjusting internal logging based on profiles anymore.
 [[maybe_unused]]
-loglevel logger::adjust_level() {
+loglevel LogMux::adjust_level() {
 
     loglevel curr_level = level();
     loglevel max_common_level = log::level::NON;

@@ -64,7 +64,7 @@ using namespace log::level;
 #define  _cri  if(*log.level() >= CRI) log.cri
 #define  _fat  if(*log.level() >= FAT) log.fat
 
-#define  _cons  LogOutput::get()->log_simple
+#define  _cons  Log::get()->log_simple
 
 class baseLoganMate {
 public:
@@ -205,7 +205,7 @@ public:
             }
             ms << string_format(fmt, args...);
 
-            auto lout = LogOutput::get();
+            auto lout = Log::get();
 
             if(lout) {
                 lout->log(lev, ms.str());
@@ -455,7 +455,7 @@ public:
             std::stringstream ms;
             ms << "[" << topic << "]: " << string_format(fmt, args...);
 
-            LogOutput::get()->log(lev, ms.str());
+            Log::get()->log(lev, ms.str());
         }
     }
 
@@ -491,7 +491,9 @@ loglevel* logan_attached<T>::level() const {
                     auto sa_level = logan::get()[suba];
 
                     // sub_area with higher verbosity
-                    if( sa_level > my_area_loglevel) {
+                    auto& lhs = *sa_level;
+                    auto& rhs = *my_area_loglevel;
+                    if( lhs > rhs) {
 
                         // override area verbosity
                         my_area_loglevel = sa_level;
