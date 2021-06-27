@@ -71,24 +71,27 @@ TEST(PeeringTest, YThread) {
         std::cout << std::time(nullptr) << ": deleted y\n";
     });
 
-
-    bool test_result = false;
-
     {
         auto[ptr, l_] = x->peering.peer();
         std::cout << std::time(nullptr) << ": having lock\n";
         std::this_thread::sleep_for(1600ms); // wait y is deleted
 
-        if (ptr) {
-            std::cout << "Y is valid\n";
-            std::cout << "Y.a = " << ptr->a << "\n";
+        ASSERT_TRUE(ptr);
 
-            test_result = ptr and ptr->a == 20 and dynamic_cast<B*>(ptr->peering.peer().first) == x;
+        if (ptr) {
+            std::cout << std::time(nullptr) << ": Y is valid\n";
+            std::cout << std::time(nullptr) << ": Y.a = " << ptr->a << "\n";
+
+            // destructor would rewrite 20 to -66x, anything else than 20 would mean invalid memory access
+            ASSERT_TRUE(ptr->a == 20);
+
+            // does peer is peering with us, too?
+            ASSERT_TRUE(dynamic_cast<B*>(ptr->peering.peer().first) == x);
         } else {
-            std::cout << "Y is NOT valid\n";
+            std::cout << std::time(nullptr) << ": Y is NOT valid\n";
         }
     }
     y_deleter.join();
 
-    ASSERT_TRUE(test_result);
+    delete x;
 }
