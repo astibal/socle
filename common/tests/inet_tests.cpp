@@ -6,6 +6,8 @@ constexpr auto& LEVEL = socle::log::level::DIA;
 TEST(InetTest, CanResolveVany) {
 
     std::string host = "root.cz";
+
+    LogOutput::init();
     logger().dup2_cout(true);
     inet::Factory::log().level(LEVEL);
 
@@ -27,6 +29,8 @@ TEST(InetTest, CanResolveVany) {
 TEST(InetTest, CanResolveV4) {
 
     std::string host = "root.cz";
+
+    LogOutput::init();
     logger().dup2_cout(true);
     inet::Factory::log().level(LEVEL);
 
@@ -44,6 +48,8 @@ TEST(InetTest, CanResolveV4) {
 TEST(InetTest, CanResolveV6) {
 
     std::string host = "root.cz";
+
+    LogOutput::init();
     logger().dup2_cout(true);
     inet::Factory::log().level(LEVEL);
 
@@ -61,6 +67,8 @@ TEST(InetTest, CanResolveV6) {
 TEST(InetTest, CanDownload1_ipv4) {
 
     std::string uri = "http://root.cz/index.html";
+
+    LogOutput::init();
     logger().dup2_cout(true);
     inet::Factory::log().level(LEVEL);
 
@@ -79,6 +87,8 @@ TEST(InetTest, CanDownload1_ipv4) {
 TEST(InetTest, CanDownload2_ipv4) {
 
     std::string uri = "http://root.cz:80/index.html";
+
+    LogOutput::init();
     logger().dup2_cout(true);
     inet::Factory::log().level(LEVEL);
 
@@ -95,6 +105,8 @@ TEST(InetTest, CanDownload2_ipv4) {
 TEST(InetTest, CanDownload3_ipv4) {
 
     std::string uri = "root.cz/index.html";
+
+    LogOutput::init();
     logger().dup2_cout(true);
     inet::Factory::log().level(LEVEL);
 
@@ -111,6 +123,8 @@ TEST(InetTest, CanDownload3_ipv4) {
 TEST(InetTest, CanDownload4_ipv4) {
 
     std::string uri = "root.cz";
+
+    LogOutput::init();
     logger().dup2_cout(true);
     inet::Factory::log().level(LEVEL);
 
@@ -130,6 +144,8 @@ TEST(InetTest, CanDownload4_ipv4) {
 TEST(InetTest, CanDownload1_ipv6) {
 
     std::string uri = "http://root.cz/index.html";
+
+    LogOutput::init();
     logger().dup2_cout(true);
     inet::Factory::log().level(LEVEL);
 
@@ -146,7 +162,9 @@ TEST(InetTest, CanDownload1_ipv6) {
 TEST(InetTest, CanDownload2_ipv6) {
 
     std::string uri = "http://root.cz:80/index.html";
+    LogOutput::init();
     logger().dup2_cout(true);
+
     inet::Factory::log().level(LEVEL);
 
     buffer b(16000);
