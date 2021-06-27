@@ -16,8 +16,8 @@
     License along with this library.
 */
 
-#ifndef __SSLCOM_INCL__
-#define __SSLCOM_INCL__
+#ifndef SSLCOM_INCL
+#define SSLCOM_INCL
 
 #include <linux/in6.h>
 
@@ -660,9 +660,9 @@ int baseSSLCom<L4Proto>::ssl_alpn_select_callback(SSL *s, const unsigned char **
 }
 
 template <class L4Proto>
-long int baseSSLCom<L4Proto>::log_if_error(unsigned int level, const char* prefix) {
+unsigned long baseSSLCom<L4Proto>::log_if_error(unsigned int level, const char* prefix) {
 
-    long err2 = ERR_get_error();
+    auto err2 = ERR_get_error();
     do {
         if(err2 != 0) {
             log.log(loglevel(level,0), "%s: error code:%u:%s", prefix, err2, ERR_error_string(err2, nullptr));
@@ -675,9 +675,9 @@ long int baseSSLCom<L4Proto>::log_if_error(unsigned int level, const char* prefi
 
 
 template <class L4Proto>
-long int baseSSLCom<L4Proto>::log_if_error2(unsigned int level, const char* prefix) {
+unsigned long baseSSLCom<L4Proto>::log_if_error2(unsigned int level, const char* prefix) {
 
-    long err2 = ERR_get_error();
+    auto err2 = ERR_get_error();
     do {
         if(err2 != 0) {
 
@@ -696,7 +696,7 @@ DH* baseSSLCom<L4Proto>::ssl_dh_callback(SSL* s, int is_export, int key_length) 
     void* data = SSL_get_ex_data(s, sslcom_ssl_extdata_index);
     std::string name = "unknown_cx";
 
-    baseSSLCom* com = static_cast<baseSSLCom*>(data);
+    auto* com = static_cast<baseSSLCom*>(data);
     if(com != nullptr) {
         name = com->hr();
     }

@@ -166,11 +166,11 @@ protected:
         int handshake_server();
 
     // SNI
-    struct timeval timer_start;
+    struct timeval timer_start{};
     
     //SSL_write or SSL_read checked timer. Successful read will reset also write timer and vice versa.
-    struct timeval timer_write_timeout;
-    struct timeval timer_read_timeout;
+    struct timeval timer_write_timeout{};
+    struct timeval timer_read_timeout{};
         
     //if we are actively waiting for something, it doesn't make sense to process peer events (which creates unnecessary load)
     inline bool unmonitor_peer() { 
@@ -310,8 +310,8 @@ public:
                                         const unsigned char *in, unsigned int inlen,
                                         void *arg);
     static int check_server_dh_size(SSL* ssl);
-    long log_if_error(unsigned int level, const char* prefix);
-    static long log_if_error2(unsigned int level, const char* prefix);
+    unsigned long log_if_error(unsigned int level, const char* prefix);
+    static unsigned long log_if_error2(unsigned int level, const char* prefix);
     void log_profiling_stats(unsigned int level);
     
 	virtual bool check_cert(const char*);
