@@ -35,13 +35,13 @@ typedef logger_adv_info loglevelmore;
 class loglevel {
 
 public:
-    explicit loglevel(unsigned int l) : level_(l), topic_(0) {}
-    loglevel(unsigned int l, unsigned int t) : level_(l), topic_(t) {}
-    loglevel(loglevel& l, unsigned int t) : level_(l.level_), topic_(t) {}
-    loglevel(loglevel& l, unsigned int t, unsigned int f) : level_(l.level_), topic_(t), flags_(f) {}
-    loglevel(unsigned int l, unsigned int t, loglevelmore* a) : level_(l), topic_(t), adv_(a) {}
-    loglevel(loglevel& l, unsigned int t, loglevelmore* a) : level_(l.level_), topic_(t), adv_(a) {}
-    loglevel(loglevel& l, unsigned int t, loglevelmore* a, unsigned int f) : level_(l.level_), topic_(t), adv_(a), flags_(f) {}
+    explicit loglevel(unsigned int l) noexcept: level_(l), topic_(0) {}
+    loglevel(unsigned int l, unsigned int t) noexcept: level_(l), topic_(t) {}
+    loglevel(loglevel& l, unsigned int t)  noexcept: level_(l.level_), topic_(t) {}
+    loglevel(loglevel& l, unsigned int t, unsigned int f)  noexcept: level_(l.level_), topic_(t), flags_(f) {}
+    loglevel(unsigned int l, unsigned int t, loglevelmore* a)  noexcept: level_(l), topic_(t), adv_(a) {}
+    loglevel(loglevel& l, unsigned int t, loglevelmore* a)  noexcept: level_(l.level_), topic_(t), adv_(a) {}
+    loglevel(loglevel& l, unsigned int t, loglevelmore* a, unsigned int f)  noexcept: level_(l.level_), topic_(t), adv_(a), flags_(f) {}
 
 
     [[nodiscard]] inline unsigned int level() const { return level_; }
