@@ -415,7 +415,7 @@ void memPool::release(mem_chunk_t xto_ret){
     }
 }
 
-std::vector<mem_chunk_t>* memPool::pick_acq_set(ssize_t s) {
+std::vector<mem_chunk_t>* memPool::pick_acq_set(size_t s) {
     if      (s > 50 * 1024) return nullptr;
     else if (s > 35 * 1024) return &available_50k;
     else if (s > 20 * 1024) return &available_35k;
@@ -429,7 +429,7 @@ std::vector<mem_chunk_t>* memPool::pick_acq_set(ssize_t s) {
     else return &available_32;
 }
 
-std::vector<mem_chunk_t>* memPool::pick_ret_set(ssize_t s) {
+std::vector<mem_chunk_t>* memPool::pick_ret_set(size_t s) {
 
     std::lock_guard<std::mutex> g(lock);
     if      (s == 50 * 1024) return  &available_50k;

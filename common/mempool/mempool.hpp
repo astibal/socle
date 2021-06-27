@@ -28,7 +28,7 @@
 #include <execinfo.h>
 
 #include <display.hpp>
-#include <log/logger.hpp>
+#include <log/LogMux.hpp>
 
 #include <mempool/canary.hpp>
 #include <mempool/malloc_allocator.hpp>
@@ -148,8 +148,8 @@ class memPool {
     std::size_t sz35k;
     std::size_t sz50k;
 
-    std::vector<mem_chunk_t>* pick_acq_set(ssize_t s);
-    std::vector<mem_chunk_t>* pick_ret_set(ssize_t s);
+    std::vector<mem_chunk_t>* pick_acq_set(size_t s);
+    std::vector<mem_chunk_t>* pick_ret_set(size_t s);
 
     std::vector<mem_chunk_t> available_32;
     std::size_t alloc32 = 0;
