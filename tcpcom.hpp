@@ -54,6 +54,8 @@ public:
     baseCom* replicate() override { return new TCPCom(); };
     
     int connect(const char* host, const char* port) override;
+    bool make_transparent(int sfd);
+
     int bind(unsigned short port) override;
     int bind(const char* _path) override { return -1; };
     int accept (int sockfd, sockaddr* addr, socklen_t* addrlen_) override;
