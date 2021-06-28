@@ -1747,7 +1747,7 @@ void baseSSLCom<L4Proto>::init_server() {
         // loading sessions for server are automatic done by openssl
         // loading from here is experimental and wip
 
-        if(left_session_cache_enabled__) {
+        if(EXP_left_session_cache_enabled) {
             load_session_if_needed();
         }
     }
@@ -2343,7 +2343,7 @@ template <class L4Proto>
 bool baseSSLCom<L4Proto>::store_session_if_needed() {
 
     // add quick escape for server (left) side
-    if(is_server() and not left_session_cache_enabled__) {
+    if(is_server() and not EXP_left_session_cache_enabled) {
         _deb("store_session_if_needed: left-side session cache not enabled");
         return false;
     }
@@ -2477,7 +2477,7 @@ template <class L4Proto>
 bool baseSSLCom<L4Proto>::load_session_if_needed() {
 
     // add quick escape for server (left) side
-    if(is_server() and not left_session_cache_enabled__) {
+    if(is_server() and not EXP_left_session_cache_enabled) {
         _deb("store_session_if_needed: left-side session cache not enabled");
         return false;
     }

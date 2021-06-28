@@ -1,8 +1,5 @@
 #include <sslcom.hpp>
 
-int SSLCOM_CLIENTHELLO_TIMEOUT = 3*1000; //in ms
-int SSLCOM_WRITE_TIMEOUT = 60*1000;      //in ms
-int SSLCOM_READ_TIMEOUT = 60*1000;      //in ms
 
 void CompatThreading::locking_function ( int mode, int n, const char * file, int line )  {
 

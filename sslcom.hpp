@@ -80,10 +80,6 @@ struct CompatThreading {
     static void dyn_destroy_function(CompatThreading::CRYPTO_dynlock_value *l, const char *file, int line);
 };
 
-extern int SSLCOM_CLIENTHELLO_TIMEOUT;
-extern int SSLCOM_READ_TIMEOUT;
-extern int SSLCOM_WRITE_TIMEOUT;
-
 enum class ret_handshake { ERROR=-1, AGAIN=0, SUCCESS=1, BYPASS=2 };
 
 namespace socle::ex {
@@ -524,6 +520,11 @@ public:
 
     bool opt_alpn_block = false;
 
+    static inline int SSLCOM_CLIENTHELLO_TIMEOUT = 3*1000; //in ms
+    static inline int SSLCOM_WRITE_TIMEOUT = 60*1000;      //in ms
+    static inline int SSLCOM_READ_TIMEOUT = 60*1000;       //in ms
+
+
     TYPENAME_OVERRIDE("SSLCom")
     DECLARE_LOGGING(to_string)
 
@@ -531,7 +532,7 @@ private:
     unsigned int verify_status_ = VRF_NOTTESTED;
 
     // experimental switch to save SESSION data for left connections - WIP code
-    static inline bool left_session_cache_enabled__ = false;
+    static inline bool EXP_left_session_cache_enabled = false;
 };
 
 const char* SCT_validation_status_str(sct_validation_status_t const& st);
