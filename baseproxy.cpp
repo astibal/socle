@@ -1135,7 +1135,7 @@ int baseProxy::run_poll() {
 
             if(p_handler != nullptr) {
 
-                auto seg = p_handler->fence__;
+                auto seg = p_handler->fence_S;
                 _ext("baseProxy::run: socket %d has registered handler 0x%x (fence %x)", cur_socket, p_handler, seg);
 
                 if(seg != HANDLER_FENCE) {

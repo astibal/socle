@@ -248,7 +248,7 @@ namespace inet {
 
             epoll e;
             e.init();
-            e.add(sd);
+            e.add(sd, EPOLLIN);
 
 
             std::string header;
@@ -276,8 +276,11 @@ namespace inet {
                          bytes_total);
 
                 } else {
-
-                    _err("internet::http_get(%s): timeout on socket", request.c_str());
+                    if (nfds <= 0) {
+                        _err("internet::http_get(%s): %s", request.c_str(),
+                             nfds < 0 ?
+                             string_format("error %d: %s", errno, string_error().c_str()).c_str() : "timeout");
+                    }
 
                     if (time(nullptr) > start_time + timeout) {
                         bytes_sofar = -1;

@@ -23,7 +23,6 @@
 
 #include <shared_mutex>
 
-#define EPOLLER_MAX_EVENTS 50
 #define HANDLER_FENCE 0xcaba1a
 
 
@@ -94,9 +93,8 @@ struct protected_set {
     }
 
     protected_set() = default;
-    protected_set(protected_set const& r) {
-        set_ = r.set_;
-    }
+    protected_set(protected_set const& r) : set_(r.set_) {}
+
     protected_set& operator=(protected_set const& r) {
         if(&r != this) {
             set_ = r.set_;
@@ -115,6 +113,7 @@ private:
 struct epoll {
 
     using set_type = protected_set<int, mp::set<int>>;
+    static constexpr int EPOLLER_MAX_EVENTS = 50;
 
     struct epoll_event events[EPOLLER_MAX_EVENTS];
     std::atomic_int epoll_fd_ = 0;
@@ -162,8 +161,21 @@ struct epoll {
 
 
     int init();
-    virtual int wait(int timeout = -1);
-    virtual bool add(int socket, int mask=EPOLLIN);
+
+    /// @brief prepare rescan sockets for another wait() operation
+    void process_pre_wait_rescans();
+
+    /// @brief prepare idle sockets for another wait() operation
+    void process_pre_wait_idles();
+
+    /// @brief wait on poll results from epoll_wait with 'timeout' passed to it: zero: return immediately, negative: block indefinitely
+    virtual int wait(int timeout);
+
+    /// @brief add enforced sockets to in_set
+    void enforced_to_inset();
+
+    int process_epoll_events(int nfds);
+    virtual bool add(int socket, int mask);
     virtual bool modify(int socket, int mask);
     virtual bool del(int socket);
     virtual bool rescan_in(int socket);
@@ -174,7 +186,7 @@ struct epoll {
 
     virtual bool click_timer_now (); // return true if we should add them back to in_set (scan their readability again). If yes, reset timer.
 
-    inline void clear() { memset(events,0,EPOLLER_MAX_EVENTS*sizeof(epoll_event)); in_set.clear(); out_set.clear(); idle_set.clear(); err_set.clear(); }
+    void clear();
 
     bool hint_socket(int socket); // this is the socket which will be additionally monitored for EPOLLIN; each time it's readable, single byte is read from it.
     [[nodiscard]] inline int hint_socket() const { return hint_fd_.load(); }
@@ -184,9 +196,10 @@ struct epoll {
         if (epoll_socket() > 0) ::close(epoll_socket());
     };
 
-    static loglevel log_level;
+    static inline loglevel log_level {iINF};
     logan_lite log = logan_lite("com.epoll");
 
+    void _debug_sockets(int nfds); // debug print sockets in events
 };
 
 
@@ -194,7 +207,7 @@ struct epoll {
 class epoll_handler;
 
 // handler statistics/troubleshooting struct
-typedef struct {
+typedef struct handler_stats {
     unsigned long call_count;
 
     void clear() {
@@ -203,7 +216,7 @@ typedef struct {
 } handler_stats_t;
 
 // handler + its stats holder
-typedef struct {
+typedef struct handler_info  {
     handler_stats_t stats;
     epoll_handler* handler;
 
@@ -223,7 +236,7 @@ struct epoller {
     bool in_read_set(int check);
     bool in_write_set(int check);
     bool in_idle_set(int check);
-    virtual bool add(int socket, int mask=(EPOLLIN));
+    virtual bool add(int socket, int mask);
     virtual bool modify(int socket, int mask);
     virtual bool del(int socket);
     virtual bool rescan_in(int socket);
@@ -235,7 +248,7 @@ struct epoller {
 
     virtual bool click_timer_now (); // return true if we should add them back to in_set (scan their readability again). If yes, reset timer.
     
-    virtual int wait(int timeout = -1);
+    virtual int wait(int timeout);
     virtual bool hint_socket(int socket); // this is the socket which will be additionally monitored for EPOLLIN; each time it's readable, single byte is read from it.
 
     // handler hints is a map of socket->handler. We will allow to grow it as needed. No purges. 
@@ -255,7 +268,7 @@ struct epoller {
 
 class epoll_handler {
 public:
-    int fence__ = HANDLER_FENCE;
+    int fence_S = HANDLER_FENCE;
     virtual void handle_event(baseCom*) = 0;
     virtual ~epoll_handler() {
         if(registrant != nullptr) {

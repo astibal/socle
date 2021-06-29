@@ -1,7 +1,6 @@
 #include <epoll.hpp>
 #include <hostcx.hpp>
 
-loglevel epoll::log_level = INF;
 
 int epoll::init() {
     // size in epoll_create is ignored since 2.6.8, but has to be greater than 0
@@ -17,117 +16,34 @@ int epoll::init() {
     return s;
 }
 
-int epoll::wait(int timeout) {
-
-    if(! enforce_in_set.empty()) {
-        _deb("epoll::wait: == begin, timeout %dms, enforce queued sockets ", timeout);
-    } else {
-        _dum("epoll::wait: == begin, timeout %dms", timeout);
-    }
-    
-    clear();
-    
-    // Pre-populate epoll from rescan lists
-    
-    if(click_timer_now()) {
-
-        // Setting up rescans!
-        {
-            auto l_ = std::scoped_lock(rescan_set_in.get_lock());
-
-            for (auto isock: rescan_set_in.get_ul()) {
-                _deb("epoll::wait rescanning EPOLLIN socket %d", isock);
-                add(isock, EPOLLIN);
-            }
-            rescan_set_in.clear_ul();
-        }
-
-        {
-            auto l_ = std::scoped_lock(rescan_set_out.get_lock());
-
-            for (auto osock: rescan_set_out.get_ul()) {
-                _deb("epoll::wait rescanning EPOLLIN|OUT socket %d", osock);
-                add(osock, EPOLLIN | EPOLLOUT);
-            }
-            rescan_set_out.clear_ul();
-        }
-
-        // idle timer?
-        if(idle_counter > idle_timeout_ms) {
-            idle_counter = 0;
-
-            // toggle idle round
-            idle_round > 0  ? idle_round = 0 : idle_round = 1;
-
-            if(idle_round == 0) {
-
-                mp::set<int> cp;
-                {
-                    auto l = std::scoped_lock(idle_watched_pre.get_lock());
-
-                    // moving _pre to idle_watched
-                    if (!idle_watched_pre.empty_ul())
-                        _deb("epoll::wait: idle round %d, moving %d sockets to idle watch", idle_round,
-                             idle_watched_pre.size_ul());
-
-                    for (auto s: idle_watched_pre.get_ul()) {
-                        cp.insert(s);
-                    }
-                    idle_watched_pre.clear_ul();
-                }
-                for(auto s: cp)
-                    idle_watched.insert(s);
-
-
-            } else {
-
-                mp::set<int> cp;
-                {
-                    auto l = std::scoped_lock(idle_watched.get_lock());
-
-                    // finally idle sockets
-                    if(! idle_watched.empty_ul())
-                        _dia("epoll::wait: idle round %d, %d sockets marked idle", idle_round, idle_watched.size_ul());
-
-                    for (auto s: idle_watched.get_ul()) {
-                        _dia("epoll::wait: idle socket %d", s);
-
-                        cp.insert(s);
-                    }
-                    idle_watched.clear_ul();
-                }
-                for(auto s: cp)
-                    idle_set.insert(s);
-            }
-        }
-    }
-    
-    // wait for epoll
-    
-    int nfds = epoll_wait(epoll_socket(), events, EPOLLER_MAX_EVENTS, timeout);
-    
-    if(nfds > 0) {
+void epoll::_debug_sockets(int nfds) {
+    if (nfds > 0) {
         _ext("epoll::wait: %d socket events", nfds);
-    }
-    
 
-    // optimized-out in Release builds
-    _if_deb {
-        if (nfds > 0) {
-            std::string ports;
-            for (int xi = 0; xi < nfds; ++xi) {
-                ports += std::to_string(events[xi].data.fd);
+        std::string ports;
+        for (int xi = 0; xi < nfds; ++xi) {
+            ports += std::to_string(events[xi].data.fd);
 
-                if (events[xi].events & EPOLLIN) ports += "r";
-                if (events[xi].events & EPOLLOUT) ports += "w";
-                ports += " ";
+            if (events[xi].events & EPOLLIN) ports += "r";
+            if (events[xi].events & EPOLLOUT) ports += "w";
+            if (events[xi].events & EPOLLERR) ports += "e";
+            if (events[xi].events & EPOLLHUP) ports += "h";
+            ports += " ";
 
-            }
-            _deb("ports: %s", ports.c_str());
         }
+        _deb("epoll::wait: ports: %s", ports.c_str());
+    } else if (nfds == 0) {
+        _deb("epoll::wait: ports: <none>");
     }
-    
-    for(int i = 0; i < nfds; ++i) {
+    else {
+        _deb("epoll::wait: error %d, %s", errno, string_error(errno).c_str());
+    }
+};
+
+int epoll::process_epoll_events(int nfds) {
+    int i = 0;
+
+    for(; i < nfds; ++i) {
         int socket = events[i].data.fd;
         uint32_t eventset = events[i].events;
 
@@ -135,7 +51,7 @@ int epoll::wait(int timeout) {
             if (socket == hint_socket()) {
                 _dia("epoll::wait: hint triggered %d", socket);
             }
-            
+
             _dia("epoll::wait: data received into socket %d", socket);
 
             // add socket to in_set
@@ -144,10 +60,10 @@ int epoll::wait(int timeout) {
         }
         else if(eventset & EPOLLOUT) {
             _dia("epoll::wait: socket %d writable (auto_epollout_remove=%d)",socket , auto_epollout_remove);
-            
+
             out_set.insert(socket);
             clear_idle_watch(socket);
-            
+
             if(auto_epollout_remove) {
                 modify(socket,EPOLLIN);
             }
@@ -163,6 +79,84 @@ int epoll::wait(int timeout) {
         }
     }
 
+    return i;
+}
+
+void epoll::process_pre_wait_idles() {
+    // idle timer?
+    if(idle_counter > idle_timeout_ms) {
+        idle_counter = 0;
+
+        // toggle idle round
+        idle_round = not idle_round;
+
+        if(not idle_round) {
+
+            mp::set<int> cp;
+            {
+                auto l = std::scoped_lock(idle_watched_pre.get_lock());
+
+                // moving _pre to idle_watched
+                if (!idle_watched_pre.empty_ul())
+                    _deb("epoll::wait: idle round %d, moving %d sockets to idle watch", idle_round,
+                         idle_watched_pre.size_ul());
+
+                for (auto s: idle_watched_pre.get_ul()) {
+                    cp.insert(s);
+                }
+                idle_watched_pre.clear_ul();
+            }
+            for(auto s: cp)
+                idle_watched.insert(s);
+
+
+        } else {
+
+            mp::set<int> cp;
+            {
+                auto l = std::scoped_lock(idle_watched.get_lock());
+
+                // finally idle sockets
+                if(! idle_watched.empty_ul())
+                    _dia("epoll::wait: idle round %d, %d sockets marked idle", idle_round, idle_watched.size_ul());
+
+                for (auto s: idle_watched.get_ul()) {
+                    _dia("epoll::wait: idle socket %d", s);
+
+                    cp.insert(s);
+                }
+                idle_watched.clear_ul();
+            }
+            for(auto s: cp)
+                idle_set.insert(s);
+        }
+    }
+}
+
+void epoll::process_pre_wait_rescans() {
+    // Setting up rescans!
+    {
+        auto l_ = std::scoped_lock(rescan_set_in.get_lock());
+
+        for (auto isock: rescan_set_in.get_ul()) {
+            _deb("epoll::wait rescanning EPOLLIN socket %d", isock);
+            add(isock, EPOLLIN);
+        }
+        rescan_set_in.clear_ul();
+    }
+
+    {
+        auto l_ = std::scoped_lock(rescan_set_out.get_lock());
+
+        for (auto osock: rescan_set_out.get_ul()) {
+            _deb("epoll::wait rescanning EPOLLIN|OUT socket %d", osock);
+            add(osock, EPOLLIN | EPOLLOUT);
+        }
+        rescan_set_out.clear_ul();
+    }
+}
+
+void epoll::enforced_to_inset() {
     mp::set<int> cp;
     {
         auto l_ = std::scoped_lock(enforce_in_set.get_lock());
@@ -179,7 +173,60 @@ int epoll::wait(int timeout) {
     for(auto s: cp) {
         in_set.insert(s);
     }
+}
 
+void epoll::clear() {
+
+    // memset(events,0,EPOLLER_MAX_EVENTS*sizeof(epoll_event));
+
+    in_set.clear();
+    out_set.clear();
+    idle_set.clear();
+    err_set.clear();
+}
+
+int epoll::wait(int timeout) {
+
+    _deb("epoll::wait: == begin, timeout %dms %s", timeout, enforce_in_set.empty() ? "" : "+ enforced sockets");
+
+    clear();
+    
+    // Pre-populate epoll from rescan lists
+    
+    if(click_timer_now()) {
+        process_pre_wait_rescans();
+        process_pre_wait_idles();
+    }
+    
+    // wait for epoll
+    
+    int nfds = 0;
+    int cur_nfds = 0;
+    unsigned count = 0;
+    do {
+        cur_nfds = epoll_wait(epoll_socket(), events, EPOLLER_MAX_EVENTS, timeout);
+        if(cur_nfds < 0) {
+            if(errno == EINTR) {
+                return nfds;
+            }
+            _err("epoll::wait: epoll_wait fatal error %d: %s", errno, string_error(errno).c_str());
+            return -1;
+        }
+        nfds += cur_nfds;
+
+        // optimized-out in Release builds
+        _if_deb {
+            _debug_sockets(nfds);
+        }
+
+        int proc = process_epoll_events(nfds);
+        _deb("epoll::wait: processed %d from %d ready sockets - round %d", proc, nfds, count);
+
+        count++;
+
+    } while (cur_nfds == EPOLLER_MAX_EVENTS and cur_nfds > 0);
+
+    enforced_to_inset();
 
     _dum("epoll::wait: == end");
     return nfds;
@@ -241,7 +288,7 @@ bool epoll::modify(int socket, int mask) {
 bool epoll::del(int socket) {
 
     int fd = epoll_socket();
-    struct epoll_event ev;
+    epoll_event ev{};
     memset(&ev,0,sizeof ev);
     
     ev.events = 0;

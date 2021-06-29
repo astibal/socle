@@ -303,11 +303,9 @@ namespace inet {
 
                 int nfds = epoller.wait(req_timeout*1000);
 
-                if (nfds == 0) {
-
-                    _err("ocsp_query_responder: Timeout on connect");
-
-                    //BIO_puts(err, "Timeout on connect\n");
+                if (nfds <= 0) {
+                    _err("ocsp_query_responder: %s", nfds < 0 ?
+                            string_format("error %d: %s", errno, string_error().c_str()).c_str() : "timeout" );
                     return nullptr;
                 }
             }
