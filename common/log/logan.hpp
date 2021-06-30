@@ -93,25 +93,21 @@ class logan_lite {
 
 protected:
     mutable std::shared_mutex lock_;
-    mutable loglevel* my_loglevel = nullptr;
-
     // loging name in catalogue
     std::string topic_;
 
     // loging message prefix in log line
     std::string prefix_;
 
+    mutable loglevel* my_loglevel = nullptr;
+
 public:
 
     friend class logan;
 
     logan_lite() = default;
-    explicit logan_lite(std::string str) : topic_(std::move(str)) {};
-    logan_lite(logan_lite const& r) {
-        topic_  = r.topic_;
-        prefix_ = r.prefix_;
-        my_loglevel = r.my_loglevel;
-    }
+    explicit logan_lite(std::string str): topic_(std::move(str)) {};
+    logan_lite(logan_lite const& r): topic_(r.topic_), prefix_(r.prefix_), my_loglevel(r.my_loglevel) {}
     logan_lite& operator=(logan_lite const& r) {
 
         if(&r != this) {
