@@ -629,8 +629,14 @@ int baseSSLCom<L4Proto>::ssl_alpn_select_callback(SSL *s, const unsigned char **
 
     auto& log = log_cb_alpn();
 
+    auto* this_com = static_cast<baseSSLCom*>(SSL_get_ex_data(s, baseSSLCom<L4Proto>::extdata_index()));
+    if(not this_com) {
 
-        auto log = logan::create("com.ssl.callback.alpn");
+        _err("SSLCom::ssl_alpn_select_callback: cannot retrieve this_com ssl external data");
+        return SSL_TLSEXT_ERR_NOACK;
+    }
+
+    if(this_com->peer() and not this_com->opt_alpn_block) {
 
         if(not this_com->sslcom_alpn_.empty()) {
 
@@ -747,7 +753,6 @@ EC_KEY* baseSSLCom<L4Proto>::ssl_ecdh_callback(SSL* s, int is_export, int key_le
         name = com->hr();
     }
 
-    auto log = logan::create("com.ssl.callback.ecdh");
     _dia("[%s]: SSLCom::ssl_ecdh_callback: %d bits requested", name.c_str(), key_length);
     return nullptr;
 }
