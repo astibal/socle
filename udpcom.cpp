@@ -729,8 +729,7 @@ ssize_t UDPCom::write_to_pool(int _fd, const void* _buf, size_t _n, int _flags) 
             ::close(da_socket);
         }
         
-        //l = send(record.socket,__buf,__n,__flags);
-        return static_cast<int>(l);
+        return l;
         
     } else {
         return -1;
@@ -838,7 +837,7 @@ void UDPCom::shutdown(int _fd) {
 
     auto kill_connect_cache = [&](std::string const& key) -> int {
         auto l_ = std::scoped_lock(connect_fd_cache_lock);
-        int count = 0;
+        size_t count = 0;
 
         auto it_fd = connect_fd_cache.find(key.c_str());
 
