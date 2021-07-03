@@ -23,6 +23,7 @@
 #include <regex>
 #include <vector>
 #include <tuple>
+#include <optional>
 
 #include <buffer.hpp>
 #include <display.hpp>

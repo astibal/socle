@@ -16,10 +16,11 @@
     License along with this library.
 */
 
-#ifndef _FDQUEUE_HPP_
-#define _FDQUEUE_HPP_
+#ifndef FDQUEUE_HPP
+#define FDQUEUE_HPP
 
 #include <tuple>
+#include <optional>
 
 #include <log/logan.hpp>
 #include <mpstd.hpp>

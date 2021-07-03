@@ -38,6 +38,7 @@
 #include <regex>
 #include <thread>
 #include <string>
+#include <optional>
 
 /* define HOME to be dir for key and cert files... */
 #define HOME "./certs/"

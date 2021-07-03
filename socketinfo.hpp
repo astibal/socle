@@ -25,6 +25,7 @@
 #include <log/logger.hpp>
 
 #include <string>
+#include <optional>
 
 class socket_info_error : public std::runtime_error{
 public:

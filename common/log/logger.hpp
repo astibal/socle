@@ -33,6 +33,7 @@
 #include <functional>
 #include <algorithm>
 #include <iomanip>
+#include <memory>
 
 #include <log/loggermac.hpp>
 #include <log/loglevel.hpp>

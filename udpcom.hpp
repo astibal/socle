@@ -21,6 +21,8 @@
 
 #include <string>
 #include <array>
+#include <optional>
+
 #include <cstring>
 #include <ctime>
 #include <csignal>
@@ -32,7 +34,6 @@
 #include <fcntl.h>
 #include <unistd.h>
 
-#include <ctime>
 
 #include <buffer.hpp>
 #include <log/logger.hpp>
