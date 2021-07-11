@@ -29,12 +29,10 @@ add_library(socle_lib
         sslmitmcom.cpp
         sslcertstore.hpp
         sslcertstore.cpp
-        traflog.hpp
         apphostcx.cpp
         sobject.cpp
         uxcom.cpp
         sslcertval.cpp
-        traflog.cpp
         iproxy.hpp
         threadedworker.hpp
         threadedacceptor.hpp
@@ -45,7 +43,17 @@ add_library(socle_lib
         socketinfo.cpp
         fdq.hpp
         fdq.cpp
-        peering.hpp)
+        peering.hpp
+
+        traflog/traflog.hpp
+        traflog/traflog.cpp
+        traflog/basefilewriter.hpp
+        traflog/filewriter.hpp
+        traflog/poolwriter.hpp
+        traflog/threadedpoolwriter.hpp
+        traflog/threadedpoolwriter.cpp
+        traflog/filewriter.cpp
+        traflog/poolwriter.cpp)
 target_link_libraries(socle_lib socle_common_lib)
 
 if(UNIX)

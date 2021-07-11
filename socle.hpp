@@ -49,5 +49,5 @@
 #include <masterproxy.hpp>
 #include <threadedacceptor.hpp>
 
-#include <traflog.hpp>
+#include <traflog/traflog.hpp>
 
