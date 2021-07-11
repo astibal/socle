@@ -53,7 +53,9 @@ add_library(socle_lib
         traflog/threadedpoolwriter.hpp
         traflog/threadedpoolwriter.cpp
         traflog/filewriter.cpp
-        traflog/poolwriter.cpp)
+        traflog/poolwriter.cpp
+        traflog/pcapapi.hpp
+        traflog/pcapapi.cpp)
 target_link_libraries(socle_lib socle_common_lib)
 
 if(UNIX)
