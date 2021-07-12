@@ -34,13 +34,78 @@
 
 namespace socle::pcap {
 
+    template<typename V, typename P>
+    struct chksum_pseudoheader {
+        V saddr;
+        V daddr;
+        unsigned char reserved;
+        unsigned char proto;
+        uint16_t next_len;
+
+        static chksum_pseudoheader construct(V src, V dst, uint8_t proto, size_t payload_size ) {
+            chksum_pseudoheader hdr{};
+
+            hdr.saddr = src;
+            hdr.daddr = dst;
+            hdr.reserved = 0;
+            hdr.proto = proto;
+            hdr.next_len = htons(payload_size + sizeof(P));
+
+            return hdr;
+        }
+    };
+
+    using chksum_tcp_v4 = chksum_pseudoheader<in_addr, tcphdr>;
+    using chksum_tcp_v6 = chksum_pseudoheader<in6_addr, tcphdr>;
+
+    using chksum_udp_v4 = chksum_pseudoheader<in_addr, udphdr>;
+    using chksum_udp_v6 = chksum_pseudoheader<in6_addr, tcphdr>;
+
+
     struct connection_details {
-        sockaddr_storage source;
-        sockaddr_storage destination;
+        sockaddr_storage source{};
+        sockaddr_storage destination{};
         uint16_t ip_id_in;
         uint16_t ip_id_out;
         uint8_t ip_version{4};
+        uint16_t next_proto{6};
 
+        enum proto { TCP=6, UDP=17 };
+
+
+        [[nodiscard]] in_addr source_in() const {
+            return ((sockaddr_in *)&source)->sin_addr;
+        }
+        [[nodiscard]] in6_addr source_in6() const {
+            return ((sockaddr_in6 *)&source)->sin6_addr;
+        }
+        [[nodiscard]] in_addr destination_in() const {
+            return ((sockaddr_in *)&destination)->sin_addr;
+        }
+        [[nodiscard]] in6_addr destination_in6() const {
+            return ((sockaddr_in6 *)&destination)->sin6_addr;
+        }
+
+        std::pair<unsigned short, unsigned short> extract_ports() {
+
+            unsigned short sport = 0;
+            unsigned short dport = 0;
+
+            if (ip_version == 4) {
+                auto *target_sockaddr = reinterpret_cast<sockaddr_in const *>(&destination);
+                auto *client_sockaddr = reinterpret_cast<sockaddr_in const *>(&source);
+
+                dport = target_sockaddr->sin_port;
+                sport = client_sockaddr->sin_port;
+            } else if (ip_version == 6) {
+                auto *target_sockaddr = reinterpret_cast<sockaddr_in6 const *>(&destination);
+                auto *client_sockaddr = reinterpret_cast<sockaddr_in6 const *>(&source);
+                dport = target_sockaddr->sin6_port;
+                sport = client_sockaddr->sin6_port;
+            }
+
+            return { sport, dport };
+        }
     };
 
     struct tcp_details : public connection_details {
@@ -49,7 +114,6 @@ namespace socle::pcap {
         uint32_t tcp_lastack_in;
         uint32_t tcp_lastack_out;
     };
-
 
     [[maybe_unused]] static logan_lite& get_log() {
         static logan_lite l_("pcapapi");
@@ -90,7 +154,11 @@ namespace socle::pcap {
     size_t append_PCAP_magic(buffer& out_buffer);
 
     [[maybe_unused]] uint16_t iphdr_cksum(void *data, size_t len);
-    [[maybe_unused]] uint16_t tcphdr_cksum(struct iphdr *ip, struct tcphdr *tcp, const char *payload, size_t payload_len);
+    [[maybe_unused]] uint16_t l4hdr_cksum(void* hdr, size_t hdr_sz, void *next, size_t next_sz, const char *payload, size_t payload_len);
+
+    template<typename L4type>
+    uint16_t L4_chksum (connection_details const &details, int in, L4type *next_header, const char *payload,
+                        size_t payload_size);
 
     void append_PCAP_header(buffer& out_buffer, connection_details const& details, size_t payload_size);
     void append_LCC_header(buffer& out_buffer, connection_details const& details, int in);
@@ -99,16 +167,64 @@ namespace socle::pcap {
         void append_IPv4_header(buffer& out_buffer, connection_details& details, int in, size_t payload_size);
         void append_IPv6_header(buffer& out_buffer, connection_details& details, int in, size_t payload_size);
 
-    void append_TCP_header(buffer& out_buffer, tcp_details& details, int in, size_t payload_size, unsigned char tcpflags);
+    void append_TCP_header (buffer &out_buffer, tcp_details &details, int in, const char *payload, size_t payload_size,
+                            unsigned char tcpflags);
+    void append_UDP_header(buffer& out_buffer, connection_details& details, int in, const char* payload, size_t payload_size);
 
     size_t append_TCP_frame(buffer& out_buffer, const char* data, ssize_t size, int in, unsigned char tcpflags, tcp_details& details);
-
+    size_t append_UDP_frame(buffer& out_buffer, const char* data, ssize_t size, int in, tcp_details& details);
 
     void save_payload(int fd, const char* data, size_t size);
     void save_payload(int fd, buffer const& out);
 
     size_t save_PCAP_magic(int fd);
     size_t save_TCP_frame(int fd, const char* data, ssize_t size, int in, unsigned char tcpflags, tcp_details& details);
+    size_t save_UDP_frame(int fd, const char* data, ssize_t size, int in, connection_details& details);
+
+
+
+template<typename NextHeader>
+uint16_t L4_chksum (connection_details const &details, int in, NextHeader *next_header, const char *payload,
+                    size_t payload_size) {
+
+    uint16_t to_ret = 0;
+
+    if (details.ip_version == 4 or details.ip_version == 0) {
+        in_addr src{};
+        in_addr dst{};
+
+        if (in) {
+            src = details.destination_in();
+            dst = details.source_in();
+        } else {
+            dst = details.destination_in();
+            src = details.source_in();
+        }
+
+        auto hdr = chksum_pseudoheader<in_addr, NextHeader>::construct(src, dst, details.ip_version, payload_size);
+        to_ret = htons(
+                l4hdr_cksum(&hdr, sizeof(hdr), &next_header, sizeof(NextHeader), payload,
+                            payload_size));
+    } else if (details.ip_version == 6) {
+        in6_addr src{};
+        in6_addr dst{};
+
+        if (in) {
+            src = details.destination_in6();
+            dst = details.source_in6();
+        } else {
+            dst = details.destination_in6();
+            src = details.source_in6();
+        }
+
+        auto hdr = chksum_pseudoheader<in6_addr, NextHeader>::construct(src, dst, details.ip_version, payload_size);
+        to_ret = htons(
+                l4hdr_cksum(&hdr, sizeof(hdr), &next_header, sizeof(NextHeader), payload,
+                            payload_size));
+    }
+
+    return to_ret;
+};
 
 }
 #endif //PCAPAPI_HPP

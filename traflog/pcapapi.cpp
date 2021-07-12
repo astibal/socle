@@ -42,40 +42,25 @@ namespace socle::pcap {
         return ((uint16_t) ~sum);
     }
 
-    uint16_t tcphdr_cksum(struct iphdr *ip, struct tcphdr *tcp, const char *payload, size_t payload_len) {
 
-        uint16_t result;
-        struct {
-            uint32_t saddr;
-            uint32_t daddr;
-            unsigned char reserved;
-            unsigned char proto;
-            uint16_t tcp_len;
-        } pseudoheader;
+    uint16_t l4hdr_cksum(void* hdr, size_t hdr_sz, void *next, size_t next_sz, const char *payload, size_t payload_len) {
 
         unsigned int padd = payload_len & 1u;
-        uint16_t tcp_len = payload_len + sizeof(struct tcphdr);
-        size_t buff_len = sizeof(pseudoheader) + tcp_len + padd;
+        uint16_t next_len = payload_len + next_sz;
+        size_t buff_len = padd + hdr_sz + next_len;
 
 #ifndef USE_MEMPOOL
         char* buff = static_cast<char*>(malloc(buff_len));
 #else
         char* buff = static_cast<char*>(mempool_alloc(buff_len));
 #endif
-        pseudoheader.saddr = ip->saddr;
-        pseudoheader.daddr = ip->daddr;
-        pseudoheader.reserved = 0;
-        pseudoheader.proto = ip->protocol;
-        pseudoheader.tcp_len = htons(tcp_len);
-
-
-        memcpy(buff,                                           &pseudoheader, sizeof(pseudoheader));
-        memcpy(buff+sizeof(pseudoheader),                       tcp,          sizeof(struct tcphdr));
-        memcpy(buff+sizeof(pseudoheader)+sizeof(struct tcphdr), payload,      payload_len);
+        memcpy(buff,                                  hdr,     hdr_sz);
+        memcpy(buff+  hdr_sz,                         next,    next_sz);
+        memcpy(buff + hdr_sz + next_sz,               payload, payload_len);
         if(padd)
             buff[buff_len-1] = 0;
 
-        result = iphdr_cksum(buff, buff_len);
+        uint16_t result = iphdr_cksum(buff, buff_len);
 
 #ifndef USE_MEMPOOL
         free(buff);
@@ -101,18 +86,25 @@ namespace socle::pcap {
         pcap_header.tv_sec = time.tv_sec;
         pcap_header.tv_usec = time.tv_usec;
 
-        if (details.ip_version == 4) {
-            pcap_header.caplen =
-                    sizeof(struct linux_cooked_capture) + sizeof(struct iphdr) + sizeof(struct tcphdr) + payload_size;
-            pcap_header.len =
-                    sizeof(struct linux_cooked_capture) + sizeof(struct iphdr) + sizeof(struct tcphdr) + payload_size;
+        auto l3_hdr_size = 0;
+        if (details.ip_version == 4 or details.ip_version == 0) {
+            l3_hdr_size = sizeof(struct iphdr);
         }
         if (details.ip_version == 6) {
-            pcap_header.caplen =
-                    sizeof(struct linux_cooked_capture) + sizeof(struct ip6_hdr) + sizeof(struct tcphdr) + payload_size;
-            pcap_header.len =
-                    sizeof(struct linux_cooked_capture) + sizeof(struct ip6_hdr) + sizeof(struct tcphdr) + payload_size;
+            l3_hdr_size = sizeof(struct ip6_hdr);
         }
+
+        auto l4_hdr_size = 0;
+        if(details.next_proto == connection_details::TCP or details.next_proto == 0) {
+            l4_hdr_size = sizeof(struct tcphdr);
+        }
+        else if(details.next_proto == connection_details::UDP) {
+            l4_hdr_size = sizeof(struct udphdr);
+        }
+
+        pcap_header.caplen = sizeof(struct linux_cooked_capture) + l3_hdr_size + l4_hdr_size + payload_size;
+        pcap_header.len =  sizeof(struct linux_cooked_capture) + l3_hdr_size + l4_hdr_size + payload_size;
+
 
         out_buffer.append(&pcap_header, sizeof(pcap_header));
     };
@@ -154,12 +146,20 @@ namespace socle::pcap {
         ip_header.version = IPVERSION;
         ip_header.ihl = sizeof(struct iphdr) / sizeof(uint32_t);
         ip_header.tos = IPTOS_TOS(0);
-        ip_header.tot_len = htons(sizeof(struct iphdr) + sizeof(struct tcphdr) + payload_size);
+
+        if(details.next_proto == connection_details::TCP or details.next_proto == 0) {
+            ip_header.tot_len = htons(sizeof(struct iphdr) + sizeof(struct tcphdr) + payload_size);
+            ip_header.protocol = IPPROTO_TCP;
+        }
+        else if(details.next_proto == connection_details::UDP) {
+            ip_header.tot_len = htons(sizeof(struct iphdr) + sizeof(struct udphdr) + payload_size);
+            ip_header.protocol = IPPROTO_UDP;
+        }
         ip_header.id = in ? ip_id_in++ : ip_id_out++;
 
         ip_header.frag_off = htons(0x4000); /* don't fragment */
         ip_header.ttl = 128;
-        ip_header.protocol = IPPROTO_TCP;
+
         if (in) {
             ip_header.saddr = target_sockaddr->sin_addr.s_addr;
             ip_header.daddr = client_sockaddr->sin_addr.s_addr;
@@ -167,7 +167,6 @@ namespace socle::pcap {
             ip_header.saddr = client_sockaddr->sin_addr.s_addr;
             ip_header.daddr = target_sockaddr->sin_addr.s_addr;
         }
-        ip_header.check = 0;
         ip_header.check = htons(iphdr_cksum(&ip_header, sizeof(struct iphdr)));
 
         out_buffer.append(&ip_header, sizeof(ip_header));
@@ -190,8 +189,16 @@ namespace socle::pcap {
         }
         ip_header.ip6_flow = htonl((6 << 28) | (0 << 20) | 0);
         ip_header.ip6_hops = 128;
-        ip_header.ip6_plen = htons(sizeof(tcphdr) + payload_size);
-        ip_header.ip6_nxt = 6;
+
+        if(details.next_proto == connection_details::TCP or details.next_proto == 0) {
+            ip_header.ip6_plen = htons(sizeof(tcphdr) + payload_size);
+            ip_header.ip6_nxt = connection_details::TCP;
+        }
+        else if(details.next_proto == connection_details::UDP) {
+            ip_header.ip6_plen = htons(sizeof(udphdr) + payload_size);
+            ip_header.ip6_nxt = connection_details::UDP;
+
+        }
 
         out_buffer.append(&ip_header, sizeof(ip_header));
     };
@@ -206,26 +213,14 @@ namespace socle::pcap {
         }
     }
 
-    void append_TCP_header(buffer& out_buffer, tcp_details& details, int in, size_t payload_size, unsigned char tcpflags) {
+    void append_TCP_header (buffer &out_buffer, tcp_details &details, int in, const char *payload, size_t payload_size,
+                            unsigned char tcpflags) {
 
         [[maybe_unused]] auto& log = get_log();
 
         struct tcphdr tcp_header{};
-        unsigned short sport = 0;
-        unsigned short dport = 0;
 
-        if (details.ip_version == 4) {
-            auto *target_sockaddr = reinterpret_cast<sockaddr_in const *>(&details.destination);
-            auto *client_sockaddr = reinterpret_cast<sockaddr_in const *>(&details.source);
-
-            dport = target_sockaddr->sin_port;
-            sport = client_sockaddr->sin_port;
-        } else if (details.ip_version == 6) {
-            auto *target_sockaddr = reinterpret_cast<sockaddr_in6 const *>(&details.destination);
-            auto *client_sockaddr = reinterpret_cast<sockaddr_in6 const *>(&details.source);
-            dport = target_sockaddr->sin6_port;
-            sport = client_sockaddr->sin6_port;
-        }
+        auto [ sport, dport ] = details.extract_ports();
 
         auto &tcp_seq_in = details.seq_in;
         auto &tcp_seq_out = details.seq_out;
@@ -282,11 +277,36 @@ namespace socle::pcap {
         }
         tcp_header.doff = 5; /* no options */
         tcp_header.window = htons(32768);
-        // tcp_header.check = htons(tcphdr_cksum(&ip_header, &tcp_header, data, size));
         tcp_header.check = 0;
+
+
+        tcp_header.check = htons(L4_chksum<tcphdr>(details, in, &tcp_header, payload, payload_size));
+
 
         out_buffer.append(&tcp_header, sizeof(tcp_header));
 
+    }
+
+    void append_UDP_header(buffer& out_buffer, connection_details& details, int in, const char* payload, size_t payload_size) {
+
+        [[maybe_unused]] auto& log = get_log();
+
+        struct udphdr udp_header{};
+        auto [ sport, dport ] = details.extract_ports();
+
+        if (in) {
+            udp_header.source = dport;
+            udp_header.dest = sport;
+        }
+        else {
+            udp_header.source = sport;
+            udp_header.dest = dport;
+        }
+
+        udp_header.check = htons(L4_chksum<udphdr>(details, in, &udp_header, payload, payload_size));
+        udp_header.len = htons(sizeof(udp_header) + payload_size);
+
+        out_buffer.append(&udp_header, sizeof(udp_header));
     }
 
     void save_payload(int fd, const char* data, size_t size) {
@@ -341,7 +361,7 @@ namespace socle::pcap {
         append_PCAP_header(out_buffer, details, size);
         append_LCC_header(out_buffer, details, in);
         append_IP_header(out_buffer, details, in, size);
-        append_TCP_header(out_buffer, details, in, size, tcpflags);
+        append_TCP_header(out_buffer, details, in, data, size, tcpflags);
         out_buffer.append(data, size);
 
         return out_buffer.size();
@@ -352,9 +372,9 @@ namespace socle::pcap {
                  sizeof(pcap_frame) +
                  sizeof(linux_cooked_capture) +
                  std::max(sizeof(iphdr), sizeof(ip6_hdr)) +
-                 std::max(sizeof(tcphdr), sizeof(udphdr)) +
+                 sizeof(tcphdr) +
                  size
-                 + 128); // add some extra bytes
+                 + 32); // add some extra bytes
         out.size(0);
         append_TCP_frame(out, data, size, in, tcpflags, details);
         save_payload(fd, out);
@@ -362,4 +382,33 @@ namespace socle::pcap {
         return out.size();
     }
 
+
+    size_t append_UDP_frame(buffer& out_buffer, const char* data, ssize_t size, int in, connection_details& details) {
+        if(size < 0) {
+            return -1;
+        }
+
+        append_PCAP_header(out_buffer, details, size);
+        append_LCC_header(out_buffer, details, in);
+        append_IP_header(out_buffer, details, in, size);
+        append_UDP_header(out_buffer, details, in, data, size);
+        out_buffer.append(data, size);
+
+        return out_buffer.size();
+    }
+
+    size_t save_UDP_frame(int fd, const char* data, ssize_t size, int in, connection_details& details) {
+        buffer out(
+                sizeof(pcap_frame) +
+                sizeof(linux_cooked_capture) +
+                std::max(sizeof(iphdr), sizeof(ip6_hdr)) +
+                sizeof(udphdr) +
+                size
+                + 32); // add some extra bytes
+        out.size(0);
+        append_UDP_frame(out, data, size, in, details);
+        save_payload(fd, out);
+
+        return out.size();
+    }
 }
