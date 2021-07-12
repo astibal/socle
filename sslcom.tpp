@@ -2721,7 +2721,18 @@ int baseSSLCom<L4Proto>::parse_peer_hello() {
             curpos+=sizeof(unsigned short);
 
 
-            _dia("SSLCom::parse_peer_hello: buffer size %d, received message type %d, version %d.%d, length %d",b.size(),message_type,version_maj, version_min, message_length);
+            // version_maj should be always 3
+            // version_min -
+            //     0x03 - TLS 1.2
+            //     0x02 - TLS 1.1
+            //     0x01 - TLS 1.0
+
+            if(version_maj != 3) {
+                _dia("SSLCom::parse_peer_hello: version_maj should be always 3. not %d", version_maj);
+                throw socle::ex::SSL_clienthello_malformed();
+            }
+
+            _dia("SSLCom::parse_peer_hello: buffer size %d, received message type %d, version %d.%d, length %d",b.size(), message_type, version_maj, version_min, message_length);
             if(b.size() != (unsigned int)message_length + 5) {
                 _deb("SSLCom::parse_peer_hello: strange SSL payload received");
                 if(message_type != 22 || version_maj > 5) {
@@ -2735,64 +2746,86 @@ int baseSSLCom<L4Proto>::parse_peer_hello() {
             
             if(message_type == 22 && handshake_type == 1) {
 
-                unsigned short handshake_length = ntohs(b.get_at<unsigned short>(curpos));
-                curpos+=sizeof(unsigned short); //@9
-                unsigned char handshake_version_maj = b.get_at<unsigned char>(curpos);
-                curpos+=sizeof(unsigned char); //@10
-                unsigned char handshake_version_min = b.get_at<unsigned char>(curpos);
-                curpos+=sizeof(unsigned char); //@11
-                [[maybe_unused]]
-                unsigned int  handshake_unixtime = ntohl(b.get_at<unsigned char>(curpos));
-                curpos+=sizeof(unsigned int); //@15
+                try {
+                    unsigned short handshake_length = ntohs(b.get_at<unsigned short>(curpos));
+                    curpos += sizeof(unsigned short); //@9
+                    unsigned char handshake_version_maj = b.get_at<unsigned char>(curpos);
+                    curpos += sizeof(unsigned char); //@10
+                    unsigned char handshake_version_min = b.get_at<unsigned char>(curpos);
+                    curpos += sizeof(unsigned char); //@11
+                    [[maybe_unused]]
+                    unsigned int handshake_unixtime = ntohl(b.get_at<unsigned char>(curpos));
+                    curpos += sizeof(unsigned int); //@15
 
-                curpos += 28; // skip random 24B bytes
+                    curpos += 28; // skip random 24B bytes
 
-                unsigned char session_id_length = b.get_at<unsigned char>(curpos);
-                curpos+=sizeof(unsigned char);
+                    unsigned char session_id_length = b.get_at<unsigned char>(curpos);
+                    curpos += sizeof(unsigned char);
 
-                // we already know it's handshake, it's ok to return true
-                _dia("SSLCom::parse_peer_hello: handshake (type %u), version %u.%u, length %u",handshake_type,handshake_version_maj,handshake_version_min,handshake_length);
-                if(handshake_type == 1) {
-                    ret = 1;
+                    // we already know it's handshake, it's ok to return true
+                    _dia("SSLCom::parse_peer_hello: handshake (type %u), version %u.%u, length %u", handshake_type,
+                         handshake_version_maj, handshake_version_min, handshake_length);
+                    if (handshake_type == 1) {
+                        ret = 1;
+                    }
+
+                    if (session_id_length > 0) {
+                        // here
+                        session_id = b.view(curpos, session_id_length);
+                        curpos += session_id_length;
+
+                        sslcom_peer_hello_id_ = hex_print(session_id.data(), session_id.size());
+                        _deb("SSLCom::parse_peer_hello: session_id (length %d)", session_id_length);
+                        _dum("SSLCom::parse_peer_hello: session_id :\n%s",
+                             hex_dump(session_id.data(), session_id.size()).c_str());
+                    } else {
+                        _deb("SSLCom::parse_peer_hello: no session_id found.");
+                    }
+
+                    unsigned short ciphers_length = ntohs(b.get_at<unsigned short>(curpos));
+                    curpos += sizeof(unsigned short);
+                    if (curpos + ciphers_length > b.size())
+                        throw socle::ex::SSL_clienthello_malformed();
+
+                    curpos += ciphers_length; //skip ciphers
+                    _deb("SSLCom::parse_peer_hello: ciphers length %d", ciphers_length);
+
+                    unsigned char compression_length = b.get_at<unsigned char>(curpos);
+                    curpos += sizeof(unsigned char);
+                    if (curpos + compression_length > b.size())
+                        throw socle::ex::SSL_clienthello_malformed();
+
+                    curpos += compression_length; // skip compression methods
+                    _deb("SSLCom::parse_peer_hello: compression length %d", compression_length);
+
+                } catch(std::out_of_range const& e) {
+                    _dia("SSLCom::parse_peer_hello: too short to read position %d from data size %d", curpos, b.size());
                 }
 
-                if(session_id_length > 0) {
-                    // here
-                    session_id = b.view(curpos,session_id_length);
-                    curpos+=session_id_length;
+                /* extension section, optional in tls1.2, but mandatory in tls 1.3 */
 
-                    sslcom_peer_hello_id_ = hex_print(session_id.data(), session_id.size());
-                    _deb("SSLCom::parse_peer_hello: session_id (length %d)",session_id_length);
-                    _dum("SSLCom::parse_peer_hello: session_id :\n%s",hex_dump(session_id.data(),session_id.size()).c_str());
-                } else {
-                    _deb("SSLCom::parse_peer_hello: no session_id found.");
+                /*
+                 * https://datatracker.ietf.org/doc/html/rfc8446#section-4.1.2
+
+                All versions of TLS allow an extensions field to optionally follow
+                the compression_methods field.  TLS 1.3 ClientHello messages always
+                contain extensions (minimally "supported_versions", otherwise, they
+                will be interpreted as TLS 1.2 ClientHello messages).  However,
+                        TLS 1.3 servers might receive ClientHello messages without an
+                extensions field from prior versions of TLS.
+                 */
+
+                unsigned short extensions_length = 0;
+                if(curpos + sizeof(unsigned short) < b.size()) {
+                    extensions_length = ntohs(b.get_at<unsigned short>(curpos));
+                    curpos += sizeof(unsigned short);
                 }
-
-                unsigned short ciphers_length = ntohs(b.get_at<unsigned short>(curpos));
-                curpos += sizeof(unsigned short);
-                if(curpos + ciphers_length > b.size())
-                    throw socle::ex::SSL_clienthello_malformed();
-
-                curpos += ciphers_length; //skip ciphers
-                _deb("SSLCom::parse_peer_hello: ciphers length %d", ciphers_length);
-
-                unsigned char compression_length = b.get_at<unsigned char>(curpos);
-                curpos += sizeof(unsigned char);
-                if(curpos + compression_length > b.size())
-                    throw socle::ex::SSL_clienthello_malformed();
-
-                curpos += compression_length; // skip compression methods
-                _deb("SSLCom::parse_peer_hello: compression length %d", compression_length);
-
-                /* extension section */
-                unsigned short extensions_length = ntohs(b.get_at<unsigned short>(curpos));
-                curpos += sizeof(unsigned short);
-
-                if (curpos + extensions_length > b.size())
-                    throw socle::ex::SSL_clienthello_malformed();
-
 
                 _deb("SSLCom::parse_peer_hello: extensions payload length %d", extensions_length);
+                if (curpos + extensions_length > b.size()) {
+                    _dia("SSLCom::parse_peer_hello: too short to read extensions position %d, extension len %d from data size %d", curpos, extensions_length, b.size());
+                    throw socle::ex::SSL_clienthello_malformed();
+                }
 
                 if (extensions_length > 0) {
 
@@ -2868,7 +2901,6 @@ unsigned short baseSSLCom<L4Proto>::parse_peer_hello_extensions(buffer& b, unsig
             _dia("SSLCom::parse_peer_hello_extensions:    SNI hostname: %s", s.c_str());
 
             sslcom_peer_hello_sni_ = s;
-            //SSL_set_tlsext_host_name(sslcom_ssl,s.c_str());
         }
     }
     else if(ext_id == 16) {
