@@ -15,7 +15,9 @@
 #include <net/if_arp.h>
 #include <net/ethernet.h>
 #include <netinet/ip.h>
+#include <netinet/ip6.h>
 #include <netinet/tcp.h>
+#include <netinet/udp.h>
 
 #include <sys/file.h>
 
@@ -27,6 +29,7 @@
 #include <malloc.h>
 #endif
 
+#include <buffer.hpp>
 #include <log/logan.hpp>
 
 namespace socle::pcap {
@@ -36,6 +39,8 @@ namespace socle::pcap {
         sockaddr_storage destination;
         uint16_t ip_id_in;
         uint16_t ip_id_out;
+        uint8_t ip_version{4};
+
     };
 
     struct tcp_details : public connection_details {
@@ -82,13 +87,28 @@ namespace socle::pcap {
         	uint16_t proto_type;
         };    
     
-    int write_pcap_header(int fd);
+    size_t append_PCAP_magic(buffer& out_buffer);
 
-    uint16_t iphdr_cksum(void *data, size_t len);
+    [[maybe_unused]] uint16_t iphdr_cksum(void *data, size_t len);
+    [[maybe_unused]] uint16_t tcphdr_cksum(struct iphdr *ip, struct tcphdr *tcp, const char *payload, size_t payload_len);
 
-    uint16_t tcphdr_cksum(struct iphdr *ip, struct tcphdr *tcp, const char *payload, size_t payload_len);
+    void append_PCAP_header(buffer& out_buffer, connection_details const& details, size_t payload_size);
+    void append_LCC_header(buffer& out_buffer, connection_details const& details, int in);
 
-    int write_pcap_frame(int fd, const char* data, ssize_t size, int in, unsigned char tcpflags, tcp_details& details);
+    void append_IP_header(buffer& out_buffer, connection_details& details, int in, size_t payload_size);
+        void append_IPv4_header(buffer& out_buffer, connection_details& details, int in, size_t payload_size);
+        void append_IPv6_header(buffer& out_buffer, connection_details& details, int in, size_t payload_size);
+
+    void append_TCP_header(buffer& out_buffer, tcp_details& details, int in, size_t payload_size, unsigned char tcpflags);
+
+    size_t append_TCP_frame(buffer& out_buffer, const char* data, ssize_t size, int in, unsigned char tcpflags, tcp_details& details);
+
+
+    void save_payload(int fd, const char* data, size_t size);
+    void save_payload(int fd, buffer const& out);
+
+    size_t save_PCAP_magic(int fd);
+    size_t save_TCP_frame(int fd, const char* data, ssize_t size, int in, unsigned char tcpflags, tcp_details& details);
 
 }
 #endif //PCAPAPI_HPP
