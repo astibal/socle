@@ -44,7 +44,7 @@ TEST(PcapTest, BasicHttp) {
 
     auto response = resp.str();
 
-    buffer::use_pool = false;
+    // buffer::use_pool = false;
 
     auto fd = fileno(f);
     save_PCAP_magic(fd);
@@ -97,7 +97,7 @@ TEST(PcapTest, BasicHttp_v6) {
 
     auto response = resp.str();
 
-    buffer::use_pool = false;
+    // buffer::use_pool = false;
 
     auto fd = fileno(f);
     save_PCAP_magic(fd);
@@ -144,7 +144,7 @@ TEST(PcapTest, BasicUDP) {
 
     auto response = resp.str();
 
-    buffer::use_pool = false;
+    // buffer::use_pool = false;
 
     auto fd = fileno(f);
     save_PCAP_magic(fd);
@@ -189,7 +189,7 @@ TEST(PcapTest, BasicUDP_v6) {
 
     auto response = resp.str();
 
-    buffer::use_pool = false;
+    // buffer::use_pool = false;
 
     auto fd = fileno(f);
     save_PCAP_magic(fd);
