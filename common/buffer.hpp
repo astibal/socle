@@ -127,8 +127,14 @@ public:
   void attach (void* data, size_type size); // take ownership
   void assign (void* data, size_type size, size_type capacity,
                bool assume_ownership);
+
+  void append (buffer*);
   void append (const buffer&);
   void append (const void* data, size_type size);
+
+  template<typename T>
+  void append (T const& r) { append(&r, sizeof(T)); };
+
   void fill (unsigned char value = 0);
 
   size_type size () const;
@@ -258,7 +264,7 @@ inline buffer::buffer (size_type s)
         counter_alloc(s);
     }
 
-  size_ = s;
+   size_ = 0;
 }
 
 inline buffer::buffer (size_type s, size_type c)
@@ -385,7 +391,7 @@ inline buffer& buffer::operator= (const buffer& x)
 {
   if (&x != this)
   {
-    if (x.size_ > capacity_)
+    if (x.size_ > capacity_ or not data_)
     {
       if (free_ and data_ != nullptr ) {
           if(use_pool) {
@@ -520,6 +526,13 @@ inline void buffer::assign (void* d, size_type s, size_type c, bool own)
 inline void buffer::attach(void* d, size_type s) {
     assign(d,s,s,true);
 }
+
+
+inline void buffer::append (buffer* b)
+{
+    append (b->data (), b->size ());
+}
+
 
 inline void buffer::append (const buffer& b)
 {
@@ -732,9 +745,9 @@ inline void buffer::flush(buffer::size_type b) {
 
     if (bytes < size_) {
         if( 2*bytes < size_) {
-        memmove(data_,data_+bytes,size_-bytes);
+        std::memmove(data_,data_+bytes,size_-bytes);
         } else {
-        memcpy(data_,data_+bytes,size_-bytes);
+        std::memcpy(data_,data_+bytes,size_-bytes);
         }
 
         size_-=bytes;
