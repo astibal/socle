@@ -53,11 +53,10 @@ baseHostCX::baseHostCX(baseCom* c, const char* h, const char* p): Host(h, p) {
     fds_ = 0;
     error_ = false;
 
-    writebuf_ = lockbuffer(HOSTCX_BUFFSIZE);
-    writebuf_.clear();
+    writebuf_.capacity(HOSTCX_BUFFSIZE);
 
-    readbuf_ = lockbuffer(HOSTCX_BUFFSIZE);
-    readbuf_.clear();
+    readbuf_.capacity(HOSTCX_BUFFSIZE);
+
     processed_in_ = 0;
     next_read_limit_ = 0;
     auto_finish_ = true;
@@ -88,11 +87,10 @@ baseHostCX::baseHostCX(baseCom* c, int s) {
     fds_ = s;
     error_ = false;
 
-    writebuf_ = lockbuffer(HOSTCX_BUFFSIZE);
-    writebuf_.clear();
+    writebuf_.capacity(HOSTCX_BUFFSIZE);
 
-    readbuf_ = lockbuffer(HOSTCX_BUFFSIZE);
-    readbuf_.clear();
+    readbuf_.capacity(HOSTCX_BUFFSIZE);
+
     processed_in_ = 0;
     next_read_limit_ = 0;
     auto_finish_ = true;
