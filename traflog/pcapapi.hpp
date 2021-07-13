@@ -21,7 +21,10 @@
 
 #include <sys/file.h>
 
-// #define USE_MEMPOOL
+#include <vector>
+
+// mempool
+#define USE_MEMPOOL
 
 #ifdef USE_MEMPOOL
 #include <mempool/mempool.hpp>
@@ -227,4 +230,101 @@ uint16_t L4_chksum (connection_details const &details, int in, NextHeader *next_
 };
 
 }
+
+namespace socle::pcapng {
+    using namespace socle::pcap;
+
+    // section header block
+    struct pcapng_shb {
+        uint32_t  type = 0x0A0D0D0AL;
+        uint32_t total_length = 0;
+        uint32_t magic = 0x1A2B3C4DL;
+        uint16_t version_maj = 1;
+        uint16_t version_min = 0;
+        uint64_t section_length = 0xFFFFFFFFFFFFFFFFL;
+
+        std::shared_ptr<buffer> options;
+
+        size_t size() const;
+        size_t append(buffer& out);
+    };
+
+    // section header block
+    struct pcapng_ifb {
+        uint32_t  type = 0x00000001L;
+        uint32_t total_length = 0;
+        uint16_t link_type = 113;
+        uint16_t _reserved1 = 0;
+        uint32_t snaplen = 20000;
+        std::shared_ptr<buffer> options;
+
+        size_t size() const;
+        size_t append(buffer& out);
+    };
+
+    struct pcapng_options;
+
+    struct pcapng_epb {
+        uint32_t  type = 0x00000006L;
+        uint32_t total_length = 0;
+        uint32_t iface_id = 0;
+        uint32_t timestamp_high = 0;
+        uint32_t timestamp_low = 0;
+        uint32_t captured_len = 0;
+        uint32_t original_len = 0;
+        std::shared_ptr<buffer> packet_data;
+        std::shared_ptr<pcapng_options> options;
+
+        static constexpr size_t fixed_sz =
+                sizeof(type) +
+                sizeof(total_length) +
+                sizeof(iface_id) +
+                sizeof(timestamp_high) +
+                sizeof(timestamp_low) +
+                sizeof(captured_len) +
+                sizeof(original_len) +
+                sizeof(total_length);
+
+        void comment(std::string const& s);
+
+        size_t size() const;
+        size_t append(buffer& out);
+        size_t append_TCP(buffer& out_buffer, const char* data, ssize_t size, int in, unsigned char tcpflags, tcp_details& details);
+        size_t save_TCP(int fd, const char* data, ssize_t size, int in, unsigned char tcpflags, tcp_details& details);
+
+        size_t append_UDP(buffer& out_buffer, const char* data, ssize_t size, int in, connection_details& details);
+        size_t save_UDP(int fd, const char* data, ssize_t size, int in, connection_details& details);
+    };
+    using pcapng_frame = pcapng_epb;
+
+    struct pcapng_options {
+
+        struct entry {
+            uint16_t code = 0;
+            uint16_t len = 0;
+            std::shared_ptr<buffer> data;
+
+            size_t size() const;
+            size_t append(buffer& out);
+        };
+        std::vector<entry> entries;
+
+        enum code_id { Comment=1 };
+
+        size_t append(buffer& out);
+        size_t size() const;
+
+        constexpr static uint32_t footer = 0L;
+    };
+
+
+    struct padding {
+        static size_t append(buffer& out, size_t n, uint8_t c = 0xCC);
+    };
+
+    size_t padding_sz32(size_t s);
+    size_t save_NG_magic(int fd);
+    size_t save_NG_ifb(int fd, pcapng_ifb& hdr);
+}
+
 #endif //PCAPAPI_HPP

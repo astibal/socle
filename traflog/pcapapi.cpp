@@ -1,3 +1,5 @@
+#include <algorithm>
+
 #include <traflog/pcapapi.hpp>
 #include <unistd.h>
 
@@ -410,5 +412,312 @@ namespace socle::pcap {
         save_payload(fd, out);
 
         return out.size();
+    }
+}
+
+namespace socle::pcapng {
+
+    size_t padding_sz32(size_t s) {
+        size_t padding_sz = 4 - (s + 4) % 4;
+        if(padding_sz == 4) padding_sz = 0;
+
+        return padding_sz;
+    }
+
+    size_t padding::append(buffer& out, size_t n, uint8_t c) {
+        for (size_t i = 0; i < n; ++i) {
+            out.append(c);
+        }
+        return n;
+    }
+
+    size_t pcapng_shb::size() const {
+        constexpr size_t fixed_sz =
+               sizeof(type) +
+               sizeof(total_length) +
+               sizeof(magic) +
+               sizeof(version_maj) +
+               sizeof(version_min) +
+               sizeof(section_length) +
+               sizeof(total_length);
+
+        size_t sz = 0;
+        if(options) sz += options->size();
+
+        return sz + fixed_sz;
+
+    }
+
+    size_t pcapng_shb::append (buffer& out) {
+
+        total_length = size();
+
+        auto orig_size = out.size();
+
+        out.append(type);
+        out.append(total_length);
+        out.append(magic);
+        out.append(version_maj);
+        out.append(version_min);
+        out.append(section_length);
+        if(options)
+            out.append(options.get());
+        out.append(total_length);
+
+        return out.size() - orig_size;
+    }
+
+
+    size_t pcapng_ifb::size() const {
+        constexpr size_t fixed_sz =
+                sizeof(type) +
+                sizeof(total_length) +
+                sizeof(link_type) +
+                sizeof(_reserved1) +
+                sizeof(snaplen) +
+                sizeof(total_length);
+
+        size_t sz = 0;
+        if(options) sz += options->size();
+
+        return sz + fixed_sz;
+
+    }
+
+    size_t pcapng_ifb::append (buffer& out) {
+        auto orig_size = out.size();
+
+        total_length = size();
+
+        out.append(type);
+        out.append(total_length);
+        out.append(link_type);
+        out.append(_reserved1);
+        out.append(snaplen);
+
+        if(options)
+            out.append(options.get());
+        out.append(total_length);
+
+        return out.size() - orig_size;
+    }
+
+    size_t pcapng_epb::size () const {
+
+        size_t sz = 0;
+
+        // packed data are padded to 32bits
+        if(packet_data) {
+            auto padding_sz = padding_sz32(packet_data->size());
+            sz += ( padding_sz + packet_data->size() );
+        }
+        if(options) {
+            sz += options->size();
+        }
+
+        return sz + fixed_sz;
+    }
+
+    size_t pcapng_epb::append (buffer& out) {
+        auto orig_size = out.size();
+
+        total_length = size();
+        out.append(type);
+        out.append(total_length);
+        out.append(iface_id);
+
+        // do timestamp automagic if not set yet
+        if(timestamp_high == 0 and timestamp_low == 0) {
+            timeval time{};
+            gettimeofday(&time, nullptr);
+            timestamp_high = time.tv_sec;
+            timestamp_low = time.tv_usec;
+        }
+
+        out.append(timestamp_high);
+        out.append(timestamp_low);
+
+        if(packet_data)
+            captured_len = packet_data->size();
+        out.append(captured_len);
+
+        original_len = captured_len;
+        out.append(original_len);
+
+        if(packet_data) {
+            out.append(packet_data.get());
+
+            // packet data are padded to 32bits
+            auto padding_sz = padding_sz32(packet_data->size());
+
+            for (unsigned int i = 0; i < padding_sz; ++i) {
+                out.append('\xCC');
+            }
+
+        }
+
+        if(options) {
+            options->append(out);
+        }
+        out.append(total_length);
+
+        return out.size() - orig_size;
+    }
+
+    void pcapng_epb::comment (const std::string &s) {
+        if(not options)
+            options = std::make_shared<pcapng_options>();
+
+        pcapng_options::entry e = { pcapng_options::code_id::Comment, 0, std::make_shared<buffer>(s.data(), s.size()) };
+        options->entries.emplace_back(e);
+    }
+
+    size_t save_NG_magic(int fd) {
+        buffer out(sizeof(pcap_file_header));
+        pcapng_shb hdr;
+        out.capacity(hdr.size() + 16);
+        out.size(0);
+
+        hdr.append(out);
+
+        save_payload(fd, out);
+        return out.size();
+    }
+
+    size_t save_NG_ifb(int fd, pcapng_ifb& hdr) {
+        buffer out(sizeof(pcap_file_header));
+
+        out.capacity(hdr.size() + 16);
+        out.size(0);
+
+        hdr.append(out);
+
+        save_payload(fd, out);
+        return out.size();
+    }
+
+
+    size_t pcapng_epb::append_TCP(buffer& out_buffer, const char* data, ssize_t size, int in, unsigned char tcpflags, tcp_details& details) {
+        if(size < 0) {
+            return -1;
+        }
+
+
+        auto cap_est = sizeof(linux_cooked_capture) +
+                       std::max(sizeof(iphdr), sizeof(ip6_hdr)) +
+                       sizeof(tcphdr) +
+                       size
+                       + 32;
+        auto temp_buffer = std::make_shared<buffer>(cap_est);
+        temp_buffer->size(0);
+
+        append_LCC_header(*temp_buffer, details, in);
+        append_IP_header(*temp_buffer, details, in, size);
+        append_TCP_header(*temp_buffer, details, in, data, size, tcpflags);
+        temp_buffer->append(data, size);
+
+        packet_data = temp_buffer;
+
+        append(out_buffer);
+        return out_buffer.size();
+    }
+
+    size_t pcapng_epb::save_TCP(int fd, const char* data, ssize_t size, int in, unsigned char tcpflags, tcp_details& details) {
+        buffer out(
+                sizeof(pcapng_epb) +   // this is inaccurate, since there are non-trivial types, but is safe and sufficient
+                sizeof(linux_cooked_capture) +
+                std::max(sizeof(iphdr), sizeof(ip6_hdr)) +
+                sizeof(tcphdr) +
+                size
+                + 32); // add some extra bytes
+        out.size(0);
+        append_TCP(out, data, size, in, tcpflags, details);
+        save_payload(fd, out);
+
+        return out.size();
+    }
+
+
+    size_t pcapng_epb::append_UDP(buffer& out_buffer, const char* data, ssize_t size, int in, connection_details& details) {
+        if(size < 0) {
+            return -1;
+        }
+
+        auto cap_est = sizeof(linux_cooked_capture) +
+                       std::max(sizeof(iphdr), sizeof(ip6_hdr)) +
+                       sizeof(udphdr) +
+                       size
+                       + 32;
+        auto temp_buffer = std::make_shared<buffer>(cap_est);
+        temp_buffer->size(0);
+
+        append_LCC_header(*temp_buffer, details, in);
+        append_IP_header(*temp_buffer, details, in, size);
+        append_UDP_header(*temp_buffer, details, in, data, size);
+        temp_buffer->append(data, size);
+
+        packet_data = temp_buffer;
+
+        append(out_buffer);
+        return out_buffer.size();
+    }
+
+    size_t pcapng_epb::save_UDP(int fd, const char* data, ssize_t size, int in, connection_details& details) {
+        buffer out(
+                sizeof(pcapng_epb) +   // this is inaccurate, since there are non-trivial types, but is safe and sufficient
+                sizeof(linux_cooked_capture) +
+                std::max(sizeof(iphdr), sizeof(ip6_hdr)) +
+                sizeof(udphdr) +
+                size
+                + 32); // add some extra bytes
+        out.size(0);
+        append_UDP(out, data, size, in, details);
+        save_payload(fd, out);
+
+        return out.size();
+    }
+
+    size_t pcapng_options::entry::size() const {
+        if(not data) return 0;
+        if(data->size() == 0) return 0;
+
+        auto padding_sz = padding_sz32(data->size());
+
+        return sizeof(code) + sizeof(len) + data->size() + padding_sz + sizeof(footer);
+    }
+
+    size_t pcapng_options::entry::append (buffer &out) {
+        if(size() == 0) return 0;
+
+        auto orig_sz = out.size();
+
+        out.append(code);
+
+        len = data->size();
+        out.append(len);
+        out.append(*data);
+        padding::append(out, padding_sz32(data->size()));
+
+        return out.size() - orig_sz;
+    }
+
+    size_t pcapng_options::size () const {
+        size_t sz = 0;
+        std::for_each(entries.begin(), entries.end(), [&sz](auto e) { sz += e.size(); });
+
+        return sz;
+    }
+
+    size_t pcapng_options::append (buffer &out) {
+
+        size_t wrt = 0;
+
+        std::for_each(entries.begin(), entries.end(), [&wrt, &out](auto e) { if(e.size() > 0) wrt += e.append(out); });
+
+        if(wrt > 0) {
+            out.append(footer);
+        }
+
+        return wrt;
     }
 }
