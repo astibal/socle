@@ -55,7 +55,9 @@ add_library(socle_lib
         traflog/filewriter.cpp
         traflog/poolwriter.cpp
         traflog/pcapapi.hpp
-        traflog/pcapapi.cpp)
+        traflog/pcapapi.cpp
+        traflog/basetraflog.hpp
+        vars.hpp)
 target_link_libraries(socle_lib socle_common_lib)
 
 if(UNIX)
