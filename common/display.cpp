@@ -64,7 +64,7 @@ std::string string_format_old(const char* fmt, ...) {
     return str;
 }
 
-std::string hex_print(unsigned char* data, unsigned int len) {
+std::string hex_print(const unsigned char* data, unsigned int len) {
     std::stringstream ss;
 
     for(unsigned int i=0; i < len; i++) {
@@ -74,23 +74,23 @@ std::string hex_print(unsigned char* data, unsigned int len) {
     return ss.str();
 }
 
-std::string hex_dump(buffer* b, unsigned int ltrim, unsigned char prefix) {
+std::string hex_dump(buffer const* b, unsigned int ltrim, unsigned char prefix) {
 
     return hex_dump(const_cast<unsigned char*>(b->data()), b->size(), ltrim, prefix);
 }
-std::string hex_dump(buffer& b, unsigned int ltrim, unsigned char prefix) {
+std::string hex_dump(buffer const& b, unsigned int ltrim, unsigned char prefix) {
 
     return hex_dump(const_cast<unsigned char*>(b.data()), b.size(), ltrim, prefix);
 }
 
-std::string hex_dump(unsigned char *data, size_t size,unsigned int ltrim, unsigned char prefix)
+std::string hex_dump(const unsigned char *data, size_t size, unsigned int ltrim, unsigned char prefix)
 {
     /* dumps size bytes of *data to stdout. Looks like:
      * [0000] 75 6E 6B 6E 6F 77 6E 20 30 FF 00 00 00 00 39 00 unknown 0.....9.
      */
 
 
-    unsigned char *p = data;
+    const unsigned char *p = data;
 
     unsigned int n;
     char bytestr[4] = {0};
@@ -400,13 +400,13 @@ std::string get_kernel_version() {
     return kernel_ver;
 }
 
-bool version_check(const std::string &real_string , std::string v) {
+bool version_check(const std::string &real_string , std::string const& v) {
 
     std::vector<std::string> real_ver = string_split(real_string,'.');
     std::vector<std::string> target_ver = string_split(v,'.');
 
-    int max_ver_level = (target_ver.size() < real_ver.size()) ? target_ver.size() : real_ver.size();
-    for( int i = 0 ; i < max_ver_level; ++i) {
+    auto max_ver_level = (target_ver.size() < real_ver.size()) ? target_ver.size() : real_ver.size();
+    for( size_t i = 0 ; i < max_ver_level; ++i) {
 
         int real_int = 0;
         int target_int = 0;
