@@ -27,6 +27,7 @@ namespace socle {
         bool status_ {true};
 
     public:
+        virtual ~baseTrafficLogger() = default;
         [[nodiscard]] inline bool status() const { return status_; }
         inline void status(bool b) { status_ = b; }
 
