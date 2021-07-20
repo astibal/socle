@@ -29,11 +29,16 @@ namespace socle {
 
         if(!o) return 0;
 
-        o->flush();
-        (*o) << str;
-
-
         auto sz = str.size();
+        try {
+            o->flush();
+            (*o) << str;
+        } catch(std::ios_base::failure const& e) {
+            sz = 0;
+            _err("file: %s: write string failed: %s", fnm.c_str(), e.what());
+        }
+
+
 
         _dia("file: %s: written string of %dB", fnm.c_str(), sz);
         return sz;
@@ -48,13 +53,16 @@ namespace socle {
 
         if(!o) return 0;
 
-        if(not buf.data() or buf.empty() > 0) return 0;
-
-        o->flush();
-        (*o) << buf;
-
+        if(not buf.data() or buf.empty()) return 0;
 
         auto sz = buf.size();
+        try {
+            o->flush();
+            (*o) << buf;
+        } catch(std::ios_base::failure const& e) {
+            sz = 0;
+            _err("file: %s: write buffer failed: %s", fnm.c_str(), e.what());
+        }
 
         _dia("file: %s: written buffer of %dB", fnm.c_str(), sz);
         return sz;

@@ -16,6 +16,7 @@
     License along with this library.
 */
 
+#include <buffer.hpp>
 #include <traflog/threadedpoolwriter.hpp>
 
 namespace socle {
@@ -42,76 +43,49 @@ namespace socle {
     }
 
     void threadedPoolFileWriter::worker() {
-        :: pthread_setname_np(pthread_self(), "sx-thwrt");
+        :: pthread_setname_np(pthread_self(), "sx-wrt");
         while(! stop_signal_)
         {
             bool wait = false;
             std::string fnm;
+            buffer to_write;
             {
                 std::scoped_lock<std::mutex> l_(queue_lock_);
-                if (task_files_.empty()) {
+                if (queue().empty()) {
                     wait = true;
                 } else {
-                    fnm = task_files_.front();
-                    task_files_.pop();
+                    fnm = queue().front().first; // copy to ram is faster than to disk
+                    to_write.append(queue().front().second);
+                    queue().pop();
                 }
             }
             // we will wait if the queue was empty or handled by other workers
-            if(wait || fnm.empty()) {
+            if(wait) {
                 ::usleep(1000);
             } else {
-                // we work on 'fnm' file
-                bool cont = true;
-                do {
-                    std::string msg;
-                    {
-                        // get the string
-                        std::scoped_lock<std::mutex> l_(queue_lock_);
-
-                        auto it = task_queue_.find(fnm);
-                        if(it != task_queue_.end()) {
-                            auto& myqueue = task_queue_[fnm];
-                            if(! myqueue.empty()) {
-                                msg = myqueue.front();
-                                myqueue.pop();
-
-                                // shortcut - if this was last element, dont continue
-                                if(myqueue.empty()) {
-                                    task_queue_.erase(fnm);
-                                    cont = false;
-                                }
-                            } else {
-                                // myqueue is empty
-                                task_queue_.erase(fnm);
-                                cont = false;
-                            }
-
-                        } else{
-                            // fnm not it hash
-                            cont = false;
-                        }
-                    }
-
-                    // queue is now unlocked!!!
-                    // OK - we get the string, let's write it to the stream
-                    poolFileWriter::write(fnm, msg);
-
-                } while(cont);
+                poolFileWriter::write(fnm, to_write);
             }
         }
     }
 
     size_t threadedPoolFileWriter::write(std::string const &fnm, std::string const &str) {
-        {
-            // ad this file to tasks, but only if it's not already handled by worker
-            std::scoped_lock<std::mutex> l_(queue_lock_);
-            if(task_queue_.find(fnm) == task_queue_.end()) {
-                task_files_.push(fnm);
-            }
-            task_queue_[fnm].push(str);
-        }
 
-        // we enqueued it, just returning its size
-        return str.size();
+
+        auto sz = str.size();
+
+        std::scoped_lock<std::mutex> l_(queue_lock_);
+        task_queue_.emplace(fnm, buffer(str.data(), sz));
+
+        return sz;
+    }
+
+    size_t threadedPoolFileWriter::write(std::string const &fnm, buffer const &buf) {
+
+        auto sz = buf.size();
+
+        std::scoped_lock<std::mutex> l_(queue_lock_);
+        task_queue_.emplace(fnm, buf);
+
+        return sz;
     }
 }

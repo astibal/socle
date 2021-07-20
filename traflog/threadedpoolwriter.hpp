@@ -37,9 +37,10 @@ namespace socle {
         bool stop_signal_ = false;
         std::vector<std::thread> threads_;
 
-        logan_lite log;
-
     public:
+        using element_t = std::pair<std::string, buffer>;
+        using queue_t = std::queue<element_t>;
+
         threadedPoolFileWriter& operator=(threadedPoolFileWriter const&) = delete;
         threadedPoolFileWriter(poolFileWriter const&) = delete;
 
@@ -49,19 +50,16 @@ namespace socle {
         }
 
         std::mutex& queue_lock() { return  queue_lock_; }
-        std::unordered_map<std::string, std::queue<std::string>>& queue() { return task_queue_; };
-        std::queue<std::string>& task_files()  { return task_files_; };
-
+        queue_t& queue() { return task_queue_; };
 
         // write won't actually write to file, but will queue that task
         size_t write(std::string const &fnm, std::string const &str) override;
-
+        size_t write(std::string const &fnm, buffer const &buf) override;
     private:
+        logan_lite log;
         // map of log messages
-        std::unordered_map<std::string, std::queue<std::string>> task_queue_;
 
-        // files to handle - worker thread will remove file he works on from *task_files_* and ads it to *active_files*
-        std::queue<std::string> task_files_;
+        queue_t task_queue_;
         std::mutex queue_lock_;
 
         // worker thread controlling mutex.
