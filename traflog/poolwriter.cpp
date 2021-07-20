@@ -25,14 +25,17 @@ namespace socle {
 
         std::scoped_lock<std::recursive_mutex> l_(ofstream_pool.getlock());
 
-        auto o = get_ofstream(fnm);
+        auto resource = get_ofstream(fnm);
 
-        if(!o) return 0;
+        if(!resource) return 0;
 
         auto sz = str.size();
         try {
-            o->flush();
-            (*o) << str;
+            resource->first->flush();
+
+            auto lock = std::lock_guard(*resource->second);
+            (*resource->first) << str;
+
         } catch(std::ios_base::failure const& e) {
             sz = 0;
             _err("file: %s: write string failed: %s", fnm.c_str(), e.what());
@@ -49,16 +52,18 @@ namespace socle {
 
         std::scoped_lock<std::recursive_mutex> l_(ofstream_pool.getlock());
 
-        auto o = get_ofstream(fnm);
+        auto resource = get_ofstream(fnm);
 
-        if(!o) return 0;
+        if(!resource) return 0;
 
         if(not buf.data() or buf.empty()) return 0;
 
         auto sz = buf.size();
         try {
-            o->flush();
-            (*o) << buf;
+            resource->first->flush();
+
+            auto lock = std::lock_guard(*resource->second);
+            (*resource->first) << buf;
         } catch(std::ios_base::failure const& e) {
             sz = 0;
             _err("file: %s: write buffer failed: %s", fnm.c_str(), e.what());
@@ -69,7 +74,7 @@ namespace socle {
     };
 
 
-    std::shared_ptr<std::ofstream> poolFileWriter::get_ofstream(std::string const& fnm, bool create) {
+    std::shared_ptr<poolFileWriter::resource_t> poolFileWriter::get_ofstream(std::string const& fnm, bool create) {
 
         std::scoped_lock<std::recursive_mutex> l_(ofstream_pool.getlock());
 
@@ -89,7 +94,7 @@ namespace socle {
 
             auto* stream = new std::ofstream(fnm , std::ofstream::out | std::ofstream::app);
 
-            bool replaced = ofstream_pool.set(fnm, stream);
+            bool replaced = ofstream_pool.set(fnm, std::make_shared<resource_t>(stream, new std::mutex));
             _deb("new ostream %s -> 0x%x (replaced=%d)", fnm.c_str(), stream, replaced);
 
             auto entry = ofstream_pool.cache().find(fnm);
@@ -115,9 +120,12 @@ namespace socle {
 
         std::scoped_lock<std::recursive_mutex> l_(ofstream_pool.getlock());
 
-        auto o = get_ofstream(fnm, false);
-        if(o) {
-            o->flush();
+        auto resource = get_ofstream(fnm, false);
+
+        auto lock = std::lock_guard(*resource->second);
+
+        if(resource->first) {
+            resource->first->flush();
             _dia("file: %s: flushed", fnm.c_str());
             return true;
         }

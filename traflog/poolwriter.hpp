@@ -36,6 +36,9 @@ namespace socle {
         }
 
     public:
+        using resource_t = std::pair<std::shared_ptr<std::ofstream>, std::shared_ptr<std::mutex>>;
+        using pool_t = ptr_cache<std::string, resource_t>;
+
         poolFileWriter& operator=(poolFileWriter const&) = delete;
         poolFileWriter(poolFileWriter const&) = delete;
 
@@ -45,11 +48,11 @@ namespace socle {
         }
 
         std::recursive_mutex& ofstream_lock() { return ofstream_pool.getlock(); }
-        ptr_cache<std::string, std::ofstream>& ofstream_cache() { return ofstream_pool; };
+        pool_t & ofstream_cache() { return ofstream_pool; };
 
         std::size_t write(std::string const& fnm,std::string const& str) override;
         std::size_t write(std::string const& fnm, buffer const& data) override;
-        std::shared_ptr<std::ofstream> get_ofstream(std::string const& fnm, bool create = true);
+        std::shared_ptr<resource_t> get_ofstream(std::string const& fnm, bool create = true);
         bool flush(std::string const& fnm) override;
         bool close(std::string const& fnm) override;
         bool open(std::string const& fnm) override;
@@ -61,7 +64,7 @@ namespace socle {
         logan_lite log;
 
         // pool of opened streams. If expired, they will be closed and destruct.
-        ptr_cache<std::string, std::ofstream> ofstream_pool;
+         pool_t ofstream_pool;
     };
 
 }
