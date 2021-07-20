@@ -36,7 +36,7 @@ namespace socle {
         }
 
     public:
-        using resource_t = std::pair<std::shared_ptr<std::ofstream>, std::shared_ptr<std::mutex>>;
+        using resource_t = std::pair<std::unique_ptr<std::ofstream>, std::unique_ptr<std::mutex>>;
         using pool_t = ptr_cache<std::string, resource_t>;
 
         poolFileWriter& operator=(poolFileWriter const&) = delete;
