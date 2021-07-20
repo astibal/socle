@@ -18,6 +18,7 @@
 
 
 #include <traflog/poolwriter.hpp>
+#include <buffer.hpp>
 
 namespace socle {
     std::size_t poolFileWriter::write(std::string const& fnm, std::string const& str) {
@@ -34,9 +35,31 @@ namespace socle {
 
         auto sz = str.size();
 
-        _dia("file: %s: written %dB", fnm.c_str(), sz);
+        _dia("file: %s: written string of %dB", fnm.c_str(), sz);
         return sz;
     };
+
+
+    std::size_t poolFileWriter::write(std::string const& fnm, buffer const& buf) {
+
+        std::scoped_lock<std::recursive_mutex> l_(ofstream_pool.getlock());
+
+        auto o = get_ofstream(fnm);
+
+        if(!o) return 0;
+
+        if(not buf.data() or buf.empty() > 0) return 0;
+
+        o->flush();
+        (*o) << buf;
+
+
+        auto sz = buf.size();
+
+        _dia("file: %s: written buffer of %dB", fnm.c_str(), sz);
+        return sz;
+    };
+
 
     std::shared_ptr<std::ofstream> poolFileWriter::get_ofstream(std::string const& fnm, bool create) {
 

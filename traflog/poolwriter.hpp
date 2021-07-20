@@ -47,8 +47,8 @@ namespace socle {
         std::recursive_mutex& ofstream_lock() { return ofstream_pool.getlock(); }
         ptr_cache<std::string, std::ofstream>& ofstream_cache() { return ofstream_pool; };
 
-
-        std::size_t write(std::string const& fnm, std::string const& str) override;
+        std::size_t write(std::string const& fnm,std::string const& str) override;
+        std::size_t write(std::string const& fnm, buffer const& data);
         std::shared_ptr<std::ofstream> get_ofstream(std::string const& fnm, bool create = true);
         bool flush(std::string const& fnm) override;
         bool close(std::string const& fnm) override;

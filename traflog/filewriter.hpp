@@ -24,6 +24,7 @@
 #include <fstream>
 #include <memory>
 
+#include <buffer.hpp>
 #include <traflog/basefilewriter.hpp>
 
 namespace socle {
@@ -43,6 +44,7 @@ namespace socle {
         [[nodiscard]] inline std::string const& filename() const { return filename_; };
 
         std::size_t write(std::string const&fnm, std::string const& str) override;
+        std::size_t write(std::string const&fnm, buffer const& str) override;
         bool open(std::string const& fnm) override;
         bool close(std::string const& fnm) override;
 

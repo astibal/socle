@@ -28,6 +28,16 @@ namespace socle {
         return str.size();
     }
 
+    std::size_t fileWriter::write(std::string const&fnm, buffer const& buf) {
+
+        if(! writer_) return 0;
+        if(not buf.data() or buf.empty()) return 0;
+
+        *writer_ << buf;
+        return buf.size();
+    }
+
+
     bool fileWriter::open(std::string const& fnm) {
 
         if(writer_) return true;
