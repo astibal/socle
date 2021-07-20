@@ -30,6 +30,7 @@
 #endif
 
 #include <log/logan.hpp>
+#include <ostream>
 
 class buffer
 {

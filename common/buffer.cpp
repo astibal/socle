@@ -95,3 +95,10 @@ std::string regex_replace_fill(std::string str_sample, std::string str_match, st
  
   return result;
 }
+
+std::ostream& operator<<(std::ostream& os, buffer const& b) {
+    if(b.data_ and b.size_ > 0)
+        return os.write(reinterpret_cast<const char*>(b.data()), b.size());
+
+    return os;
+}
