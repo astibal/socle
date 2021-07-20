@@ -19,6 +19,9 @@
 #include <socketinfo.hpp>
 #include <internet.hpp>
 
+#include <vars.hpp>
+
+using namespace socle;
 
 void TCPCom::init(baseHostCX* owner) { 
     
@@ -58,6 +61,8 @@ int TCPCom::connect(const char* host, const char* port) {
         _deb("TCPCom::connect[%s:%s]: getaddrinfo: %s", host, port, gai_strerror(gai));
         return -2;
     }
+
+    auto gai_r = raw::lax<addrinfo*>(gai_result, [](auto& r) { freeaddrinfo(r); } );
 
     /* getaddrinfo() returns a list of address structures.
     Try each address until we successfully connect(2).
@@ -114,8 +119,6 @@ int TCPCom::connect(const char* host, const char* port) {
     if(sfd < 0) {
         _err("TCPCom::connect[%s:%s]: socket[%d]: connect failed", host, port, sfd);
     }
-
-    freeaddrinfo(gai_result);
 
     return socket(sfd);
 
