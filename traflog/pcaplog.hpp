@@ -8,33 +8,35 @@
     version 3.0 of the License, or (at your option) any later version.
     This library is  distributed  in the hope that  it will be useful,
     but WITHOUT ANY WARRANTY;  without  even  the implied warranty of
-    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. 
-    
+    MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.
+
     See the GNU Lesser General Public License for more details.
-    
+
     You  should have received a copy of the GNU Lesser General Public
     License along with this library.
 */
 
-#ifndef TRAFLOG_HPP
-#define TRAFLOG_HPP
+#ifndef PCAPLOG_HPP
+#define PCAPLOG_HPP
 
-#include <traflog/threadedpoolwriter.hpp>
-#include <traflog/filewriter.hpp>
 #include <baseproxy.hpp>
 
+#include <socketinfo.hpp>
+#include <traflog/pcapapi.hpp>
 
-#include <sobject.hpp>
-#include <traflog/basetraflog.hpp>
+#include <memory>
 
-namespace socle::traflog {
+using namespace socle::pcap;
 
-std::string traflog_dir_key(baseProxy* proxy_);
-std::string traflog_file_key(baseProxy* proxy_, char side);
+class PcapLog {
+public:
+    PcapLog(baseProxy* parent);
+
+    bool construct_details();
+
+    baseProxy* parent;
+    tcp_details details;
+};
 
 
-
-
-}
-
-#endif
+#endif //PCAPLOG_HPP

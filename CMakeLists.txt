@@ -57,7 +57,11 @@ add_library(socle_lib
         traflog/pcapapi.hpp
         traflog/pcapapi.cpp
         traflog/basetraflog.hpp
-        vars.hpp)
+        vars.hpp
+        traflog/pcaplog.hpp
+        traflog/pcaplog.cpp
+        traflog/smcaplog.hpp
+        traflog/smcaplog.cpp)
 target_link_libraries(socle_lib socle_common_lib)
 
 if(UNIX)
