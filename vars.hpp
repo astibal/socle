@@ -22,6 +22,7 @@
 
 #include <cstdio>
 #include <unistd.h>
+#include <functional>
 
 namespace socle {
 
