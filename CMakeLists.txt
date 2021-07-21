@@ -61,7 +61,10 @@ add_library(socle_lib
         traflog/pcaplog.hpp
         traflog/pcaplog.cpp
         traflog/smcaplog.hpp
-        traflog/smcaplog.cpp)
+        traflog/smcaplog.cpp
+        traflog/fsoutput.hpp
+        traflog/fsoutput.cpp)
+
 target_link_libraries(socle_lib socle_common_lib)
 
 if(UNIX)

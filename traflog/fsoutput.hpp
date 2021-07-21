@@ -16,32 +16,39 @@
     License along with this library.
 */
 
-#ifndef PCAPLOG_HPP
-#define PCAPLOG_HPP
+#ifndef FSOUTPUT_HPP
+#define FSOUTPUT_HPP
 
+#include <string>
 #include <baseproxy.hpp>
-
-#include <socketinfo.hpp>
-#include <traflog/pcapapi.hpp>
-#include <traflog/basetraflog.hpp>
-
-#include <memory>
-
-using namespace socle::pcap;
 
 namespace socle::traflog {
 
-    class PcapLog : public baseTrafficLogger {
-    public:
-        explicit PcapLog (baseProxy *parent);
+    struct FsOutput {
+        std::string filename_full;
+        std::string writer_key_l_{"???:???"};
+        std::string writer_key_r_{"???:???"};
 
-        void write(side_t side, const buffer &b) override;
-        void write(side_t side, std::string const& s) override;
+        FsOutput () = default;
 
-        baseProxy *parent;
-        tcp_details details;
+        FsOutput (baseProxy *proxy_, const char *d_dir, const char *f_prefix, const char *f_suffix) :
+                data_dir(d_dir),
+                file_prefix(f_prefix),
+                file_suffix(f_suffix) {
+
+            create_writer_key(proxy_);
+        }
+
+        std::string create_writer_key (baseProxy *proxy_);
+
+    private:
+        std::string data_dir;
+        std::string file_prefix;
+
+        std::string file_suffix;
+        std::string host_l_;
     };
 
 }
 
-#endif //PCAPLOG_HPP
+#endif //FSOUTPUT_HPP

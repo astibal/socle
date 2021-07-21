@@ -22,8 +22,10 @@
 #include <traflog/basetraflog.hpp>
 #include <traflog/filewriter.hpp>
 #include <traflog/threadedpoolwriter.hpp>
+#include <traflog/fsoutput.hpp>
 
 namespace socle::traflog {
+
     class SmcapLog : public baseTrafficLogger, public sobject {
 
         static const bool use_pool_writer = true;
@@ -40,20 +42,9 @@ namespace socle::traflog {
 
     private:
         baseProxy *proxy_;
-
+        FsOutput FS_;
         baseFileWriter* writer_ = nullptr;
 
-        std::string data_dir;
-        std::string file_prefix;
-        std::string file_suffix;
-
-        std::string writer_key_l_;
-        std::string writer_key_r_;
-        std::string host_l_;
-
-
-        std::string writer_key_;
-        std::string create_writer_key();
 
     public:
         void write(side_t side, std::string const& s) override;
