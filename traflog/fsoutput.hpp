@@ -36,11 +36,16 @@ namespace socle::traflog {
                 file_prefix(f_prefix),
                 file_suffix(f_suffix) {
 
-            create_writer_key(proxy_);
+            if(proxy_) {
+                generate_filename(proxy_);
+            }
+            else{
+                generate_filename_single("capture");
+            }
         }
 
-        std::string create_writer_key (baseProxy *proxy_);
-
+        std::string generate_filename(baseProxy *proxy_);
+        std::string generate_filename_single(const char* filename);
     private:
         std::string data_dir;
         std::string file_prefix;

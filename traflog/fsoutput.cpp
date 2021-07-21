@@ -24,7 +24,7 @@
 #include <traflog/traflog.hpp>
 
 namespace socle::traflog {
-    std::string FsOutput::create_writer_key(baseProxy* proxy_) {
+    std::string FsOutput::generate_filename(baseProxy* proxy_) {
 
         host_l_ = traflog_dir_key(proxy_);
         writer_key_l_ = traflog_file_key(proxy_, 'L');
@@ -52,6 +52,24 @@ namespace socle::traflog {
         std::stringstream ss;
 
         ss << hostdir << datedir << file_prefix << file_datepart << writer_key_l_ << "." << file_suffix;
+        filename_full = ss.str();
+
+        return filename_full;
+    }
+
+    std::string FsOutput::generate_filename_single(const char* filename) {
+
+        mkdir(data_dir.c_str(),0750);
+
+        time_t now = time(nullptr);
+        tm loc{};
+
+        localtime_r(&now,&loc);
+        std::string file_datepart = string_format("%02d-%02d-%02d_", loc.tm_hour, loc.tm_min, loc.tm_sec);
+
+        std::stringstream ss;
+
+        ss << data_dir << "/" << file_prefix << file_datepart << filename << "." << file_suffix;
         filename_full = ss.str();
 
         return filename_full;

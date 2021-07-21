@@ -17,11 +17,14 @@
 */
 
 #include <traflog/pcaplog.hpp>
+#include <traflog/filewriter.hpp>
 #include <xorshift.hpp>
 
 namespace socle::traflog {
 
-    PcapLog::PcapLog (baseProxy *parent) : parent(parent) {
+    PcapLog::PcapLog (baseProxy *parent, const char* d_dir, const char* f_prefix, const char* f_suffix) :
+        parent(parent),
+        FS(parent, d_dir, f_prefix, f_suffix) {
 
         if(not parent or not parent->com()) { parent = nullptr; return; }
 
@@ -54,8 +57,70 @@ namespace socle::traflog {
             details.seq_in = xorshift::rand();
             details.seq_out = xorshift::rand();
         }
+
+        init_writer();
     }
 
-    void PcapLog::write (side_t side, const buffer &b) {}
-    void PcapLog::write (side_t side, const std::string &s) {}
+    void PcapLog::init_writer () {
+        if(!use_pool_writer) {
+            writer_ = new fileWriter();
+        } else {
+            writer_ = threadedPoolFileWriter::instance();
+        }
+    }
+
+    void PcapLog::write (side_t side, const buffer &b) {
+        PcapLog* self = this;
+        if(single_only) self = &single_instance();
+
+        if(not self->writer_) self->init_writer();
+
+        auto* writer = self->writer_;
+        auto const& fs = self->FS;
+
+
+        if(not writer->opened() ) {
+            if (writer->open(fs.filename_full)) {
+                _dia("writer '%s' created", fs.filename_full.c_str());
+            } else {
+                _err("write '%s' failed to open dump file!", fs.filename_full.c_str());
+            }
+        }
+
+        if(not writer->opened()) return;
+
+        // PCAP HEADER
+
+        if(not self->pcap_header_written) {
+            buffer out;
+            pcapng::append_PCAP_magic(out);
+
+            // interface block
+            pcapng::pcapng_ifb hdr;
+            hdr.append(out);
+
+            writer->write(fs.filename_full, out);
+        }
+
+        // TCP handshake
+
+        if(not tcp_start_written and details.next_proto == 6) {
+            buffer out;
+
+            pcapng::pcapng_epb syn1;
+            syn1.append_TCP(out, "", 0, 0, TCPFLAG_SYN, details);
+
+            pcapng::pcapng_epb syn_ack;
+            syn1.append_TCP(out, "", 0, 1, TCPFLAG_SYN|TCPFLAG_ACK, details);
+
+            pcapng::pcapng_epb ack;
+            syn1.append_TCP(out, "", 0, 0, TCPFLAG_ACK, details);
+
+            writer->write(fs.filename_full, out);
+        }
+
+
+    }
+    void PcapLog::write (side_t side, const std::string &s) {
+    }
 }
