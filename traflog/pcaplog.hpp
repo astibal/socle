@@ -37,7 +37,7 @@ namespace socle::traflog {
 
         PcapLog() = default; // just for singleton, which is set up later
     public:
-        explicit PcapLog (baseProxy *parent, const char* d_dir, const char* f_prefix, const char* f_suffix);
+        explicit PcapLog (baseProxy *parent, const char* d_dir, const char* f_prefix, const char* f_suffix, bool create_dirs);
         ~PcapLog();
 
         void write(side_t side, const buffer &b) override;

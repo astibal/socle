@@ -31,21 +31,21 @@ namespace socle::traflog {
 
         FsOutput () = default;
 
-        FsOutput (baseProxy *proxy_, const char *d_dir, const char *f_prefix, const char *f_suffix) :
+        FsOutput (baseProxy *proxy_, const char *d_dir, const char *f_prefix, const char *f_suffix, bool create_dirs) :
                 data_dir(d_dir),
                 file_prefix(f_prefix),
                 file_suffix(f_suffix) {
 
             if(proxy_) {
-                generate_filename(proxy_);
+                generate_filename(proxy_, create_dirs);
             }
             else{
-                generate_filename_single("capture");
+                generate_filename_single("capture", create_dirs);
             }
         }
 
-        std::string generate_filename(baseProxy *proxy_);
-        std::string generate_filename_single(const char* filename);
+        std::string generate_filename(baseProxy *proxy_, bool create_dirs);
+        std::string generate_filename_single(const char* filename, bool create_dirs);
     private:
         std::string data_dir;
         std::string file_prefix;

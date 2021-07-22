@@ -22,9 +22,9 @@
 
 namespace socle::traflog {
 
-    PcapLog::PcapLog (baseProxy *parent, const char* d_dir, const char* f_prefix, const char* f_suffix) :
+    PcapLog::PcapLog (baseProxy *parent, const char* d_dir, const char* f_prefix, const char* f_suffix, bool create_dirs) :
         parent(parent),
-        FS(parent, d_dir, f_prefix, f_suffix) {
+        FS(parent, d_dir, f_prefix, f_suffix, create_dirs) {
 
         if(not parent or not parent->com()) {
             _war("pcaplog::ctor: parent or parent com is nullptr");
@@ -87,12 +87,17 @@ namespace socle::traflog {
         if(writer_) {
             if(details.next_proto == connection_details::TCP) {
                 if(tcp_start_written) {
+                    PcapLog* self = this;
+                    if(single_only) self = &single_instance();
+                    auto* writer = self->writer_;
+                    auto const& fs = self->FS;
+
                     buffer out;
                     pcapng::pcapng_epb f1;
                     f1.append_TCP(out, "", 0, 0, TCPFLAG_FIN|TCPFLAG_ACK, details);
                     pcapng::pcapng_epb f2;
                     f1.append_TCP(out, "", 0, 1, TCPFLAG_FIN|TCPFLAG_ACK, details);
-                    writer_->write(FS.filename_full, out);
+                    writer->write(fs.filename_full, out);
                 }
             }
             writer_->flush(FS.filename_full);
