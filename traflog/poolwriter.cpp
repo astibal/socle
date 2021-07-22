@@ -121,6 +121,7 @@ namespace socle {
         std::scoped_lock<std::recursive_mutex> l_(ofstream_pool.getlock());
 
         auto resource = get_ofstream(fnm, false);
+        if(not resource) return false;
 
         auto lock = std::lock_guard(*resource->second);
 
