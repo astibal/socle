@@ -139,7 +139,8 @@ namespace socle::traflog {
 
         // PCAP HEADER
 
-        if(not self->pcap_header_written or writer->recreate(fs.filename_full)) {
+        bool is_recreated = writer->recreate(fs.filename_full);
+        if(not self->pcap_header_written or is_recreated) {
             buffer out;
             pcapng::pcapng_shb mag;
             mag.append(out);
@@ -154,6 +155,9 @@ namespace socle::traflog {
             _dia("pcaplog::write[%s]/magic+ifb : written %dB", fs.filename_full.c_str(), wr);
 
             self->pcap_header_written = true;
+
+            // don't write tcp handshake if the stream was recreated in the meantime
+            if(is_recreated) tcp_start_written = true;
         }
 
         // TCP handshake
