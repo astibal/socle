@@ -117,6 +117,18 @@ namespace socle::traflog {
         }
     }
 
+
+    bool PcapLog::comment_frame(pcapng::pcapng_epb& frame) {
+        if(not comlog.empty()) {
+            frame.comment(comlog);
+            comlog.clear();
+
+            return true;
+        }
+
+        return false;
+    }
+
     void PcapLog::write (side_t side, const buffer &b) {
         PcapLog* self = this;
         if(single_only) self = &single_instance();
@@ -189,6 +201,9 @@ namespace socle::traflog {
 
             buffer out;
             pcapng::pcapng_epb data;
+            if(comment_frame(data)) { _dia("comment inserted"); };
+
+
             data.append_TCP(out, (const char*)b.data(), b.size(), side == side_t::RIGHT, TCPFLAG_ACK, details);
 
             _deb("pcaplog::write[%s]/tcp-data : about to write %dB", fs.filename_full.c_str(), out.size());
@@ -201,6 +216,7 @@ namespace socle::traflog {
             buffer out;
 
             pcapng::pcapng_epb u1;
+            if(comment_frame(u1)) { _dia("comment inserted"); };
             u1.append_UDP(out, (const char*)b.data(), b.size(), side == side_t::RIGHT, details);
 
             auto wr = writer->write(fs.filename_full, out);
@@ -209,5 +225,6 @@ namespace socle::traflog {
 
     }
     void PcapLog::write (side_t side, const std::string &s) {
+        comlog.append(s);
     }
 }

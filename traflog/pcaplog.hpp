@@ -55,7 +55,9 @@ namespace socle::traflog {
         bool single_only = false;             // write using single-file instance?
         bool pcap_header_written = false; // is PCAP file initialized (opened and preamble written)?
         bool tcp_start_written = false;   // if TCP, is SYNs written, so rest is just data?
-        bool tcp_stop_written = false;    // if TCP, is FINs written?
+
+        bool comment_frame(pcapng::pcapng_epb& frame);
+        std::string comlog;
 
         static PcapLog& single_instance() {
             static PcapLog s;
