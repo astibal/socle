@@ -31,11 +31,11 @@ namespace socle {
         explicit threadedPoolFileWriter();
         ~threadedPoolFileWriter() override;
 
-        void add_worker();
+        void run_worker();
         void worker();
 
         bool stop_signal_ = false;
-        std::vector<std::thread> threads_;
+        std::thread worker_thread_;
 
     public:
         using element_t = std::pair<std::string, buffer>;

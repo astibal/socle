@@ -23,23 +23,18 @@ namespace socle {
     threadedPoolFileWriter::threadedPoolFileWriter() {
         log = logan::create("socle.threadedPoolFileWriter");
 
-        // add 2 workers.
-        add_worker();
-        add_worker();
+        run_worker();
     }
 
     threadedPoolFileWriter::~threadedPoolFileWriter() {
         stop_signal_ = true;
-        for( auto& t: threads_) {
-            if(t.joinable())
-                t.join();
-        }
+        if(worker_thread_.joinable())
+                worker_thread_.join();
     }
 
 
-    void threadedPoolFileWriter::add_worker() {
-        auto t = std::thread(&threadedPoolFileWriter::worker, this);
-        threads_.emplace_back(std::move(t));
+    void threadedPoolFileWriter::run_worker() {
+        worker_thread_= std::thread(&threadedPoolFileWriter::worker, this);
     }
 
     void threadedPoolFileWriter::worker() {
@@ -47,15 +42,16 @@ namespace socle {
         while(! stop_signal_)
         {
             bool wait = false;
-            std::string fnm;
-            buffer to_write;
             {
                 std::scoped_lock<std::mutex> l_(queue_lock_);
                 if (queue().empty()) {
                     wait = true;
                 } else {
-                    fnm = queue().front().first; // copy to ram is faster than to disk
-                    to_write.append(queue().front().second);
+                    auto& fnm = queue().front().first; // copy to ram is faster than to disk
+                    auto& buf = queue().front().second;
+
+                    poolFileWriter::write(fnm, buf);
+
                     queue().pop();
                 }
             }
@@ -63,7 +59,7 @@ namespace socle {
             if(wait) {
                 ::usleep(1000);
             } else {
-                poolFileWriter::write(fnm, to_write);
+
             }
         }
     }
