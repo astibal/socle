@@ -74,16 +74,16 @@ std::string hex_print(const unsigned char* data, unsigned int len) {
     return ss.str();
 }
 
-std::string hex_dump(buffer const* b, unsigned int ltrim, unsigned char prefix) {
+std::string hex_dump(buffer const* b, unsigned int ltrim, unsigned char prefix, bool add_cr) {
 
-    return hex_dump(const_cast<unsigned char*>(b->data()), b->size(), ltrim, prefix);
+    return hex_dump(const_cast<unsigned char*>(b->data()), b->size(), ltrim, prefix, add_cr);
 }
-std::string hex_dump(buffer const& b, unsigned int ltrim, unsigned char prefix) {
+std::string hex_dump(buffer const& b, unsigned int ltrim, unsigned char prefix,  bool add_cr) {
 
-    return hex_dump(const_cast<unsigned char*>(b.data()), b.size(), ltrim, prefix);
+    return hex_dump(const_cast<unsigned char*>(b.data()), b.size(), ltrim, prefix, add_cr);
 }
 
-std::string hex_dump(const unsigned char *data, size_t size, unsigned int ltrim, unsigned char prefix)
+std::string hex_dump(const unsigned char *data, size_t size, unsigned int ltrim, unsigned char prefix, bool add_cr)
 {
     /* dumps size bytes of *data to stdout. Looks like:
      * [0000] 75 6E 6B 6E 6F 77 6E 20 30 FF 00 00 00 00 39 00 unknown 0.....9.
@@ -143,7 +143,10 @@ std::string hex_dump(const unsigned char *data, size_t size, unsigned int ltrim,
 
         if(n%16 == 0) { 
             /* line completed */
-            ret << pref << string_format("[%4.4s]   %-50.50s  %s\n", addrstr, hexstr, charstr);
+            ret << pref << string_format("[%4.4s]   %-50.50s  %s", addrstr, hexstr, charstr);
+            if(add_cr) ret << "\r";
+            ret << "\n";
+
             hexstr[0] = 0;
             charstr[0] = 0;
         } else if(n%8 == 0) {
@@ -156,7 +159,9 @@ std::string hex_dump(const unsigned char *data, size_t size, unsigned int ltrim,
 
     if (strlen(hexstr) > 0) {
         /* print rest of buffer if not empty */
-        ret << pref << string_format("[%4.4s]   %-50.50s  %s\n", addrstr, hexstr, charstr);
+        ret << pref << string_format("[%4.4s]   %-50.50s  %s", addrstr, hexstr, charstr);
+        if(add_cr) ret << "\r";
+        ret << "\n";
     }
     
     return ret.str();
