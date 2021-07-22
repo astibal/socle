@@ -32,7 +32,7 @@ namespace socle {
 
     protected:
         explicit poolFileWriter(): ofstream_pool("ofstream-pool", 30, true ) {
-            log = logan::create("socle.poolFileWriter");
+            log = logan::create("socle.filewriter");
         }
 
     public:
@@ -60,6 +60,8 @@ namespace socle {
         // pool writer is always opened
         bool opened() override { return true; };
 
+        // detect if file removed and create a new one
+        bool recreate(std::string const& fnm) override;
     private:
         logan_lite log;
 

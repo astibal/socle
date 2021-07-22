@@ -17,10 +17,25 @@
 */
 
 
+#include <sys/stat.h>
 #include <traflog/poolwriter.hpp>
 #include <buffer.hpp>
 
 namespace socle {
+
+    bool poolFileWriter::recreate(std::string const& fnm) {
+        struct stat st{};
+        int result = stat(fnm.c_str(), &st);
+        auto file_exists = result == 0;
+
+        if(not file_exists) {
+            ofstream_pool.erase(fnm);
+            return true;
+        }
+
+        return false;
+    }
+
     std::size_t poolFileWriter::write(std::string const& fnm, std::string const& str) {
 
         std::scoped_lock<std::recursive_mutex> l_(ofstream_pool.getlock());

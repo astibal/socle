@@ -139,7 +139,7 @@ namespace socle::traflog {
 
         // PCAP HEADER
 
-        if(not self->pcap_header_written) {
+        if(not self->pcap_header_written or writer->recreate(fs.filename_full)) {
             buffer out;
             pcapng::pcapng_shb mag;
             mag.append(out);

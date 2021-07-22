@@ -43,6 +43,9 @@ namespace socle {
         // is this writer opened?
         virtual bool opened () = 0;
 
+        // return true if the file needs to be reinitialized
+        virtual bool recreate(std::string const& fnm) { return false; };
+
         virtual ~baseFileWriter () = default;
     };
 };
