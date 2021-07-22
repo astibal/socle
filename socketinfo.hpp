@@ -53,13 +53,16 @@ struct SocketInfo {
 
     // unpack low-level sockaddr_storage into string and port, returning family.
     // Recognizes IPv4 to IPv6 mapped socket and returns correctly AF_INET with correct IPv4 address.
-    static int inet_ss_address_unpack(sockaddr_storage* ptr, std::string* dst, unsigned short* port);
+    static int inet_ss_address_unpack(const sockaddr_storage *ptr, std::string* dst, unsigned short* port);
 
     // converts one @orig sockaddr_storage into @mapped (with ipv4 to ipv6 mapped address detection).
-    static int inet_ss_address_remap(sockaddr_storage* orig, sockaddr_storage* mapped);
+    static int inet_ss_address_remap(const sockaddr_storage *orig, sockaddr_storage* mapped);
 
     // returns sockaddr_storage in human readable string description
-    static std::string inet_ss_str(sockaddr_storage* s);
+    static std::string inet_ss_str(const sockaddr_storage *s);
+
+    std::string src_ss_str() const { if(src_ss.has_value()) return inet_ss_str(&src_ss.value()); return "<src-?>"; }
+    std::string dst_ss_str() const { if(dst_ss.has_value()) return inet_ss_str(&dst_ss.value()); return "<dst-?>"; }
 
     // data are packed into optionals, or unpacked from them -- depending on particular use case.
     // data members - source info

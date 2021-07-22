@@ -237,7 +237,7 @@ std::string SocketInfo::inet_family_str(int fa) {
 }
 
 
-int SocketInfo::inet_ss_address_unpack(sockaddr_storage* ptr, std::string* dst, unsigned short* port) {
+int SocketInfo::inet_ss_address_unpack(const sockaddr_storage *ptr, std::string* dst, unsigned short* port) {
 
     constexpr size_t buf_sz = 64;
 
@@ -271,7 +271,7 @@ int SocketInfo::inet_ss_address_unpack(sockaddr_storage* ptr, std::string* dst, 
 }
 
 
-int SocketInfo::inet_ss_address_remap(sockaddr_storage* orig, sockaddr_storage* mapped) {
+int SocketInfo::inet_ss_address_remap(const sockaddr_storage *orig, sockaddr_storage* mapped) {
     std::string ip_part;
     unsigned short port_part;
 
@@ -291,7 +291,7 @@ int SocketInfo::inet_ss_address_remap(sockaddr_storage* orig, sockaddr_storage* 
     return fa;
 }
 
-std::string SocketInfo::inet_ss_str(sockaddr_storage* s) {
+std::string SocketInfo::inet_ss_str(const sockaddr_storage *s) {
     std::string ip;
     unsigned short port;
 
