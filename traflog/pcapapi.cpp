@@ -573,7 +573,7 @@ namespace socle::pcapng {
     }
 
     size_t save_NG_magic(int fd) {
-        buffer out(sizeof(pcap_file_header));
+        buffer out(sizeof(pcapng_shb));
         pcapng_shb hdr;
         out.capacity(hdr.size() + 16);
         out.size(0);
@@ -585,7 +585,7 @@ namespace socle::pcapng {
     }
 
     size_t save_NG_ifb(int fd, pcapng_ifb& hdr) {
-        buffer out(sizeof(pcap_file_header));
+        buffer out(sizeof(pcapng_ifb));
 
         out.capacity(hdr.size() + 16);
         out.size(0);
