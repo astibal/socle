@@ -28,7 +28,7 @@ namespace socle {
     public:
         // returns number of written bytes in str written into fnm
         virtual std::size_t write (std::string const &fnm, std::string const &str) = 0;
-        virtual std::size_t write (std::string const &fnm, buffer const &str) = 0;
+        virtual std::size_t write (std::string const &fnm, buffer const &buf) = 0;
 
 
         // unguaranteed flush - stream will be flushed to disk if possible
