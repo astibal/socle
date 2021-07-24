@@ -249,14 +249,13 @@ namespace socle::pcap {
             tcp_header.seq = htonl(tcp_seq_in);
 
             tcp_seq_in += (tcp_header.syn or tcp_header.fin) ? 1 : payload_size;
+            tcp_header.ack_seq = htonl(tcp_seq_out);
 
             /* ack-seq is the seq+size of the last packet we saw going the other way */
             if (tcp_seq_out != tcp_lastack_in) {
-                tcp_header.ack_seq = 0L;
                 tcp_lastack_in = tcp_seq_out;
 
                 if (not(tcpflags & TCPFLAG_SYN)) {
-                    tcp_header.ack_seq = htonl(tcp_seq_out);
                     tcp_header.ack = 1;
                 }
             }
@@ -266,13 +265,12 @@ namespace socle::pcap {
             tcp_header.seq = htonl(tcp_seq_out);
 
             tcp_seq_out += (tcp_header.syn or tcp_header.fin) ? 1 : payload_size;
+            tcp_header.ack_seq = htonl(tcp_seq_in);
 
             if (tcp_seq_in != tcp_lastack_out) {
-                tcp_header.ack_seq = 0L;
                 tcp_lastack_out = tcp_seq_in;
 
                 if (not(tcpflags & TCPFLAG_SYN)) {
-                    tcp_header.ack_seq = htonl(tcp_seq_in);
                     tcp_header.ack = 1;
                 }
             }
