@@ -64,6 +64,13 @@ struct SocketInfo {
     std::string src_ss_str() const { if(src_ss.has_value()) return inet_ss_str(&src_ss.value()); return "<src-?>"; }
     std::string dst_ss_str() const { if(dst_ss.has_value()) return inet_ss_str(&dst_ss.value()); return "<dst-?>"; }
 
+    [[nodiscard]] in_addr src_ss_in() const { constexpr in_addr def{}; return src_ss.has_value() ? *((in_addr*)&src_ss.value()) : *((in_addr*)&def); }
+    [[nodiscard]] in_addr dst_ss_in() const { constexpr in_addr def{}; return dst_ss.has_value() ? *((in_addr*)&dst_ss.value()) : *((in_addr*)&def); }
+
+    [[nodiscard]] in6_addr src_ss_in6() const { constexpr in6_addr def{}; return src_ss.has_value() ? *((in6_addr*)&src_ss.value()) : def; }
+    [[nodiscard]] in6_addr dst_ss_in6() const { constexpr in6_addr def{}; return dst_ss.has_value() ? *((in6_addr*)&dst_ss.value()) : def; }
+
+
     // data are packed into optionals, or unpacked from them -- depending on particular use case.
     // data members - source info
     std::optional<struct sockaddr_storage> src_ss;
