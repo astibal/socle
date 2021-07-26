@@ -39,8 +39,8 @@ namespace socle::pcap {
 
     template<typename V, typename P>
     struct chksum_pseudoheader {
-        V saddr;
-        V daddr;
+        V saddr{};
+        V daddr{};
         unsigned char reserved;
         unsigned char proto;
         uint16_t next_len;
@@ -175,7 +175,7 @@ namespace socle::pcap {
     void append_UDP_header(buffer& out_buffer, connection_details& details, int in, const char* payload, size_t payload_size);
 
     size_t append_TCP_frame(buffer& out_buffer, const char* data, ssize_t size, int in, unsigned char tcpflags, tcp_details& details);
-    size_t append_UDP_frame(buffer& out_buffer, const char* data, ssize_t size, int in, tcp_details& details);
+    size_t append_UDP_frame(buffer& out_buffer, const char* data, ssize_t size, int in, connection_details& details);
 
     void save_payload(int fd, const char* data, size_t size);
     void save_payload(int fd, buffer const& out);
@@ -204,10 +204,8 @@ uint16_t L4_chksum (connection_details const &details, int in, NextHeader *next_
             src = details.source_in();
         }
 
-        auto hdr = chksum_pseudoheader<in_addr, NextHeader>::construct(src, dst, details.ip_version, payload_size);
-        to_ret = htons(
-                l4hdr_cksum(&hdr, sizeof(hdr), &next_header, sizeof(NextHeader), payload,
-                            payload_size));
+        auto hdr = chksum_pseudoheader<in_addr, NextHeader>::construct(src, dst, details.next_proto, payload_size);
+        to_ret = l4hdr_cksum(&hdr, sizeof(hdr), next_header, sizeof(NextHeader), payload,payload_size);
     } else if (details.ip_version == 6) {
         in6_addr src{};
         in6_addr dst{};
@@ -220,10 +218,8 @@ uint16_t L4_chksum (connection_details const &details, int in, NextHeader *next_
             src = details.source_in6();
         }
 
-        auto hdr = chksum_pseudoheader<in6_addr, NextHeader>::construct(src, dst, details.ip_version, payload_size);
-        to_ret = htons(
-                l4hdr_cksum(&hdr, sizeof(hdr), &next_header, sizeof(NextHeader), payload,
-                            payload_size));
+        auto hdr = chksum_pseudoheader<in6_addr, NextHeader>::construct(src, dst, details.next_proto, payload_size);
+        to_ret = l4hdr_cksum(&hdr, sizeof(hdr), next_header, sizeof(NextHeader), payload, payload_size);
     }
 
     return to_ret;

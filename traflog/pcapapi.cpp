@@ -81,7 +81,7 @@ namespace socle::pcap {
         struct pcap_frame pcap_header{};
 
 
-        /* we have to rather tediously fake a pcap header, linux cooked capture haeder, ip header and tcp header */
+        /* we have to rather tediously fake a pcap header, linux cooked capture header, ip header and tcp header */
         /* pcap header */
         gettimeofday(&time, nullptr);
 
@@ -136,8 +136,8 @@ namespace socle::pcap {
     void append_IPv4_header(buffer& out_buffer, connection_details& details, int in, size_t payload_size) {
         [[maybe_unused]] auto& log = get_log();
 
-        auto* target_sockaddr = reinterpret_cast<sockaddr_in const*>(&details.destination);
-        auto* client_sockaddr = reinterpret_cast<sockaddr_in const*>(&details.source);
+        auto const* target_sockaddr = reinterpret_cast<sockaddr_in const*>(&details.destination);
+        auto const* client_sockaddr = reinterpret_cast<sockaddr_in const*>(&details.source);
 
 
 
@@ -302,9 +302,8 @@ namespace socle::pcap {
             udp_header.source = sport;
             udp_header.dest = dport;
         }
-
-        udp_header.check = htons(L4_chksum<udphdr>(details, in, &udp_header, payload, payload_size));
         udp_header.len = htons(sizeof(udp_header) + payload_size);
+        udp_header.check = htons(L4_chksum<udphdr>(details, in, &udp_header, payload, payload_size));
 
         out_buffer.append(&udp_header, sizeof(udp_header));
     }
