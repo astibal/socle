@@ -48,6 +48,12 @@ std::string string_format(const char* format, Args ... args)
         cursize = cap*mul;
 
         b = mempool_realloc(b, cursize);
+
+        if(not b) {
+            // well, not enough of memory condition?
+            throw std::runtime_error("string_format: failed to realloc from pool");
+        }
+
         memset(b, 0, cursize);
 
         //  man snprintf:
