@@ -250,8 +250,10 @@ bool TCPCom::com_status() {
 }
 
 void TCPCom::on_new_socket(int _fd) {
-    so_nodelay(_fd);
-    so_quickack(_fd);
+    if(_fd >= 0) {
+        so_nodelay(_fd);
+        so_quickack(_fd);
+    }
 
     baseCom::on_new_socket(_fd);
 }
