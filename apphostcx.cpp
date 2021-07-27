@@ -214,7 +214,7 @@ void AppHostCX::pre_read() {
     
     bool updated = false;
     
-    bool __behind_read_warn = true;
+    const bool behind_read_warn = true;
     bool behind_read = false;
     
     if (mode() == MODE_PRE) {
@@ -223,7 +223,7 @@ void AppHostCX::pre_read() {
             if (peek_read_counter < this->meter_read_bytes) {
                 behind_read = true;
 
-                if (__behind_read_warn) {
+                if (behind_read_warn) {
                     _war("AppHostCX::pre_read[%s]: More data read than seen by peek: %d vs. %d", c_type(),
                          this->meter_read_bytes, peek_read_counter);
                 } else {
@@ -270,7 +270,7 @@ void AppHostCX::pre_read() {
             b.size(0);
             int l = this->peek(b);
 
-            if(behind_read && __behind_read_warn) {
+            if(behind_read && behind_read_warn) {
                 _war("AppHostCX::pre_read[%s]: peek returns %d bytes",c_type(),l);
             } else {
                 _dum("AppHostCX::pre_read[%s]: peek returns %d bytes",c_type(),l);
