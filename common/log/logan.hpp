@@ -106,7 +106,7 @@ public:
     friend class logan;
 
     logan_lite() = default;
-    explicit logan_lite(std::string str): topic_(std::move(str)) {};
+    explicit logan_lite(std::string str) noexcept: topic_(std::move(str)) {};
     logan_lite(logan_lite const& r): topic_(r.topic_), prefix_(r.prefix_), my_loglevel(r.my_loglevel) {}
     logan_lite& operator=(logan_lite const& r) {
 
