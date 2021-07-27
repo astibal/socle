@@ -230,7 +230,16 @@ int UDPCom::connect(const char* host, const char* port) {
             _deb("connect[%d]: rp contains: %s/%s:%d", sfd, SocketInfo::inet_family_str(fa).c_str(), rps.c_str(), rp_port);
         }
         
-        ::connect(sfd,(sockaddr*)&udpcom_addr,sizeof(sockaddr));
+        auto con_ret = ::connect(sfd,(sockaddr*)&udpcom_addr,sizeof(sockaddr));
+        if(con_ret != 0) {
+            std::string rps;
+            unsigned short rp_port;
+
+            int fa = SocketInfo::inet_ss_address_unpack(((sockaddr_storage*)&udpcom_addr), &rps, &rp_port);
+            _deb("connect[%d]:  failed to %s/%s:%d : %s ", sfd, SocketInfo::inet_family_str(fa).c_str(), rps.c_str(), rp_port,
+                        string_error().c_str());
+        }
+
         if(! GLOBAL_IO_BLOCKING() ) {
             unblock(sfd);
         }
