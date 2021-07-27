@@ -249,7 +249,7 @@ mem_chunk_t memPool::acquire(std::size_t sz) {
     }
 
     if (fallback_to_heap) {
-        auto new_entry = mem_chunk(sz);
+        mem_chunk new_entry(sz);
         stat_alloc++;
         stat_alloc_size += sz;
 
