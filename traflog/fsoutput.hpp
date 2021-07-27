@@ -46,6 +46,18 @@ namespace socle::traflog {
 
         std::string generate_filename(baseProxy *proxy_, bool create_dirs);
         std::string generate_filename_single(const char* filename, bool create_dirs);
+
+        bool create_dir(const char* path, mode_t mode) {
+            auto ret = mkdir(path, mode);
+            if(ret != 0) {
+                _war("dir not created: %s", string_error().c_str());
+                return false;
+            }
+
+            return true;
+        };
+
+        static inline logan_lite log{"fsoutput"};
     private:
         std::string data_dir;
         std::string file_prefix;

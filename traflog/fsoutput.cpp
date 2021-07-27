@@ -34,10 +34,10 @@ namespace socle::traflog {
             return "";
         }
 
-        if(create_dirs) mkdir(data_dir.c_str(),0750);
+        if(create_dirs) create_dir(data_dir.c_str(), 0750);
 
         std::string hostdir = data_dir+"/"+host_l_+"/";
-        if(create_dirs) mkdir(hostdir.c_str(),0750);
+        if(create_dirs) create_dir(hostdir.c_str(), 0750);
 
         time_t now = time(nullptr);
         tm loc{};
@@ -45,7 +45,7 @@ namespace socle::traflog {
         localtime_r(&now,&loc);
 
         std::string datedir = string_format("%d-%02d-%02d/", loc.tm_year+1900, loc.tm_mon+1, loc.tm_mday);
-        if(create_dirs) mkdir((hostdir+datedir).c_str(),0750);
+        if(create_dirs) create_dir((hostdir + datedir).c_str(), 0750);
 
         std::string file_timepart = string_format("%02d-%02d-%02d_", loc.tm_hour, loc.tm_min, loc.tm_sec);
 
@@ -59,7 +59,7 @@ namespace socle::traflog {
 
     std::string FsOutput::generate_filename_single(const char* filename, bool create_dirs) {
 
-        if(create_dirs) mkdir(data_dir.c_str(),0750);
+        if(create_dirs) create_dir(data_dir.c_str(), 0750);
 
         time_t now = time(nullptr);
         tm loc{};
