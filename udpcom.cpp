@@ -23,6 +23,9 @@
 #include <internet.hpp>
 #include <linux/in6.h>
 
+#include <vars.hpp>
+
+using namespace socle;
 
 int UDPCom::translate_socket(int vsock) const {
     
@@ -770,7 +773,9 @@ bool UDPCom::resolve_socket(bool source, int s, std::string* target_host, std::s
                 }                
                 
                 if(target_host) target_host->assign(mapped4_temp);
-                if(target_port) target_port->assign(std::to_string(ntohs(record->src_port6())));
+                if(target_port) target_port->assign(std::to_string(
+                        tainted::var<unsigned>(ntohs(record->src_port6()),tainted::any<unsigned>))
+                        );
             }
             
         } else {

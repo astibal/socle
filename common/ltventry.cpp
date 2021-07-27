@@ -25,6 +25,9 @@
 #include "log/logger.hpp"
 #include "buffer.hpp"
 
+#include <vars.hpp>
+using namespace socle;
+
 LTVEntry::LTVEntry() {
 	len_ = 0;
 	id_ = 0;
@@ -175,7 +178,7 @@ std::string LTVEntry::hr(int ltrim) {
 	
 	if (type_ == typ::num || type_ == typ::ip) {
 		in_addr dd_addr = *(in_addr*)data();
-		uint32_t dd_int = ntohl(*(uint32_t*)data());
+        auto dd_int = tainted::var<uint32_t>(ntohl(*(uint32_t*)data()), tainted::any<uint32_t>);
 		const char *ip = ::inet_ntoa((in_addr)dd_addr);
 		
 		r << + "Value (number) : " << std::to_string(dd_int) << " / " << ip << '\n' ;

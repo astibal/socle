@@ -20,11 +20,14 @@
 #include <hostcx.hpp>
 #include <internet.hpp>
 
+#include <vars.hpp>
+
 #include <netinet/tcp.h>
 #include <linux/in6.h>
 #include <linux/netfilter_ipv4.h>
 #include <linux/netfilter_ipv6.h>
 
+using namespace socle;
 
 void baseCom::init(baseHostCX* owner) {
 
@@ -154,7 +157,7 @@ bool baseCom::resolve_redirected(int s, std::string* target_host, std::string* t
         }
 
         if (target_host != nullptr) *target_host = mapped4_temp;
-        if (target_port != nullptr) *target_port = std::to_string(orig_port);
+        if (target_port != nullptr) *target_port = std::to_string(tainted::var<unsigned>(orig_port, tainted::any<unsigned>));
         if (target_storage != nullptr) *target_storage = peer_info_;
         return true;
     }
@@ -223,7 +226,7 @@ bool baseCom::resolve_socket(bool source, int s, std::string* target_host, std::
         }
         
         if(target_host != nullptr) *target_host = mapped4_temp;
-        if(target_port != nullptr) *target_port = std::to_string(orig_port);
+        if(target_port != nullptr) *target_port = std::to_string(tainted::var<unsigned>(orig_port, tainted::any<unsigned>));
         if(target_storage != nullptr) *target_storage = peer_info_;
         return true;
     }

@@ -106,6 +106,17 @@ namespace socle {
         }
 
     }
+
+    namespace tainted {
+        template<typename T>
+        inline T var(T value, std::function<T (T)> filter) noexcept {
+            T c = value;
+            return c;
+        }
+
+        template<typename T>
+        T any(T v) { return v; }
+    }
 }
 
 #endif //VARS_HPP

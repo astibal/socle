@@ -38,6 +38,7 @@
 #include <log/logger.hpp>
 #include <display.hpp>
 #include <timeops.hpp>
+#include <vars.hpp>
 
 #include <cstdio>
 #include <functional>
@@ -2782,7 +2783,8 @@ int baseSSLCom<L4Proto>::parse_peer_hello() {
                         _deb("SSLCom::parse_peer_hello: no session_id found.");
                     }
 
-                    unsigned short ciphers_length = ntohs(b.get_at<unsigned short>(curpos));
+                    auto ciphers_length = tainted::var<unsigned short>(ntohs(b.get_at<unsigned short>(curpos)), tainted::any<unsigned short>);
+
                     curpos += sizeof(unsigned short);
                     if (curpos + ciphers_length > b.size())
                         throw socle::ex::SSL_clienthello_malformed();
@@ -2790,7 +2792,8 @@ int baseSSLCom<L4Proto>::parse_peer_hello() {
                     curpos += ciphers_length; //skip ciphers
                     _deb("SSLCom::parse_peer_hello: ciphers length %d", ciphers_length);
 
-                    unsigned char compression_length = b.get_at<unsigned char>(curpos);
+                    auto compression_length = tainted::var<unsigned char>(b.get_at<unsigned char>(curpos), tainted::any<unsigned char>);
+
                     curpos += sizeof(unsigned char);
                     if (curpos + compression_length > b.size())
                         throw socle::ex::SSL_clienthello_malformed();
