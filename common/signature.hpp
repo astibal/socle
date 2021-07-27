@@ -445,10 +445,7 @@ public:
                  hex_dump((unsigned char *) str.c_str(), str.size()).c_str());
             _deb("regexMatch::search_function: matches %d times.", m.size());
 
-            for (unsigned int i = 0; i < m.size(); i++) {
-                // we need just single(first) result
-                return range(m.position(i), m.str().size());
-            }
+            return range(m.position(0), m.str().size());
         }
         else {
             _deb("regexMatch::search_function: no match.");
