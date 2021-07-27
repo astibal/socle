@@ -48,27 +48,21 @@ namespace socle::pcap {
     uint16_t l4hdr_cksum(void* hdr, size_t hdr_sz, void *next, size_t next_sz, const char *payload, size_t payload_len) {
 
         unsigned int padd = payload_len & 1u;
-        uint16_t next_len = payload_len + next_sz;
-        size_t buff_len = padd + hdr_sz + next_len;
+        size_t buff_len = hdr_sz + next_sz + payload_len + padd;
 
-#ifndef USE_MEMPOOL
-        char* buff = static_cast<char*>(malloc(buff_len));
-#else
-        char* buff = static_cast<char*>(mempool_alloc(buff_len));
-#endif
+
+        char* buff = static_cast<char*>(::malloc(buff_len));
+        if(not buff) return 0;
+
         memcpy(buff,                                  hdr,     hdr_sz);
-        memcpy(buff+  hdr_sz,                         next,    next_sz);
+        memcpy(buff + hdr_sz,                         next,    next_sz);
         memcpy(buff + hdr_sz + next_sz,               payload, payload_len);
-        if(padd)
+        if(padd > 0)
             buff[buff_len-1] = 0;
 
         uint16_t result = iphdr_cksum(buff, buff_len);
 
-#ifndef USE_MEMPOOL
-        free(buff);
-#else
-        mempool_free(buff);
-#endif
+        ::free(buff);
 
         return result;
     }
