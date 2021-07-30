@@ -130,16 +130,16 @@ namespace socle::traflog {
     }
 
     void PcapLog::write (side_t side, const buffer &b) {
-        PcapLog* self = this;
-        if(single_only) self = &single_instance();
+        PcapLog *self = this;
+        if (single_only) self = &single_instance();
 
-        if(not self->writer_) self->init_writer();
+        if (not self->writer_) self->init_writer();
 
-        auto* writer = self->writer_;
-        auto const& fs = self->FS;
+        auto *writer = self->writer_;
+        auto const &fs = self->FS;
 
 
-        if(not writer->opened() ) {
+        if (not writer->opened()) {
             if (writer->open(fs.filename_full)) {
                 _dia("writer '%s' created", fs.filename_full.c_str());
             } else {
@@ -147,8 +147,34 @@ namespace socle::traflog {
             }
         }
 
-        if(not writer->opened()) return;
+        if (not writer->opened()) return;
 
+        // rotating logs is only possible for pcap_single mode
+        if (single_only) {
+
+            if ((stat_bytes_quota > 0LL and stat_bytes_written >= stat_bytes_quota) or self->rotate_now) {
+                self->rotate_now = false;
+
+                std::string renamed_fnm(fs.filename_full);
+
+                renamed_fnm += ".old." + fs.file_suffix;
+
+                struct stat st{};
+                int result = stat(renamed_fnm.c_str(), &st);
+                auto file_exists = result == 0;
+
+                if (file_exists) {
+                    auto ret = ::remove(renamed_fnm.c_str());
+                    if (ret == 0) {
+                        if(::rename(fs.filename_full.c_str(), renamed_fnm.c_str()) == 0)
+                            self->FS.filename_full = self->FS.generate_filename_single("smithproxy", true);
+                    }
+                } else {
+                    if(::rename(fs.filename_full.c_str(), renamed_fnm.c_str()) == 0)
+                        self->FS.filename_full = self->FS.generate_filename_single("smithproxy", true);
+                }
+            }
+        }
         // PCAP HEADER
 
         bool is_recreated = writer->recreate(fs.filename_full);
@@ -165,6 +191,8 @@ namespace socle::traflog {
             _deb("pcaplog::write[%s]/magic+ifb : \r\n%s", fs.filename_full.c_str(), hex_dump(out, 4, 0, true).c_str());
             auto wr = writer->write(fs.filename_full, out);
             _dia("pcaplog::write[%s]/magic+ifb : written %dB", fs.filename_full.c_str(), wr);
+
+            stat_bytes_written += wr;
 
             self->pcap_header_written = true;
 
@@ -194,6 +222,8 @@ namespace socle::traflog {
                 auto wr = writer->write(fs.filename_full, out);
                 writer->flush(fs.filename_full);
 
+                stat_bytes_written += wr;
+
                 _dia("pcaplog::write[%s]/tcp-hs : written %dB", fs.filename_full.c_str(), wr);
 
                 tcp_start_written = true;
@@ -211,6 +241,8 @@ namespace socle::traflog {
 
             auto wr = writer->write(fs.filename_full, out);
             _dia("pcaplog::write[%s]/tcp-data : written %dB", fs.filename_full.c_str(), wr);
+
+            stat_bytes_written += wr;
         }
         else {
             buffer out;
@@ -221,6 +253,7 @@ namespace socle::traflog {
 
             auto wr = writer->write(fs.filename_full, out);
             _dia("pcaplog::write[%s]/udp : written %dB", fs.filename_full.c_str(), wr);
+            stat_bytes_written += wr;
         }
 
     }

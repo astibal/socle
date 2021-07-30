@@ -58,7 +58,7 @@ namespace socle::traflog {
         };
 
         static inline logan_lite log{"fsoutput"};
-    private:
+
         std::string data_dir;
         std::string file_prefix;
 
