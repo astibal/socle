@@ -152,12 +152,17 @@ namespace socle::traflog {
         // rotating logs is only possible for pcap_single mode
         if (single_only) {
 
-            if ((stat_bytes_quota > 0LL and stat_bytes_written >= stat_bytes_quota) or self->rotate_now) {
+            // don't allow rotating insanely low sizes (<10MiB). If 10MiB is too big for somebody, let me know.
+            if (self->stat_bytes_quota > 0 and self->stat_bytes_quota <= 10000000LL) {
+                self->stat_bytes_quota = 10000000LL;
+            }
+
+            if ((self->stat_bytes_quota > 0LL and self->stat_bytes_written >= self->stat_bytes_quota) or self->rotate_now) {
                 self->rotate_now = false;
 
-                std::string renamed_fnm(fs.filename_full);
-
-                renamed_fnm += ".old." + fs.file_suffix;
+                std::stringstream ss;
+                ss << self->FS.data_dir << "/" << self->FS.file_prefix << "smithproxy.old." << self->FS.file_suffix;
+                std::string renamed_fnm = ss.str();
 
                 struct stat st{};
                 int result = stat(renamed_fnm.c_str(), &st);
@@ -166,18 +171,28 @@ namespace socle::traflog {
                 if (file_exists) {
                     auto ret = ::remove(renamed_fnm.c_str());
                     if (ret == 0) {
-                        if(::rename(fs.filename_full.c_str(), renamed_fnm.c_str()) == 0)
+                        if(::rename(fs.filename_full.c_str(), renamed_fnm.c_str()) == 0) {
                             self->FS.filename_full = self->FS.generate_filename_single("smithproxy", true);
+                            self->stat_bytes_written = 0LL;
+                        }
                     }
                 } else {
-                    if(::rename(fs.filename_full.c_str(), renamed_fnm.c_str()) == 0)
+                    if(::rename(fs.filename_full.c_str(), renamed_fnm.c_str()) == 0) {
                         self->FS.filename_full = self->FS.generate_filename_single("smithproxy", true);
+                        self->stat_bytes_written = 0LL;
+                    }
                 }
             }
         }
         // PCAP HEADER
 
         bool is_recreated = writer->recreate(fs.filename_full);
+
+        // reset bytes written
+        if(is_recreated) {
+            self->stat_bytes_written = 0LL;
+        }
+
         if(not self->pcap_header_written or is_recreated) {
             buffer out;
             pcapng::pcapng_shb mag;
@@ -192,7 +207,7 @@ namespace socle::traflog {
             auto wr = writer->write(fs.filename_full, out);
             _dia("pcaplog::write[%s]/magic+ifb : written %dB", fs.filename_full.c_str(), wr);
 
-            stat_bytes_written += wr;
+            self->stat_bytes_written += wr;
 
             self->pcap_header_written = true;
 
@@ -222,7 +237,7 @@ namespace socle::traflog {
                 auto wr = writer->write(fs.filename_full, out);
                 writer->flush(fs.filename_full);
 
-                stat_bytes_written += wr;
+                self->stat_bytes_written += wr;
 
                 _dia("pcaplog::write[%s]/tcp-hs : written %dB", fs.filename_full.c_str(), wr);
 
@@ -242,7 +257,7 @@ namespace socle::traflog {
             auto wr = writer->write(fs.filename_full, out);
             _dia("pcaplog::write[%s]/tcp-data : written %dB", fs.filename_full.c_str(), wr);
 
-            stat_bytes_written += wr;
+            self->stat_bytes_written += wr;
         }
         else {
             buffer out;
@@ -253,7 +268,7 @@ namespace socle::traflog {
 
             auto wr = writer->write(fs.filename_full, out);
             _dia("pcaplog::write[%s]/udp : written %dB", fs.filename_full.c_str(), wr);
-            stat_bytes_written += wr;
+            self->stat_bytes_written += wr;
         }
 
     }

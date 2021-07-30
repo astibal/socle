@@ -56,8 +56,8 @@ namespace socle::traflog {
         bool pcap_header_written = false; // is PCAP file initialized (opened and preamble written)?
         bool tcp_start_written = false;   // if TCP, is SYNs written, so rest is just data?
 
-        unsigned long long stat_bytes_written = 0LL;
-        unsigned long long stat_bytes_quota = 0LL;
+        long long stat_bytes_written = 0LL;
+        long long stat_bytes_quota = 0LL;
         bool rotate_now = false;
 
         bool comment_frame(pcapng::pcapng_epb& frame);
