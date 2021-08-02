@@ -588,28 +588,41 @@ namespace socle::pcapng {
     }
 
 
-    size_t pcapng_epb::append_TCP(buffer& out_buffer, const char* data, ssize_t size, int in, unsigned char tcpflags, tcp_details& details) {
-        if(size < 0) {
+    size_t pcapng_epb::append_TCP(buffer& out_buffer, const char* data, ssize_t data_size, int in, unsigned char tcpflags, tcp_details& details) {
+        if(data_size < 0) {
             return -1;
         }
 
+        ssize_t data_written = 0L;
 
-        auto cap_est = sizeof(linux_cooked_capture) +
-                       std::max(sizeof(iphdr), sizeof(ip6_hdr)) +
-                       sizeof(tcphdr) +
-                       size
-                       + 32;
-        auto temp_buffer = std::make_shared<buffer>(cap_est);
-        temp_buffer->size(0);
+        auto* cur_data = const_cast<char*>(data);
+        auto to_write = details.max_data_size <= 0 ? data_size : std::min(details.max_data_size, data_size);
 
-        append_LCC_header(*temp_buffer, details, in);
-        append_IP_header(*temp_buffer, details, in, size);
-        append_TCP_header(*temp_buffer, details, in, data, size, tcpflags);
-        temp_buffer->append(data, size);
+        do {
 
-        packet_data = temp_buffer;
+            auto cap_est = sizeof(linux_cooked_capture) +
+                           std::max(sizeof(iphdr), sizeof(ip6_hdr)) +
+                           sizeof(tcphdr) +
+                           to_write
+                           + 32;
+            auto temp_buffer = std::make_shared<buffer>(cap_est);
+            temp_buffer->size(0);
 
-        append(out_buffer);
+            append_LCC_header(*temp_buffer, details, in);
+            append_IP_header(*temp_buffer, details, in, to_write);
+            append_TCP_header(*temp_buffer, details, in, cur_data, to_write, tcpflags);
+            temp_buffer->append(cur_data, to_write);
+
+            packet_data = temp_buffer;
+
+            append(out_buffer);
+
+            data_written += to_write;
+            cur_data += to_write;
+            to_write = std::min(to_write, data_size - data_written);
+        }
+        while (data_written < data_size);
+
         return out_buffer.size();
     }
 
