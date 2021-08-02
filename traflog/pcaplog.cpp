@@ -94,6 +94,8 @@ namespace socle::traflog {
 
                     buffer out;
                     pcapng::pcapng_epb f1;
+                    if(comment_frame(f1)) { _dia("comment inserted on close"); };
+
                     f1.append_TCP(out, "", 0, 0, TCPFLAG_FIN|TCPFLAG_ACK, details);
                     pcapng::pcapng_epb f2;
                     f1.append_TCP(out, "", 0, 1, TCPFLAG_FIN|TCPFLAG_ACK, details);
@@ -246,7 +248,7 @@ namespace socle::traflog {
 
             buffer out;
             pcapng::pcapng_epb data;
-            if(comment_frame(data)) { _dia("comment inserted"); };
+            if(comment_frame(data)) { _dia("comment inserted into data"); };
 
 
             data.append_TCP(out, (const char*)b.data(), b.size(), side == side_t::RIGHT, TCPFLAG_ACK, details);
