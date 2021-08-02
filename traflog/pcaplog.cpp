@@ -173,12 +173,14 @@ namespace socle::traflog {
                 if (file_exists) {
                     auto ret = ::remove(renamed_fnm.c_str());
                     if (ret == 0) {
+                        self->writer_->close(fs.filename_full);
                         if(::rename(fs.filename_full.c_str(), renamed_fnm.c_str()) == 0) {
                             self->FS.filename_full = self->FS.generate_filename_single("smithproxy", true);
                             self->stat_bytes_written = 0LL;
                         }
                     }
                 } else {
+                    self->writer_->close(fs.filename_full);
                     if(::rename(fs.filename_full.c_str(), renamed_fnm.c_str()) == 0) {
                         self->FS.filename_full = self->FS.generate_filename_single("smithproxy", true);
                         self->stat_bytes_written = 0LL;
