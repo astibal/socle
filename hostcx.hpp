@@ -296,8 +296,9 @@ public:
 	virtual ~baseHostCX();
 
 	// forcing rename or calling name with force=true is ok for const, name is mutable and protected by mutex
-    void rename() const { name(true); }
-	std::string& name(bool force=false) const;
+    void rename() const { name(iINF, true); }
+    std::string& name() const { return name(iINF, false); }
+	std::string& name(int level, bool force=false) const;
 	const char* c_type() const;
 	
     inline ssize_t processed_bytes() const noexcept { return processed_in_; };

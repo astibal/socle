@@ -268,7 +268,7 @@ void baseHostCX::shutdown() {
     }
 }
 
-std::string& baseHostCX::name(bool force) const {
+std::string& baseHostCX::name(int level, bool force) const {
 
     if(name_.empty() || online_name || force) {
 
@@ -712,7 +712,7 @@ std::string baseHostCX::to_string(int verbosity) const {
 
     std::stringstream r_str;
 
-    r_str << name();
+    r_str << name(verbosity);
 
     if(verbosity > INF) {
         r_str << string_format(" | fd=%d | rx_cnt=%d rx_b=%d / tx_cnt=%d tx_b=%d",

@@ -1439,63 +1439,37 @@ int baseProxy::right_connect ( const char* host, const char* port, bool blocking
 
 std::string baseProxy::to_string(int verbosity) const {
 
-    std::string ret;
-    ret.append(" ");
+    std::stringstream ret_ss;
+    std::string left_label;
+    std::string right_label;
 
-	int lb = left_bind_sockets.size();
-	int ls = left_sockets.size();
-    int la = left_delayed_accepts.size();
-	int lp = left_pc_cx.size();
-	int rb = right_bind_sockets.size();
-    int ra = right_delayed_accepts.size();
-	int rs = right_sockets.size();
-	int rp = right_pc_cx.size();
+    {
+        std::stringstream l_ss;
+        std::stringstream r_ss;
 
-	bool empty = true;
-	
-	if(lb > 0) {
-		for(auto ii: left_bind_sockets) { ret += ("a: " + ii->to_string(verbosity) + " "); }
-		empty = false;
-	}
-	if(ls > 0) {
-		for(auto ii: left_sockets) { ret += ("l:" + ii->to_string(verbosity) + " "); }
-		empty = false;	
-	}
-    if(la > 0) {
-        for(auto ii: left_delayed_accepts) { ret += ("l:" + ii->to_string(verbosity) + " "); }
-        empty = false;  
+        for (auto ii: left_bind_sockets) l_ss << "a: " << ii->to_string(verbosity) << " ";
+        for (auto ii: left_sockets) l_ss << "l:" << ii->to_string(verbosity) << " ";
+        for (auto ii: left_delayed_accepts)l_ss << "l:" << ii->to_string(verbosity) << " ";
+        for (auto ii: left_pc_cx) l_ss << "x:" << ii->to_string(verbosity) << " ";
+
+        for (auto ii: right_bind_sockets) r_ss << "b:" + ii->to_string(verbosity) << " ";
+        for (auto ii: right_sockets) r_ss << "r:" + ii->to_string(verbosity) << " ";
+        for (auto ii: right_delayed_accepts)r_ss << "r:" + ii->to_string(verbosity) << " ";
+        for (auto ii: right_pc_cx) r_ss << "y:" << ii->to_string(verbosity) << " ";
+
+        left_label = l_ss.str();
+        right_label = r_ss.str();
+
+        if(left_label.empty()) left_label = "<empty> ";
+        if(right_label.empty()) right_label = "<empty> ";
     }
-	if(lp > 0) {
-		for(auto ii: left_pc_cx) { ret += ("x:" + ii->to_string(verbosity) + " "); }
-		empty = false;	
-	}
-	
-	ret += "<+> ";
-	
-	if(rb > 0) {
-		for(auto ii: right_bind_sockets) { ret += ("b:" + ii->to_string(verbosity) + " "); }
-		empty = false;	
-	}
-	if(rs > 0) {
-		for(auto ii: right_sockets) { ret += ("r:" + ii->to_string(verbosity) + " "); }
-		empty = false;	
-	}
-    if(ra > 0) {
-        for(auto ii: right_delayed_accepts) { ret += ("r:" + ii->to_string(verbosity) + " "); }
-        empty = false;  
-    }
-	if(rp > 0) {
-		for(auto ii: right_pc_cx) { ret += ("y:" + ii->to_string(verbosity) + " "); }
-		empty = false;
-	}
-	
+
+    ret_ss << " " << left_label << "<+> " << right_label;
+
 	if(verbosity > DIA) {
-        ret += "\n";
-        ret += string_format("    parent id: 0x%x, poll_root: %d", parent(),pollroot());
+        ret_ss << "\n";
+        ret_ss << string_format("    parent id: 0x%x, poll_root: %d", parent(),pollroot());
     }
 	
-	if (empty) {
-		ret += "<empty> ";
-	}
-	return ret;
+	return ret_ss.str();
 }

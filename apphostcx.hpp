@@ -65,9 +65,14 @@ public:
     [[nodiscard]] inline std::string to_string(int verbosity) const override {
 
         std::string ts = baseHostCX::to_string(verbosity);
-        int sz = cflow().cflow().size();
+        std::stringstream ss;
+        if(verbosity > iINF) {
+            auto sz = cflow().cflow().size();
+            ss << string_format("AppHostCX: sz:%ld ", sz, ts.c_str());
+        }
 
-        return string_format("AppHostCX: sz:%d [%s]", sz, ts.c_str());
+        ss << ts;
+        return ss.str();
     };
 protected:
 
