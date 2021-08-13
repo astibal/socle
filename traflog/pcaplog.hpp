@@ -38,12 +38,13 @@ namespace socle::traflog {
         PcapLog() = default; // just for singleton, which is set up later
     public:
         explicit PcapLog (baseProxy *parent, const char* d_dir, const char* f_prefix, const char* f_suffix, bool create_dirs);
-        ~PcapLog();
+        ~PcapLog() override;
 
+        bool prepare_file();
         void write(side_t side, const buffer &b) override;
         void write(side_t side, std::string const& s) override;
 
-        baseProxy *parent;
+        baseProxy *parent = nullptr;
         tcp_details details;
 
         static const bool use_pool_writer = true;
@@ -51,9 +52,10 @@ namespace socle::traflog {
         void init_writer();
 
         FsOutput FS;
+        mutable std::mutex fs_lock_;
 
         bool single_only = false;             // write using single-file instance?
-        bool pcap_header_written = false; // is PCAP file initialized (opened and preamble written)?
+        std::atomic_bool pcap_header_written = false; // is PCAP file initialized (opened and preamble written)?
         bool tcp_start_written = false;   // if TCP, is SYNs written, so rest is just data?
 
         long long stat_bytes_written = 0LL;
@@ -69,6 +71,7 @@ namespace socle::traflog {
         }
 
         logan_lite log {"socle.pcaplog"};
+        logan_lite log_write {"socle.pcaplog.write"};
 
     };
 }
