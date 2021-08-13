@@ -29,7 +29,10 @@ namespace socle {
         auto file_exists = result == 0;
 
         if(not file_exists) {
-            ofstream_pool.erase(fnm);
+            _err("recreate: file %s doesn't exist: %s", fnm.c_str(), string_error().c_str());
+            if (not close(fnm)) {
+                _not("recreate: file %s not in cache", fnm.c_str());
+            }
             return true;
         }
 
