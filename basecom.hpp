@@ -467,10 +467,10 @@ public:
     virtual std::string to_string(int verbosity) const = 0;
     [[nodiscard]] inline std::string str() const { return to_string(iINF); }
 
+    virtual std::string shortname() const = 0;
+
     TYPENAME_BASE("baseCom")
     DECLARE_LOGGING(to_string)
-
-    virtual std::string shortname() const = 0;
 
 protected:
     logan_attached<baseCom> log;
