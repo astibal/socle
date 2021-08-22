@@ -456,18 +456,6 @@ int safe_val(const std::string &str_val, int default_val) {
     return ret;
 }
 
-unsigned long long safe_ull_val(const std::string &str_val, unsigned long long default_val) {
-    auto ret = default_val;
-
-    try {
-        ret = std::stoull(str_val);
-    }
-    catch(std::invalid_argument const&) {}
-    catch(std::out_of_range const& ) {}
-    catch(std::exception const&) {}
-
-    return ret;
-}
 
 std::string string_trim(const std::string& orig) {
     std::string ret;
@@ -520,3 +508,27 @@ std::string string_csv(const std::vector<std::string>& str_list_ref, char delim)
     return build.str();
 }
 
+
+std::optional<unsigned long long> safe_ull_value(const std::string &str_val) {
+
+    try {
+        return std::stoull(str_val);
+    }
+    catch(std::invalid_argument const&) {}
+    catch(std::out_of_range const& ) {}
+    catch(std::exception const&) {}
+
+    return std::nullopt;
+}
+
+std::optional<long long> safe_ll_value(const std::string &str_val) {
+
+    try {
+        return std::stoll(str_val);
+    }
+    catch(std::invalid_argument const&) {}
+    catch(std::out_of_range const& ) {}
+    catch(std::exception const&) {}
+
+    return std::nullopt;
+}

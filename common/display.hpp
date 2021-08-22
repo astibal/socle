@@ -22,6 +22,8 @@
 #include <string>
 #include <sstream>
 #include <vector>
+#include <optional>
+
 #include <cstring>
 #include <arpa/inet.h>
 
@@ -115,5 +117,10 @@ std::string string_printf(const std::string& fmt, const Args& ... args)
 
     return ss.str();
 }
+
+
+std::optional<unsigned long long> safe_ull_value(const std::string &str_val);
+std::optional<long long> safe_ll_value(const std::string &str_val);
+
 
 #endif // DISPLAY_HPP
