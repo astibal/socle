@@ -50,6 +50,7 @@ std::string bt(bool add_r=false);
 std::string escape(std::string const& orig, bool ascii_only = false);
 [[maybe_unused]] inline std::string printable(std::string const& orig) {  return escape(orig,true);  }
 int safe_val(std::string const& str_val, int default_val=-1);
+unsigned long long safe_ull_val(const std::string &str_val, unsigned long long default_val);
 
 // get sanitized, dot-separated kernel version. 
 std::string get_kernel_version();

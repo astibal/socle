@@ -456,6 +456,19 @@ int safe_val(const std::string &str_val, int default_val) {
     return ret;
 }
 
+unsigned long long safe_ull_val(const std::string &str_val, unsigned long long default_val) {
+    auto ret = default_val;
+
+    try {
+        ret = std::stoull(str_val);
+    }
+    catch(std::invalid_argument const&) {}
+    catch(std::out_of_range const& ) {}
+    catch(std::exception const&) {}
+
+    return ret;
+}
+
 std::string string_trim(const std::string& orig) {
     std::string ret;
     bool start = true;
