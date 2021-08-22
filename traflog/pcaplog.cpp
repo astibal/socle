@@ -188,7 +188,9 @@ namespace socle::traflog {
 
         if(writer->recreate(fs.filename_full)) {
             auto fd = creat(fs.filename_full.c_str(),O_CREAT|O_WRONLY|O_TRUNC);
+
             if(fd >= 0) {
+                chmod(fs.filename_full.c_str(), 0660);
                 _not("new file %s created", fs.filename_full.c_str());
                 ::close(fd);
             }
