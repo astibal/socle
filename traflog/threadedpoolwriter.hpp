@@ -55,6 +55,9 @@ namespace socle {
         // write won't actually write to file, but will queue that task
         size_t write(std::string const &fnm, std::string const &str) override;
         size_t write(std::string const &fnm, buffer const &buf) override;
+
+        bool flush(std::string const& fnm) override { return poolFileWriter::flush(fnm); }
+        bool close(std::string const& fnm) override { return poolFileWriter::close(fnm); }
     private:
         logan_lite log;
         // map of log messages

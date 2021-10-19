@@ -84,26 +84,29 @@ namespace socle::traflog {
 
     PcapLog::~PcapLog() {
         if(writer_) {
-            if(details.next_proto == connection_details::TCP) {
-                if(tcp_start_written) {
-                    PcapLog* self = this;
-                    if(single_only) self = &single_instance();
-                    auto* writer = self->writer_;
-                    auto const& fs = self->FS;
 
-                    buffer out;
-                    pcapng::pcapng_epb f1;
-                    if(comment_frame(f1)) { _deb("comment inserted on close"); };
+            // if no parent is set, there is nothing to write
+            if(parent) {
+                if (details.next_proto == connection_details::TCP) {
+                    if (tcp_start_written) {
+                        PcapLog *self = this;
+                        if (single_only) self = &single_instance();
+                        auto *writer = self->writer_;
+                        auto const &fs = self->FS;
 
-                    f1.append_TCP(out, "", 0, 0, TCPFLAG_FIN|TCPFLAG_ACK, details);
-                    pcapng::pcapng_epb f2;
-                    f1.append_TCP(out, "", 0, 1, TCPFLAG_FIN|TCPFLAG_ACK, details);
-                    writer->write(fs.filename_full, out);
+                        buffer out;
+                        pcapng::pcapng_epb f1;
+                        if (comment_frame(f1)) { _deb("comment inserted on close"); };
+
+                        f1.append_TCP(out, "", 0, 0, TCPFLAG_FIN | TCPFLAG_ACK, details);
+                        pcapng::pcapng_epb f2;
+                        f1.append_TCP(out, "", 0, 1, TCPFLAG_FIN | TCPFLAG_ACK, details);
+                        writer->write(fs.filename_full, out);
+                    }
                 }
+                writer_->flush(FS.filename_full);
+                writer_->close(FS.filename_full);
             }
-            writer_->flush(FS.filename_full);
-            writer_->close(FS.filename_full);
-
             // do not delete threaded pool writer
             if(not use_pool_writer)
                 delete writer_;
