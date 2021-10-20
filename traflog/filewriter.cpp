@@ -16,6 +16,7 @@
     License along with this library.
 */
 
+#include <sys/stat.h>
 #include <traflog/filewriter.hpp>
 
 namespace socle {
@@ -47,6 +48,8 @@ namespace socle {
         }
 
         writer_ = std::make_unique<std::ofstream>(fnm , std::ofstream::out | std::ofstream::app);
+        chmod(fnm.c_str(), 0600);
+
         if(writer_->is_open()) {
             filename_ = fnm;
             opened(true);

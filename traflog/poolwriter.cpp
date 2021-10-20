@@ -111,6 +111,7 @@ namespace socle {
             }
 
             auto* stream = new std::ofstream(fnm , std::ofstream::out | std::ofstream::app);
+            chmod(fnm.c_str(), 0600);
 
             bool replaced = ofstream_pool.set(fnm, std::make_shared<resource_t>(stream, new std::mutex));
             _deb("new ostream %s -> 0x%x (replaced=%d)", fnm.c_str(), stream, replaced);
