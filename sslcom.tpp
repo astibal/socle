@@ -244,12 +244,12 @@ void baseSSLCom<L4Proto>::log_profiling_stats(unsigned int lev) {
     baseSSLCom* com = this;
     std::string name = com->hr();
 
-    log.log(loglevel(lev,0), "  [%s]: prof_accept_cnt %d, prof_connect_cnt %d, prof_peek_cnt %d, prof_read_cnt %d, "
+    log.log(loglevel(lev,0), "com.ssl", "  [%s]: prof_accept_cnt %d, prof_connect_cnt %d, prof_peek_cnt %d, prof_read_cnt %d, "
                              "prof_want_read_cnt %d, prof_want_write_cnt %d, prof_write_cnt %d", name.c_str(),
                              com->prof_accept_cnt, com->prof_connect_cnt, com->prof_peek_cnt, com->prof_read_cnt,
                              com->prof_want_read_cnt   , com->prof_want_write_cnt   , com->prof_write_cnt);
 
-    log.log(loglevel(lev,0), "  [%s]: prof_accept_ok %d, prof_connect_ok %d",name.c_str(), com->prof_accept_ok,
+    log.log(loglevel(lev,0), "com.ssl", "  [%s]: prof_accept_ok %d, prof_connect_ok %d",name.c_str(), com->prof_accept_ok,
                              com->prof_connect_ok);
 }
 
@@ -2605,7 +2605,7 @@ bool baseSSLCom<L4Proto>::waiting_peer_hello() {
                     sslcom_peer_hello_received(true);
                     set_monitor(socket());
 
-                    if(sslcom_peer_hello_sni_.size() > 0) {
+                    if(not sslcom_peer_hello_sni_.empty()) {
 
                         std::lock_guard<std::recursive_mutex> l_(factory()->lock());
 
@@ -2621,7 +2621,10 @@ bool baseSSLCom<L4Proto>::waiting_peer_hello() {
                     }
 
                 } else {
-                    _deb("SSLCom::waiting_peer_hello: peek returns %d, readbuf=%d",red,owner_cx()->readbuf()->size());
+                    _deb("SSLCom::waiting_peer_hello: peek returns %d, readbuf=%d", red, owner_cx() ? owner_cx()->readbuf()->size() : -1);
+                    if(not owner_cx()) {
+                        _deb("SSLCom::waiting_peer_hello: no owner_cx!");
+                    }
 
                     // hopefully complete list of error codes allowing us to further peek peer's socket
                     if(red == 0 && errno != 0
