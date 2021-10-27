@@ -605,15 +605,22 @@ namespace socle::pcapng {
                            sizeof(tcphdr) +
                            to_write
                            + 32;
-            auto temp_buffer = std::make_shared<buffer>(cap_est);
-            temp_buffer->size(0);
 
-            append_LCC_header(*temp_buffer, details, in);
-            append_IP_header(*temp_buffer, details, in, to_write);
-            append_TCP_header(*temp_buffer, details, in, cur_data, to_write, tcpflags);
-            temp_buffer->append(cur_data, to_write);
+            if(not packet_data)
+                packet_data = std::make_shared<buffer>(cap_est);
+            else
+                packet_data->capacity(cap_est);
 
-            packet_data = temp_buffer;
+            if(packet_data->capacity() == 0 or not packet_data->data()) {
+                return -1;
+            }
+
+            packet_data->size(0);
+
+            append_LCC_header(*packet_data, details, in);
+            append_IP_header(*packet_data, details, in, to_write);
+            append_TCP_header(*packet_data, details, in, cur_data, to_write, tcpflags);
+            packet_data->append(cur_data, to_write);
 
             append(out_buffer);
 
@@ -652,15 +659,24 @@ namespace socle::pcapng {
                        sizeof(udphdr) +
                        size
                        + 32;
-        auto temp_buffer = std::make_shared<buffer>(cap_est);
-        temp_buffer->size(0);
 
-        append_LCC_header(*temp_buffer, details, in);
-        append_IP_header(*temp_buffer, details, in, size);
-        append_UDP_header(*temp_buffer, details, in, data, size);
-        temp_buffer->append(data, size);
 
-        packet_data = temp_buffer;
+        if(not packet_data)
+            packet_data = std::make_shared<buffer>(cap_est);
+        else
+            packet_data->capacity(cap_est);
+
+        if(packet_data->capacity() == 0 or not packet_data->data()) {
+            return -1;
+        }
+
+        packet_data->size(0);
+
+        append_LCC_header(*packet_data, details, in);
+        append_IP_header(*packet_data, details, in, size);
+        append_UDP_header(*packet_data, details, in, data, size);
+        packet_data->append(data, size);
+
 
         append(out_buffer);
         return out_buffer.size();

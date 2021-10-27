@@ -302,15 +302,19 @@ namespace socle::traflog {
             if(comment_frame(data)) { _dia("comment inserted into data"); };
 
 
-            data.append_TCP(out, (const char*)b.data(), b.size(), side == side_t::RIGHT, TCPFLAG_ACK, details);
+            if(data.append_TCP(out, (const char*)b.data(), b.size(), side == side_t::RIGHT, TCPFLAG_ACK, details) > 0) {
 
-            _deb("pcaplog::write[%s]/tcp-data : about to write %dB", fs.filename_full.c_str(), out.size());
-            _dum("pcaplog::write[%s]/tcp-data : \r\n%s", fs.filename_full.c_str(), hex_dump(out, 4, 0, true).c_str());
+                _deb("pcaplog::write[%s]/tcp-data : about to write %dB", fs.filename_full.c_str(), out.size());
+                _dum("pcaplog::write[%s]/tcp-data : \r\n%s", fs.filename_full.c_str(),
+                     hex_dump(out, 4, 0, true).c_str());
 
-            auto wr = writer->write(fs.filename_full, out);
-            _dia("pcaplog::write[%s]/tcp-data : written %dB", fs.filename_full.c_str(), wr);
+                auto wr = writer->write(fs.filename_full, out);
+                _dia("pcaplog::write[%s]/tcp-data : written %dB", fs.filename_full.c_str(), wr);
 
-            self->stat_bytes_written += wr;
+                self->stat_bytes_written += wr;
+            } else {
+                _err("pcaplog::write: error appending TCP data");
+            }
         }
         else {
             auto& log = log_write;
@@ -319,14 +323,17 @@ namespace socle::traflog {
 
             pcapng::pcapng_epb u1;
             if(comment_frame(u1)) { _dia("comment inserted"); };
-            u1.append_UDP(out, (const char*)b.data(), b.size(), side == side_t::RIGHT, details);
+            if(u1.append_UDP(out, (const char*)b.data(), b.size(), side == side_t::RIGHT, details) > 0) {
 
-            _deb("pcaplog::write[%s]/udp : about to write %dB", fs.filename_full.c_str(), out.size());
-            _dum("pcaplog::write[%s]/tcp : \r\n%s", fs.filename_full.c_str(), hex_dump(out, 4, 0, true).c_str());
+                _deb("pcaplog::write[%s]/udp : about to write %dB", fs.filename_full.c_str(), out.size());
+                _dum("pcaplog::write[%s]/tcp : \r\n%s", fs.filename_full.c_str(), hex_dump(out, 4, 0, true).c_str());
 
-            auto wr = writer->write(fs.filename_full, out);
-            _dia("pcaplog::write[%s]/udp : written %dB", fs.filename_full.c_str(), wr);
-            self->stat_bytes_written += wr;
+                auto wr = writer->write(fs.filename_full, out);
+                _dia("pcaplog::write[%s]/udp : written %dB", fs.filename_full.c_str(), wr);
+                self->stat_bytes_written += wr;
+            } else {
+                _err("pcaplog::write: error appending UDP data");
+            }
         }
 
     }
