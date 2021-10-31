@@ -1867,7 +1867,7 @@ bool baseSSLCom<L4Proto>::writable(int s) {
 template <class L4Proto>
 bool baseSSLCom<L4Proto>::bypass_me_and_peer() {
     if(peer()) {
-        baseSSLCom* speer = dynamic_cast<baseSSLCom*>(peer());
+        auto* speer = dynamic_cast<baseSSLCom*>(peer());
         
         if(speer) {
             opt_bypass = true;
