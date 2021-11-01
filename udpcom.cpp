@@ -595,7 +595,7 @@ ssize_t UDPCom::write_to_pool(int _fd, const void* _buf, size_t _n, int _flags) 
             //_deb("UDPCom::write_to_pool[%d]: %d written to socket %d", _fd , l, record->socket_left.value());
 
             if(l < 0) {
-                _dia("UDPCom::write_to_pool[%d]: real socket %d - error %s", _fd, _n, record->socket_left.value(), string_error().c_str());
+                _dia("UDPCom::write_to_pool[%d]: real socket %d, %d bytes to send - error %s", _fd, record->socket_left.value(), _n, string_error().c_str());
             }
 
             return l;
