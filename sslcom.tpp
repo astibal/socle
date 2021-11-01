@@ -2109,13 +2109,20 @@ bool baseSSLCom<L4Proto>::handshake_peer_client() {
         // and check all entries in the filter.
 
         if (sni_filter_to_bypass()) {
-            _deb("SSLCom:waiting: check SNI filter");
+            _deb("SSLCom:waiting: check SNI filter for '%s'", sslcom_peer_hello_sni().c_str());
 
             if (! sslcom_peer_hello_sni().empty()) {
 
-                for (std::string const& filter_element: *sni_filter_to_bypass()) {
+                for (std::string const& filter_element_raw: *sni_filter_to_bypass()) {
 
-                    _deb("SSLCom:waiting: check SNI filter: %s", filter_element.c_str());
+                    bool wildcard_planted = false;
+                    auto filter_element = filter_element_raw;
+                    if(filter_element_raw.size() > 1 and filter_element_raw.at(0) == '*' and filter_element_raw.at(1) == '.') {
+                        filter_element.replace(0, 2, "");
+                        wildcard_planted = true;
+                    }
+
+                    _deb("SSLCom:waiting: check SNI filter: %s %s", filter_element.c_str(), wildcard_planted ? "(*.)" : "");
 
                     std::size_t pos = sslcom_peer_hello_sni().rfind(filter_element);
                     if (pos != std::string::npos && pos + filter_element.size() >= sslcom_peer_hello_sni().size()) {
@@ -2133,12 +2140,12 @@ bool baseSSLCom<L4Proto>::handshake_peer_client() {
                         }
 
                         if (cont) {
-                            _dia("SSLCom:waiting: matched SNI filter: %s!", filter_element.c_str());
+                            _dia("SSLCom:waiting: matched SNI filter: %s%s!", filter_element.c_str(), wildcard_planted ? " (*.)" : "");
                             sni_filter_to_bypass_matched = true;
 
                             if (bypass_me_and_peer()) {
-                                _inf("%s bypassed with sni filter %s", sslcom_peer_hello_sni().c_str(),
-                                       filter_element.c_str());
+                                _inf("%s bypassed with sni filter %s %s", sslcom_peer_hello_sni().c_str(),
+                                       filter_element.c_str(), wildcard_planted ? " (*.)" : "");
                                 return false;
                             } else {
                                 _dia("SSLCom:waiting: SNI filter matched, but peer is not SSLCom");
