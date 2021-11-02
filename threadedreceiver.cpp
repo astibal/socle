@@ -413,6 +413,7 @@ int ThreadedReceiverProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
     bool found = false;
 
 
+    bool ready = false;
     // datagram lock
     {
     auto l_ = std::scoped_lock(DatagramCom::lock);
@@ -518,10 +519,8 @@ int ThreadedReceiverProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
                 }
             }
 
-            _dia("ThreadedReceiverProxy::handle_sockets_once[%d]: CX created, bound socket %d ,nonlocal: %s:%u",
-                 virtual_socket, _record_socket_left, cx->com()->nonlocal_dst_host().c_str(),
-                 cx->com()->nonlocal_dst_port());
-            this->on_left_new(cx);
+            // signal to run left_new outside datagram lock
+            ready = true;
 
 
         }
@@ -534,6 +533,15 @@ int ThreadedReceiverProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
     }
 
     } // datagram lock release - prevent mutex dead-lock races in generic handler
+
+
+    // ready signals on_left_new shound be called - outside of datagramCom::lock!
+    if(ready) {
+        _dia("ThreadedReceiverProxy::handle_sockets_once[%d]: CX created, bound socket %d ,nonlocal: %s:%u",
+             virtual_socket, _record_socket_left, cx->com()->nonlocal_dst_host().c_str(),
+             cx->com()->nonlocal_dst_port());
+        this->on_left_new(cx);
+    }
 
     return MasterProxy::handle_sockets_once(com());
 }
