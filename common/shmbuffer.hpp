@@ -71,7 +71,10 @@ public:
         auto log = get_log();
 
         if(attached()) {
+            _deb("already attached shmbuffer, mem=%s, size=%d, sem=%s, create_on_error=%d", mem_name, mem_size, sem_name, create_on_error);
             return true;
+        } else {
+            _dia("attaching to shmbuffer, mem=%s, size=%d, sem=%s, create_on_error=%d", mem_name, mem_size, sem_name, create_on_error);
         }
         
         semaphore_name = sem_name;
@@ -84,14 +87,29 @@ public:
         bool will_initialize = false;
         
         semaphore = sem_open(semaphore_name.c_str(),O_RDWR,0600);
-        if(semaphore == nullptr) {
-            _war("Getting a handle to the semaphore failed; errno is %d", errno);
+        if(semaphore == SEM_FAILED) {
+            semaphore = nullptr;
+            _war("Getting a handle to the semaphore failed; error %d: %s", errno, string_error().c_str());
             if(create_on_error) {
                 semaphore = sem_open(semaphore_name.c_str(),O_CREAT | O_RDWR,0600);
-                if(semaphore == nullptr) {
-                    _war("Failed to create semaphore as a fallback; errno is %d", errno);
+                if(semaphore == SEM_FAILED) {
+                    semaphore = nullptr;
+                    _war("Failed to create semaphore as a fallback; error %d: %s", errno, string_error().c_str());
                     goto fail;
                 }
+
+                if(sem_init(semaphore, 1, 1) != 0) {
+                    _war("Failed to init a new semaphore: error %d: %s", errno, string_error().c_str());
+                    goto fail;
+                }
+
+                int sem_val = 0;
+                if(sem_getvalue(semaphore, &sem_val) < 0) {
+                    _war("Failed to get value from a new semaphore: error %d: %s", errno, string_error().c_str());
+                    goto fail;
+                }
+
+                _dia("semaphore value: %d", sem_val);
             } else {
                 goto fail;
             }
