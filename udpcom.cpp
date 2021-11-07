@@ -849,8 +849,8 @@ void UDPCom::shutdown(int _fd) {
     };
 
 
-    auto kill_connect_cache = [&](std::string const& key) -> int {
-        auto l_ = std::scoped_lock(connect_fd_cache_lock);
+    auto kill_connect_cache = [&](std::string const& key) -> size_t {
+
         size_t count = 0;
 
         auto it_fd = connect_fd_cache.find(key.c_str());
@@ -859,14 +859,15 @@ void UDPCom::shutdown(int _fd) {
             std::pair<int,int>& cached_fd_ref = it_fd->second;
 
             if(cached_fd_ref.second <= 1) {
-                count = connect_fd_cache.erase(key);
-                _dia("UDPCom::shutdown[%d]/kill_connect_cache[%s]: %d removed", _fd, key.c_str(), count);
 
                 if(kill_socket(cached_fd_ref.first) != 0) {
                     _war("UDPCom::shutdown[%d]/kill_connect_cache[%s]: socket close error", _fd, key.c_str());
                 } else {
                     _deb("UDPCom::shutdown[%d]/kill_connect_cache[%s]: socket closed", _fd, key.c_str());
                 }
+
+                count = connect_fd_cache.erase(key);
+                _dia("UDPCom::shutdown[%d]/kill_connect_cache[%s]: %d removed", _fd, key.c_str(), count);
 
             } else {
                 cached_fd_ref.second--;
@@ -887,7 +888,7 @@ void UDPCom::shutdown(int _fd) {
         std::string sip, sport;
         std::string dip, dport;
 
-        // it's oposite in this case, so following is CORRECT
+        // it's opposite in this case, so following is CORRECT
 
         _dia("UDPCom::shutdown[%d]: request to shutdown socket", fd);
 
@@ -946,12 +947,16 @@ void UDPCom::shutdown(int _fd) {
 
     if(_fd > 0) {
 
-        int killed_from_cache = 0;
+        size_t killed_from_cache = 0;
 
-        if(! connect_fd_cache.empty()) {
-            if (auto key = create_connect_cache_key(_fd); key.has_value()) {
-                killed_from_cache = kill_connect_cache(key.value());
-                _dia("UDPCom::shutdown[%d]: removed %d from connect cache", _fd, killed_from_cache);
+        {
+            auto l_ = std::scoped_lock(connect_fd_cache_lock);
+
+            if (not connect_fd_cache.empty()) {
+                if (auto key = create_connect_cache_key(_fd); key.has_value()) {
+                    killed_from_cache = kill_connect_cache(key.value());
+                    _dia("UDPCom::shutdown[%d]: removed %d from connect cache", _fd, killed_from_cache);
+                }
             }
         }
 
