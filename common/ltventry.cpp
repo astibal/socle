@@ -64,7 +64,7 @@ LTVEntry::~LTVEntry() {
 
 int LTVEntry::unpack(uint8_t* buffer, unsigned int buflen) {
 
-    auto log = get_log();
+    auto& log = get_log();
 
 	_deb("LTVEntry::unpack:  --- process buffer 0x%x[%u], buffer owner=%d", buffer, (long) buflen,owner());
 	
@@ -313,7 +313,7 @@ void LTVEntry::container(unsigned char i) {
 
 int LTVEntry::pack(::buffer* buf) {
 
-    auto log = get_log();
+    auto& log = get_log();
 	::buffer *b;
 	
 	// we need to know position where to store length of packed container!
@@ -389,7 +389,7 @@ int LTVEntry::pack(::buffer* buf) {
 
 LTVEntry* LTVEntry::search(const std::vector<int>& path) {
 
-    auto log = get_log();
+    auto& log = get_log();
     _deb("LTVEntry::search:");
 
     LTVEntry* current = this;

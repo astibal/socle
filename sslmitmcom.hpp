@@ -45,10 +45,17 @@ public:
     TYPENAME_OVERRIDE("baseSSLMitmCom")
     DECLARE_LOGGING(to_string)
 
-    static logan_lite& log_mitm() {
-        static logan_lite l("com.ssl.ca");
-        return l;
-    }
+    struct log {
+        static logan_lite &ca() {
+            static logan_lite l("com.ssl.ca");
+            return l;
+        }
+        static logan_lite &mitm () {
+            static logan_lite l("com.ssl.mitm");
+            return l;
+        }
+
+    };
 };
 
 typedef baseSSLMitmCom<SSLCom> SSLMitmCom;

@@ -453,7 +453,7 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int lib_preverify, X509_STORE_
     int idx = SSL_get_ex_data_X509_STORE_CTX_idx();
     int callback_return = lib_preverify;
 
-    auto log = log_cb_verify();
+    auto& log = log_cb_verify();
 
     _deb("SSLCom::ssl_client_vrfy_callback: data index = %d, lib_preverify = %d, depth = %d", idx, lib_preverify, depth);
 

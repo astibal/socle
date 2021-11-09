@@ -28,7 +28,7 @@
 
 template <class SSLProto>
 bool baseSSLMitmCom<SSLProto>::check_cert(const char* peer_name) {
-    auto log = this->log.override("com.ssl.mitm");
+    auto& log = log::mitm();
     
     _deb("SSLMitmCom::check_cert: called");
     bool r = SSLProto::check_cert(peer_name);
@@ -195,7 +195,7 @@ bool baseSSLMitmCom<SSLProto>::check_cert(const char* peer_name) {
 
 template <class SSLProto>
 bool baseSSLMitmCom<SSLProto>::spoof_cert(X509* cert_orig, SpoofOptions& spo) {
-    auto log = this->log.override("com.ssl.mitm");
+    auto& log = log::mitm();
 
     _deb("SSLMitmCom::spoof_cert[%x]: about to spoof certificate!",this);
     // get info from the peer certificate

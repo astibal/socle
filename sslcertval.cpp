@@ -31,7 +31,7 @@ namespace inet {
 
         int crl_is_revoked_by (X509 *x509, X509 *issuer, X509_CRL *crl_file) {
 
-            auto log = CrlFactory::log();
+            auto& log = CrlFactory::log();
 
             int is_revoked = -1;
             if (issuer) {
@@ -91,7 +91,7 @@ namespace inet {
 
         int crl_verify_trust (X509 *x509, X509 *issuer, X509_CRL *crl_file, const std::string &cacerts_pem_path) {
 
-            auto log = CrlFactory::log();
+            auto& log = CrlFactory::log();
 
             STACK_OF (X509) *chain = sk_X509_new_null();
             sk_X509_push(chain, issuer);
@@ -193,7 +193,7 @@ namespace inet {
 
         X509_CRL *crl_from_bytes(buffer &b) {
 
-            auto log = CrlFactory::log();
+            auto& log = CrlFactory::log();
             _dum("crl_from_bytes: \n%s", hex_dump(b).c_str());
 
             BIO *bio_mem = BIO_new(BIO_s_mem());
@@ -233,7 +233,7 @@ namespace inet {
         int ocsp_prepare_request (OCSP_REQUEST **req, X509 *cert, const EVP_MD *cert_id_md, X509 *issuer,
                                   STACK_OF(OCSP_CERTID) *ids) {
 
-            auto log = OcspFactory::log();
+            auto& log = OcspFactory::log();
 
             OCSP_CERTID *id;
             if (!issuer) {
@@ -272,7 +272,7 @@ namespace inet {
             OCSP_REQ_CTX *ctx = nullptr;
             OCSP_RESPONSE *rsp = nullptr;
 
-            auto log = OcspFactory::log();
+            auto& log = OcspFactory::log();
 
             if (req_timeout != -1)
                 BIO_set_nbio(cbio, 1);
@@ -371,7 +371,7 @@ namespace inet {
             OCSP_RESPONSE *resp = nullptr;
             cbio = BIO_new_connect(host);
 
-            auto log = OcspFactory::log();
+            auto& log = OcspFactory::log();
 
             if (cbio && use_ssl == 0) {
                 if(port) {
@@ -399,7 +399,7 @@ namespace inet {
             int is_revoked = -1;
             int ttl = 60;
 
-            auto log = OcspFactory::log();
+            auto& log = OcspFactory::log();
 
 #ifdef USE_OPENSSL11
 
@@ -824,7 +824,7 @@ namespace inet {
 
 
         bool OcspQuery::do_send_request () {
-            auto log = OcspFactory::log();
+            auto& log = OcspFactory::log();
             int rv;
 
             switch (state_) {

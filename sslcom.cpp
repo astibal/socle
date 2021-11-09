@@ -7,14 +7,14 @@ void CompatThreading::locking_function ( int mode, int n, const char * file, int
         MUTEX_LOCK ( mutex_buf()[n] );
 
         #ifdef MORE_LOGGING
-            auto log = logan::create("com.ssl.threads");
+            auto& log = logan::create("com.ssl.threads");
             _dum("SSL threading: locked mutex %u for thread %u (%s:%d)",n,id_function(),file,line);
         #endif
     } else {
         MUTEX_UNLOCK ( mutex_buf()[n] );
 
         #ifdef MORE_LOGGING
-            auto log = logan::create("com.ssl.threads");
+            auto& log = logan::create("com.ssl.threads");
             _dum("SSL threading: unlocked mutex %u from thread %u (%s:%d)",n,id_function(),file,line);
         #endif
     }
@@ -26,7 +26,7 @@ unsigned long CompatThreading::id_function () {
     static thread_local unsigned long id = static_cast<unsigned long> (h(std::this_thread::get_id()));
 
     #ifdef MORE_LOGGING
-        auto log = logan::create("com.ssl.threads");
+        auto& log = logan::create("com.ssl.threads");
         _dum("SSL threading: id_function: returning %u",id);
     #endif
 
@@ -56,7 +56,7 @@ void CompatThreading::dyn_destroy_function(CompatThreading::CRYPTO_dynlock_value
 }
 
 int CompatThreading::THREAD_setup() {
-    auto log = logan::create("com.ssl.threads");
+    static auto log = logan::create("com.ssl.threads");
 
     #ifndef USE_OPENSSL11
     mutex_buf() = new MUTEX_TYPE[CRYPTO_num_locks()];
