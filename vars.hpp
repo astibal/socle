@@ -46,7 +46,7 @@ namespace socle {
         template <class T>
         struct lax {
             lax() = delete;
-            lax(T&& v, std::function<void(T&)> dter): value(v), deleter(dter) {}
+            lax(T&& v, std::function<void(T&)> dter): value(std::move(v)), deleter(dter) {}
             lax(T v, std::function<void(T&)> dter): value(v), deleter(dter) {}
 
             ~lax() {
@@ -71,7 +71,8 @@ namespace socle {
 
         template <typename T>
         struct var {
-            var(T&& v, std::function<void(T&)> dter): value(v), deleter(dter) {}
+            var(T&& v, std::function<void(T&)> dter): value(std::move(v)), deleter(dter) {}
+            var(var&) = delete;
             ~var() {
                 deleter(value);
             }
@@ -82,7 +83,7 @@ namespace socle {
 
         template <typename T>
         struct unique {
-            unique(T&& v, std::function<void(T&)> dter): value(v), deleter(dter) {}
+            unique(T&& v, std::function<void(T&)> dter): value(std::move(v)), deleter(dter) {}
 
             unique& operator=(unique const&) = delete;
             unique(unique &) = delete;
@@ -99,9 +100,9 @@ namespace socle {
         namespace deleter {
 
             template <typename PT>
-            inline void free(PT& ptr) {  ::free(ptr); }
-            inline void fclose(FILE*& f) { ::fclose(f); }
-            inline void close(int& f) { ::close(f); }
+            inline void free(PT const& ptr) {  ::free(ptr); }
+            inline void fclose(FILE* const& f) { ::fclose(f); }
+            inline void close(int const& f) { ::close(f); }
 
         }
 
