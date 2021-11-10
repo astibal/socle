@@ -105,6 +105,9 @@ namespace socle {
 
         }
 
+        template<typename T> inline var<T> allocated(T ptr) {
+            return var<T>(std::move(ptr), deleter::free<T>);
+        }
     }
 
     namespace tainted {
