@@ -38,7 +38,7 @@
 bool SSLFactory::load() {
 
     std::lock_guard<std::recursive_mutex> l_(lock());
-    auto& log = get_log();
+    auto const& log = get_log();
 
     bool ret = true;
     
@@ -87,7 +87,7 @@ int SSLFactory::password_callback(char* buf, int size, int rwflag, void* u) {
 
 bool SSLFactory::load_ca_cert() {
 
-    auto& log = get_log();
+    auto const& log = get_log();
     std::string cer = certs_path() + CA_CERTF;
 
     FILE *fp_crt = fopen(cer.c_str(), "r");
@@ -131,7 +131,7 @@ bool SSLFactory::load_ca_cert() {
 
 bool SSLFactory::load_def_cl_cert() {
 
-    auto& log = get_log();
+    auto const& log = get_log();
     std::string cer = certs_path() + CL_CERTF;
     
     FILE *fp_crt = fopen(cer.c_str(), "r");
@@ -166,7 +166,7 @@ bool SSLFactory::load_def_cl_cert() {
 
 bool SSLFactory::load_def_sr_cert() {
 
-    auto& log = get_log();
+    auto const& log = get_log();
     std::string cer = certs_path() + SR_CERTF;
     
     FILE *fp_crt = fopen(cer.c_str(), "r");
@@ -201,7 +201,7 @@ bool SSLFactory::load_def_sr_cert() {
 
 SSL_CTX* SSLFactory::client_ctx_setup(EVP_PKEY* priv, X509* cert, const char* ciphers) {
 //SSL_CTX* SSLCom::client_ctx_setup() {
-    auto& log = get_log();
+    auto const& log = get_log();
     const SSL_METHOD *method = SSLv23_client_method();
 
     SSL_CTX* ctx = SSL_CTX_new (method);
@@ -238,7 +238,7 @@ SSL_CTX* SSLFactory::client_ctx_setup(EVP_PKEY* priv, X509* cert, const char* ci
 }
 
 SSL_CTX* SSLFactory::client_dtls_ctx_setup(EVP_PKEY* priv, X509* cert, const char* ciphers) {
-    auto& log = get_log();
+    auto const& log = get_log();
 #ifdef USE_OPENSSL11
     const SSL_METHOD *method = DTLS_client_method();
 #else
@@ -265,7 +265,7 @@ SSL_CTX* SSLFactory::client_dtls_ctx_setup(EVP_PKEY* priv, X509* cert, const cha
 
 SSL_CTX* SSLFactory::server_ctx_setup(EVP_PKEY* priv, X509* cert, const char* ciphers) {
 
-    auto& log = get_log();
+    auto const& log = get_log();
     const SSL_METHOD *method = SSLv23_server_method();
     SSL_CTX* ctx = SSL_CTX_new (method);
 
@@ -301,7 +301,7 @@ SSL_CTX* SSLFactory::server_ctx_setup(EVP_PKEY* priv, X509* cert, const char* ci
 
 SSL_CTX* SSLFactory::server_dtls_ctx_setup(EVP_PKEY* priv, X509* cert, const char* ciphers) {
 
-    auto& log = get_log();
+    auto const& log = get_log();
     // DTLS method
 #ifdef USE_OPENSSL11
     const SSL_METHOD *method = DTLS_server_method();
@@ -338,7 +338,7 @@ SSL_CTX* SSLFactory::server_dtls_ctx_setup(EVP_PKEY* priv, X509* cert, const cha
 
 
 SSLFactory& SSLFactory::init () {
-    auto& log = get_log();
+    auto const& log = get_log();
 
     _dia("SSLFactory::init: loading central certification store: start");
 
@@ -382,7 +382,7 @@ SSLFactory& SSLFactory::init () {
 void SSLFactory::destroy() {
 
     std::lock_guard<std::recursive_mutex> l_(lock());
-    auto& log = get_log();
+    auto const& log = get_log();
 
     if(ca_cert) {
         _deb("SSLFactory::destroy: ca_cert");
@@ -440,7 +440,7 @@ void SSLFactory::destroy() {
 
 bool SSLFactory::add(std::string &store_key, X509_PAIR parek) {
 
-    auto& log = get_log();
+    auto const& log = get_log();
     bool op_status = true;
 
     if (parek.first == nullptr || parek.second == nullptr) {
@@ -557,7 +557,7 @@ std::string SSLFactory::make_store_key(X509* cert_orig, const SpoofOptions& spo)
 std::optional<const SSLFactory::X509_PAIR> SSLFactory::find(std::string const& subject) {
 
     std::lock_guard<std::recursive_mutex> l_(lock());
-    auto& log = get_log();
+    auto const& log = get_log();
 
     auto entry = cache().get(subject);
     if (not entry) {
@@ -575,7 +575,7 @@ std::optional<std::string> SSLFactory::find_subject_by_fqdn(std::string const& f
 
     {
         std::lock_guard<std::recursive_mutex> l_(lock());
-        auto& log = get_log();
+        auto const& log = get_log();
 
         auto entry = cache().get(fqdn);
         if (not entry) {
@@ -592,7 +592,7 @@ std::optional<std::string> SSLFactory::find_subject_by_fqdn(std::string const& f
 
     {
         std::lock_guard<std::recursive_mutex> l_(lock());
-        auto& log = get_log();
+        auto const& log = get_log();
 
         auto entry = cache().get(wildcard_fqdn);
         if (not entry) {
@@ -612,7 +612,7 @@ std::optional<std::string> SSLFactory::find_subject_by_fqdn(std::string const& f
 bool SSLFactory::erase(const std::string &subject) {
 
     bool op_status = true;
-    auto& log = get_log();
+    auto const& log = get_log();
 
     try {
         std::lock_guard<std::recursive_mutex> l_(lock());
@@ -647,7 +647,7 @@ int add_ext(STACK_OF(X509_EXTENSION) *sk, int nid, char *value) {
 
 std::vector<std::string> SSLFactory::get_sans(X509* x) {
 
-    auto& log = get_log();
+    auto const& log = get_log();
     std::vector<std::string> ret;
     
     // Copy extensions
@@ -742,7 +742,7 @@ std::string SSLFactory::get_sans_csv(X509 *x) {
 
 std::optional<SSLFactory::X509_PAIR> SSLFactory::spoof(X509* cert_orig, bool self_sign, std::vector<std::string>* additional_sans) {
 
-    auto& log = get_log();
+    auto const& log = get_log();
 
     char tmp[2048];
     _deb("SSLFactory::spoof[%x]: about to spoof certificate!",this);
@@ -1308,7 +1308,7 @@ std::string SSLFactory::fingerprint(X509* cert) {
     fprint_type = EVP_sha1();
 
     if (!X509_digest(cert, fprint_type, fprint, &fprint_size)) {
-        auto& log = SSLFactory::get_log();
+        auto const& log = SSLFactory::get_log();
         _err("error creating the certificate fingerprint");
     }
 

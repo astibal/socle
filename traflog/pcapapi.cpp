@@ -69,7 +69,7 @@ namespace socle::pcap {
 
     void append_PCAP_header(buffer& out_buffer, connection_details const& details, size_t payload_size) {
 
-        [[maybe_unused]] auto& log = get_log();
+        [[maybe_unused]] auto const& log = get_log();
 
         struct timeval time{};
         struct pcap_frame pcap_header{};
@@ -107,7 +107,7 @@ namespace socle::pcap {
 
 
     void append_LCC_header(buffer& out_buffer, connection_details const& details, int in) {
-        [[maybe_unused]] auto& log = get_log();
+        [[maybe_unused]] auto const& log = get_log();
 
         /* linux cooked capture header */
         struct linux_cooked_capture lcc_header{};
@@ -128,7 +128,7 @@ namespace socle::pcap {
     };
 
     void append_IPv4_header(buffer& out_buffer, connection_details& details, int in, size_t payload_size) {
-        [[maybe_unused]] auto& log = get_log();
+        [[maybe_unused]] auto const& log = get_log();
 
         auto const* target_sockaddr = reinterpret_cast<sockaddr_in const*>(&details.destination);
         auto const* client_sockaddr = reinterpret_cast<sockaddr_in const*>(&details.source);
@@ -169,7 +169,7 @@ namespace socle::pcap {
     };
 
     void append_IPv6_header(buffer& out_buffer, connection_details& details, int in, size_t payload_size) {
-        [[maybe_unused]] auto& log = get_log();
+        [[maybe_unused]] auto const& log = get_log();
 
         struct ip6_hdr ip_header{};
 
@@ -212,7 +212,7 @@ namespace socle::pcap {
     void append_TCP_header (buffer &out_buffer, tcp_details &details, int in, const char *payload, size_t payload_size,
                             unsigned char tcpflags) {
 
-        [[maybe_unused]] auto& log = get_log();
+        [[maybe_unused]] auto const& log = get_log();
 
         struct tcphdr tcp_header{};
 
@@ -283,7 +283,7 @@ namespace socle::pcap {
 
     void append_UDP_header(buffer& out_buffer, connection_details& details, int in, const char* payload, size_t payload_size) {
 
-        [[maybe_unused]] auto& log = get_log();
+        [[maybe_unused]] auto const& log = get_log();
 
         struct udphdr udp_header{};
         auto [ sport, dport ] = details.extract_ports();
@@ -320,7 +320,7 @@ namespace socle::pcap {
 
 
     bool lock_fd(int fd) {
-        auto& log = get_log();
+        auto const& log = get_log();
 
         if (flock(fd, LOCK_EX) < 0) {
             _err("cannot get exclusive lock");

@@ -75,7 +75,7 @@ std::string sobjectDB::str_list(const char* class_criteria, const char* delimite
     std::stringstream ret;
     std::string criteria;
 
-    auto& log = sobjectDB::get().log;
+    auto const& log = sobjectDB::get().log;
 
 
     if(class_criteria)
@@ -136,7 +136,7 @@ std::string sobjectDB::str_list(const char* class_criteria, const char* delimite
 
 std::string sobjectDB::str_stats(const char* criteria) {
 
-    auto& log = sobjectDB::get().log;
+    auto const& log = sobjectDB::get().log;
 
     std::stringstream ret;
     unsigned long object_counter = 0;

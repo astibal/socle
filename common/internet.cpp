@@ -8,7 +8,7 @@ namespace inet {
     {
         std::vector<std::string> output;
 
-        auto& log = Factory::log();
+        auto const& log = Factory::log();
 
         addrinfo hints{};
         addrinfo* res = nullptr;
@@ -63,7 +63,7 @@ namespace inet {
 
     int socket_connect (std::string const& ip_address, int port) {
 
-        auto& log = Factory::log();
+        auto const& log = Factory::log();
 
         _dia("inet::socket_connect: connecting to %s:%d", ip_address.c_str(), port);
 
@@ -110,7 +110,7 @@ namespace inet {
 
     int download (const std::string &url, buffer &buf, int timeout, int ipv) {
 
-        auto& log = Factory::log();
+        auto const& log = Factory::log();
         _dia("inet::download: getting file %s", url.c_str());
 
         int ret = 0;
@@ -221,7 +221,7 @@ namespace inet {
     int http_get (const std::string &request, const std::string &ip_address, int port, buffer &buf, int timeout) {
 
 
-        auto& log = Factory::log();
+        auto const& log = Factory::log();
 
         auto send_request = [&request](auto sd) -> int{
             unsigned attempts = 10;

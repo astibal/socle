@@ -270,7 +270,7 @@ namespace socle::traflog {
 
         if(details.next_proto == connection_details::TCP) {
 
-            auto& log = log_write;
+            auto const& log = log_write;
 
             if (not tcp_start_written) {
                 buffer out;
@@ -317,7 +317,7 @@ namespace socle::traflog {
             }
         }
         else {
-            auto& log = log_write;
+            auto const& log = log_write;
 
             buffer out;
 

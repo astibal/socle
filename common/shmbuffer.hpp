@@ -68,7 +68,7 @@ public:
     
     bool attach(const char* mem_name, const int mem_size, const char* sem_name, bool create_on_error=true) {
 
-        auto& log = get_log();
+        auto const& log = get_log();
 
         if(attached()) {
             _deb("already attached shmbuffer, mem=%s, size=%d, sem=%s, create_on_error=%d", mem_name, mem_size, sem_name, create_on_error);
@@ -185,7 +185,7 @@ public:
     
     bool dettach() {
 
-        auto& log = get_log();
+        auto const& log = get_log();
         bool ret = true;
         
         int rc = munmap(data_, (size_t)capacity_);
@@ -213,7 +213,7 @@ public:
     
     
     int release() {
-        auto& log = get_log();
+        auto const& log = get_log();
         int rc = sem_post(semaphore);
 
         if(rc) {
@@ -225,7 +225,7 @@ public:
     
     int acquire() {
 
-        auto& log = get_log();
+        auto const& log = get_log();
         if(! semaphore) {
             _war("Acquiring the semaphore failed; semaphore is not initialized");
             return -1;

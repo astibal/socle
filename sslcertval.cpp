@@ -31,7 +31,7 @@ namespace inet {
 
         int crl_is_revoked_by (X509 *x509, X509 *issuer, X509_CRL *crl_file) {
 
-            auto& log = CrlFactory::log();
+            auto const& log = CrlFactory::log();
 
             int is_revoked = -1;
             if (issuer) {
@@ -91,7 +91,7 @@ namespace inet {
 
         int crl_verify_trust (X509 *x509, X509 *issuer, X509_CRL *crl_file, const std::string &cacerts_pem_path) {
 
-            auto& log = CrlFactory::log();
+            auto const& log = CrlFactory::log();
 
             STACK_OF (X509) *chain = sk_X509_new_null();
             sk_X509_push(chain, issuer);
@@ -193,7 +193,7 @@ namespace inet {
 
         X509_CRL *crl_from_bytes(buffer &b) {
 
-            auto& log = CrlFactory::log();
+            auto const& log = CrlFactory::log();
             _dum("crl_from_bytes: \n%s", hex_dump(b).c_str());
 
             BIO *bio_mem = BIO_new(BIO_s_mem());
@@ -233,7 +233,7 @@ namespace inet {
         int ocsp_prepare_request (OCSP_REQUEST **req, X509 *cert, const EVP_MD *cert_id_md, X509 *issuer,
                                   STACK_OF(OCSP_CERTID) *ids) {
 
-            auto& log = OcspFactory::log();
+            auto const& log = OcspFactory::log();
 
             OCSP_CERTID *id;
             if (!issuer) {
@@ -272,7 +272,7 @@ namespace inet {
             OCSP_REQ_CTX *ctx = nullptr;
             OCSP_RESPONSE *rsp = nullptr;
 
-            auto& log = OcspFactory::log();
+            auto const& log = OcspFactory::log();
 
             if (req_timeout != -1)
                 BIO_set_nbio(cbio, 1);
@@ -371,7 +371,7 @@ namespace inet {
             OCSP_RESPONSE *resp = nullptr;
             cbio = BIO_new_connect(host);
 
-            auto& log = OcspFactory::log();
+            auto const& log = OcspFactory::log();
 
             if (cbio && use_ssl == 0) {
                 if(port) {
@@ -399,7 +399,7 @@ namespace inet {
             int is_revoked = -1;
             int ttl = 60;
 
-            auto& log = OcspFactory::log();
+            auto const& log = OcspFactory::log();
 
 #ifdef USE_OPENSSL11
 
@@ -638,7 +638,7 @@ namespace inet {
         }
 
         void OcspQuery::parse_cert () {
-            auto& log = OcspFactory::log();
+            auto const& log = OcspFactory::log();
 
             STACK_OF(OPENSSL_STRING) *ocsp_list = X509_get1_ocsp(cert_check);
             for (int j = 0; j < sk_OPENSSL_STRING_num(ocsp_list); j++) {
@@ -666,7 +666,7 @@ namespace inet {
 
 
         bool OcspQuery::do_init () {
-            auto& log = OcspFactory::log();
+            auto const& log = OcspFactory::log();
 
             parse_cert();
 
@@ -693,7 +693,7 @@ namespace inet {
 
         bool OcspQuery::do_prepare_target() {
 
-            auto& log = OcspFactory::log();
+            auto const& log = OcspFactory::log();
             int skip = 0;
 
             // prepare skipping
@@ -762,7 +762,7 @@ namespace inet {
 
         bool OcspQuery::do_connect () {
 
-            auto& log = OcspFactory::log();
+            auto const& log = OcspFactory::log();
 
             if(! conn_bio) {
                 if (! do_prepare_target()) {
@@ -824,7 +824,7 @@ namespace inet {
 
 
         bool OcspQuery::do_send_request () {
-            auto& log = OcspFactory::log();
+            auto const& log = OcspFactory::log();
             int rv;
 
             switch (state_) {
@@ -912,7 +912,7 @@ namespace inet {
 
         bool OcspQuery::do_process_response() {
 
-            auto& log = OcspFactory::log();
+            auto const& log = OcspFactory::log();
 
             state_ = OcspQuery::ST_FINISHED;
 

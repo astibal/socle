@@ -137,7 +137,7 @@ template <class L4Proto>
 SSL_SESSION* baseSSLCom<L4Proto>::server_get_session_callback(SSL* ssl, const unsigned char* , int, int* ) {
     SSL_SESSION* ret = nullptr;
 
-    auto& log = log_cb_session();
+    auto const& log = log_cb_session();
 
     void* data = SSL_get_ex_data(ssl, baseSSLCom::extdata_index());
     std::string name = "unknown_cx";
@@ -152,7 +152,7 @@ SSL_SESSION* baseSSLCom<L4Proto>::server_get_session_callback(SSL* ssl, const un
 template <class L4Proto>
 int baseSSLCom<L4Proto>::new_session_callback(SSL* ssl, SSL_SESSION* session) {
 
-    auto& log = log_cb_session();
+    auto const& log = log_cb_session();
 
     void* data = SSL_get_ex_data(ssl, baseSSLCom::extdata_index());
     std::string name = "unknown_cx";
@@ -200,7 +200,7 @@ void baseSSLCom<L4Proto>::ssl_info_callback(const SSL* s, int where, int ret) {
     }
 #endif
     const char *str;
-    auto& log = log_cb_info();
+    auto const& log = log_cb_info();
 
     int w = where& ~SSL_ST_MASK;
 
@@ -264,7 +264,7 @@ void baseSSLCom<L4Proto>::ssl_msg_callback(int write_p, int version, int content
 
     std::string name = "unknown_cx";
 
-    auto& log = log_cb_msg();
+    auto const& log = log_cb_msg();
 
     baseSSLCom* com = static_cast<baseSSLCom*>(arg);
     if(com != nullptr) {
@@ -403,7 +403,7 @@ int baseSSLCom<L4Proto>::check_server_dh_size(SSL* ssl) {
     return 1024;
 #else
 
-    auto& log = log_cb_dh();
+    auto const& log = log_cb_dh();
 
     _deb("Checking peer DH parameters:");
     if(ssl != nullptr) {
@@ -453,7 +453,7 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int lib_preverify, X509_STORE_
     int idx = SSL_get_ex_data_X509_STORE_CTX_idx();
     int callback_return = lib_preverify;
 
-    auto& log = log_cb_verify();
+    auto const& log = log_cb_verify();
 
     _deb("SSLCom::ssl_client_vrfy_callback: data index = %d, lib_preverify = %d, depth = %d", idx, lib_preverify, depth);
 
@@ -628,7 +628,7 @@ int baseSSLCom<L4Proto>::ssl_alpn_select_callback(SSL *s, const unsigned char **
                                                   const unsigned char *in, unsigned int inlen,
                                                   void *arg) {
 
-    auto& log = log_cb_alpn();
+    auto const& log = log_cb_alpn();
 
     auto* this_com = static_cast<baseSSLCom*>(SSL_get_ex_data(s, baseSSLCom<L4Proto>::extdata_index()));
     if(not this_com) {
@@ -698,7 +698,7 @@ unsigned long baseSSLCom<L4Proto>::log_if_error2(unsigned int level, const char*
     do {
         if(err2 != 0) {
 
-            auto& log = log_ssl();
+            auto const& log = log_ssl();
 
             log.log(loglevel(level,0), "%s: error code:%u:%s", prefix, err2, ERR_error_string(err2,nullptr));
             err2 = ERR_get_error();
@@ -718,7 +718,7 @@ DH* baseSSLCom<L4Proto>::ssl_dh_callback(SSL* s, int is_export, int key_length) 
         name = com->hr();
     }
 
-    auto& log = log_cb_dh();
+    auto const& log = log_cb_dh();
 
     _dia("[%s]: SSLCom::ssl_dh_callback: %d bits requested",name.c_str(),key_length);
     switch(key_length) {
@@ -747,7 +747,7 @@ EC_KEY* baseSSLCom<L4Proto>::ssl_ecdh_callback(SSL* s, int is_export, int key_le
     void* data = SSL_get_ex_data(s, sslcom_ssl_extdata_index);
     std::string name = "unknown_cx";
 
-    auto& log = log_cb_ecdh();
+    auto const& log = log_cb_ecdh();
 
     auto* com = static_cast<baseSSLCom*>(data);
     if(com != nullptr) {
@@ -763,7 +763,7 @@ int baseSSLCom<L4Proto>::certificate_status_ocsp_check(baseSSLCom* com) {
 
     inet::cert::VerifyStatus res;
 
-    auto& log = inet::ocsp::OcspFactory::log();
+    auto const& log = inet::ocsp::OcspFactory::log();
 
     verify_origin_t origin {verify_origin_t::NONE};
 
@@ -958,7 +958,7 @@ int baseSSLCom<L4Proto>::certificate_status_ocsp_check(baseSSLCom* com) {
 template <class L4Proto>
 int baseSSLCom<L4Proto>::certificate_status_oob_check(baseSSLCom* com, int default_action) {
 
-    auto& log = inet::ocsp::OcspFactory::log();
+    auto const& log = inet::ocsp::OcspFactory::log();
 
 
     if(com != nullptr) {
@@ -1036,7 +1036,7 @@ std::string baseSSLCom<L4Proto>::verify_origin_str(verify_origin_t const& v) {
 template <class L4Proto>
 std::pair<typename baseSSLCom<L4Proto>::staple_code_t, int> baseSSLCom<L4Proto>::check_revocation_stapling(std::string const& name, baseSSLCom* com, SSL* ssl) {
 
-    auto& log = log_ocsp();
+    auto const& log = log_ocsp();
 
     const unsigned char *stapling_body = nullptr;
     int stapling_len = 0;
@@ -1241,7 +1241,7 @@ bool baseSSLCom<L4Proto>::is_verify_status_opt_allowed() {
 template <class L4Proto>
 int baseSSLCom<L4Proto>::status_resp_callback(SSL* ssl, void* arg) {
 
-    auto& log = inet::ocsp::OcspFactory::log();
+    auto const& log = inet::ocsp::OcspFactory::log();
 
     void* data = SSL_get_ex_data(ssl, sslcom_ssl_extdata_index);
     std::string name = "unknown_cx";
@@ -1376,7 +1376,7 @@ int baseSSLCom<L4Proto>::ssl_client_cert_callback(SSL* ssl, X509** x509, EVP_PKE
     //return 0 if we don't want to provide cert, 1 if yes.
     //if yes, x509 and pkey has to point to pointers with cert.
 
-    auto& log = log_cb_ccert();
+    auto const& log = log_cb_ccert();
     
     void* data = SSL_get_ex_data(ssl, sslcom_ssl_extdata_index);
     std::string name = "unknown_cx";
@@ -1433,7 +1433,7 @@ int baseSSLCom<L4Proto>::ct_verify_callback(const CT_POLICY_EVAL_CTX *ctx, const
     auto sslcom = static_cast<baseSSLCom*>(arg);
 
     if(sslcom) {
-        auto& log = log_cb_ct();
+        auto const& log = log_cb_ct();
 
         _dia("certificate transparency callback: %d entries in certificate", sc_num);
 
