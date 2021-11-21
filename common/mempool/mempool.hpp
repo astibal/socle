@@ -43,7 +43,7 @@
 
 class buffer;
 
-typedef struct mem_chunk
+struct mem_chunk
 {
     mem_chunk(): ptr(nullptr), capacity(0) {};
 
@@ -51,7 +51,7 @@ typedef struct mem_chunk
     // mempool should avoid using new() operator - in MEMPOOL_ALL mode it will recurse and dies
     explicit mem_chunk(std::size_t s): capacity(s) { ptr = (unsigned char*)::malloc(s); pool_type = type::HEAP; };   // lgtm[cpp/resource-not-released-in-destructor]
 #else
-    explicit mem_chunk(std::size_t s): capacity(s) { ptr = new unsigned char[s]; pool_type = type::HEAP; }; // lgtm[cpp/resource-not-released-in-destructor]
+    explicit mem_chunk(std::size_t s): ptr(new unsigned char[s]), capacity(s), pool_type(type::HEAP) {}; // lgtm[cpp/resource-not-released-in-destructor]
 #endif
     mem_chunk(unsigned char* p, std::size_t c): ptr(p), capacity(c) {};
 
@@ -129,8 +129,10 @@ typedef struct mem_chunk
     inline void set_trace() {};
 #endif
 
-} mem_chunk_t;
+};
 
+
+using mem_chunk_t = mem_chunk;
 
 class memPool {
 

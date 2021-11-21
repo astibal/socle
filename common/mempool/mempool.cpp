@@ -231,24 +231,11 @@ mem_chunk_t memPool::acquire(std::size_t sz) {
     stat_acq++;
     stat_acq_size += sz;
 
-    // shall we use standard heap for some reason?
-    bool fallback_to_heap = false;
+    auto l_ = std::scoped_lock(lock);
 
-    if(!mem_pool) {
+    // mempool is not available, or is empty, use heap
+    if(not mem_pool or mem_pool->empty()) {
 
-        // no mempool available  - fallback
-        fallback_to_heap = true;
-    } else {
-
-        std::lock_guard<std::mutex> g(lock);
-
-        // mempool is available, but empty!
-        if(mem_pool->empty()) {
-            fallback_to_heap = true;
-        }
-    }
-
-    if (fallback_to_heap) {
         mem_chunk new_entry(sz);
         stat_alloc++;
         stat_alloc_size += sz;
@@ -270,9 +257,8 @@ mem_chunk_t memPool::acquire(std::size_t sz) {
         #endif
 
         return new_entry;
-    } else {
-        std::lock_guard<std::mutex> g(lock);
 
+    } else {
         mem_chunk_t free_entry = mem_pool->back();
         mem_pool->pop_back();
 
@@ -316,8 +302,6 @@ void memPool::release(mem_chunk_t xto_ret){
 
     if(bailing) return;
 
-    auto* mem_pool = pick_ret_set(to_ret.capacity);
-
 
     if(to_ret.pool_type == mem_chunk::type::HEAP) {
         stat_out_free++;
@@ -332,7 +316,7 @@ void memPool::release(mem_chunk_t xto_ret){
         return;
     }
 
-
+    auto* mem_pool = pick_ret_set(to_ret.capacity);
     if (! mem_pool) {
 
         auto found_size = find_ptr_size(to_ret.ptr);
@@ -479,7 +463,7 @@ void* mempool_realloc(void* optr, size_t nsz) {
         return ::realloc(optr,nsz);
 #else
     if(not buffer::use_pool) {
-        return realloc(optr, nsz);
+        return ::realloc(optr, nsz);
     }
 
     // if we use pools and exiting, rather leak than crash
@@ -491,7 +475,7 @@ void* mempool_realloc(void* optr, size_t nsz) {
     if(optr) {
         ptr_size = memPool::pool().find_ptr_size(optr);
     }
-    mem_chunk_t old_m = mem_chunk(static_cast<unsigned char*>(optr), ptr_size);
+    auto old_m = mem_chunk(static_cast<unsigned char*>(optr), ptr_size);
 
     // if realloc asks for actually already fitting size, return old one
     if(ptr_size >= nsz) {
@@ -522,13 +506,11 @@ void* mempool_realloc(void* optr, size_t nsz) {
             memPool::pool().release(old_m);
         }
 
-        {
-            if(mem_chunk::trace_enabled)
-                new_m.set_trace();
+        if(mem_chunk::trace_enabled)
+            new_m.set_trace();
 
-            if(optr && ! ptr_size) {
-                mp_stats::get().stat_mempool_realloc_miss++;
-            }
+        if(optr && ! ptr_size) {
+            mp_stats::get().stat_mempool_realloc_miss++;
         }
 
         mp_stats::get().stat_mempool_realloc++;
@@ -562,11 +544,16 @@ void mempool_free(void* optr) {
 
     auto ptr_size = memPool::pool().find_ptr_size(optr);
 
-    if(! ptr_size) {
+    // not in pools
+    if(ptr_size == 0) {
         mp_stats::get().stat_mempool_free_miss++;
-    }
 
-    memPool::pool().release(mem_chunk(static_cast<unsigned char *>(optr), ptr_size));
+        auto heap_chunk = mem_chunk(static_cast<unsigned char*>(optr), ptr_size);
+        heap_chunk.pool_type = mem_chunk::pool_type_t::HEAP;
+        memPool::pool().release(heap_chunk);
+    } else {
+        memPool::pool().release(mem_chunk(static_cast<unsigned char*>(optr), ptr_size));
+    }
 
     mp_stats::get().stat_mempool_free++;
     mp_stats::get().stat_mempool_free_size += ptr_size;
