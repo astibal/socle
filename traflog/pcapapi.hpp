@@ -37,6 +37,12 @@
 
 namespace socle::pcap {
 
+    // GREv1
+    struct  __attribute__((__packed__)) grehdr {
+        uint16_t preamble = 0; // simplified (no chksum, key, or sequence
+        uint16_t next_proto = 0;
+    };
+
     template<typename V, typename P>
     struct chksum_pseudoheader {
         V saddr{};
@@ -72,8 +78,11 @@ namespace socle::pcap {
         uint16_t ip_id_out;
         uint8_t ip_version{4};
         uint16_t next_proto{6};
-
         enum proto { TCP=6, UDP=17 };
+
+
+        enum tunnel { NONE=0, GRE=47 };
+        uint16_t tun_proto{tunnel::NONE};
 
         ssize_t max_data_size{1380};
 
@@ -167,6 +176,8 @@ namespace socle::pcap {
 
     void append_PCAP_header(buffer& out_buffer, connection_details const& details, size_t payload_size);
     void append_LCC_header(buffer& out_buffer, connection_details const& details, int in);
+
+    void append_GRE_header(buffer& out_buffer, connection_details& details);
 
     void append_IP_header(buffer& out_buffer, connection_details& details, int in, size_t payload_size);
         void append_IPv4_header(buffer& out_buffer, connection_details& details, int in, size_t payload_size);

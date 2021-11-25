@@ -199,3 +199,169 @@ TEST(NgTest, BasicUDP_v6) {
 
     fclose(f);
 }
+
+
+#include <linux/if.h>
+#include <linux/if_tun.h>
+#include <sys/ioctl.h>
+
+
+struct DevInfo {
+    int socket {-1};
+    std::string devname;
+};
+
+std::optional<DevInfo> tun_alloc(std::string const& dev)
+{
+    if(dev.empty()) return std::nullopt;
+
+    int fd;
+
+    if( (fd = open("/dev/net/tun", O_RDWR)) < 0 ) {
+        return std::nullopt;
+    }
+
+    ifreq ifr {};
+    memset(&ifr, 0, sizeof(ifr));
+
+    /* Flags: IFF_TUN   - TUN device (no Ethernet headers)
+     *        IFF_TAP   - TAP device
+     *
+     *        IFF_NO_PI - Do not provide packet information
+     */
+    ifr.ifr_flags = IFF_TUN | IFF_NO_PI;
+
+    std::strncpy(ifr.ifr_name, dev.c_str(), IFNAMSIZ);
+
+    if (auto err = ioctl(fd, TUNSETIFF, (void *) &ifr); err < 0) {
+        close(fd);
+        return std::nullopt;
+    }
+
+    DevInfo r = { fd, ifr.ifr_name };
+    return r;
+}
+
+TEST(PcapExperiments, Tun4) {
+
+    SocketInfo s;
+    s.str_src_host = "1.1.1.1";
+    s.str_dst_host = "8.8.8.8";
+    s.sport = 63333;
+    s.dport = 514;
+
+    s.pack_dst_ss();
+    s.pack_src_ss();
+
+    ASSERT_TRUE(s.src_ss.has_value());
+    ASSERT_TRUE(s.dst_ss.has_value());
+
+    connection_details d{};
+    d.next_proto = connection_details::UDP;
+    d.source = s.src_ss.value();
+    d.destination = s.dst_ss.value();
+
+    d.tun_proto = IPPROTO_GRE;
+
+    std::stringstream req;
+    req << "/ng/ipv4/udp";
+
+    auto request = req.str();
+
+    std::stringstream resp;
+    resp << "NG OK";
+
+    auto response = resp.str();
+
+    buffer a;
+    append_IP_header(a, d, 0, request.size());
+    append_UDP_header(a, d, 1, request.data(), request.size());
+    a.append(request.data(), request.size());
+
+    buffer b;
+    append_IP_header(b, d, 0, response.size());
+
+    append_UDP_header(b, d, 1, response.data(), response.size());
+    b.append(response.data(), response.size());
+
+
+    auto devinfo = tun_alloc("sxtun0");
+
+    if(devinfo) {
+        sleep(15);
+
+
+        for (int i = 0; i < 20; ++i) {
+            //::write(devinfo->socket, &sa, 2);
+            while(::write(devinfo->socket, a.data(), a.size()) <= 0);
+
+            //::write(devinfo->socket, &sb, 2);
+            while(::write(devinfo->socket, b.data(), b.size()) <= 0);
+        }
+
+        sleep(15);
+    }
+}
+
+TEST(PcapExperiments, Tun6) {
+    SocketInfo s;
+    s.str_src_host = "fe80::7f65:f37c:5f6:965d";
+    s.str_dst_host = "2001:67c:68::76";
+    s.src_family = AF_INET6;
+    s.dst_family = AF_INET6;
+    s.sport = 63333;
+    s.dport = 514;
+
+    s.pack_dst_ss();
+    s.pack_src_ss();
+
+    ASSERT_TRUE(s.src_ss.has_value());
+    ASSERT_TRUE(s.dst_ss.has_value());
+
+    connection_details d{};
+    d.next_proto = connection_details::UDP;
+    d.source = s.src_ss.value();
+    d.destination = s.dst_ss.value();
+    d.ip_version = 6;
+
+    d.tun_proto = IPPROTO_GRE;
+
+    std::stringstream req;
+    req << "/ng/ipv6/udp";
+
+    auto request = req.str();
+
+    std::stringstream resp;
+    resp << "NG OK";
+
+    auto response = resp.str();
+
+    buffer a;
+    append_IP_header(a, d, 0, request.size());
+    append_UDP_header(a, d, 1, request.data(), request.size());
+    a.append(request.data(), request.size());
+
+    buffer b;
+    append_IP_header(b, d, 0, response.size());
+
+    append_UDP_header(b, d, 1, response.data(), response.size());
+    b.append(response.data(), response.size());
+
+
+    auto devinfo = tun_alloc("sxtun0");
+
+    if(devinfo) {
+        sleep(15);
+
+
+        for (int i = 0; i < 20; ++i) {
+            //::write(devinfo->socket, &sa, 2);
+            while(::write(devinfo->socket, a.data(), a.size()) <= 0);
+
+            //::write(devinfo->socket, &sb, 2);
+            while(::write(devinfo->socket, b.data(), b.size()) <= 0);
+        }
+
+        sleep(15);
+    }
+}

@@ -127,6 +127,18 @@ namespace socle::pcap {
         out_buffer.append(&lcc_header, sizeof(lcc_header));
     };
 
+
+    void append_GRE_header(buffer& out_buffer, connection_details& details) {
+        grehdr hdr{0};
+
+        if(details.ip_version == 6) {
+            hdr.next_proto = htons(0x86DD);
+        } else {
+            hdr.next_proto = htons(0x0800);
+        }
+        out_buffer.append(&hdr, sizeof(hdr));
+    }
+
     void append_IPv4_header(buffer& out_buffer, connection_details& details, int in, size_t payload_size) {
         [[maybe_unused]] auto const& log = get_log();
 
@@ -150,6 +162,9 @@ namespace socle::pcap {
         else if(details.next_proto == connection_details::UDP) {
             ip_header.tot_len = htons(sizeof(struct iphdr) + sizeof(struct udphdr) + payload_size);
             ip_header.protocol = IPPROTO_UDP;
+        } else {
+            auto msg = string_format("invalid protocol: %d", details.next_proto);
+            throw std::invalid_argument(msg.c_str());
         }
         ip_header.id = in ? ip_id_in++ : ip_id_out++;
 
@@ -164,6 +179,21 @@ namespace socle::pcap {
             ip_header.daddr = target_sockaddr->sin_addr.s_addr;
         }
         ip_header.check = htons(iphdr_cksum(&ip_header, sizeof(struct iphdr)));
+
+        if(details.tun_proto == connection_details::GRE) {
+            auto tun_hdr = ip_header;
+            tun_hdr.protocol = IPPROTO_GRE;
+            tun_hdr.ttl = 0;
+            tun_hdr.saddr = {0};
+            tun_hdr.daddr = {0};
+
+            auto inner_size = sizeof(struct iphdr) + sizeof(struct udphdr) + payload_size;
+            tun_hdr.tot_len = htons(inner_size + sizeof(iphdr) + sizeof(grehdr));
+            tun_hdr.check = htons(iphdr_cksum(&ip_header, sizeof(struct iphdr)));
+
+            out_buffer.append(&tun_hdr,sizeof(tun_hdr));
+            append_GRE_header(out_buffer, details);
+        }
 
         out_buffer.append(&ip_header, sizeof(ip_header));
     };
@@ -194,6 +224,20 @@ namespace socle::pcap {
             ip_header.ip6_plen = htons(sizeof(udphdr) + payload_size);
             ip_header.ip6_nxt = connection_details::UDP;
 
+        }
+
+        if(details.tun_proto == connection_details::GRE) {
+            auto tun_hdr = ip_header;
+            tun_hdr.ip6_nxt = IPPROTO_GRE;
+            tun_hdr.ip6_hops = 0;
+            tun_hdr.ip6_src = {};
+            tun_hdr.ip6_dst = {};
+
+            auto inner_size = sizeof(struct iphdr) + sizeof(struct udphdr) + payload_size;
+            tun_hdr.ip6_plen = htons(inner_size + sizeof(iphdr) + sizeof(grehdr));
+
+            out_buffer.append(&tun_hdr,sizeof(tun_hdr));
+            append_GRE_header(out_buffer, details);
         }
 
         out_buffer.append(&ip_header, sizeof(ip_header));
