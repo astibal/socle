@@ -303,6 +303,10 @@ TEST(PcapExperiments, Tun4) {
     }
 }
 
+void send_raw(buffer const& buf) {
+    int s = socket(AF_INET, SOCK_RAW, IPPROTO_IP);
+}
+
 TEST(PcapExperiments, Tun6) {
     SocketInfo s;
     s.str_src_host = "fe80::7f65:f37c:5f6:965d";
@@ -325,6 +329,13 @@ TEST(PcapExperiments, Tun6) {
     d.ip_version = 6;
 
     d.tun_proto = IPPROTO_GRE;
+
+    SocketInfo tun;
+    tun.str_src_host = "fe11::11";
+    tun.str_dst_host = "fe11::88";
+    tun.src_family = AF_INET6;
+    tun.dst_family = AF_INET6;
+    d.tun_details = &tun;
 
     std::stringstream req;
     req << "/ng/ipv6/udp";
