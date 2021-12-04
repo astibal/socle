@@ -35,9 +35,11 @@ public:
 struct SocketInfo {
 
 
+    void unpack() { unpack_src_ss(); unpack_dst_ss(); }
     void unpack_src_ss();
     void unpack_dst_ss();
 
+    void pack() { pack_src_ss(); pack_dst_ss(); }
     void pack_dst_ss();
     void pack_src_ss();
     int create_socket_left (int l4_proto);
