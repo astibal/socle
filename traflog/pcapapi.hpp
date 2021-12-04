@@ -34,6 +34,7 @@
 
 #include <buffer.hpp>
 #include <log/logan.hpp>
+#include <socketinfo.hpp>
 
 namespace socle::pcap {
 
@@ -83,6 +84,7 @@ namespace socle::pcap {
 
         enum tunnel { NONE=0, GRE=47 };
         uint16_t tun_proto{tunnel::NONE};
+        SocketInfo* tun_details = nullptr;
 
         ssize_t max_data_size{1380};
 
@@ -167,7 +169,7 @@ namespace socle::pcap {
     
     size_t append_PCAP_magic(buffer& out_buffer);
 
-    [[maybe_unused]] uint16_t iphdr_cksum(void *data, size_t len);
+    [[maybe_unused]] uint16_t iphdr_cksum(void const *data, size_t len);
     [[maybe_unused]] uint16_t l4hdr_cksum(void* hdr, size_t hdr_sz, void *next, size_t next_sz, const char *payload, size_t payload_len);
 
     template<typename L4type>
@@ -177,7 +179,7 @@ namespace socle::pcap {
     void append_PCAP_header(buffer& out_buffer, connection_details const& details, size_t payload_size);
     void append_LCC_header(buffer& out_buffer, connection_details const& details, int in);
 
-    void append_GRE_header(buffer& out_buffer, connection_details& details);
+    void append_GRE_header(buffer& out_buffer, connection_details const& details);
 
     void append_IP_header(buffer& out_buffer, connection_details& details, int in, size_t payload_size);
         void append_IPv4_header(buffer& out_buffer, connection_details& details, int in, size_t payload_size);

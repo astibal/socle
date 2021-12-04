@@ -33,7 +33,7 @@ namespace socle::pcap {
     }
 
 
-    uint16_t iphdr_cksum(void *data, size_t len)
+    uint16_t iphdr_cksum(void const* data, size_t len)
     {
         uint32_t sum=0;
         size_t i;
@@ -128,7 +128,7 @@ namespace socle::pcap {
     };
 
 
-    void append_GRE_header(buffer& out_buffer, connection_details& details) {
+    void append_GRE_header(buffer& out_buffer, connection_details const& details) {
         grehdr hdr{0};
 
         if(details.ip_version == 6) {
@@ -137,6 +137,67 @@ namespace socle::pcap {
             hdr.next_proto = htons(0x0800);
         }
         out_buffer.append(&hdr, sizeof(hdr));
+    }
+
+
+    void encapulate_gre_v4(buffer& out_buffer, iphdr const& ip_header, connection_details const& details) {
+        auto tun_hdr = ip_header;
+        tun_hdr.protocol = IPPROTO_GRE;
+        tun_hdr.ttl = 0;
+        tun_hdr.saddr = {0};
+        tun_hdr.daddr = {0};
+
+        if(details.tun_details) {
+            details.tun_details->pack();
+
+            if(details.tun_details->src_family == AF_INET and details.tun_details->src_ss) {
+                auto ss = details.tun_details->src_ss.value();
+                auto* ip = (sockaddr_in*)(&ss);
+                tun_hdr.saddr = *(uint32_t*)&ip->sin_addr;
+            }
+            if(details.tun_details->dst_family == AF_INET and details.tun_details->dst_ss) {
+                auto ss = details.tun_details->dst_ss.value();
+                auto* ip = (sockaddr_in*)(&ss);
+                tun_hdr.daddr = *(uint32_t*)&ip->sin_addr;
+            }
+        }
+
+        auto inner_size = ntohs(ip_header.tot_len);
+
+        tun_hdr.tot_len = htons(inner_size + sizeof(iphdr) + sizeof(grehdr));
+        tun_hdr.check = htons(iphdr_cksum(&ip_header, sizeof(struct iphdr)));
+
+        out_buffer.append(&tun_hdr,sizeof(tun_hdr));
+        append_GRE_header(out_buffer, details);
+    }
+
+    void encapsulate_gre_v6(buffer& out_buffer, ip6_hdr const& ip_header, connection_details const& details) {
+        auto tun_hdr = ip_header;
+        tun_hdr.ip6_nxt = IPPROTO_GRE;
+        tun_hdr.ip6_hops = 0;
+        tun_hdr.ip6_src = {};
+        tun_hdr.ip6_dst = {};
+
+        if(details.tun_details) {
+            details.tun_details->pack();
+
+            if (details.tun_details->src_family == AF_INET6 and details.tun_details->src_ss) {
+                auto ss = details.tun_details->src_ss.value();
+                auto const *ip = (sockaddr_in6 *) (&ss);
+                tun_hdr.ip6_src = ip->sin6_addr;
+            }
+            if (details.tun_details->dst_family == AF_INET6 and details.tun_details->dst_ss) {
+                auto ss = details.tun_details->dst_ss.value();
+                auto const *ip = (sockaddr_in6 *) (&ss);
+                tun_hdr.ip6_dst = ip->sin6_addr;
+            }
+        }
+
+        auto inner_size = ntohs(ip_header.ip6_plen);;
+        tun_hdr.ip6_plen = htons(inner_size + sizeof(ip6_hdr) + sizeof(grehdr));
+
+        out_buffer.append(&tun_hdr,sizeof(tun_hdr));
+        append_GRE_header(out_buffer, details);
     }
 
     void append_IPv4_header(buffer& out_buffer, connection_details& details, int in, size_t payload_size) {
@@ -181,18 +242,7 @@ namespace socle::pcap {
         ip_header.check = htons(iphdr_cksum(&ip_header, sizeof(struct iphdr)));
 
         if(details.tun_proto == connection_details::GRE) {
-            auto tun_hdr = ip_header;
-            tun_hdr.protocol = IPPROTO_GRE;
-            tun_hdr.ttl = 0;
-            tun_hdr.saddr = {0};
-            tun_hdr.daddr = {0};
-
-            auto inner_size = sizeof(struct iphdr) + sizeof(struct udphdr) + payload_size;
-            tun_hdr.tot_len = htons(inner_size + sizeof(iphdr) + sizeof(grehdr));
-            tun_hdr.check = htons(iphdr_cksum(&ip_header, sizeof(struct iphdr)));
-
-            out_buffer.append(&tun_hdr,sizeof(tun_hdr));
-            append_GRE_header(out_buffer, details);
+            encapulate_gre_v4(out_buffer, ip_header, details);
         }
 
         out_buffer.append(&ip_header, sizeof(ip_header));
@@ -227,17 +277,7 @@ namespace socle::pcap {
         }
 
         if(details.tun_proto == connection_details::GRE) {
-            auto tun_hdr = ip_header;
-            tun_hdr.ip6_nxt = IPPROTO_GRE;
-            tun_hdr.ip6_hops = 0;
-            tun_hdr.ip6_src = {};
-            tun_hdr.ip6_dst = {};
-
-            auto inner_size = sizeof(struct iphdr) + sizeof(struct udphdr) + payload_size;
-            tun_hdr.ip6_plen = htons(inner_size + sizeof(iphdr) + sizeof(grehdr));
-
-            out_buffer.append(&tun_hdr,sizeof(tun_hdr));
-            append_GRE_header(out_buffer, details);
+            encapsulate_gre_v6(out_buffer, ip_header, details);
         }
 
         out_buffer.append(&ip_header, sizeof(ip_header));
