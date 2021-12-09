@@ -275,12 +275,11 @@ TEST(PcapExperiments, Tun4) {
 
     buffer a;
     append_IP_header(a, d, 0, request.size());
-    append_UDP_header(a, d, 1, request.data(), request.size());
+    append_UDP_header(a, d, 0, request.data(), request.size());
     a.append(request.data(), request.size());
 
     buffer b;
-    append_IP_header(b, d, 0, response.size());
-
+    append_IP_header(b, d, 1, response.size());
     append_UDP_header(b, d, 1, response.data(), response.size());
     b.append(response.data(), response.size());
 
@@ -349,11 +348,11 @@ TEST(PcapExperiments, Tun6) {
 
     buffer a;
     append_IP_header(a, d, 0, request.size());
-    append_UDP_header(a, d, 1, request.data(), request.size());
+    append_UDP_header(a, d, 0, request.data(), request.size());
     a.append(request.data(), request.size());
 
     buffer b;
-    append_IP_header(b, d, 0, response.size());
+    append_IP_header(b, d, 1, response.size());
 
     append_UDP_header(b, d, 1, response.data(), response.size());
     b.append(response.data(), response.size());
