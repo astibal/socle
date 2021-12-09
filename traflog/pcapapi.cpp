@@ -140,10 +140,15 @@ namespace socle::pcap {
     }
 
 
-    void encapulate_gre_v4(buffer& out_buffer, iphdr const& ip_header, connection_details const& details) {
-        auto tun_hdr = ip_header;
+    void encapulate_gre_v4(buffer& out_buffer, connection_details& details, int direction, size_t payload_size) {
+
+        iphdr tun_hdr{};
+
+        // create tunneled header
+        create_IPv4_header(tun_hdr, details, direction + 2, payload_size);
+
         tun_hdr.protocol = IPPROTO_GRE;
-        tun_hdr.ttl = 0;
+        tun_hdr.ttl = details.tun_ttl;
         tun_hdr.saddr = {0};
         tun_hdr.daddr = {0};
 
@@ -162,19 +167,18 @@ namespace socle::pcap {
             }
         }
 
-        auto inner_size = ntohs(ip_header.tot_len);
-
-        tun_hdr.tot_len = htons(inner_size + sizeof(iphdr) + sizeof(grehdr));
-        tun_hdr.check = htons(iphdr_cksum(&ip_header, sizeof(struct iphdr)));
-
         out_buffer.append(&tun_hdr,sizeof(tun_hdr));
         append_GRE_header(out_buffer, details);
     }
 
-    void encapsulate_gre_v6(buffer& out_buffer, ip6_hdr const& ip_header, connection_details const& details) {
-        auto tun_hdr = ip_header;
+    void encapsulate_gre_v6(buffer& out_buffer, connection_details& details, int direction, size_t payload_size) {
+
+        ip6_hdr tun_hdr{};
+
+        create_IPv6_header(tun_hdr, details, direction + 2, payload_size);
+
         tun_hdr.ip6_nxt = IPPROTO_GRE;
-        tun_hdr.ip6_hops = 0;
+        tun_hdr.ip6_hops = details.tun_ttl;
         tun_hdr.ip6_src = {};
         tun_hdr.ip6_dst = {};
 
@@ -193,91 +197,183 @@ namespace socle::pcap {
             }
         }
 
-        auto inner_size = ntohs(ip_header.ip6_plen);;
-        tun_hdr.ip6_plen = htons(inner_size + sizeof(ip6_hdr) + sizeof(grehdr));
-
         out_buffer.append(&tun_hdr,sizeof(tun_hdr));
         append_GRE_header(out_buffer, details);
     }
 
-    void append_IPv4_header(buffer& out_buffer, connection_details& details, int in, size_t payload_size) {
-        [[maybe_unused]] auto const& log = get_log();
+    size_t l4_header_sz(connection_details const& details) {
+        size_t l4_header_sz {0};
+        if (details.next_proto == connection_details::TCP or details.next_proto == 0) {
+            l4_header_sz = sizeof(struct tcphdr);
+        }
+        else if (details.next_proto == connection_details::UDP) {
+            l4_header_sz = sizeof(struct udphdr);
+        } else {
+            auto msg = string_format("invalid tunnel inner l4 protocol: %d", details.next_proto);
+            throw std::invalid_argument(msg.c_str());
+        }
 
-        auto const* target_sockaddr = reinterpret_cast<sockaddr_in const*>(&details.destination);
-        auto const* client_sockaddr = reinterpret_cast<sockaddr_in const*>(&details.source);
+        return l4_header_sz;
+    }
 
 
+    size_t l3_header_sz(connection_details const& details) {
+        size_t l3_header_sz {0};
+        if (details.ip_version == 4 or details.ip_version == 0) {
+            l3_header_sz = sizeof(struct iphdr);
+        }
+        else if (details.ip_version == 6) {
+            l3_header_sz = sizeof(struct ip6_hdr);
+        } else {
+            auto msg = string_format("invalid IP version: %d", details.ip_version);
+            throw std::invalid_argument(msg.c_str());
+        }
 
-        struct iphdr ip_header{};
-        auto& ip_id_in = details.ip_id_in;
-        auto& ip_id_out = details.ip_id_out;
+        return l3_header_sz;
+    }
 
+    // parameter direction:
+    //      even: - out
+    //      odd:  - in
+    //      > 1 - tunneled
+    void create_IPv4_header(iphdr& ip_header, connection_details& details, int direction, size_t payload_size) {
         ip_header.version = IPVERSION;
         ip_header.ihl = sizeof(struct iphdr) / sizeof(uint32_t);
         ip_header.tos = IPTOS_TOS(0);
 
-        if(details.next_proto == connection_details::TCP or details.next_proto == 0) {
-            ip_header.tot_len = htons(sizeof(struct iphdr) + sizeof(struct tcphdr) + payload_size);
-            ip_header.protocol = IPPROTO_TCP;
+        auto l4_sz = l4_header_sz(details);
+
+        if(direction <= 1) {
+            ip_header.tot_len = htons(sizeof(struct iphdr) + l4_sz + payload_size);
+            ip_header.protocol = details.next_proto;
         }
-        else if(details.next_proto == connection_details::UDP) {
-            ip_header.tot_len = htons(sizeof(struct iphdr) + sizeof(struct udphdr) + payload_size);
-            ip_header.protocol = IPPROTO_UDP;
-        } else {
-            auto msg = string_format("invalid protocol: %d", details.next_proto);
-            throw std::invalid_argument(msg.c_str());
+        else {
+
+            auto l3_sz = l3_header_sz(details);
+
+            if (details.tun_proto == connection_details::GRE) {
+                ip_header.tot_len = htons(sizeof(struct iphdr) + sizeof(struct grehdr) + l3_sz + l4_sz + payload_size);
+                ip_header.protocol = IPPROTO_GRE;
+            } else {
+                auto msg = string_format("invalid tunneling protocol: %d", details.next_proto);
+                throw std::invalid_argument(msg.c_str());
+            }
         }
-        ip_header.id = in ? ip_id_in++ : ip_id_out++;
+        ip_header.id = direction % 2 ? details.ip_id_in++ : details.ip_id_out++;
 
         ip_header.frag_off = htons(0x4000); /* don't fragment */
-        ip_header.ttl = 128;
+        ip_header.ttl = details.ttl;
 
-        if (in) {
-            ip_header.saddr = target_sockaddr->sin_addr.s_addr;
-            ip_header.daddr = client_sockaddr->sin_addr.s_addr;
+        auto const* target_sockaddr = reinterpret_cast<sockaddr_in const*>(&details.destination);
+        auto const* client_sockaddr = reinterpret_cast<sockaddr_in const*>(&details.source);
+
+        if (direction % 2) {
+
+            if(direction > 1 and details.tun_details) {
+                details.tun_details->pack();
+                ip_header.saddr = details.tun_details->dst_ss_in().s_addr;
+                ip_header.daddr = details.tun_details->src_ss_in().s_addr;
+            } else {
+                ip_header.saddr = target_sockaddr->sin_addr.s_addr;
+                ip_header.daddr = client_sockaddr->sin_addr.s_addr;
+            }
         } else {
-            ip_header.saddr = client_sockaddr->sin_addr.s_addr;
-            ip_header.daddr = target_sockaddr->sin_addr.s_addr;
+            if(direction > 1 and details.tun_details) {
+                ip_header.saddr = details.tun_details->src_ss_in().s_addr;
+                ip_header.daddr = details.tun_details->dst_ss_in().s_addr;
+            }
+            else {
+                ip_header.saddr = client_sockaddr->sin_addr.s_addr;
+                ip_header.daddr = target_sockaddr->sin_addr.s_addr;
+            }
         }
         ip_header.check = htons(iphdr_cksum(&ip_header, sizeof(struct iphdr)));
+    }
+
+    // parameter direction:
+    //      even: - out
+    //      odd:  - in
+    //      > 1 - tunneled
+    void create_IPv6_header(ip6_hdr& ip_header, connection_details& details, int direction, size_t payload_size) {
+
+        ip_header.ip6_flow = htonl((6 << 28) | (0 << 20) | 0);
+        ip_header.ip6_hops = details.ttl;
+
+        auto l4_sz = l4_header_sz(details);
+
+        if(direction <= 1) {
+            ip_header.ip6_plen = htons(l4_sz + payload_size);
+            ip_header.ip6_nxt = details.next_proto;
+        }
+        else {
+            auto l3_sz = l3_header_sz(details);
+
+            if (details.tun_proto == connection_details::GRE) {
+                ip_header.ip6_plen = htons(sizeof(struct grehdr) + l3_sz + l4_sz + payload_size);
+                ip_header.ip6_nxt = IPPROTO_GRE;
+            } else {
+                auto msg = string_format("invalid tunneling protocol: %d", details.next_proto);
+                throw std::invalid_argument(msg.c_str());
+            }
+        }
+
+        auto const* target_sockaddr = reinterpret_cast<sockaddr_in6 const*>(&details.destination);
+        auto const* client_sockaddr = reinterpret_cast<sockaddr_in6 const*>(&details.source);
+
+        if (direction % 2) {
+
+            if(direction > 1 and details.tun_details) {
+                details.tun_details->pack();
+                ip_header.ip6_src = details.tun_details->dst_ss_in6();
+                ip_header.ip6_dst = details.tun_details->src_ss_in6();
+            } else {
+                ip_header.ip6_src = target_sockaddr->sin6_addr;
+                ip_header.ip6_dst = client_sockaddr->sin6_addr;
+            }
+        } else {
+            if(direction > 1 and details.tun_details) {
+                ip_header.ip6_src = details.tun_details->src_ss_in6();
+                ip_header.ip6_dst = details.tun_details->dst_ss_in6();
+            }
+            else {
+                ip_header.ip6_src = client_sockaddr->sin6_addr;
+                ip_header.ip6_dst = target_sockaddr->sin6_addr;
+            }
+        }
+    }
+
+
+    void append_IPv4_header(buffer& out_buffer, connection_details& details, int direction, size_t payload_size) {
+        [[maybe_unused]] auto const& log = get_log();
+
+        struct iphdr ip_header{};
+        create_IPv4_header(ip_header, details, direction, payload_size);
 
         if(details.tun_proto == connection_details::GRE) {
-            encapulate_gre_v4(out_buffer, ip_header, details);
+
+            if(details.tun_details and details.tun_details->src_family == AF_INET6)
+                encapsulate_gre_v6(out_buffer, details, direction, payload_size);
+            else
+                encapulate_gre_v4(out_buffer, details, direction, payload_size);
+
         }
 
         out_buffer.append(&ip_header, sizeof(ip_header));
     };
 
-    void append_IPv6_header(buffer& out_buffer, connection_details& details, int in, size_t payload_size) {
+    void append_IPv6_header(buffer& out_buffer, connection_details& details, int direction, size_t payload_size) {
         [[maybe_unused]] auto const& log = get_log();
 
         struct ip6_hdr ip_header{};
 
-        auto* target_sockaddr = reinterpret_cast<sockaddr_in6 const*>(&details.destination);
-        auto* client_sockaddr = reinterpret_cast<sockaddr_in6 const*>(&details.source);
-
-        if (in) {
-            ip_header.ip6_src = target_sockaddr->sin6_addr;
-            ip_header.ip6_dst = client_sockaddr->sin6_addr;
-        } else {
-            ip_header.ip6_src = client_sockaddr->sin6_addr;
-            ip_header.ip6_dst = target_sockaddr->sin6_addr;
-        }
-        ip_header.ip6_flow = htonl((6 << 28) | (0 << 20) | 0);
-        ip_header.ip6_hops = 128;
-
-        if(details.next_proto == connection_details::TCP or details.next_proto == 0) {
-            ip_header.ip6_plen = htons(sizeof(tcphdr) + payload_size);
-            ip_header.ip6_nxt = connection_details::TCP;
-        }
-        else if(details.next_proto == connection_details::UDP) {
-            ip_header.ip6_plen = htons(sizeof(udphdr) + payload_size);
-            ip_header.ip6_nxt = connection_details::UDP;
-
-        }
+        create_IPv6_header(ip_header, details, direction, payload_size);
 
         if(details.tun_proto == connection_details::GRE) {
-            encapsulate_gre_v6(out_buffer, ip_header, details);
+
+            if(details.tun_details and details.tun_details->src_family == AF_INET6)
+                encapsulate_gre_v6(out_buffer, details, direction, payload_size);
+            else
+                encapulate_gre_v4(out_buffer, details, direction, payload_size);
         }
 
         out_buffer.append(&ip_header, sizeof(ip_header));

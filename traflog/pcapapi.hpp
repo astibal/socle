@@ -80,10 +80,12 @@ namespace socle::pcap {
         uint8_t ip_version{4};
         uint16_t next_proto{6};
         enum proto { TCP=6, UDP=17 };
+        uint8_t  ttl {0};
 
 
         enum tunnel { NONE=0, GRE=47 };
         uint16_t tun_proto{tunnel::NONE};
+        uint8_t  tun_ttl {0};
         SocketInfo* tun_details = nullptr;
 
         ssize_t max_data_size{1380};
@@ -182,8 +184,11 @@ namespace socle::pcap {
     void append_GRE_header(buffer& out_buffer, connection_details const& details);
 
     void append_IP_header(buffer& out_buffer, connection_details& details, int in, size_t payload_size);
-        void append_IPv4_header(buffer& out_buffer, connection_details& details, int in, size_t payload_size);
-        void append_IPv6_header(buffer& out_buffer, connection_details& details, int in, size_t payload_size);
+        void create_IPv4_header(iphdr& ip_header, connection_details& details, int direction, size_t payload_size);
+        void append_IPv4_header(buffer& out_buffer, connection_details& details, int direction, size_t payload_size);
+
+        void create_IPv6_header(ip6_hdr& ip_header, connection_details& details, int direction, size_t payload_size);
+        void append_IPv6_header(buffer& out_buffer, connection_details& details, int direction, size_t payload_size);
 
     void append_TCP_header (buffer &out_buffer, tcp_details &details, int in, const char *payload, size_t payload_size,
                             unsigned char tcpflags);
