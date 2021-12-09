@@ -302,9 +302,24 @@ TEST(PcapExperiments, Tun4) {
     }
 }
 
-void send_raw(buffer const& buf) {
-    int s = socket(AF_INET, SOCK_RAW, IPPROTO_IP);
+int raw_socket() {
+    int s = socket(AF_INET, SOCK_RAW, IPPROTO_RAW);
+
+    if(s < 0) return s;
+
+    int one = 1;
+    if (setsockopt (s, IPPROTO_IP, IP_HDRINCL, &one, sizeof (one)) < 0) {
+        printf ("Error setting IP_HDRINCL. Error number : %d . Error message : %s \n" , errno , strerror(errno));
+        close(s);
+
+        return -1;
+    }
+
+    return s;
 }
+
+
+
 
 TEST(PcapExperiments, Tun6) {
     SocketInfo s;
@@ -328,12 +343,20 @@ TEST(PcapExperiments, Tun6) {
     d.ip_version = 6;
 
     d.tun_proto = IPPROTO_GRE;
+    d.tun_ttl = 3;
 
     SocketInfo tun;
-    tun.str_src_host = "fe11::11";
-    tun.str_dst_host = "fe11::88";
-    tun.src_family = AF_INET6;
-    tun.dst_family = AF_INET6;
+//    tun.str_src_host = "fe11::11";
+//    tun.str_dst_host = "fe11::88";
+//    tun.src_family = AF_INET6;
+//    tun.dst_family = AF_INET6;
+
+    tun.str_src_host = "172.30.1.1";
+    tun.str_dst_host = "172.30.255.1";
+    tun.src_family = AF_INET;
+    tun.dst_family = AF_INET;
+
+
     d.tun_details = &tun;
 
     std::stringstream req;
@@ -358,6 +381,20 @@ TEST(PcapExperiments, Tun6) {
     b.append(response.data(), response.size());
 
 
+    [&] {
+        auto r = raw_socket();
+        if(r) {
+            sendto(r, a.data(), a.size(), 0, (sockaddr*) &d.tun_details->dst_ss.value(),
+                   sizeof(sockaddr_storage));
+            sendto(r, b.data(), b.size(), 0, (sockaddr*) &d.tun_details->dst_ss.value(),
+                   sizeof(sockaddr_storage));
+
+        } else {
+            std::cerr << "no raw socket" << std::endl;
+        }
+    }();
+
+
     auto devinfo = tun_alloc("sxtun0");
 
     if(devinfo) {
@@ -370,6 +407,7 @@ TEST(PcapExperiments, Tun6) {
 
             //::write(devinfo->socket, &sb, 2);
             while(::write(devinfo->socket, b.data(), b.size()) <= 0);
+
         }
 
         sleep(15);
