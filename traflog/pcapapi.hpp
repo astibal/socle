@@ -80,12 +80,12 @@ namespace socle::pcap {
         uint8_t ip_version{4};
         uint16_t next_proto{6};
         enum proto { TCP=6, UDP=17 };
-        uint8_t  ttl {0};
+        uint8_t  ttl {32};
 
 
         enum tunnel { NONE=0, GRE=47 };
         uint16_t tun_proto{tunnel::NONE};
-        uint8_t  tun_ttl {0};
+        uint8_t  tun_ttl {1};
         SocketInfo* tun_details = nullptr;
 
         ssize_t max_data_size{1380};
