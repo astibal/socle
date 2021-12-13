@@ -113,13 +113,12 @@ namespace socle {
 
     namespace tainted {
         template<typename T>
-        inline T var(T value, std::function<T (T)> filter) noexcept {
-            T c = value;
-            return c;
+        inline T var(T const& value, std::function<T (T const&)> filter) noexcept {
+            return filter(value);
         }
 
         template<typename T>
-        T any(T v) { return v; }
+        T any(T const& v) { return v; }
     }
 }
 
