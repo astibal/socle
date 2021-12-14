@@ -204,7 +204,7 @@ TEST(NgTest, BasicUDP_v6) {
 #include <linux/if.h>
 #include <linux/if_tun.h>
 #include <sys/ioctl.h>
-
+#include <vars.hpp>
 
 struct DevInfo {
     int socket {-1};
@@ -234,9 +234,25 @@ std::optional<DevInfo> tun_alloc(std::string const& dev)
     std::strncpy(ifr.ifr_name, dev.c_str(), IFNAMSIZ);
 
     if (auto err = ioctl(fd, TUNSETIFF, (void *) &ifr); err < 0) {
+        std::cerr << "cannot create: " << dev << " : " << string_error() << "\n";
         close(fd);
         return std::nullopt;
     }
+
+
+    {
+        auto ns = raw::var<int>(socket(AF_INET, SOCK_DGRAM, IPPROTO_IP), raw::deleter::close);
+        if(ns.value < 0) return std::nullopt;
+
+        memset(&ifr, 0, sizeof(ifr));
+        strncpy(ifr.ifr_name, dev.c_str(), IFNAMSIZ);
+        ifr.ifr_flags = IFF_UP | IFF_POINTOPOINT | IFF_RUNNING | IFF_NOARP;
+        if (auto err = ioctl(ns.value, SIOCSIFFLAGS, (void *) &ifr); err < 0) {
+            std::cerr << "cannot set up: " << dev << " : " << string_error() << "\n";
+            return std::nullopt;
+        }
+    }
+
 
     DevInfo r = { fd, ifr.ifr_name };
     return r;
