@@ -22,6 +22,25 @@
 
 namespace socle::traflog {
 
+    int raw_socket_gre(int family) {
+
+        int sock = socket(family, SOCK_RAW, IPPROTO_GRE);
+
+        if(sock < 0) return sock;
+
+        int none = 0;
+
+        if (setsockopt (sock,
+                        family == AF_INET6 ? IPPROTO_IPV6 : IPPROTO_IP,
+                        family == AF_INET6 ? IPV6_HDRINCL : IP_HDRINCL,
+                        &none, sizeof (none)) < 0) {
+            close(sock);
+            return -1;
+        }
+
+        return sock;
+    }
+
     PcapLog::PcapLog (baseProxy *parent, const char* d_dir, const char* f_prefix, const char* f_suffix, bool create_dirs) :
         parent(parent),
         FS(parent, d_dir, f_prefix, f_suffix, create_dirs) {
@@ -96,10 +115,14 @@ namespace socle::traflog {
 
                         buffer out;
                         pcapng::pcapng_epb f1;
+                        if(self->ip_packet_hook) f1.ip_packet_hook = self->ip_packet_hook;
+
                         if (comment_frame(f1)) { _deb("comment inserted on close"); };
 
                         f1.append_TCP(out, "", 0, 0, TCPFLAG_FIN | TCPFLAG_ACK, details);
                         pcapng::pcapng_epb f2;
+                        if(self->ip_packet_hook) f2.ip_packet_hook = self->ip_packet_hook;
+
                         f1.append_TCP(out, "", 0, 1, TCPFLAG_FIN | TCPFLAG_ACK, details);
                         writer->write(fs.filename_full, out);
                     }
@@ -245,12 +268,17 @@ namespace socle::traflog {
         buffer out;
 
         pcapng::pcapng_epb syn1;
+        if(ip_packet_hook) syn1.ip_packet_hook = ip_packet_hook;
+
         syn1.append_TCP(out, "", 0, 0, TCPFLAG_SYN, real_details);
 
         pcapng::pcapng_epb syn_ack;
+        if(ip_packet_hook) syn_ack.ip_packet_hook = ip_packet_hook;
+
         syn_ack.append_TCP(out, "", 0, 1, TCPFLAG_SYN|TCPFLAG_ACK, real_details);
 
         pcapng::pcapng_epb ack;
+        if(ip_packet_hook) ack.ip_packet_hook = ip_packet_hook;
         ack.append_TCP(out, "", 0, 0, TCPFLAG_ACK, real_details);
 
         _deb("pcaplog::write[%s]/tcp-hs : about to write %dB", FS.filename_full.c_str(), out.size());
@@ -270,6 +298,8 @@ namespace socle::traflog {
 
         buffer out;
         pcapng::pcapng_epb data;
+        if(ip_packet_hook) data.ip_packet_hook = ip_packet_hook;
+
         if(comment_frame(data)) { _dia("comment inserted into data"); };
 
 
@@ -294,6 +324,8 @@ namespace socle::traflog {
         buffer out;
 
         pcapng::pcapng_epb u1;
+        if(ip_packet_hook) u1.ip_packet_hook = ip_packet_hook;
+
         if(comment_frame(u1)) { _dia("comment inserted"); };
         if(u1.append_UDP(out, (const char*)b.data(), b.size(), side == side_t::RIGHT, real_details) > 0) {
 

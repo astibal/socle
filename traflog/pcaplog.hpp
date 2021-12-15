@@ -33,6 +33,8 @@ using namespace socle::pcap;
 
 namespace socle::traflog {
 
+    int raw_socket_gre(int family);
+
     class PcapLog : public baseTrafficLogger {
 
         PcapLog() = default; // just for singleton, which is set up later
@@ -41,6 +43,9 @@ namespace socle::traflog {
         ~PcapLog() override;
 
         bool prepare_file();
+
+        std::optional<std::function<void(buffer const&)>> ip_packet_hook;
+
         void write_pcap_header(bool is_recreated);
 
         void write_tcp_start(tcp_details& real_details);
