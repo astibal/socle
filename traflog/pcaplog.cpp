@@ -215,6 +215,100 @@ namespace socle::traflog {
         return false;
     }
 
+    void PcapLog::write_pcap_header(bool is_recreated) {
+
+        if (not pcap_header_written or is_recreated) {
+            buffer out;
+            pcapng::pcapng_shb mag;
+            mag.append(out);
+
+            // interface block
+            pcapng::pcapng_ifb hdr;
+            hdr.append(out);
+
+            _deb("pcaplog::write[%s]/magic+ifb : about to write %dB", FS.filename_full.c_str(), out.size());
+            _dum("pcaplog::write[%s]/magic+ifb : \r\n%s", FS.filename_full.c_str(),
+                 hex_dump(out, 4, 0, true).c_str());
+            auto wr = writer_->write(FS.filename_full, out);
+            _dia("pcaplog::write[%s]/magic+ifb : written %dB", FS.filename_full.c_str(), wr);
+
+            stat_bytes_written += wr;
+
+            pcap_header_written = true;
+        }
+    };
+
+    void PcapLog::write_tcp_start(tcp_details& real_details) {
+
+        auto const& log = log_write;
+
+        buffer out;
+
+        pcapng::pcapng_epb syn1;
+        syn1.append_TCP(out, "", 0, 0, TCPFLAG_SYN, real_details);
+
+        pcapng::pcapng_epb syn_ack;
+        syn_ack.append_TCP(out, "", 0, 1, TCPFLAG_SYN|TCPFLAG_ACK, real_details);
+
+        pcapng::pcapng_epb ack;
+        ack.append_TCP(out, "", 0, 0, TCPFLAG_ACK, real_details);
+
+        _deb("pcaplog::write[%s]/tcp-hs : about to write %dB", FS.filename_full.c_str(), out.size());
+        _dum("pcaplog::write[%s]/tcp-hs : \r\n%s", FS.filename_full.c_str(), hex_dump(out, 4, 0, true).c_str());
+
+        auto wr = writer_->write(FS.filename_full, out);
+        writer_->flush(FS.filename_full);
+
+        stat_bytes_written += wr;
+
+        _dia("pcaplog::write[%s]/tcp-hs : written %dB", FS.filename_full.c_str(), wr);
+    }
+
+
+    void PcapLog::write_tcp_data(side_t side, buffer const& b, tcp_details& real_details) {
+        auto const& log = log_write;
+
+        buffer out;
+        pcapng::pcapng_epb data;
+        if(comment_frame(data)) { _dia("comment inserted into data"); };
+
+
+        if(data.append_TCP(out, (const char*)b.data(), b.size(), side == side_t::RIGHT, TCPFLAG_ACK, real_details) > 0) {
+
+            _deb("pcaplog::write[%s]/tcp-data : about to write %dB", FS.filename_full.c_str(), out.size());
+            _dum("pcaplog::write[%s]/tcp-data : \r\n%s", FS.filename_full.c_str(),
+                 hex_dump(out, 4, 0, true).c_str());
+
+            auto wr = writer_->write(FS.filename_full, out);
+            _dia("pcaplog::write[%s]/tcp-data : written %dB", FS.filename_full.c_str(), wr);
+
+            stat_bytes_written += wr;
+        } else {
+            _err("pcaplog::write: error appending TCP data");
+        }
+    }
+
+    void PcapLog::write_udp_data(side_t side, buffer const& b, tcp_details& real_details) {
+        auto const& log = log_write;
+
+        buffer out;
+
+        pcapng::pcapng_epb u1;
+        if(comment_frame(u1)) { _dia("comment inserted"); };
+        if(u1.append_UDP(out, (const char*)b.data(), b.size(), side == side_t::RIGHT, real_details) > 0) {
+
+            _deb("pcaplog::write[%s]/udp : about to write %dB", FS.filename_full.c_str(), out.size());
+            _dum("pcaplog::write[%s]/tcp : \r\n%s", FS.filename_full.c_str(), hex_dump(out, 4, 0, true).c_str());
+
+            auto wr = writer_->write(FS.filename_full, out);
+            _dia("pcaplog::write[%s]/udp : written %dB", FS.filename_full.c_str(), wr);
+
+            stat_bytes_written += wr;
+        } else {
+            _err("pcaplog::write: error appending UDP data");
+        }
+    }
+
     void PcapLog::write (side_t side, const buffer &b) {
         PcapLog *self = this;
         if (single_only) self = &single_instance();
@@ -243,97 +337,26 @@ namespace socle::traflog {
             self->stat_bytes_written = 0LL;
         }
 
-        // PCAP HEADER
-        if(not self->pcap_header_written or is_recreated) {
-            buffer out;
-            pcapng::pcapng_shb mag;
-            mag.append(out);
-
-            // interface block
-            pcapng::pcapng_ifb hdr;
-            hdr.append(out);
-
-            _deb("pcaplog::write[%s]/magic+ifb : about to write %dB", fs.filename_full.c_str(), out.size());
-            _dum("pcaplog::write[%s]/magic+ifb : \r\n%s", fs.filename_full.c_str(), hex_dump(out, 4, 0, true).c_str());
-            auto wr = writer->write(fs.filename_full, out);
-            _dia("pcaplog::write[%s]/magic+ifb : written %dB", fs.filename_full.c_str(), wr);
-
-            self->stat_bytes_written += wr;
-
-            self->pcap_header_written = true;
-
-            // don't write tcp handshake if the stream was recreated in the meantime
-            if(is_recreated) tcp_start_written = true;
-        }
-
-        // TCP handshake
+        // write header if needed
+        self->write_pcap_header(is_recreated);
 
         if(details.next_proto == connection_details::TCP) {
 
-            auto const& log = log_write;
-
             if (not tcp_start_written) {
-                buffer out;
-
-                pcapng::pcapng_epb syn1;
-                syn1.append_TCP(out,"", 0, 0, TCPFLAG_SYN, details);
-
-                pcapng::pcapng_epb syn_ack;
-                syn_ack.append_TCP(out, "", 0, 1, TCPFLAG_SYN|TCPFLAG_ACK, details);
-
-                pcapng::pcapng_epb ack;
-                ack.append_TCP(out, "", 0, 0, TCPFLAG_ACK, details);
-
-                _deb("pcaplog::write[%s]/tcp-hs : about to write %dB", fs.filename_full.c_str(), out.size());
-                _dum("pcaplog::write[%s]/tcp-hs : \r\n%s", fs.filename_full.c_str(), hex_dump(out, 4, 0, true).c_str());
-
-                auto wr = writer->write(fs.filename_full, out);
-                writer->flush(fs.filename_full);
-
-                self->stat_bytes_written += wr;
-
-                _dia("pcaplog::write[%s]/tcp-hs : written %dB", fs.filename_full.c_str(), wr);
-
+                self->write_tcp_start(details);
                 tcp_start_written = true;
             }
 
-            buffer out;
-            pcapng::pcapng_epb data;
-            if(comment_frame(data)) { _dia("comment inserted into data"); };
+            self->write_tcp_data(side, b, details);
 
+            // Fins are written with PcapLog destruction
+        }
+        else if(details.next_proto == connection_details::UDP) {
 
-            if(data.append_TCP(out, (const char*)b.data(), b.size(), side == side_t::RIGHT, TCPFLAG_ACK, details) > 0) {
-
-                _deb("pcaplog::write[%s]/tcp-data : about to write %dB", fs.filename_full.c_str(), out.size());
-                _dum("pcaplog::write[%s]/tcp-data : \r\n%s", fs.filename_full.c_str(),
-                     hex_dump(out, 4, 0, true).c_str());
-
-                auto wr = writer->write(fs.filename_full, out);
-                _dia("pcaplog::write[%s]/tcp-data : written %dB", fs.filename_full.c_str(), wr);
-
-                self->stat_bytes_written += wr;
-            } else {
-                _err("pcaplog::write: error appending TCP data");
-            }
+            self->write_udp_data(side, b, details);
         }
         else {
-            auto const& log = log_write;
-
-            buffer out;
-
-            pcapng::pcapng_epb u1;
-            if(comment_frame(u1)) { _dia("comment inserted"); };
-            if(u1.append_UDP(out, (const char*)b.data(), b.size(), side == side_t::RIGHT, details) > 0) {
-
-                _deb("pcaplog::write[%s]/udp : about to write %dB", fs.filename_full.c_str(), out.size());
-                _dum("pcaplog::write[%s]/tcp : \r\n%s", fs.filename_full.c_str(), hex_dump(out, 4, 0, true).c_str());
-
-                auto wr = writer->write(fs.filename_full, out);
-                _dia("pcaplog::write[%s]/udp : written %dB", fs.filename_full.c_str(), wr);
-                self->stat_bytes_written += wr;
-            } else {
-                _err("pcaplog::write: error appending UDP data");
-            }
+            _err("pcaplog::write: unknown protocol to write: %d", details.next_proto);
         }
 
     }

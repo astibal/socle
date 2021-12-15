@@ -41,6 +41,13 @@ namespace socle::traflog {
         ~PcapLog() override;
 
         bool prepare_file();
+        void write_pcap_header(bool is_recreated);
+
+        void write_tcp_start(tcp_details& real_details);
+        void write_tcp_data(side_t side, buffer const& b, tcp_details& real_details);
+
+        void write_udp_data(side_t side, buffer const& b, tcp_details& real_details);
+
         void write(side_t side, const buffer &b) override;
         void write(side_t side, std::string const& s) override;
 
