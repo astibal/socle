@@ -44,7 +44,7 @@ namespace socle::traflog {
 
         bool prepare_file();
 
-        std::optional<std::function<void(buffer const&)>> ip_packet_hook;
+        std::optional<std::function<void(connection_details const&, buffer const&)>> ip_packet_hook;
 
         void write_pcap_header(bool is_recreated);
 
@@ -86,6 +86,65 @@ namespace socle::traflog {
         logan_lite log_write {"socle.pcaplog.write"};
 
     };
+
+
+
+    struct GreExporter {
+        bool operator()(connection_details const& det, buffer const& buf) {
+
+            if(sock < 0) sock = traflog::raw_socket_gre(target.dst_family);
+
+            if(not target.dst_ss) return false;
+            if(sock < 0) return false;
+
+            buffer s(buf.size() + sizeof(grehdr));
+            pcapng::append_GRE_header(s, det);
+
+            s.append(buf);
+
+            int r = sendto(sock, s.data(), s.size(), 0, (sockaddr*)&target.dst_ss.value(), sizeof(sockaddr_storage));
+            if(r <= 0) {
+                return false;
+            }
+
+            return true;
+        }
+
+        GreExporter(int family, std::string_view host) {
+            target.dst_family = family;
+            target.str_dst_host = host;
+            target.pack_dst_ss();
+        }
+        GreExporter(GreExporter const& other) : target(other.target), sock(-1) {};
+        GreExporter(GreExporter&& other) noexcept : target(std::move(other.target)), sock(other.sock) { other.sock = -1; };
+
+        GreExporter& operator=(GreExporter const& other) {
+            if(&other != this) {
+                target = other.target;
+                sock = -1;
+            }
+
+            return *this;
+        };
+        GreExporter& operator=(GreExporter&& other) noexcept {
+            if(&other != this) {
+                target = std::move(other.target);
+                sock = other.sock;
+
+                other.sock = -1;
+            }
+
+            return *this;
+        };
+
+
+        ~GreExporter() { if(sock > 0) ::close(sock); }
+
+    private:
+        SocketInfo target{};
+        int sock {-1};
+    };
+
 }
 
 #endif //PCAPLOG_HPP
