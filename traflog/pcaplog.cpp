@@ -22,7 +22,7 @@
 
 namespace socle::traflog {
 
-    int raw_socket_gre(int family) {
+    int raw_socket_gre(int family, int ttl) {
 
         int sock = socket(family, SOCK_RAW, IPPROTO_GRE);
 
@@ -37,6 +37,10 @@ namespace socle::traflog {
             close(sock);
             return -1;
         }
+
+        int n_ttl = ttl;
+        setsockopt(sock, family == AF_INET6 ? IPPROTO_IPV6 : IPPROTO_IP,
+                         family == AF_INET6 ? IPV6_HOPLIMIT : IP_TTL, &n_ttl, sizeof(n_ttl));
 
         return sock;
     }

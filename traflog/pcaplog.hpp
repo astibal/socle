@@ -33,7 +33,7 @@ using namespace socle::pcap;
 
 namespace socle::traflog {
 
-    int raw_socket_gre(int family);
+    int raw_socket_gre(int family, int ttl);
 
     class PcapLog : public baseTrafficLogger {
 
@@ -92,7 +92,7 @@ namespace socle::traflog {
     struct GreExporter {
         bool operator()(connection_details const& det, buffer const& buf) {
 
-            if(sock < 0) sock = traflog::raw_socket_gre(target.dst_family);
+            if(sock < 0) sock = traflog::raw_socket_gre(target.dst_family, tun_ttl);
 
             if(not target.dst_ss) return false;
             if(sock < 0) return false;
@@ -115,12 +115,13 @@ namespace socle::traflog {
             target.str_dst_host = host;
             target.pack_dst_ss();
         }
-        GreExporter(GreExporter const& other) : target(other.target), sock(-1) {};
-        GreExporter(GreExporter&& other) noexcept : target(std::move(other.target)), sock(other.sock) { other.sock = -1; };
+        GreExporter(GreExporter const& other) : target(other.target), sock(-1), tun_ttl(other.tun_ttl) {};
+        GreExporter(GreExporter&& other) noexcept : target(std::move(other.target)), sock(other.sock), tun_ttl(other.tun_ttl) { other.sock = -1; };
 
         GreExporter& operator=(GreExporter const& other) {
             if(&other != this) {
                 target = other.target;
+                tun_ttl = other.tun_ttl;
                 sock = -1;
             }
 
@@ -130,6 +131,7 @@ namespace socle::traflog {
             if(&other != this) {
                 target = std::move(other.target);
                 sock = other.sock;
+                tun_ttl = other.tun_ttl;
 
                 other.sock = -1;
             }
@@ -140,9 +142,11 @@ namespace socle::traflog {
 
         ~GreExporter() { if(sock > 0) ::close(sock); }
 
+        void ttl(uint8_t ttl) { tun_ttl = ttl; }
     private:
         SocketInfo target{};
         int sock {-1};
+        int tun_ttl {32};
     };
 
 }
