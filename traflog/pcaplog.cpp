@@ -372,6 +372,9 @@ namespace socle::traflog {
         // write header if needed
         self->write_pcap_header(is_recreated);
 
+        if(self != this)
+            self->ip_packet_hook = ip_packet_hook;
+
         if(details.next_proto == connection_details::TCP) {
 
             if (not tcp_start_written) {
