@@ -22,6 +22,8 @@
 
 namespace socle::traflog {
 
+    using namespace socle::pcap;
+
     int raw_socket_gre(int family, int ttl) {
 
         int sock = socket(family, SOCK_RAW, IPPROTO_GRE);
@@ -128,7 +130,9 @@ namespace socle::traflog {
                         if(self->ip_packet_hook) f2.ip_packet_hook = self->ip_packet_hook;
 
                         f1.append_TCP(out, "", 0, 1, TCPFLAG_FIN | TCPFLAG_ACK, details);
-                        writer->write(fs.filename_full, out);
+
+                        if(not ip_packet_hook_only)
+                            writer->write(fs.filename_full, out);
                     }
                 }
                 writer_->flush(FS.filename_full);
@@ -253,13 +257,17 @@ namespace socle::traflog {
             pcapng::pcapng_ifb hdr;
             hdr.append(out);
 
-            _deb("pcaplog::write[%s]/magic+ifb : about to write %dB", FS.filename_full.c_str(), out.size());
-            _dum("pcaplog::write[%s]/magic+ifb : \r\n%s", FS.filename_full.c_str(),
-                 hex_dump(out, 4, 0, true).c_str());
-            auto wr = writer_->write(FS.filename_full, out);
-            _dia("pcaplog::write[%s]/magic+ifb : written %dB", FS.filename_full.c_str(), wr);
 
-            stat_bytes_written += wr;
+            if(not ip_packet_hook_only) {
+                _deb("pcaplog::write[%s]/magic+ifb : about to write %dB", FS.filename_full.c_str(), out.size());
+                _dum("pcaplog::write[%s]/magic+ifb : \r\n%s", FS.filename_full.c_str(),
+                     hex_dump(out, 4, 0, true).c_str());
+
+                auto wr = writer_->write(FS.filename_full, out);
+                _dia("pcaplog::write[%s]/magic+ifb : written %dB", FS.filename_full.c_str(), wr);
+                stat_bytes_written += wr;
+            }
+
 
             pcap_header_written = true;
         }
@@ -285,15 +293,19 @@ namespace socle::traflog {
         if(ip_packet_hook) ack.ip_packet_hook = ip_packet_hook;
         ack.append_TCP(out, "", 0, 0, TCPFLAG_ACK, real_details);
 
-        _deb("pcaplog::write[%s]/tcp-hs : about to write %dB", FS.filename_full.c_str(), out.size());
-        _dum("pcaplog::write[%s]/tcp-hs : \r\n%s", FS.filename_full.c_str(), hex_dump(out, 4, 0, true).c_str());
 
-        auto wr = writer_->write(FS.filename_full, out);
-        writer_->flush(FS.filename_full);
+        if(not ip_packet_hook_only) {
+            _deb("pcaplog::write[%s]/tcp-hs : about to write %dB", FS.filename_full.c_str(), out.size());
+            _dum("pcaplog::write[%s]/tcp-hs : \r\n%s", FS.filename_full.c_str(), hex_dump(out, 4, 0, true).c_str());
 
-        stat_bytes_written += wr;
 
-        _dia("pcaplog::write[%s]/tcp-hs : written %dB", FS.filename_full.c_str(), wr);
+            auto wr = writer_->write(FS.filename_full, out);
+            writer_->flush(FS.filename_full);
+
+            stat_bytes_written += wr;
+
+            _dia("pcaplog::write[%s]/tcp-hs : written %dB", FS.filename_full.c_str(), wr);
+        }
     }
 
 
@@ -309,14 +321,16 @@ namespace socle::traflog {
 
         if(data.append_TCP(out, (const char*)b.data(), b.size(), side == side_t::RIGHT, TCPFLAG_ACK, real_details) > 0) {
 
-            _deb("pcaplog::write[%s]/tcp-data : about to write %dB", FS.filename_full.c_str(), out.size());
-            _dum("pcaplog::write[%s]/tcp-data : \r\n%s", FS.filename_full.c_str(),
-                 hex_dump(out, 4, 0, true).c_str());
+            if(not ip_packet_hook_only) {
+                _deb("pcaplog::write[%s]/tcp-data : about to write %dB", FS.filename_full.c_str(), out.size());
+                _dum("pcaplog::write[%s]/tcp-data : \r\n%s", FS.filename_full.c_str(),
+                     hex_dump(out, 4, 0, true).c_str());
 
-            auto wr = writer_->write(FS.filename_full, out);
-            _dia("pcaplog::write[%s]/tcp-data : written %dB", FS.filename_full.c_str(), wr);
+                auto wr = writer_->write(FS.filename_full, out);
+                _dia("pcaplog::write[%s]/tcp-data : written %dB", FS.filename_full.c_str(), wr);
 
-            stat_bytes_written += wr;
+                stat_bytes_written += wr;
+            }
         } else {
             _err("pcaplog::write: error appending TCP data");
         }
@@ -333,13 +347,15 @@ namespace socle::traflog {
         if(comment_frame(u1)) { _dia("comment inserted"); };
         if(u1.append_UDP(out, (const char*)b.data(), b.size(), side == side_t::RIGHT, real_details) > 0) {
 
-            _deb("pcaplog::write[%s]/udp : about to write %dB", FS.filename_full.c_str(), out.size());
-            _dum("pcaplog::write[%s]/tcp : \r\n%s", FS.filename_full.c_str(), hex_dump(out, 4, 0, true).c_str());
+            if(not ip_packet_hook_only) {
+                _deb("pcaplog::write[%s]/udp : about to write %dB", FS.filename_full.c_str(), out.size());
+                _dum("pcaplog::write[%s]/tcp : \r\n%s", FS.filename_full.c_str(), hex_dump(out, 4, 0, true).c_str());
 
-            auto wr = writer_->write(FS.filename_full, out);
-            _dia("pcaplog::write[%s]/udp : written %dB", FS.filename_full.c_str(), wr);
+                auto wr = writer_->write(FS.filename_full, out);
+                _dia("pcaplog::write[%s]/udp : written %dB", FS.filename_full.c_str(), wr);
 
-            stat_bytes_written += wr;
+                stat_bytes_written += wr;
+            }
         } else {
             _err("pcaplog::write: error appending UDP data");
         }
@@ -363,18 +379,21 @@ namespace socle::traflog {
             }
         }
 
-        if (not writer->opened()) return;
+        if(not ip_packet_hook_only) {
 
-        bool is_recreated = prepare_file();
+            if (not writer->opened()) return;
 
-        // reset bytes written
-        if(is_recreated) {
-            _err("pcaplog::write: current file recreated");
-            self->stat_bytes_written = 0LL;
+            bool is_recreated = prepare_file();
+
+            // reset bytes written
+            if(is_recreated) {
+                _err("pcaplog::write: current file recreated");
+                self->stat_bytes_written = 0LL;
+            }
+
+            // write header if needed
+            self->write_pcap_header(is_recreated);
         }
-
-        // write header if needed
-        self->write_pcap_header(is_recreated);
 
         if(self != this)
             self->ip_packet_hook = ip_packet_hook;

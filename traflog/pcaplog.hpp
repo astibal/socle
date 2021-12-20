@@ -29,7 +29,6 @@
 
 #include <memory>
 
-using namespace socle::pcap;
 
 namespace socle::traflog {
 
@@ -44,20 +43,22 @@ namespace socle::traflog {
 
         bool prepare_file();
 
-        std::optional<std::function<void(connection_details const&, buffer const&)>> ip_packet_hook;
+        // if ip_packet_hook is set and _only is set too, pcaplog will prepare IP packets, but won't write into files!
+        static inline bool ip_packet_hook_only = false;
+        std::optional<std::function<void(pcap::connection_details const&, buffer const&)>> ip_packet_hook;
 
         void write_pcap_header(bool is_recreated);
 
-        void write_tcp_start(tcp_details& real_details);
-        void write_tcp_data(side_t side, buffer const& b, tcp_details& real_details);
+        void write_tcp_start(pcap::tcp_details& real_details);
+        void write_tcp_data(side_t side, buffer const& b, pcap::tcp_details& real_details);
 
-        void write_udp_data(side_t side, buffer const& b, tcp_details& real_details);
+        void write_udp_data(side_t side, buffer const& b, pcap::tcp_details& real_details);
 
         void write(side_t side, const buffer &b) override;
         void write(side_t side, std::string const& s) override;
 
         baseProxy *parent = nullptr;
-        tcp_details details;
+        pcap::tcp_details details;
 
         static const bool use_pool_writer = true;
         baseFileWriter* writer_ = nullptr;
@@ -90,19 +91,19 @@ namespace socle::traflog {
 
 
     struct GreExporter {
-        bool operator()(connection_details const& det, buffer const& buf) {
+        bool operator()(pcap::connection_details const& det, buffer const& buf) {
 
             if(sock < 0) sock = traflog::raw_socket_gre(target.dst_family, tun_ttl);
 
             if(not target.dst_ss) return false;
             if(sock < 0) return false;
 
-            buffer s(buf.size() + sizeof(grehdr));
-            pcapng::append_GRE_header(s, det);
+            buffer send_data(buf.size() + sizeof(pcap::grehdr));
+            pcapng::append_GRE_header(send_data, det);
 
-            s.append(buf);
+            send_data.append(buf);
 
-            int r = sendto(sock, s.data(), s.size(), 0, (sockaddr*)&target.dst_ss.value(), sizeof(sockaddr_storage));
+            int r = sendto(sock, send_data.data(), send_data.size(), 0, (sockaddr*)&target.dst_ss.value(), sizeof(sockaddr_storage));
             if(r <= 0) {
                 return false;
             }
