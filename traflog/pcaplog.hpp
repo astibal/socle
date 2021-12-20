@@ -45,7 +45,7 @@ namespace socle::traflog {
 
         // if ip_packet_hook is set and _only is set too, pcaplog will prepare IP packets, but won't write into files!
         static inline bool ip_packet_hook_only = false;
-        std::optional<std::function<void(pcap::connection_details const&, buffer const&)>> ip_packet_hook;
+        std::shared_ptr<pcapng::IP_Hook> ip_packet_hook;
 
         void write_pcap_header(bool is_recreated);
 
@@ -90,8 +90,8 @@ namespace socle::traflog {
 
 
 
-    struct GreExporter {
-        bool operator()(pcap::connection_details const& det, buffer const& buf) {
+    struct GreExporter : public pcapng::IP_Hook {
+        bool execute(pcap::connection_details const& det, buffer const& buf) override {
 
             if(sock < 0) sock = traflog::raw_socket_gre(target.dst_family, tun_ttl);
 

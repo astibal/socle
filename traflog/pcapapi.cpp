@@ -847,8 +847,7 @@ namespace socle::pcapng {
 
             if(ip_packet_hook) {
                 auto ip_end = packet_data->size() - ip_start;
-                auto fn = ip_packet_hook.value();
-                fn(details, packet_data->view(ip_start, ip_end));
+                ip_packet_hook.value()->execute(details, packet_data->view(ip_start, ip_end));
             }
 
             append(out_buffer);
@@ -910,8 +909,7 @@ namespace socle::pcapng {
 
         if(ip_packet_hook) {
             auto ip_end = packet_data->size() - ip_start;
-            auto fn = ip_packet_hook.value();
-            fn(details, packet_data->view(ip_start, ip_end));
+            ip_packet_hook.value()->execute(details, packet_data->view(ip_start, ip_end));
         }
 
 

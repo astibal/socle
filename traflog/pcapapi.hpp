@@ -316,6 +316,11 @@ namespace socle::pcapng {
 
     struct pcapng_options;
 
+
+    struct IP_Hook {
+        virtual bool execute(connection_details const&, buffer const&) = 0;
+    };
+
     struct pcapng_epb {
         uint32_t  type = 0x00000006L;
         uint32_t total_length = 0;
@@ -327,8 +332,7 @@ namespace socle::pcapng {
         std::shared_ptr<buffer> packet_data;
         std::shared_ptr<pcapng_options> options;
 
-        using packet_callback = std::function<void(connection_details const&, buffer const&)>;
-        std::optional<packet_callback> ip_packet_hook;
+        std::optional<IP_Hook*> ip_packet_hook;
 
         static constexpr size_t fixed_sz =
                 sizeof(type) +
