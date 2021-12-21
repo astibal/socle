@@ -332,7 +332,7 @@ namespace socle::pcapng {
         std::shared_ptr<buffer> packet_data;
         std::shared_ptr<pcapng_options> options;
 
-        std::optional<IP_Hook*> ip_packet_hook;
+        std::weak_ptr<IP_Hook> ip_packet_hook;
 
         static constexpr size_t fixed_sz =
                 sizeof(type) +

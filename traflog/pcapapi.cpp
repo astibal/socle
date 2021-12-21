@@ -845,9 +845,10 @@ namespace socle::pcapng {
             append_TCP_header(*packet_data, details, in, cur_data, to_write, tcpflags);
             packet_data->append(cur_data, to_write);
 
-            if(ip_packet_hook) {
+            if(auto ptr = ip_packet_hook.lock(); ptr ) {
                 auto ip_end = packet_data->size() - ip_start;
-                ip_packet_hook.value()->execute(details, packet_data->view(ip_start, ip_end));
+                auto view = packet_data->view(ip_start, ip_end);
+                if(ptr) ptr->execute(details, view);
             }
 
             append(out_buffer);
@@ -907,9 +908,10 @@ namespace socle::pcapng {
         append_UDP_header(*packet_data, details, in, data, size);
         packet_data->append(data, size);
 
-        if(ip_packet_hook) {
+        if(auto ptr = ip_packet_hook.lock(); ptr) {
             auto ip_end = packet_data->size() - ip_start;
-            ip_packet_hook.value()->execute(details, packet_data->view(ip_start, ip_end));
+            auto view = packet_data->view(ip_start, ip_end);
+            ptr->execute(details, view);
         }
 
 
