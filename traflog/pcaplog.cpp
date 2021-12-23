@@ -69,6 +69,8 @@ namespace socle::traflog {
         s.str_dst_host = rs[0]->host();
         s.sport = safe_val(ls[0]->port(), 0);
         s.dport = safe_val(rs[0]->port(), 0);
+        s.src_family = ls.at(0)->com()->l3_proto();
+        s.dst_family = rs.at(0)->com()->l3_proto();
         s.pack_dst_ss();
         s.pack_src_ss();
 
@@ -92,11 +94,13 @@ namespace socle::traflog {
         }
 
         // this could become more complex in the (probably far) future
-        parent->com()->l3_proto() == AF_INET6 ? details.ip_version = 6
+        ls.at(0)->com()->l3_proto() == AF_INET6 ? details.ip_version = 6
                                               : details.ip_version = 4;
 
-        parent->com()->l4_proto() == SOCK_STREAM ? details.next_proto = connection_details::TCP
+        ls.at(0)->com()->l4_proto() == SOCK_STREAM ? details.next_proto = connection_details::TCP
                                                  : details.next_proto = connection_details::UDP;
+
+
 
         // some tcp specific values
         if(details.next_proto == connection_details::TCP) {
