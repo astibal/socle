@@ -87,6 +87,9 @@ int baseCom::namesocket(int sockfd, std::string& addr, unsigned short port, sa_f
         }
     }
     else if(family == AF_INET6) {
+        inet::to_sockaddr_in6(&sa)->sin6_port = htons(port);
+        inet_pton(family,addr.c_str(),&inet::to_sockaddr_in6(&sa)->sin6_addr);
+
         if(so_transparent_v6(sockfd) != 0) {
             _err("baseCom::namesocket[%d]: making transparent failed (IPv6)", sockfd);
         }
