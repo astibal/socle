@@ -198,24 +198,43 @@ int SocketInfo::create_socket_left (int l4_proto) {
 
     auto plug_socket = [&](int fd, sockaddr* bind_ss, sockaddr* connect_ss) {
 
-        // should be faster then std::string
+        static std::mutex like_a_barrier;
+
         constexpr const char* bind_connect_race_hack_iface = "lo";
         constexpr size_t bcrhi_sz = 2;
 
-        if(0 != ::setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, bind_connect_race_hack_iface, bcrhi_sz)) {
-            throw socket_info_error("cannot bind to device - bind-connect races may occur");
+        bool is_six = connect_ss->sa_family == AF_INET6;
+
+        if(not is_six) {
+            if (0 != ::setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, bind_connect_race_hack_iface, bcrhi_sz)) {
+                throw socket_info_error("cannot bind to device - bind-connect races may occur");
+            }
         }
 
-        if(::bind(fd, bind_ss, sizeof(struct sockaddr_storage))) {
-            throw socket_info_error(string_format("cannot bind port %d to %s:%d\n", fd, str_dst_host.c_str(), dport).c_str());
+        {
+            // don't allow internal race condition between binding to server address and connecting to originator.
+            // Note this is reverse direction "connection", so it's probably quite common binding to public DNS IP/port.
+
+            // Also note this won't prevent system-wide binding race condition, ie in case of multi-tenant configurations.
+
+            auto l_ = std::scoped_lock(like_a_barrier);
+            if (::bind(fd, bind_ss, sizeof(struct sockaddr_storage))) {
+                throw socket_info_error(
+                        string_format("cannot bind socket %d to %s:%d - %s", fd, str_dst_host.c_str(), dport,
+                                      string_error().c_str()).c_str());
+            }
+
+            if (::connect(fd, connect_ss, sizeof(struct sockaddr_storage))) {
+                throw socket_info_error(
+                        string_format("cannot connect socket %d to %s:%d - %s", fd, str_src_host.c_str(), sport,
+                                      string_error().c_str()).c_str());
+            }
         }
 
-        if (::connect(fd, connect_ss, sizeof(struct sockaddr_storage))) {
-            throw socket_info_error(string_format("cannot connect port %d to %s:%d\n", fd, str_src_host.c_str(), sport).c_str());
-        }
-
-        if(0 != ::setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, "", 0)) {
-            throw socket_info_error("cannot bind to 'any' device - socket inoperable");
+        if(not is_six) {
+            if (0 != ::setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, "", 0)) {
+                throw socket_info_error("cannot bind to 'any' device - socket inoperable");
+            }
         }
     };
 
