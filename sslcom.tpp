@@ -3414,7 +3414,7 @@ int baseSSLCom<L4Proto>::upgrade_client_socket(int sock) {
 
         if(not opt_alpn_block and not sslcom_peer_hello_alpn_.empty()) {
             _dia("SSLCom::upgrade_client_socket[%d]: set alpn extension to: %s",sock,
-                 hex_print(reinterpret_cast<unsigned char*>(sslcom_peer_hello_alpn_.data()), sslcom_peer_hello_alpn_.size()).c_str());
+                 hex_print(sslcom_peer_hello_alpn_.data(), sslcom_peer_hello_alpn_.size()).c_str());
 
             SSL_set_alpn_protos(sslcom_ssl, reinterpret_cast<unsigned char*>(sslcom_peer_hello_alpn_.data()), sslcom_peer_hello_alpn_.size());
         }

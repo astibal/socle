@@ -128,15 +128,15 @@ template<typename T>
 inline std::string hex_print(const T* t_data, std::size_t len) {
 
     // we want to hexdump whatever is in there
-    auto const* data = static_cast<const unsigned char*>(t_data);
+    auto const* data = reinterpret_cast<const unsigned char*>(t_data);
 
-    std::stringstream ss;
+    std::stringstream out;
 
     for(unsigned int i=0; i < len; i++) {
-        ss << string_format("%02X", data[i]);
+        out << string_format("%02X", data[i]);
     }
 
-    return ss.str();
+    return out.str();
 }
 
 #endif // DISPLAY_HPP
