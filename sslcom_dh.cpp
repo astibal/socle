@@ -34,7 +34,7 @@ DH *get_dh512()
                 };
         DH *dh;
 
-        if ((dh=DH_new()) == NULL) return(NULL);
+        if ((dh=DH_new()) == nullptr) return nullptr;
 
 #ifdef USE_OPENSSL11
 
@@ -44,10 +44,10 @@ DH *get_dh512()
 
         return dh;
 #else
-        dh->p=BN_bin2bn(dh512_p,sizeof(dh512_p),NULL);
-        dh->g=BN_bin2bn(dh512_g,sizeof(dh512_g),NULL);
-        if ((dh->p == NULL) || (dh->g == NULL))
-                { DH_free(dh); return(NULL); }
+        dh->p=BN_bin2bn(dh512_p, sizeof(dh512_p), nullptr);
+        dh->g=BN_bin2bn(dh512_g, sizeof(dh512_g), nullptr);
+        if ((dh->p == nullptr) || (dh->g == nullptr))
+                { DH_free(dh); return nullptr; }
         return(dh);
 #endif
         }
@@ -75,7 +75,7 @@ DH *get_dh768()
                 };
         DH *dh;
 
-        if ((dh=DH_new()) == NULL) return(NULL);
+        if ((dh=DH_new()) == nullptr) return nullptr;
 
 #ifdef USE_OPENSSL11
 
@@ -85,10 +85,10 @@ DH *get_dh768()
 
         return dh;
 #else
-        dh->p=BN_bin2bn(dh768_p,sizeof(dh768_p),NULL);
-        dh->g=BN_bin2bn(dh768_g,sizeof(dh768_g),NULL);
-        if ((dh->p == NULL) || (dh->g == NULL))
-                { DH_free(dh); return(NULL); }
+        dh->p=BN_bin2bn(dh768_p, sizeof(dh768_p), nullptr);
+        dh->g=BN_bin2bn(dh768_g, sizeof(dh768_g), nullptr);
+        if ((dh->p == NULL) || (dh->g == nullptr))
+                { DH_free(dh); return nullptr; }
         return(dh);
 #endif
         }
@@ -120,7 +120,7 @@ DH *get_dh1024()
                 };
         DH *dh;
 
-        if ((dh=DH_new()) == NULL) return(NULL);
+        if ((dh=DH_new()) == nullptr) return nullptr;
 
 #ifdef USE_OPENSSL11
 
@@ -130,10 +130,10 @@ DH *get_dh1024()
 
         return dh;
 #else
-        dh->p=BN_bin2bn(dh1024_p,sizeof(dh1024_p),NULL);
-        dh->g=BN_bin2bn(dh1024_g,sizeof(dh1024_g),NULL);
-        if ((dh->p == NULL) || (dh->g == NULL))
-                { DH_free(dh); return(NULL); }
+        dh->p=BN_bin2bn(dh1024_p,sizeof(dh1024_p),nullptr);
+        dh->g=BN_bin2bn(dh1024_g,sizeof(dh1024_g),nullptr);
+        if ((dh->p == nullptr) || (dh->g == nullptr))
+                { DH_free(dh); return nullptr; }
         return(dh);
 #endif
         }
@@ -170,7 +170,7 @@ DH *get_dh1536()
                 };
         DH *dh;
 
-        if ((dh=DH_new()) == NULL) return(NULL);
+        if ((dh=DH_new()) == nullptr) return nullptr;
 
 #ifdef USE_OPENSSL11
 
@@ -180,10 +180,10 @@ DH *get_dh1536()
 
         return dh;
 #else
-        dh->p=BN_bin2bn(dh1536_p,sizeof(dh1536_p),NULL);
-        dh->g=BN_bin2bn(dh1536_g,sizeof(dh1536_g),NULL);
-        if ((dh->p == NULL) || (dh->g == NULL))
-                { DH_free(dh); return(NULL); }
+        dh->p=BN_bin2bn(dh1536_p, sizeof(dh1536_p), nullptr);
+        dh->g=BN_bin2bn(dh1536_g, sizeof(dh1536_g), nullptr);
+        if ((dh->p == nullptr) || (dh->g == nullptr))
+                { DH_free(dh); return nullptr; }
         return(dh);
 #endif
         }
@@ -229,7 +229,7 @@ DH *get_dh2048()
                 };
         DH *dh;
 
-        if ((dh=DH_new()) == NULL) return(NULL);
+        if ((dh=DH_new()) == nullptr) return nullptr;
 
 #ifdef USE_OPENSSL11
 
@@ -239,10 +239,10 @@ DH *get_dh2048()
 
         return dh;
 #else
-        dh->p=BN_bin2bn(dh2048_p,sizeof(dh2048_p),NULL);
-        dh->g=BN_bin2bn(dh2048_g,sizeof(dh2048_g),NULL);
-        if ((dh->p == NULL) || (dh->g == NULL))
-                { DH_free(dh); return(NULL); }
+        dh->p=BN_bin2bn(dh2048_p, sizeof(dh2048_p), nullptr);
+        dh->g=BN_bin2bn(dh2048_g, sizeof(dh2048_g), nullptr);
+        if ((dh->p == nullptr) || (dh->g == nullptr))
+                { DH_free(dh); return nullptr; }
         return(dh);
 
 #endif
@@ -300,7 +300,7 @@ DH *get_dh3072()
                 };
         DH *dh;
 
-        if ((dh=DH_new()) == NULL) return(NULL);
+        if ((dh=DH_new()) == nullptr) return nullptr;
 
 #ifdef USE_OPENSSL11
 
@@ -311,10 +311,10 @@ DH *get_dh3072()
     return dh;
 #else
 
-    dh->p=BN_bin2bn(dh3072_p,sizeof(dh3072_p),NULL);
-        dh->g=BN_bin2bn(dh3072_g,sizeof(dh3072_g),NULL);
-        if ((dh->p == NULL) || (dh->g == NULL))
-                { DH_free(dh); return(NULL); }
+    dh->p=BN_bin2bn(dh3072_p, sizeof(dh3072_p), nullptr);
+        dh->g=BN_bin2bn(dh3072_g, sizeof(dh3072_g), nullptr);
+        if ((dh->p == nullptr) || (dh->g == nullptr))
+                { DH_free(dh); return nullptr; }
         return(dh);
 
 #endif

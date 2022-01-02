@@ -194,7 +194,7 @@ bool baseHostCX::read_waiting_for_peercom () {
         }
     }
     else if(read_waiting_for_peercom_) {
-        // peer() == NULL !
+        // peer() == nullptr !
         _dum("baseHostCX::read_waiting_for_peercom: no peer set => no peer to wait for => manual mode");
     }
 
@@ -211,7 +211,7 @@ bool baseHostCX::write_waiting_for_peercom () {
             }
         }
         else  {
-            // peer() == NULL !
+            // peer() == nullptr !
             _err("baseHostCX::write_waiting_for_peercom: no peer set => no peer to wait for => manual mode");
             error(true);
         }

@@ -275,7 +275,7 @@ bool baseCom::resolve_redirected_dst_socket(int sock) {
 int baseCom::poll() {
     
     _ext("baseCom::poll: called");
-    //int r = ::select( poll_sockmax + 1, &read_socketSet, &write_socketSet, NULL, &n_tv);
+
     int r = poller.wait(poll_msec);
     _ext("baseCom::poll: poller returned %d",r);
     if (r < 0) {

@@ -2386,7 +2386,7 @@ bool baseSSLCom<L4Proto>::store_session_if_needed() {
             if(sess) {
                 unsigned int sid_len = 0;
                 auto sid = SSL_SESSION_get_id(sess, &sid_len);
-                pref += hex_print((unsigned char*)sid, sid_len) + "-";
+                pref += hex_print(sid, sid_len) + "-";
             }
 
 
@@ -3402,7 +3402,7 @@ int baseSSLCom<L4Proto>::upgrade_client_socket(int sock) {
 
         init_client();
 
-        if(sslcom_ssl == NULL) {
+        if(sslcom_ssl == nullptr) {
             _err("SSLCom::upgrade_client_socket[%d]: failed to create SSL structure!",sock);
         }
         //  SSL_set_fd (sslcom_ssl, sock);
@@ -3420,7 +3420,7 @@ int baseSSLCom<L4Proto>::upgrade_client_socket(int sock) {
         }
 
         sslcom_sbio = BIO_new_socket(sock,BIO_NOCLOSE);
-        if (sslcom_sbio == NULL) {
+        if (sslcom_sbio == nullptr) {
             _err("SSLCom::upgrade_client_socket[%d]: BIO allocation failed! ",sock);
         }
 

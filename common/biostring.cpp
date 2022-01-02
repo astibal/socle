@@ -59,7 +59,7 @@ namespace {
         BIO_reset(bio);
         return 1;
 #else
-        bio->ptr = NULL;
+        bio->ptr = nullptr;
         bio->init = 0;
         return 1;
 #endif //USE_OPENSSL11
@@ -67,7 +67,7 @@ namespace {
 
     int bio_string_free(BIO* bio) {
         // The string is owned by the caller, so there's nothing to do here.
-        return bio != NULL;
+        return bio != nullptr;
     }
 
 #ifdef USE_OPENSSL11
@@ -95,13 +95,13 @@ namespace {
         BIO_TYPE_SOURCE_SINK,
         "bio_string",
         bio_string_write,
-        NULL, /* read */
+        nullptr, /* read */
         bio_string_puts,
-        NULL, /* gets */
+        nullptr, /* gets */
         bio_string_ctrl,
         bio_string_new,
         bio_string_free,
-        NULL, /* callback_ctrl */
+        nullptr, /* callback_ctrl */
     };
 
 #endif //USE_OPENSSL11
