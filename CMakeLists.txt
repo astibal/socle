@@ -58,6 +58,7 @@ add_library(socle_lib
         traflog/pcapapi.cpp
         traflog/basetraflog.hpp
         vars.hpp
+        varmem.hpp
         traflog/pcaplog.hpp
         traflog/pcaplog.cpp
         traflog/smcaplog.hpp
