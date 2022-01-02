@@ -20,7 +20,6 @@
 #define STRINGFORMAT_HPP
 
 #include <string>
-#include <cstring>
 
 #include <mempool/mempool.hpp>
 
@@ -37,36 +36,36 @@ std::string string_format(const char* format, Args ... args)
     int cap = 512;
     int mul = 1;
     int max = 20;
-    void* b = nullptr;
+    void* buffer = nullptr;
 
     // data written to buffer
-    int w = 0;
+    int written_n = 0;
     int cursize = cap*mul;
 
     do {
 
         cursize = cap*mul;
 
-        b = mempool_realloc(b, cursize);
+        buffer = mempool_realloc(buffer, cursize);
 
-        if(not b) {
+        if(not buffer) {
             // be polite
             return "";
         }
 
-        memset(b, 0, cursize);
+        memset(buffer, 0, cursize);
 
         //  man snprintf:
         //  The functions snprintf() and vsnprintf() write at most size bytes (including the terminating null byte ('\0')) to str.
-        w = snprintf((char*)b, cursize, format, args...);
+        written_n = snprintf((char*)buffer, cursize, format, args...);
 
         mul++;
-    } while(w >= (int)cursize && mul <= max);
+    } while(written_n >= cursize && mul <= max);
 
 
     // w counts in also \0 terminator
-    std::string ret((const char*)b, w);
-    mempool_free(b);
+    std::string ret((const char*)buffer, written_n);
+    mempool_free(buffer);
 
     return ret;
 }

@@ -245,7 +245,7 @@ public:
     bool delete_last();
     bool lru_reoder();
     void expiration_check(bool (*fn_expired_check_ptr)(std::shared_ptr<T>)) { fn_expired_check = fn_expired_check_ptr; };
-    std::recursive_mutex& getlock() { return lock_; }
+    std::recursive_mutex& getlock() const { return lock_; }
 
 private:
     bool auto_delete_ = true;

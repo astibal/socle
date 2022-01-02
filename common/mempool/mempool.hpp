@@ -16,8 +16,8 @@
     License along with this library.
 */
 
-#ifndef __MEMPOOL_HPP__
-#define __MEMPOOL_HPP__
+#ifndef MEMPOOL_HPP
+#define MEMPOOL_HPP
 
 #include <cstddef>
 #include <vector>
@@ -335,4 +335,4 @@ private:
     mp_stats() = default;
 };
 
-#endif //__MEMPOOL_HPP__
+#endif //MEMPOOL_HPP
