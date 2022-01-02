@@ -39,9 +39,10 @@ std::vector<std::string> string_split(std::string const& str, char delimiter);
 [[maybe_unused]] std::string string_trim(std::string const& orig);
 std::string string_tolower(const std::string& orig);
 std::string string_csv(const std::vector<std::string>& str_list_ref, char delim = ',');
+std::string string_shorten(std::string const& orig, size_t max_len);
 
 std::string number_suffixed(unsigned long n);
-std::string hex_print(const unsigned char* data, unsigned int len);
+template<typename T> std::string hex_print(const T* data, std::size_t len);
 std::string hex_dump(const unsigned char *data, size_t size, unsigned int trim=0, unsigned char prefix=0, bool add_cr=false);
 std::string hex_dump(buffer const&, unsigned int trim=0, unsigned char prefix=0, bool add_cr=false);
 std::string hex_dump(buffer const*, unsigned int trim=0, unsigned char prefix=0, bool add_cr=false);
@@ -122,5 +123,20 @@ std::string string_printf(const std::string& fmt, const Args& ... args)
 std::optional<unsigned long long> safe_ull_value(const std::string &str_val);
 std::optional<long long> safe_ll_value(const std::string &str_val);
 
+
+template<typename T>
+inline std::string hex_print(const T* t_data, std::size_t len) {
+
+    // we want to hexdump whatever is in there
+    auto const* data = static_cast<const unsigned char*>(t_data);
+
+    std::stringstream ss;
+
+    for(unsigned int i=0; i < len; i++) {
+        ss << string_format("%02X", data[i]);
+    }
+
+    return ss.str();
+}
 
 #endif // DISPLAY_HPP

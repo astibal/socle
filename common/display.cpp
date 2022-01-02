@@ -64,15 +64,6 @@ std::string string_format_old(const char* fmt, ...) {
     return str;
 }
 
-std::string hex_print(const unsigned char* data, unsigned int len) {
-    std::stringstream ss;
-
-    for(unsigned int i=0; i < len; i++) {
-        ss << string_format("%02X", data[i]);
-    }
-
-    return ss.str();
-}
 
 std::string hex_dump(buffer const* b, unsigned int ltrim, unsigned char prefix, bool add_cr) {
 
@@ -508,6 +499,15 @@ std::string string_csv(const std::vector<std::string>& str_list_ref, char delim)
     return build.str();
 }
 
+
+std::string string_shorten(std::string const& orig, size_t max_len) {
+    if(orig.length() > max_len) {
+        auto shortened = orig.substr(0, 3);
+        auto shortened2 = orig.substr(orig.length() - 3, orig.length());
+        return shortened + "..." + shortened2;
+    }
+    return orig;
+};
 
 std::optional<unsigned long long> safe_ull_value(const std::string &str_val) {
 
