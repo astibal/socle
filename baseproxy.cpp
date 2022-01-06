@@ -1111,8 +1111,9 @@ int baseProxy::run_poll() {
 
         //_inf("adding virtual sockets");
         {
-            std::scoped_lock<std::recursive_mutex> m(UDPCom::lock);
-            udp_in_set = UDPCom::in_virt_set;
+            auto udpc = UDPCom::datagram_com_static();
+            auto lc_ = std::scoped_lock(udpc->lock);
+            udp_in_set = udpc->in_virt_set;
         }
 
         sets.push_back(&udp_in_set);

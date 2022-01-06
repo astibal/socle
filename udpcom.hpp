@@ -153,20 +153,46 @@ struct Datagram {
 
 class DatagramCom {
 public:
-    static inline std::recursive_mutex lock;
-    static inline std::map<uint64_t,std::shared_ptr<Datagram>> datagrams_received;
+    std::recursive_mutex lock;
+    std::map<uint64_t,std::shared_ptr<Datagram>> datagrams_received;
   
     // set with all virtual sockets which have data to read
-    static inline epoll::set_type in_virt_set;
+    epoll::set_type in_virt_set;
 };
 
-class UDPCom : public virtual baseCom, public DatagramCom {
+class UDPCom : public virtual baseCom {
+
+    // create on demand
+    static inline std::shared_ptr<DatagramCom> datagram_com_static_;
+    mutable std::shared_ptr<DatagramCom> datagram_com_;
+
 public:
+    // if someone needs external access, create reference!
+    static inline std::shared_ptr<DatagramCom> datagram_com_static() {
+
+        if(not datagram_com_static_) {
+            static std::mutex only_one;
+            auto lc_ = std::scoped_lock(only_one);
+
+            // guard threads who entered this branch
+            if(not datagram_com_static_)
+                datagram_com_static_ = std::make_shared<DatagramCom>();
+        }
+        return datagram_com_static_;
+    }
+
+    inline auto& datagram_com() const {
+        if( not datagram_com_) datagram_com_ = datagram_com_static();
+        return datagram_com_;
+    }
+
     using buffer_guard = locked_guard<lockbuffer>;
 
     UDPCom(): baseCom() {
         l4_proto(SOCK_DGRAM);
         bind_sock_family = default_sock_family;
+
+        datagram_com_ = datagram_com_static();
 
         log.sub_area("com.udp");
     };

@@ -36,10 +36,10 @@ int UDPCom::translate_socket(int vsock) const {
     } else {
         
         
-        std::lock_guard<std::recursive_mutex> l(DatagramCom::lock);
+        auto lc = std::scoped_lock(datagram_com()->lock);
         
-        auto it_dgram = datagrams_received.find((unsigned int)vsock);
-        if(it_dgram != datagrams_received.end())  {
+        auto it_dgram = datagram_com()->datagrams_received.find((unsigned int)vsock);
+        if(it_dgram != datagram_com()->datagrams_received.end())  {
             auto d = it_dgram->second;
             
             _dia("UDPCom::translate_socket[%d]: found in table",vsock);
@@ -281,10 +281,10 @@ bool UDPCom::is_connected(int s) {
 
 bool UDPCom::resolve_nonlocal_socket(int sock) {
 
-    std::lock_guard<std::recursive_mutex> l(DatagramCom::lock);
+    std::lock_guard<std::recursive_mutex> l(datagram_com()->lock);
     
-    auto it_record = DatagramCom::datagrams_received.find((unsigned int)sock);
-    if(it_record != DatagramCom::datagrams_received.end()) {  
+    auto it_record = datagram_com()->datagrams_received.find((unsigned int)sock);
+    if(it_record != datagram_com()->datagrams_received.end()) {
         auto record = (*it_record).second;
         char b[64]; memset(b,0,64);
         
@@ -332,10 +332,10 @@ bool UDPCom::in_readset(int s) {
 
     if(s < 0) {
 
-        std::lock_guard<std::recursive_mutex> l(DatagramCom::lock);
+        std::lock_guard<std::recursive_mutex> l(datagram_com()->lock);
 
-        auto it_record = DatagramCom::datagrams_received.find((unsigned int) s);
-        if (it_record != DatagramCom::datagrams_received.end()) {
+        auto it_record = datagram_com()->datagrams_received.find((unsigned int) s);
+        if (it_record != datagram_com()->datagrams_received.end()) {
             auto record = (*it_record).second;
 
             if (record->socket_left.has_value()) {
@@ -394,10 +394,10 @@ bool UDPCom::in_readset(int s) {
 
 bool UDPCom::in_writeset(int s) {
     
-    std::lock_guard<std::recursive_mutex> l(DatagramCom::lock);
+    std::lock_guard<std::recursive_mutex> l(datagram_com()->lock);
 
-    auto it_record = DatagramCom::datagrams_received.find((unsigned int)s);
-    if(it_record != DatagramCom::datagrams_received.end()) {  
+    auto it_record = datagram_com()->datagrams_received.find((unsigned int)s);
+    if(it_record != datagram_com()->datagrams_received.end()) {
         _ext("UDPCom::in_writeset: found data for %d (thus virtual socket is writable)",s);
         return true;
     } else {
@@ -409,10 +409,10 @@ bool UDPCom::in_writeset(int s) {
 
 bool UDPCom::in_exset(int s) {
     
-    std::lock_guard<std::recursive_mutex> l(DatagramCom::lock);
+    std::lock_guard<std::recursive_mutex> l(datagram_com()->lock);
     
-    auto it_record = DatagramCom::datagrams_received.find((unsigned int)s);
-    if(it_record != DatagramCom::datagrams_received.end()) {  
+    auto it_record = datagram_com()->datagrams_received.find((unsigned int)s);
+    if(it_record != datagram_com()->datagrams_received.end()) {
         return false;
     } 
 
@@ -444,7 +444,7 @@ ssize_t UDPCom::read(int _fd, void* _buf, size_t _n, int _flags) {
         auto  r = read_from_pool(embryonics().id, _buf, _n, _flags);
 
         if(! in_readset(embryonics().id)) {
-            DatagramCom::in_virt_set.erase(embryonics().id);
+            datagram_com()->in_virt_set.erase(embryonics().id);
             embryonics().pool_depleted = true;
         }
 
@@ -460,10 +460,10 @@ ssize_t UDPCom::read(int _fd, void* _buf, size_t _n, int _flags) {
 
 int UDPCom::read_from_pool(int _fd, void* _buf, size_t _n, int _flags) {
 
-    std::lock_guard<std::recursive_mutex> l(DatagramCom::lock);
+    std::lock_guard<std::recursive_mutex> l(datagram_com()->lock);
     
-    auto it_record = DatagramCom::datagrams_received.find((unsigned int)_fd);
-    if(it_record != DatagramCom::datagrams_received.end()) {  
+    auto it_record = datagram_com()->datagrams_received.find((unsigned int)_fd);
+    if(it_record != datagram_com()->datagrams_received.end()) {
         auto record = (*it_record).second;
 
         if(record->socket_left.has_value() && record->queue_bytes() == 0) {
@@ -503,8 +503,8 @@ int UDPCom::read_from_pool(int _fd, void* _buf, size_t _n, int _flags) {
 
                         int rem_count = 0;
                         {
-                            auto ul_ = std::scoped_lock(UDPCom::lock);
-                            rem_count = UDPCom::in_virt_set.erase(_fd);
+                            auto ul_ = std::scoped_lock(datagram_com()->lock);
+                            rem_count = datagram_com()->in_virt_set.erase(_fd);
                         }
 
                         if(rem_count > 0) {
@@ -537,8 +537,8 @@ int UDPCom::read_from_pool(int _fd, void* _buf, size_t _n, int _flags) {
             if(bytes_left > 0) {
 
                 //_cons(string_format("adding %d to inset", _fd).c_str());
-                auto ul_ = std::scoped_lock(UDPCom::lock);
-                UDPCom::in_virt_set.insert(_fd);
+                auto ul_ = std::scoped_lock(datagram_com()->lock);
+                datagram_com()->in_virt_set.insert(_fd);
             }
 
 
@@ -581,10 +581,10 @@ ssize_t UDPCom::write(int _fd, const void* _buf, size_t _n, int _flags)
 
 ssize_t UDPCom::write_to_pool(int _fd, const void* _buf, size_t _n, int _flags) {
     
-    std::scoped_lock<std::recursive_mutex> l_(DatagramCom::lock);
+    std::scoped_lock<std::recursive_mutex> l_(datagram_com()->lock);
     
-    auto it_record = DatagramCom::datagrams_received.find((unsigned int)_fd);
-    if(it_record != DatagramCom::datagrams_received.end()) {  
+    auto it_record = datagram_com()->datagrams_received.find((unsigned int)_fd);
+    if(it_record != datagram_com()->datagrams_received.end()) {
         auto record = (*it_record).second;
 
 
@@ -750,10 +750,10 @@ ssize_t UDPCom::write_to_pool(int _fd, const void* _buf, size_t _n, int _flags) 
 
 bool UDPCom::resolve_socket(bool source, int s, std::string* target_host, std::string* target_port, sockaddr_storage* target_storage) {
     
-    std::lock_guard<std::recursive_mutex> l(DatagramCom::lock);
+    std::lock_guard<std::recursive_mutex> l(datagram_com()->lock);
     
-    auto it_record = DatagramCom::datagrams_received.find((unsigned int)s);
-    if(it_record != DatagramCom::datagrams_received.end()) {  
+    auto it_record = datagram_com()->datagrams_received.find((unsigned int)s);
+    if(it_record != datagram_com()->datagrams_received.end()) {
         auto record = it_record->second;
         
         char b[64]; memset(b,0,64);
@@ -909,11 +909,11 @@ void UDPCom::shutdown(int _fd) {
     auto kill_datagram_entry = [&](int fd) -> int {
         int count = 0;
 
-        std::lock_guard<std::recursive_mutex> l(DatagramCom::lock);
+        std::lock_guard<std::recursive_mutex> l(datagram_com()->lock);
 
-        auto it_record = DatagramCom::datagrams_received.find((unsigned int)fd);
-        if(it_record != DatagramCom::datagrams_received.end()) {
-            auto it = DatagramCom::datagrams_received[(unsigned int)fd];
+        auto it_record = datagram_com()->datagrams_received.find((unsigned int)fd);
+        if(it_record != datagram_com()->datagrams_received.end()) {
+            auto it = datagram_com()->datagrams_received[(unsigned int)fd];
 
             if(! it->reuse) {
                 if(it->socket_left.has_value() && it->socket_left.value() > 0) {
@@ -932,7 +932,7 @@ void UDPCom::shutdown(int _fd) {
             }
 
             _dia("UDPCom::shutdown[%d]/kill_datagram_entry: datagrams_received entry erased", fd);
-            count = DatagramCom::datagrams_received.erase((unsigned int)fd);
+            count = datagram_com()->datagrams_received.erase((unsigned int)fd);
         } else {
             _dia("UDPCom::shutdown[%d]/kill_datagram_entry: datagrams_received entry NOT found, thus not erased", fd);
         }
@@ -966,7 +966,7 @@ void UDPCom::shutdown(int _fd) {
 
     } else {
 
-        auto remc = UDPCom::in_virt_set.erase(_fd);
+        auto remc = datagram_com()->in_virt_set.erase(_fd);
         _dia("UDPCom::shutdown[%d]: removed %d entries from in_virt_set on shutdown", _fd, remc);
 
         remc = kill_datagram_entry(_fd);
@@ -980,7 +980,7 @@ void UDPCom::shutdown(int _fd) {
 
 
     if(embryonics().id != 0) {
-        auto remc = UDPCom::in_virt_set.erase(embryonics().id);
+        auto remc = datagram_com()->in_virt_set.erase(embryonics().id);
         _dia("UDPCom::shutdown[%d]: removed embryonic id=%d from in_virt_set on shutdown (%d entries)", _fd, embryonics().id, remc);
 
         remc = kill_datagram_entry(embryonics().id);

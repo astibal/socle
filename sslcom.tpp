@@ -1896,8 +1896,8 @@ void baseSSLCom<L4Proto>::accept_socket (int sockfd) {
         if (l4com) {
             _inf("underlying com is UDPCom using virtual sockets");
 
-            auto it_rec = l4com->datagrams_received.find(sockfd);
-            if (it_rec != l4com->datagrams_received.end()) {
+            auto it_rec = l4com->datagram_com()->datagrams_received.find(sockfd);
+            if (it_rec != l4com->datagram_com()->datagrams_received.end()) {
                 _deb("datagram records found");
 
                 auto record = it_rec->second;

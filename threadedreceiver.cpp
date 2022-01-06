@@ -172,13 +172,14 @@ bool ThreadedReceiver<Worker>::add_first_datagrams(int sock, SocketInfo& pinfo) 
 
     // locks shared early datagram pool
 
-    std::lock_guard<std::recursive_mutex> l(DatagramCom::lock);
+    auto udpc = UDPCom::datagram_com_static();
+    auto lc_ = std::scoped_lock(udpc->lock);
 
     std::shared_ptr<Datagram> entry;
-    auto it = DatagramCom::datagrams_received.find(session_key);
+    auto it = udpc->datagrams_received.find(session_key);
     bool new_entry = true;
 
-    if(it != DatagramCom::datagrams_received.end()) {
+    if(it != udpc->datagrams_received.end()) {
 
         _dia("existing datagram");
 
@@ -193,7 +194,7 @@ bool ThreadedReceiver<Worker>::add_first_datagrams(int sock, SocketInfo& pinfo) 
         _dia("new datagram");
 
         entry = create_new_entry(sock, pinfo);
-        DatagramCom::datagrams_received[session_key] = entry;
+        udpc->datagrams_received[session_key] = entry;
     }
 
 
@@ -213,7 +214,7 @@ bool ThreadedReceiver<Worker>::add_first_datagrams(int sock, SocketInfo& pinfo) 
 
         // enqueue them to entry (new or existing)
 
-        auto l_ = std::scoped_lock(entry->rx_queue_lock);
+        auto lc1_ = std::scoped_lock(entry->rx_queue_lock);
         enk = entry->enqueue(buff, red);
 
         _dia("enk: %d bytes from socket %d", enk, sock);
@@ -232,7 +233,7 @@ bool ThreadedReceiver<Worker>::add_first_datagrams(int sock, SocketInfo& pinfo) 
     _dia("ThreadedReceiver::add_first_datagrams[%d]: early %dB, sk %d, is_new %d", sock, red, session_key, new_entry);
     _dia("ThreadedReceiver::add_first_datagrams[%d]: connected sockets: l: %d", sock, entry->socket_left);
 
-    DatagramCom::in_virt_set.insert(session_key);
+    udpc->in_virt_set.insert(session_key);
 
     return new_entry;
 }
@@ -416,13 +417,14 @@ int ThreadedReceiverProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
     bool ready = false;
     // datagram lock
     {
-    auto l_ = std::scoped_lock(DatagramCom::lock);
+    auto udpc = UDPCom::datagram_com_static();
+    auto l_ = std::scoped_lock(udpc->lock);
 
     _dia("ThreadedReceiverProxy::handle_sockets_once: DatagramCom::datagrams_received.size() = %d",
-         DatagramCom::datagrams_received.size());
+            udpc->datagrams_received.size());
 
-    auto it_record = DatagramCom::datagrams_received.find(virtual_socket);
-    found = (it_record != DatagramCom::datagrams_received.end());
+    auto it_record = udpc->datagrams_received.find(virtual_socket);
+    found = (it_record != udpc->datagrams_received.end());
 
     if (found) {
 
@@ -472,7 +474,7 @@ int ThreadedReceiverProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
                 cx->on_accept_socket(virtual_socket);
             }
             cx->idle_delay(120);
-            auto cx_dcom = dynamic_cast<DatagramCom *>(cx->com());
+            auto cx_dcom = dynamic_cast<UDPCom *>(cx->com());
             auto cx_bcom = dynamic_cast<baseCom *>(cx->com());
 
 
