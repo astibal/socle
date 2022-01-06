@@ -40,11 +40,13 @@
 #include <basecom.hpp>
 #include <baseproxy.hpp>
 
-// FIXME: including linux/ipv6.h fails
-// #include <linux/ipv6.h>
+#include <linux/ipv6.h>
 
-#define IPV6_ORIGDSTADDR        74
-#define IPV6_RECVORIGDSTADDR    IPV6_ORIGDSTADDR
+//  If including linux/ipv6.h fails, use these constants as a dirty trick to make it work
+//  constant value should not change, but they may eventually, you have been warned.
+
+//#define IPV6_ORIGDSTADDR        74
+//#define IPV6_RECVORIGDSTADDR    IPV6_ORIGDSTADDR
 
 
 struct Datagram {
