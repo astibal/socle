@@ -1461,11 +1461,22 @@ std::string baseProxy::to_string(int verbosity) const {
         left_label = l_ss.str();
         right_label = r_ss.str();
 
-        if(left_label.empty()) left_label = "<empty> ";
-        if(right_label.empty()) right_label = "<empty> ";
+        if(left_label.empty())  (verbosity > iINF) ? left_label = "<empty> " : " ";
+        if(right_label.empty()) (verbosity > iINF) ? right_label = "<empty> " : " ";
     }
 
-    ret_ss << " " << left_label << "<+> " << right_label;
+    const char* rtr = "<+> ";
+    const char* l_closed = "+> ";
+    const char* r_closed = "<+ ";
+    const char* closed = "<> ";
+
+    auto rtr_symbol = rtr;
+
+    if(left_label.empty() and right_label.empty())  rtr_symbol = closed;
+    else if(left_label.empty()) rtr_symbol = l_closed;
+    else if(right_label.empty()) rtr_symbol = r_closed;
+
+    ret_ss << " " << left_label << rtr_symbol << right_label;
 
 	if(verbosity > DIA) {
         ret_ss << "\n";
