@@ -97,6 +97,22 @@ namespace socle {
         };
 
 
+        template <typename T>
+        struct on_scope_exit {
+            explicit on_scope_exit(T& ref, std::function<void(T&)> cb): value_(ref), cb_(cb) {}
+
+            on_scope_exit& operator=(on_scope_exit const&) = delete;
+            on_scope_exit(on_scope_exit &) = delete;
+
+            ~on_scope_exit() {
+                cb_(value_);
+            }
+
+            T& value_;
+            std::function<void(T&)> cb_;
+        };
+
+
         namespace deleter {
 
             template <typename PT>
