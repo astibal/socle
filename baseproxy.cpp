@@ -33,6 +33,7 @@
 #include <log/logger.hpp>
 #include "udpcom.hpp"
 
+#include <vars.hpp>
 
 
 baseProxy::baseProxy(baseCom* c) :
@@ -739,6 +740,13 @@ bool baseProxy::handle_sockets_accept(unsigned char side, baseCom* xcom, baseHos
 
 
 int baseProxy::handle_sockets_once(baseCom* xcom) {
+
+    auto& in_prog = state().in_progress_;
+    in_prog++;
+
+    if(in_prog > 1) { in_prog--; return 0; }
+
+    auto zeroize = raw::on_scope_exit<decltype(in_prog)>(in_prog, [](auto& ref) { ref = 0;});
 
 	run_timers();
 
