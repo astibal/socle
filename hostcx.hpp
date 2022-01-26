@@ -34,8 +34,6 @@
 #include <lockbuffer.hpp>
 #include <display.hpp>
 
-#define HOSTCX_BUFFSIZE 2048
-#define HOSTCX_BUFFMAXSIZE (1024*HOSTCX_BUFFSIZE)
 
 //! Basic Host structure class
 /*! 
@@ -178,6 +176,15 @@ namespace socle {
 
 class baseHostCX : public Host
 {
+public:
+    // allow these as tunables
+    static inline std::atomic<std::size_t> HOSTCX_BUFFSIZE = 2048;
+    static inline std::atomic<std::size_t> HOSTCX_BUFFSIZE_MAXMUL = 1024;
+    static inline std::atomic<std::size_t> HOSTCX_WRITEFULL = 200000;
+
+private:
+    static inline std::size_t get_HOSTCX_BUFFMAXSIZE() { return HOSTCX_BUFFSIZE_MAXMUL * HOSTCX_BUFFSIZE; };
+
     using buffer_guard = locked_guard<lockbuffer>;
 
 	/* Basic elements */

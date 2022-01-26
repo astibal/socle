@@ -363,7 +363,7 @@ int baseHostCX::read() {
         return -1;
     }
 
-    if(peer() && peer()->writebuf()->size() > 200000) {
+    if(peer() && peer()->writebuf()->size() > HOSTCX_WRITEFULL) {
         _deb("baseHostCX::read[%d]: deferring read operation",socket());
         com()->rescan_read(socket());
         return -1;
@@ -450,7 +450,7 @@ int baseHostCX::read() {
             _dia("baseHostCX::read[%s]: read buffer reached it's current capacity %d/%d bytes", c_type(),
                     readbuf_.size(), readbuf_.capacity());
 
-            if(readbuf_.capacity() * 2  <= HOSTCX_BUFFMAXSIZE) {
+            if(readbuf_.capacity() * 2  <= get_HOSTCX_BUFFMAXSIZE()) {
 
                 if (readbuf_.capacity(readbuf_.capacity() * 2)) {
                     _dia("baseHostCX::read[%s]: read buffer resized capacity %d/%d bytes", c_type(),
