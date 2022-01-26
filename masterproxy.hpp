@@ -22,6 +22,8 @@
 
 #include <baseproxy.hpp>
 
+#define PROXY_SPRAY_FEATURE
+
 class MasterProxy : public baseProxy {
 
 public:
@@ -39,6 +41,7 @@ protected:
 
 public:
     static inline unsigned int subproxy_reserve = 10;
+    static inline unsigned int subproxy_thread_spray_min = 2;
 
     explicit MasterProxy(baseCom* c): baseProxy(c) {
         proxies_.reserve(subproxy_reserve);

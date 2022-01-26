@@ -76,7 +76,6 @@ bool MasterProxy::run_timers()
 }
 
 
-
 int MasterProxy::handle_sockets_once(baseCom* xcom) {
 
     int my_handle_returned = 0;
@@ -89,32 +88,75 @@ int MasterProxy::handle_sockets_once(baseCom* xcom) {
         _err("master proxy exception: %s", e.what());
         return 0;
     }
-    
+
+    if(proxies().empty()) return 0;
+
     int r = 0;
     int proxies_handled= 0;
     int proxies_shutdown=0;
     int proxies_deleted=0;
-    
-    for(auto p: proxies()) {
+
+#ifdef PROXY_SPRAY_FEATURE
+    auto proxies_sz = proxies().size();
+    std::vector<std::thread> threads(proxies_sz);
+#endif
+
+    std::size_t proxy_idx = 0;
+    for(auto proxy: proxies()) {
                 
-        if (p->state().dead()) {
-            p->shutdown();
+        if (proxy->state().dead()) {
+            proxy->shutdown();
             proxies_shutdown++;
         } else {
 
+
+#ifdef PROXY_SPRAY_FEATURE
+            auto run_proxy = [this, xcom](baseProxy* p) {
+                try {
+                    p->handle_sockets_once(xcom);
+                }
+                catch (socle::com_error const &e) {
+                    _err("slave proxy exception: %s", e.what());
+                    p->state().dead(true);
+                }
+            };
+
+            r++;
+
+            // if threading is allowed, thread all but last proxy: last proxy will be processed in this thread context (sparing one thread setup latency)
+            // => if spray_min is set to >= 2; value 0 disables this feature, while value 1 has the same effect as default 2.
+            if(subproxy_thread_spray_min > 0 and proxies_sz >= subproxy_thread_spray_min and proxy_idx < proxies_sz - 1) {
+
+                _deb("proxy spray for: %s", proxy->to_string(iINF).c_str());
+
+                auto single_proxy_thread = std::thread(run_proxy, proxy);
+                threads.emplace_back(std::move(single_proxy_thread));
+            } else {
+                run_proxy(proxy);
+            }
+#else
             try {
-                r += p->handle_sockets_once(xcom);
+                r += proxy->handle_sockets_once(xcom);
             }
             catch(socle::com_error const& e) {
                 _err("slave proxy exception: %s", e.what());
-                p->state().dead(true);
+                proxy->state().dead(true);
             }
 
 
             proxies_handled++;
+# endif
         }
+
+        ++proxy_idx;
     }
-    
+
+#ifdef PROXY_SPRAY_FEATURE
+    for(auto& thr: threads) {
+        if(thr.joinable()) thr.join();
+    }
+#endif
+
     for(auto i = proxies().cbegin(); i != proxies().end(); ) {
 
         auto p = *i;
