@@ -133,6 +133,8 @@ protected:
         bool write_left_neck_ = false;
         bool write_right_neck_ = false;
 
+        [[nodiscard]] inline std::atomic_uint& in_progress() { return in_progress_; }
+
         [[nodiscard]] inline bool dead() const { return dead_.load(); }
         inline void dead(bool d) { dead_ = d; /* might be handy sometimes. if(dead_) { _inf("dead bt: %s",bt().c_str()); } */ }
 

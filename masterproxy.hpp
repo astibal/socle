@@ -22,8 +22,6 @@
 
 #include <baseproxy.hpp>
 
-#define PROXY_SPRAY_FEATURE
-
 class MasterProxy : public baseProxy {
 
 public:
@@ -31,14 +29,16 @@ public:
     using vector_type = mp::vector<T>;
     template<class T>
     using set_type = mp::set<T>;
+    using proxy_entry = std::pair<baseProxy*,std::unique_ptr<std::thread>>;
 
     using mutex_t = std::mutex;
     mutex_t& proxy_lock() const { return proxies_lock_; }
 
-protected:
-    vector_type <baseProxy*> proxies_;
+private:
+    vector_type <proxy_entry> proxies_;
     mutable mutex_t proxies_lock_;
 
+    static bool thread_finish(std::unique_ptr<std::thread>& thread_ptr);
 public:
     static inline unsigned int subproxy_reserve = 10;
     static inline unsigned int subproxy_thread_spray_min = 2;
@@ -46,7 +46,8 @@ public:
     explicit MasterProxy(baseCom* c): baseProxy(c) {
         proxies_.reserve(subproxy_reserve);
     }
-    vector_type <baseProxy*>& proxies() { return proxies_; };
+    vector_type <proxy_entry>& proxies() { return proxies_; };
+    inline void add_proxy(baseProxy* p) { proxies_.emplace_back(p, nullptr); }
 	
     int prepare_sockets(baseCom*) override;
 	int handle_sockets_once(baseCom*) override;

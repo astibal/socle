@@ -741,12 +741,9 @@ bool baseProxy::handle_sockets_accept(unsigned char side, baseCom* xcom, baseHos
 
 int baseProxy::handle_sockets_once(baseCom* xcom) {
 
-    auto& in_prog = state().in_progress_;
-    in_prog++;
+    if(std::atomic_fetch_add(&state().in_progress(), 1) > 0) return 0;
 
-    if(in_prog > 1) { in_prog--; return 0; }
-
-    auto zeroize = raw::on_scope_exit<decltype(in_prog)>(in_prog, [](auto& ref) { ref = 0;});
+    auto zeroize = raw::on_scope_exit<std::atomic_uint>(state().in_progress(), [this](auto& ref) { ref = 0; });
 
 	run_timers();
 
