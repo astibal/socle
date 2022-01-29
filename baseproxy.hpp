@@ -122,7 +122,7 @@ protected:
 
         // dead can be written by other threads - make it atomic
         std::atomic_bool dead_ = false;
-        std::atomic_uint in_progress_ = 0;
+        std::atomic_uint in_progress_ {0};
 
         bool error_on_left_read = false;
         bool error_on_right_read = false;
