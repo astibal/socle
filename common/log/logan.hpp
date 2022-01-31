@@ -99,7 +99,7 @@ protected:
     // loging message prefix in log line
     std::string prefix_;
 
-    mutable loglevel* my_loglevel = nullptr;
+    mutable std::atomic<loglevel*> my_loglevel {0};
 
 public:
 
@@ -107,7 +107,7 @@ public:
 
     logan_lite() = default;
     explicit logan_lite(std::string str) noexcept: topic_(std::move(str)) {};
-    logan_lite(logan_lite const& r): topic_(r.topic_), prefix_(r.prefix_), my_loglevel(r.my_loglevel) {}
+    logan_lite(logan_lite const& r): topic_(r.topic_), prefix_(r.prefix_), my_loglevel(r.my_loglevel.load()) {}
     logan_lite& operator=(logan_lite const& r) {
 
         if(&r != this) {
@@ -117,7 +117,7 @@ public:
             prefix_ = r.prefix_;
 
             // even if my_loglevel can be non-null, we don't own it, so don't delete it here
-            my_loglevel = r.my_loglevel;
+            my_loglevel = r.my_loglevel.load();
         }
 
         return *this;
@@ -332,7 +332,7 @@ private:
 class logan {
 public:
 
-    std::map <std::string, loglevel*> topic_db_;
+    std::map <std::string, loglevel> topic_db_;
 
     loglevel* operator[] (std::string const& subject) {
 
@@ -342,12 +342,14 @@ public:
 
         if(it != topic_db_.end()) {
             // found loglevel
-            return it->second;
+            return &it->second;
         } else {
-            auto* l = new loglevel(0,0);
-            l->subject(subject);
+            //auto* l = new loglevel(0,0);
+            auto l = loglevel(0,0);
+            l.subject(subject);
 
-            topic_db_.emplace( std::pair<std::string, loglevel*>(subject, l));
+            // topic_db_.emplace( std::pair<std::string, loglevel*>(subject, l));
+            topic_db_.try_emplace(subject, std::move(l));
             return this->operator[](subject);
         }
     }

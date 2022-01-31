@@ -22,17 +22,7 @@
 
 loglevel* logan_lite::level() const {
 
-    bool is_cached = true;
-    {
-        auto sha_ = std::shared_lock(lock_);
-
-        if(! my_loglevel) {
-            is_cached = false;
-        }
-    }
-
-    if(!is_cached) {
-        auto uni_ = std::unique_lock(lock_);
+    if(not my_loglevel) {
         my_loglevel = logan::get()[topic_];
     }
 
@@ -40,15 +30,18 @@ loglevel* logan_lite::level() const {
 }
 
 void logan_lite::level(loglevel const& l) {
-    auto l_ = std::unique_lock(lock_);
 
-    if(!my_loglevel) {
+    if(not my_loglevel) {
         my_loglevel = logan::get()[topic_];
     }
-    my_loglevel->level(l.level());
-    my_loglevel->topic(l.topic());
-    my_loglevel->more(l.more()); // shallow copy?
-    my_loglevel->flags(l.flags());
-    my_loglevel->subject(l.subject());
-    my_loglevel->area(l.area());
+
+    auto l_ = std::unique_lock(lock_);
+
+    auto* ml_ptr = my_loglevel.load();
+    ml_ptr->level(l.level());
+    ml_ptr->topic(l.topic());
+    ml_ptr->more(l.more()); // shallow copy?
+    ml_ptr->flags(l.flags());
+    ml_ptr->subject(l.subject());
+    ml_ptr->area(l.area());
 }
