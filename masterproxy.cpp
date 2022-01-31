@@ -45,15 +45,14 @@ bool MasterProxy::run_timers()
 
         for(auto i = proxies().begin(); i != proxies().end(); ) {
 
-            auto* p = i->first;
+            auto& p = i->first;
 
-            if(!p) {
+            if(not p) {
                 _inf("null sub-proxy!!");
                 continue;
             }
 
             if(p->state().dead() and not p->state().in_progress()) {
-                delit_list.push_back(p);
                 {
                     auto l_ = std::scoped_lock(proxies_lock_);
                     auto& thr = i->second;
@@ -71,9 +70,6 @@ bool MasterProxy::run_timers()
 
             ++i;
         }
-
-        // delete proxies after their removal from the list - avoid data races iterating proxies list
-        std::for_each(delit_list.begin(), delit_list.end(), [](auto dead_beef) { delete dead_beef; });
 
         return true;
     }
@@ -154,10 +150,10 @@ int MasterProxy::handle_sockets_once(baseCom* xcom) {
                 }
 
 
-                thr = std::make_unique<std::thread>(run_proxy, proxy);
+                thr = std::make_unique<std::thread>(run_proxy, proxy.get());
 
             } else {
-                run_proxy(proxy);
+                run_proxy(proxy.get());
             }
         }
 
@@ -166,11 +162,16 @@ int MasterProxy::handle_sockets_once(baseCom* xcom) {
 
     for(auto i = proxies().begin(); i != proxies().end(); ) {
 
-        auto p = i->first;
+        auto const& proxy = i->first;
         auto& thr = i->second;
 
+        if(not proxy) {
+            i = proxies().erase(i);
+            continue;
+        }
+
         // assert in_progress state
-        if(p->state().in_progress()) continue;
+        if(proxy->state().in_progress()) continue;
 
         // we know it's not in progress anymore
         if(thread_finish(thr)) {
@@ -178,7 +179,7 @@ int MasterProxy::handle_sockets_once(baseCom* xcom) {
         }
 
 
-        if (p->state().dead()) {
+        if (proxy->state().dead()) {
 
             {
                 auto l_ = std::scoped_lock(proxies_lock_);
@@ -187,7 +188,6 @@ int MasterProxy::handle_sockets_once(baseCom* xcom) {
                 i = proxies().erase(i);
             }
 
-            delete(p);
             proxies_deleted++;
             continue;
         }
@@ -219,10 +219,11 @@ void MasterProxy::shutdown() {
             _dia("MasterProxy::shutdown: slave[%d]: joined",i);
         }
 
-		proxy->shutdown();
-		i++;
-		delete proxy;
-	}
+        if(proxy) {
+            proxy->shutdown();
+        }
+        i++;
+    }
 	proxies().clear();
 }
 

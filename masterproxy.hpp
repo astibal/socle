@@ -29,7 +29,7 @@ public:
     using vector_type = mp::vector<T>;
     template<class T>
     using set_type = mp::set<T>;
-    using proxy_entry = std::pair<baseProxy*,std::unique_ptr<std::thread>>;
+    using proxy_entry = std::pair<std::unique_ptr<baseProxy>,std::unique_ptr<std::thread>>;
 
     using mutex_t = std::mutex;
     mutex_t& proxy_lock() const { return proxies_lock_; }
