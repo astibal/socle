@@ -20,10 +20,17 @@
 #include <log/loglevel.hpp>
 #include <mutex>
 
+logan_lite::logan_lite() : logan_(logan::get()) { };
+
+logan_lite::logan_lite(std::string str) noexcept: topic_(std::move(str)), logan_(logan::get()) { };
+
+logan_lite::logan_lite(logan_lite const& r): topic_(r.topic_), prefix_(r.prefix_), my_loglevel(r.my_loglevel.load()), logan_(logan::get()) {}
+
+
 loglevel* logan_lite::level() const {
 
     if(not my_loglevel) {
-        my_loglevel = logan::get()[topic_];
+        my_loglevel = logref()[topic_];
     }
 
     return my_loglevel;
@@ -32,7 +39,7 @@ loglevel* logan_lite::level() const {
 void logan_lite::level(loglevel const& l) {
 
     if(not my_loglevel) {
-        my_loglevel = logan::get()[topic_];
+        my_loglevel = logref()[topic_];
     }
 
     auto l_ = std::unique_lock(lock_);

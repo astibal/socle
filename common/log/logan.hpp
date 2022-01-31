@@ -101,13 +101,18 @@ protected:
 
     mutable std::atomic<loglevel*> my_loglevel {0};
 
+    // hold our own instance pointer
+    std::shared_ptr<logan> logan_ {nullptr};
+    logan& logref() const { return *logan_; }
+
 public:
 
     friend class logan;
 
-    logan_lite() = default;
-    explicit logan_lite(std::string str) noexcept: topic_(std::move(str)) {};
-    logan_lite(logan_lite const& r): topic_(r.topic_), prefix_(r.prefix_), my_loglevel(r.my_loglevel.load()) {}
+    explicit logan_lite();
+    explicit logan_lite(std::string str) noexcept;
+    logan_lite(logan_lite const& r);
+
     logan_lite& operator=(logan_lite const& r) {
 
         if(&r != this) {
@@ -334,8 +339,7 @@ public:
 
     std::map <std::string, loglevel> topic_db_;
 
-    loglevel* operator[] (std::string const& subject) {
-
+    loglevel* entry(std::string const& subject) {
         std::scoped_lock<std::recursive_mutex> l_(lock_);
 
         auto it = topic_db_.find(subject);
@@ -350,8 +354,16 @@ public:
 
             // topic_db_.emplace( std::pair<std::string, loglevel*>(subject, l));
             topic_db_.try_emplace(subject, std::move(l));
-            return this->operator[](subject);
+            return this->entry(subject);
         }
+    }
+
+    loglevel* operator[] (std::string const& subject) {
+        return entry(subject);
+    }
+
+    unsigned int level(std::string const& subject) {
+        return entry(subject)->level();
     }
 
 
@@ -447,7 +459,8 @@ public:
     template<class ... Args>
     static void log(loglevel const& lev, const std::string& topic, const char* fmt, Args ... args) {
 
-        auto topic_lev = get()[topic];
+        auto& log = *get();
+        auto topic_lev = log[topic];
 
         if( *topic_lev >= lev) {
             std::stringstream ms;
@@ -457,8 +470,8 @@ public:
         }
     }
 
-    static logan& get() {
-        static logan l;
+    [[nodiscard]] static std::shared_ptr<logan> get() {
+        static auto l = std::make_shared<logan>();
         return l;
     }
 
@@ -481,12 +494,12 @@ loglevel* logan_attached<T>::level() const {
         std::unique_lock l(lock_);
 
         if(! my_area_loglevel) {
-            my_area_loglevel = logan::get()[area()];
+            my_area_loglevel = logref()[area()];
 
             // iterate subareas
             if(! sub_areas().empty() ) {
                 for(auto const& suba: sub_areas()) {
-                    auto sa_level = logan::get()[suba];
+                    auto sa_level = logref()[suba];
 
                     // sub_area with higher verbosity
                     auto& lhs = *sa_level;
@@ -542,7 +555,7 @@ void logan_attached<T>::area(const std::string& ref) {
     area_ = ref;
 
       if(! my_area_loglevel) {
-        my_area_loglevel = logan::get()[area_];
+        my_area_loglevel = logref()[area_];
     }
 }
 

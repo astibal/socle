@@ -168,7 +168,10 @@ TEST(TLS_Tests, ParseClientHello_SNI) {
     b.assign(data, sizeof(data), sizeof(data), false);
 
     SSLCom_Buddy s;
-    logan::get()["com.ssl"]->level(iDEB);
+
+    auto log = logan::get();
+
+    log->entry("com.ssl")->level(iDEB);
 
     s.test_peer_hello_buffer(b);
     s.test_parse_sni();
@@ -189,7 +192,9 @@ TEST(TLS_Tests, ParseClientHello_SNI_NoExtensions) {
     buffer b;
     b.assign(data, sizeof(data), sizeof(data), false);
     SSLCom_Buddy s1, s2;
-    logan::get()["com.ssl"]->level(iDEB);
+
+    auto log = logan::get();
+    log->entry("com.ssl")->level(iDEB);
 
     s1.test_peer_hello_buffer(b);
     ASSERT_THROW(s1.test_parse_sni(), socle::ex::SSL_clienthello_malformed);
@@ -210,7 +215,9 @@ TEST(TLS_Tests, ParseClientHello_ALPN) {
     b.assign(data, sizeof(data), sizeof(data), false);
 
     SSLCom_Buddy s;
-    logan::get()["com.ssl"]->level(iDEB);
+
+    auto log = logan::get();
+    log->entry("com.ssl")->level(iDEB);
 
     s.test_peer_hello_buffer(b);
     s.test_parse_sni();
