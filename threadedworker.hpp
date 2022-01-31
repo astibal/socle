@@ -89,20 +89,29 @@ public:
     constexpr int core_multiplier() const noexcept { return 1; };
 
     virtual ~hasWorkers() {
+        join_workers();
+    };
+
+    void join_workers() {
         if (!tasks_.empty()) {
 
             for (auto &thread_worker: tasks_) {
                 thread_worker.second->state().dead(true);
             }
 
-            for (unsigned int i = 0; i <= tasks_.size(); i++) {
-                auto &t_w = tasks_[i];
-                t_w.first->join();
+            for (unsigned int i = 0; i < tasks_.size(); i++) {
+                auto &t_w = tasks_.at(i);
+
+                if(t_w.first->joinable())
+                    t_w.first->join();
+
                 delete t_w.first;
                 t_w.first = nullptr;
             }
+
+            tasks_.clear();
         }
-    };
+    }
 
     int create_workers(int count, baseCom* parent_com, proxyType proxy_type) {
 
