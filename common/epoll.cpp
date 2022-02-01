@@ -669,13 +669,13 @@ void epoller::clear_handler(int check) {
 
 void epoller::set_handler(int check, epoll_handler* h) {
 
-    handler_info_t& href = handler_db[check];
-    href.handler = h;
-    _deb("epoller::set_handler %d -> 0x%x",check,h);
-    
     if(h != nullptr) {
 
         auto l_ = std::scoped_lock(h->registered_sockets.get_lock());
+
+        handler_info_t& href = handler_db[check];
+        href.handler = h;
+        _deb("epoller::set_handler %d -> 0x%x",check,h);
 
         if(h->registrant && h->registrant != this) {
             _err("epoller::set_handler: setting handler over already existing, different handler. This should not happen!");
