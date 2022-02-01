@@ -125,7 +125,11 @@ int MasterProxy::handle_sockets_once(baseCom* xcom) {
 
             auto run_proxy = [this, xcom](baseProxy* p) {
                 try {
-                    p->handle_sockets_once(xcom);
+                    if(p->state().in_progress().fetch_add(1) == 0) {
+                        p->handle_sockets_once(xcom);
+
+                        p->state().in_progress().store(0);
+                    }
                 }
                 catch (socle::com_error const &e) {
                     _err("slave proxy exception: %s", e.what());
