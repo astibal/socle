@@ -1113,7 +1113,7 @@ int baseProxy::run_poll() {
         //_inf("adding virtual sockets");
         {
             auto udpc = UDPCom::datagram_com_static();
-            auto lc_ = std::scoped_lock(udpc->lock);
+            auto lc_ = std::scoped_lock(udpc->lock, udpc->in_virt_set.get_lock());
             udp_in_set = udpc->in_virt_set;
         }
 
