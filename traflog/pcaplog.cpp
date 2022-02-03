@@ -24,7 +24,12 @@ namespace socle::traflog {
 
     using namespace socle::pcap;
 
+    namespace log {
+        static const logan_lite pcaplog {"socle.pcaplog"};
+    }
+
     int raw_socket_gre(int family, int ttl) {
+        auto const& log = log::pcaplog;
 
         int sock = socket(family, SOCK_RAW, IPPROTO_GRE);
 
@@ -36,13 +41,19 @@ namespace socle::traflog {
                         family == AF_INET6 ? IPPROTO_IPV6 : IPPROTO_IP,
                         family == AF_INET6 ? IPV6_HDRINCL : IP_HDRINCL,
                         &none, sizeof (none)) < 0) {
+            _err("raw_socket_gre: cannot set HRDINCL");
+
             close(sock);
             return -1;
         }
 
         int n_ttl = ttl;
-        setsockopt(sock, family == AF_INET6 ? IPPROTO_IPV6 : IPPROTO_IP,
-                         family == AF_INET6 ? IPV6_HOPLIMIT : IP_TTL, &n_ttl, sizeof(n_ttl));
+
+        if(setsockopt(sock, family == AF_INET6 ? IPPROTO_IPV6 : IPPROTO_IP,
+                         family == AF_INET6 ? IPV6_HOPLIMIT : IP_TTL, &n_ttl, sizeof(n_ttl)) < 0) {
+
+            _err("raw_socket_gre: cannot set TTL");
+        }
 
         return sock;
     }
@@ -116,31 +127,43 @@ namespace socle::traflog {
 
             // if no parent is set, there is nothing to write
             if(parent) {
-                if (details.next_proto == connection_details::TCP) {
-                    if (tcp_start_written) {
-                        PcapLog *self = this;
-                        if (single_only) self = &single_instance();
-                        auto *writer = self->writer_;
-                        auto const &fs = self->FS;
 
-                        buffer out;
-                        pcapng::pcapng_epb f1;
-                        if(self->ip_packet_hook) f1.ip_packet_hook = self->ip_packet_hook;
+                try {
+                    if (details.next_proto == connection_details::TCP) {
+                        if (tcp_start_written) {
+                            PcapLog *self = this;
+                            if (single_only) self = &single_instance();
+                            auto *writer = self->writer_;
+                            auto const &fs = self->FS;
 
-                        if (comment_frame(f1)) { _deb("comment inserted on close"); }
+                            buffer out;
+                            pcapng::pcapng_epb f1;
+                            if (self->ip_packet_hook) f1.ip_packet_hook = self->ip_packet_hook;
 
-                        f1.append_TCP(out, "", 0, 0, TCPFLAG_FIN | TCPFLAG_ACK, details);
-                        pcapng::pcapng_epb f2;
-                        if(self->ip_packet_hook) f2.ip_packet_hook = self->ip_packet_hook;
+                            if (comment_frame(f1)) { _deb("comment inserted on close"); }
 
-                        f1.append_TCP(out, "", 0, 1, TCPFLAG_FIN | TCPFLAG_ACK, details);
+                            f1.append_TCP(out, "", 0, 0, TCPFLAG_FIN | TCPFLAG_ACK, details);
+                            pcapng::pcapng_epb f2;
+                            if (self->ip_packet_hook) f2.ip_packet_hook = self->ip_packet_hook;
 
-                        if(not ip_packet_hook_only)
-                            writer->write(fs.filename_full, out);
+                            f1.append_TCP(out, "", 0, 1, TCPFLAG_FIN | TCPFLAG_ACK, details);
+
+                            if (not ip_packet_hook_only)
+                                writer->write(fs.filename_full, out);
+                        }
                     }
+                    writer_->flush(FS.filename_full);
+                    writer_->close(FS.filename_full);
                 }
-                writer_->flush(FS.filename_full);
-                writer_->close(FS.filename_full);
+                catch (mempool_bad_alloc const& e) {
+                    _err("pcaplog-dtor: mempool alloc error: %s", e.what());
+                }
+                catch (std::invalid_argument const& e) {
+                    _err("pcaplog-dtor: invalid argument error: %s", e.what());
+                }
+                catch (std::out_of_range& e) {
+                    _err("pcaplog-dtor: out of range error: %s", e.what());
+                }
             }
             // do not delete threaded pool writer
             if(not use_pool_writer)
@@ -228,7 +251,9 @@ namespace socle::traflog {
             auto fd = creat(fs.filename_full.c_str(),O_CREAT|O_WRONLY|O_TRUNC);
 
             if(fd >= 0) {
-                chmod(fs.filename_full.c_str(), 0600);
+                if(chmod(fs.filename_full.c_str(), 0600) != 0) {
+                    _err("chmod failed: %s", string_error().c_str());
+                }
                 _not("new file %s created", fs.filename_full.c_str());
                 ::close(fd);
             }
