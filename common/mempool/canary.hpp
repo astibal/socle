@@ -39,7 +39,11 @@ struct mp_canary {
             return static_cast<unsigned char>(canary[index % xsz]);
         }
 
+        #ifndef MEMPOOL_NOEXCEPT
         throw mempool_bad_alloc("generating canary bytes for zero size canary");
+        #else
+        return 0xFF;
+        #endif
     };
 
     // fill first canary

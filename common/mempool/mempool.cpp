@@ -395,7 +395,9 @@ void memPool::release(mem_chunk_t xto_ret){
         #endif
 
     } else {
+        #ifndef MEMPOOL_NOEXCEPT
         throw mempool_bad_alloc("cannot determine pool to return pointer");
+        #endif
     }
 }
 
@@ -450,7 +452,10 @@ void* mempool_alloc(size_t s) {
         mp_stats::get().stat_mempool_alloc++;
         mp_stats::get().stat_mempool_alloc_size += s;
     } else {
+
+        #ifndef MEMPOOL_NOEXCEPT
         throw mempool_bad_alloc("cannot acquire from memory pool", s);
+        #endif
     }
 
     return mch.ptr;
