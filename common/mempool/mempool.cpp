@@ -381,14 +381,14 @@ void memPool::release(mem_chunk_t xto_ret){
                 // auto b = bt();
                 // std::cerr << "front canary check failed\nbt:\n" << b;
 
-                throw mempool_bad_alloc("front canary check failed");
+                throw mempool_error("front canary check failed");
             }
 
             if (!get_canary().check_canary(to_ret.ptr + to_ret.capacity)) {
                 // auto b = bt();
                 // std::cerr << "rear canary check failed\nbt:\n" << b;
 
-                throw mempool_bad_alloc("rear canary check failed");
+                throw mempool_error("rear canary check failed");
             }
         }
 
@@ -396,7 +396,7 @@ void memPool::release(mem_chunk_t xto_ret){
 
     } else {
         #ifndef MEMPOOL_NOEXCEPT
-        throw mempool_bad_alloc("cannot determine pool to return pointer");
+        throw mempool_error("cannot determine pool to return pointer");
         #endif
     }
 }
@@ -454,7 +454,7 @@ void* mempool_alloc(size_t s) {
     } else {
 
         #ifndef MEMPOOL_NOEXCEPT
-        throw mempool_bad_alloc("cannot acquire from memory pool", s);
+        throw mempool_error("cannot acquire from memory pool", s);
         #endif
     }
 

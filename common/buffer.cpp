@@ -43,7 +43,7 @@ buffer::~buffer () {
             try {
                 memPool::pool().release({data_, capacity_});
             }
-            catch(mempool_bad_alloc const& e) {
+            catch(mempool_error const& e) {
                 ; // there is nothing to do unfortunately
             }
         }
@@ -203,7 +203,7 @@ buffer& buffer::operator=(const buffer& x)
                 try {
                     memPool::pool().release( { data_, capacity_} );
                 }
-                catch(mempool_bad_alloc const& e) {
+                catch(mempool_error const& e) {
                     ; // there is nothing to do unfortunately
                 }
             }

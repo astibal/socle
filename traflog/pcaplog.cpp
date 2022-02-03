@@ -155,7 +155,7 @@ namespace socle::traflog {
                     writer_->flush(FS.filename_full);
                     writer_->close(FS.filename_full);
                 }
-                catch (mempool_bad_alloc const& e) {
+                catch (mempool_error const& e) {
                     _err("pcaplog-dtor: mempool alloc error: %s", e.what());
                 }
                 catch (std::invalid_argument const& e) {

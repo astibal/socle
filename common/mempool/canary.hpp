@@ -40,7 +40,7 @@ struct mp_canary {
         }
 
         #ifndef MEMPOOL_NOEXCEPT
-        throw mempool_bad_alloc("generating canary bytes for zero size canary");
+        throw mempool_error("generating canary bytes for zero size canary");
         #else
         return 0xFF;
         #endif
