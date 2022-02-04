@@ -1213,6 +1213,11 @@ int baseProxy::run_poll() {
                     if(cur_socket < 0) {
                         _ext("virtual socket %d has null handler", cur_socket);
                         virt_global_hack = true;
+
+                        // sometimes UDPCom leaves in_virt_set with orphaned virtual socket - make cleanup
+                        auto udpc = UDPCom::datagram_com_static();
+                        auto lc_ = std::scoped_lock(udpc->lock, udpc->in_virt_set.get_lock());
+                        udpc->in_virt_set.erase(cur_socket);
                     }else {
                         _err("baseProxy::run: socket %d has registered NULL handler, removing", cur_socket);
                         poller()->del(cur_socket);
