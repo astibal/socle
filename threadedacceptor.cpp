@@ -128,8 +128,8 @@ int ThreadedAcceptorProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
 
                 this->on_left_new(cx);
 
-            } catch (socle::com_is_null const& e) {
-                _err("cannot handover cx to proxy");
+            } catch (socle::com_error const& e) {
+                _err("cannot handover cx to proxy: %s", e.what());
             }
 
         }

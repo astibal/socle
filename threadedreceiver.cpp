@@ -526,8 +526,8 @@ int ThreadedReceiverProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
 
 
         }
-        catch (socle::com_is_null const& e) {
-            _err("cannot handover cx to proxy");
+        catch (socle::com_error const& e) {
+            _err("cannot handover cx to proxy: %s", e.what());
         }
         catch (ReceiverProxyError const& e) {
             _err("receiver error: %s", e.what());
