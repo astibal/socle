@@ -71,7 +71,7 @@ void SocketInfo::pack_src_ss () {
 
 
 
-uint32_t SocketInfo::create_session_key(bool shift) {
+uint32_t SocketInfo::create_session_key(bool negative) {
 
 
     if(! src_ss.has_value()) {
@@ -84,13 +84,13 @@ uint32_t SocketInfo::create_session_key(bool shift) {
 
     switch (src_family) {
         case AF_INET6:
-            return create_session_key6(&src_ss.value(), &dst_ss.value(), shift);
+            return create_session_key6(&src_ss.value(), &dst_ss.value(), negative);
         default:
-            return create_session_key4(&src_ss.value(), &dst_ss.value(), shift);
+            return create_session_key4(&src_ss.value(), &dst_ss.value(), negative);
     }
 }
 
-uint32_t SocketInfo::create_session_key4(sockaddr_storage* from, sockaddr_storage* orig, bool shift) {
+uint32_t SocketInfo::create_session_key4(sockaddr_storage* from, sockaddr_storage* orig, bool negative) {
 
     uint32_t s = inet::to_sockaddr_in(from)->sin_addr.s_addr;
     uint32_t d = inet::to_sockaddr_in(orig)->sin_addr.s_addr;
@@ -104,15 +104,16 @@ uint32_t SocketInfo::create_session_key4(sockaddr_storage* from, sockaddr_storag
     uint32_t mirand = dist(e);
 
 
-    if(shift)
-        mirand |= (1 << 31); //this will produce negative number, which should determine  if it's normal socket or not
-
+    if(negative)
+        mirand |= (1UL << 31); //this will produce negative number, which should determine  if it's normal socket or not
+    else
+        mirand &= ~(1UL << 31); //this will explicitly remove sign bit
 
 
     return mirand; // however we return it as the key, therefore cast to unsigned int
 }
 
-uint32_t SocketInfo::create_session_key6(sockaddr_storage* from, sockaddr_storage* orig, bool shift) {
+uint32_t SocketInfo::create_session_key6(sockaddr_storage* from, sockaddr_storage* orig, bool negative) {
 
     uint32_t s0 = ((uint32_t*)&inet::to_sockaddr_in6(from)->sin6_addr)[0];
     uint32_t s1 = ((uint32_t*)&inet::to_sockaddr_in6(from)->sin6_addr)[1];
@@ -133,8 +134,10 @@ uint32_t SocketInfo::create_session_key6(sockaddr_storage* from, sockaddr_storag
 
     uint32_t mirand = dist(e);
 
-    if(shift)
+    if(negative)
         mirand |= (1 << 31); //this will produce negative number, which should determine  if it's normal socket or not
+    else
+        mirand &= ~(1UL << 31); //this will explicitly remove sign bit
 
     return mirand; // however we return it as the key, therefore cast to unsigned int
 }

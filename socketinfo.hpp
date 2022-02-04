@@ -45,10 +45,11 @@ struct SocketInfo {
     int create_socket_left (int l4_proto);
 
 
-    // create pseudo-unique session id. If @shift is true, returning value is "signed" (most significant bit set to 1)
-    uint32_t create_session_key(bool shift=false);
-    static uint32_t create_session_key4(sockaddr_storage *from, sockaddr_storage* orig,  bool shift=false);
-    static uint32_t create_session_key6(sockaddr_storage *from, sockaddr_storage* orig, bool shift=false);
+    // create pseudo-unique session id. If @negative is true, returning value is "signed" (most significant bit set to 1)
+    // Note: return value is uint
+    uint32_t create_session_key(bool negative=false);
+    static uint32_t create_session_key4(sockaddr_storage *from, sockaddr_storage* orig,  bool negative=false);
+    static uint32_t create_session_key6(sockaddr_storage *from, sockaddr_storage* orig, bool negative=false);
 
     // convert socket family to human readable string. ie.: AF_INET into "ip4"
     static std::string inet_family_str(int fa);
