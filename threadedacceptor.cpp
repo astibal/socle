@@ -110,7 +110,7 @@ int ThreadedAcceptorProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
             _dia("ThreadedAcceptorProxy::run: removed from queue: 0x%016llx (socket %d)", s, s);
 
             try {
-                auto cx = this->new_cx(s);
+                auto cx = std::unique_ptr<baseHostCX>(this->new_cx(s));
                 if (!cx->read_waiting_for_peercom()) {
                     cx->on_accept_socket(s);
                 } else {
@@ -126,7 +126,7 @@ int ThreadedAcceptorProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
                     cx->com()->resolve_redirected_dst_socket(s);
                 }
 
-                this->on_left_new(cx);
+                this->on_left_new(cx.release());
 
             } catch (socle::com_error const& e) {
                 _err("cannot handover cx to proxy: %s", e.what());
