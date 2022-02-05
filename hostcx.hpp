@@ -177,13 +177,23 @@ namespace socle {
 class baseHostCX : public Host
 {
 public:
-    // allow these as tunables
-    static inline std::atomic<std::size_t> HOSTCX_BUFFSIZE = 2048;
-    static inline std::atomic<std::size_t> HOSTCX_BUFFSIZE_MAXMUL = 1024;
-    static inline std::atomic<std::size_t> HOSTCX_WRITEFULL = 200000;
+
+    struct params_t {
+        // allow these as tunables
+        static inline std::atomic<std::size_t> buffsize = 2048;
+        static inline std::atomic<std::size_t> buffsize_maxmul = 1024;
+        static inline std::atomic<std::size_t> write_full = 200000;
+        static inline uint16_t com_not_ready_slowdown = 20;
+    };
+
+    static inline params_t params {};
 
 private:
-    static inline std::size_t get_HOSTCX_BUFFMAXSIZE() { return HOSTCX_BUFFSIZE_MAXMUL * HOSTCX_BUFFSIZE; };
+    static inline std::size_t get_HOSTCX_BUFFMAXSIZE() { return params.buffsize_maxmul * params.buffsize; };
+
+	struct peer_stats_t {
+		uint16_t com_not_ready_counter = 0;
+	} peer_stats;
 
     using buffer_guard = locked_guard<lockbuffer>;
 

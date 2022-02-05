@@ -53,9 +53,9 @@ baseHostCX::baseHostCX(baseCom* c, const char* h, const char* p): Host(h, p) {
     fds_ = 0;
     error_ = false;
 
-    writebuf_.capacity(HOSTCX_BUFFSIZE);
+    writebuf_.capacity(params.buffsize);
 
-    readbuf_.capacity(HOSTCX_BUFFSIZE);
+    readbuf_.capacity(params.buffsize);
 
     processed_in_ = 0;
     next_read_limit_ = 0;
@@ -87,9 +87,9 @@ baseHostCX::baseHostCX(baseCom* c, int s) {
     fds_ = s;
     error_ = false;
 
-    writebuf_.capacity(HOSTCX_BUFFSIZE);
+    writebuf_.capacity(params.buffsize);
 
-    readbuf_.capacity(HOSTCX_BUFFSIZE);
+    readbuf_.capacity(params.buffsize);
 
     processed_in_ = 0;
     next_read_limit_ = 0;
@@ -189,8 +189,14 @@ bool baseHostCX::read_waiting_for_peercom () {
 
     if(read_waiting_for_peercom_ && peercom()) {
         if(peercom()->com_status()) {
-            _dia("baseHostCX::read_waiting_for_peercom: peer's com status is OK, un-pausing");
+            _dia("baseHostCX::read_waiting_for_peercom: peer's com status is OK after %dx, un-pausing", peer_stats.com_not_ready_counter);
             read_waiting_for_peercom(false);
+            peer_stats.com_not_ready_counter = 0;
+        } else {
+            _dia("baseHostCX::read_waiting_for_peercom: peer's com status not ready (%dx), rescanning read", peer_stats.com_not_ready_counter);
+
+            ++peer_stats.com_not_ready_counter > params.com_not_ready_slowdown ?
+                peercom()->rescan_read(peercom()->socket()) : peercom()->set_monitor(peercom()->socket());
         }
     }
     else if(read_waiting_for_peercom_) {
@@ -206,8 +212,14 @@ bool baseHostCX::write_waiting_for_peercom () {
     if(write_waiting_for_peercom_) {
         if(peercom()) {
             if(peercom()->com_status()) {
-                _dia("baseHostCX::write_waiting_for_peercom[%s]: peer's com status ok, un-pausing write", c_type());
+                _dia("baseHostCX::write_waiting_for_peercom: peer's com status ok after %dx, un-pausing write", peer_stats.com_not_ready_counter);
                 write_waiting_for_peercom(false);
+                peer_stats.com_not_ready_counter = 0;
+            }
+            else {
+                _dia("baseHostCX::write_waiting_for_peercom: peer's com status not ready (%dx), rescanning write", peer_stats.com_not_ready_counter);
+                ++peer_stats.com_not_ready_counter > params.com_not_ready_slowdown ?
+                peercom()->rescan_write(peercom()->socket()) : peercom()->set_write_monitor(peercom()->socket());
             }
         }
         else  {
@@ -359,11 +371,11 @@ int baseHostCX::read() {
     }
 
     if(read_waiting_for_peercom()) {
-        _dum("baseHostCX::read[%s]: read operation is waiting_for_peercom, returning -1",c_type());
+        _deb("baseHostCX::read[%s]: read operation is waiting_for_peercom, returning -1",c_type());
         return -1;
     }
 
-    if(peer() && peer()->writebuf()->size() > HOSTCX_WRITEFULL) {
+    if(peer() && peer()->writebuf()->size() > params.write_full) {
         _deb("baseHostCX::read[%d]: deferring read operation",socket());
         com()->rescan_read(socket());
         return -1;
