@@ -28,9 +28,9 @@
 #include <shmbuffer.hpp>
 
 struct shared_table_header {
-    unsigned int version;
-    unsigned int entries;
-    unsigned int row_size;
+    unsigned int version {0};
+    unsigned int entries {0};
+    unsigned int row_size {0};
 };
 
 template<class RowType>
@@ -40,17 +40,16 @@ public:
   shared_table() {
       header_size = sizeof(struct shared_table_header);
       row_size = sizeof(RowType);
-      memset(&cur_data_header,0,sizeof(struct shared_table_header));
       cur_data_header.row_size = sizeof(RowType);
   };
   virtual ~shared_table() {}
   
   int read_header() {
-      shared_table_header* bh = (shared_table_header*)data();
+      shared_table_header const* bh = (shared_table_header*) data();
       cur_data_header = *bh;
       
       if(sizeof(RowType) != (long unsigned int)header_rowsize()) {
-	  return -1;
+          return -1;
       }       
       
       return bh->version;
@@ -141,8 +140,8 @@ public:
   };
 
   virtual unsigned int on_write_entry(unsigned char* ptr, RowType& r) {
-      memcpy(ptr,r.data()->data(),r.data()->size());
-      return r.data()->size();
+      memcpy(ptr, r.buf().data(),r.buf().size());
+      return r.buf().size();
   }
   
   // reuturn true if table should be cleared (yes!)
@@ -160,7 +159,7 @@ protected:
     unsigned int seen_version_ = 0;
     
 private:
-    shared_table_header cur_data_header;
+    shared_table_header cur_data_header {};
 };
 
 
@@ -203,9 +202,11 @@ public:
     virtual KeyType get_row_key(RowType* r) = 0;
 
 
-    std::unordered_map<KeyType,RowType>& map_entries() { return map_entries_; };
+    using map_type = std::unordered_map<KeyType,RowType>;
+
+    map_type& map_entries() { return map_entries_; };
 protected:
-    std::unordered_map<KeyType,RowType> map_entries_;
+    map_type map_entries_;
 };
 
 
