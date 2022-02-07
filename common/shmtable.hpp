@@ -37,12 +37,11 @@ template<class RowType>
 class shared_table : public shared_buffer {
 
 public:  
-  shared_table() {
-      header_size = sizeof(struct shared_table_header);
-      row_size = sizeof(RowType);
+  explicit shared_table(): header_size(sizeof(struct shared_table_header)),
+        row_size(sizeof(RowType)) {
       cur_data_header.row_size = sizeof(RowType);
   };
-  virtual ~shared_table() {}
+  virtual ~shared_table() = default;
   
   int read_header() {
       shared_table_header const* bh = (shared_table_header*) data();
@@ -52,20 +51,20 @@ public:
           return -1;
       }       
       
-      return bh->version;
+      return static_cast<int>(bh->version);
   }
-  unsigned int header_version() { return cur_data_header.version; }
-  unsigned int header_entries() { return cur_data_header.entries; }
-  unsigned int header_rowsize() { return cur_data_header.row_size; }
-  void reset_seen_version() { seen_version_ = 0; }
-  unsigned int seen_version()   { return seen_version_; }
-  void seen_version(unsigned int i)   { seen_version_ = i; }
+  [[nodiscard]] unsigned int header_version() const noexcept { return cur_data_header.version; }
+  [[nodiscard]] unsigned int header_entries() const noexcept { return cur_data_header.entries; }
+  [[nodiscard]] unsigned int header_rowsize() const noexcept { return cur_data_header.row_size; }
+  [[maybe_unused]] void reset_seen_version() { seen_version_ = 0; }
+  [[nodiscard]] unsigned int seen_version() const noexcept { return seen_version_; }
+  void seen_version(unsigned int i) { seen_version_ = i; }
   
   std::vector<RowType>& entries() { return entries_; }
 
     virtual int load() {
 
-        read_header();
+        if(int rh = read_header(); rh < 0) return rh;
 
         if(seen_version() < header_version() || ( header_version() == 0 && seen_version() > 0)) {
 
@@ -102,7 +101,7 @@ public:
         return -1;
     }
   
-  unsigned int write_header(bool increase_version=false, int n_entries=-1) {
+  unsigned int write_header(bool increase_version, int n_entries=-1) {
       
       if(increase_version) {
           seen_version(seen_version()+1);
@@ -119,7 +118,7 @@ public:
       return sizeof(shared_table_header);
   }
   
-  virtual int save(bool increase_version=false) {
+  virtual int save(bool increase_version) {
 
       int n_written = 0;
       unsigned char* curpos = data() + sizeof(struct shared_table_header);
@@ -134,7 +133,7 @@ public:
       }  
       
       // we are writing header as the last, since we don't know how many entries we really wrote
-      write_header(increase_version,n_written);
+      write_header(increase_version, n_written);
       
       return curpos - data();
   };
@@ -144,21 +143,22 @@ public:
       return r.buf().size();
   }
   
-  // reuturn true if table should be cleared (yes!)
+  // return true if table should be cleared (yes!)
   virtual bool on_new_version(int o, int n) { return true; }
   virtual bool on_new_entry(RowType* r) { return true; }
-  virtual void on_new_finished() {}
-  
-  
-protected:
+  virtual void on_new_finished() {
+      // blank to make override possible when data are saved
+  }
+
+
+private:
     unsigned int version = 0;
     unsigned int header_size = 0;
     unsigned int row_size = 0;
 
     std::vector<RowType> entries_;
     unsigned int seen_version_ = 0;
-    
-private:
+
     shared_table_header cur_data_header {};
 };
 
@@ -174,7 +174,7 @@ class shared_map : public shared_table<RowType> {
 public:
     shared_map() : shared_table<RowType>() {
     };
-    virtual ~shared_map() {}
+    virtual ~shared_map() = default;
 
     virtual bool on_new_version(int o, int n) {
         map_entries().clear();
@@ -201,11 +201,10 @@ public:
 
     virtual KeyType get_row_key(RowType* r) = 0;
 
-
     using map_type = std::unordered_map<KeyType,RowType>;
-
     map_type& map_entries() { return map_entries_; };
-protected:
+
+private:
     map_type map_entries_;
 };
 
