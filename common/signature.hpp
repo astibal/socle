@@ -35,7 +35,10 @@
 
 template <class SourceType>
 class Flow {
-    std::vector<std::pair<SourceType,buffer*>> flow_; // store flow data ... ala follow tcp stream :) 
+
+    using vector_type = std::vector<std::pair<SourceType,std::unique_ptr<buffer>>>;
+
+    vector_type flow_; // store flow data ... ala follow tcp stream :)
                                      // Flowdata::side_ doesn't have to be necesarilly L or R
     std::vector<int> update_counters_;
                      
@@ -51,11 +54,11 @@ public:
 
     inline void domain(int domain) { domain_ = domain; };
     inline int domain() const { return domain_ ; };
-    
-    std::vector<std::pair<SourceType,buffer*>>& flow() { return flow_; }
-    std::vector<std::pair<SourceType,buffer*>> const& cflow() const { return flow_; }
 
-    std::vector<std::pair<SourceType,buffer*>>& operator() () { return flow(); }
+    vector_type& flow() { return flow_; }
+    vector_type const& cflow() const { return flow_; }
+
+    vector_type& operator() () { return flow(); }
 
     unsigned int append(SourceType src,buffer& b) { return append(src,b.data(),b.size());};
     unsigned int append(SourceType src,buffer* pb) { return append(src,pb->data(),pb->size());};
@@ -64,10 +67,8 @@ public:
 
             _dia("New flow init: side: %c: %d bytes",src,len);
             _dum("New flow init: side: %c: incoming  data:\n%s",src,hex_dump((unsigned char*)data,len).c_str());
-            auto b = new buffer(data,len);
-            // src initialized by value, buffer is pointer
-            std::pair<SourceType,buffer*> t(src,b);
-            flow_.push_back(t);
+
+            flow_.template emplace_back(std::make_pair(src, new buffer(data,len)));
             update_counters_.push_back(1);
         }
         else if (flow_.back().first == src) {
@@ -83,11 +84,8 @@ public:
             }
             else {
                 _dia("Flow::append: datagrams, so packetized (new buffer on same side)");
-                auto b = new buffer(data, len);
 
-                // src initialized by value, buffer is pointer
-                std::pair<SourceType,buffer*> t(src, b);
-                flow_.push_back(t);
+                flow_.template emplace_back(std::make_pair(src, new buffer(data,len)));
                 update_counters_.push_back(1);
             }
         }
@@ -96,10 +94,8 @@ public:
             _dum("Flow::append: to new side: %c: incoming data:\n%s", src,
                     hex_dump((unsigned char*)data,len > 128 ? 128 : static_cast<int>(len)).c_str());
 
-            auto b = new buffer(data,len);
-            // src initialized by value, buffer is pointer
-            std::pair<SourceType,buffer*> t(src,b);
-            flow_.push_back(t);
+            flow_.template emplace_back(std::make_pair(src, new buffer(data,len)));
+
             update_counters_.push_back(1);
             exchanges++;
         }
@@ -134,14 +130,14 @@ public:
         else {
             for( unsigned int i = 0; i < flow_.size(); i++) {
                 char s =  flow_.at(i).first;
-                buffer* b = flow_.at(i).second;
+                auto& b = flow_.at(i).second;
 
                 int updates = 1;
                 if(i < update_counters_.size()) updates = update_counters_.at(i);
 
                 r << string_format("%c:%s[%d]", s, updates == 1 ? "" : string_format("<%d>:",updates).c_str(), b->size());
                 if(verbose) {
-                    r << string_format("\n%s\n", hex_dump(b).c_str());
+                    r << string_format("\n%s\n", hex_dump(b.get()).c_str());
                 }
 
                 if(i+1 != flow_.size()) {
@@ -154,12 +150,7 @@ public:
         return r.str();
     }
     
-    virtual ~Flow() {
-        for( unsigned int i = 0; i < flow_.size(); i++) {
-            buffer* b = flow_.at(i).second;
-            delete b;
-        }
-    }
+    virtual ~Flow() = default;
 };
 
 
@@ -313,10 +304,10 @@ public:
         bool first_iter = true;
         SourceType last_src;
         for( ; cur_flow < f->flow().size() && sig_pos < signature_.size(); cur_flow++) {
-            auto ff = f->flow().at(cur_flow);
+            auto& ff = f->flow().at(cur_flow);
             
             SourceType ff_src = ff.first;
-            buffer*    ff_buf = ff.second; 
+            auto&    ff_buf = ff.second;
 
             // init unknown type of source
             if(first_iter) {

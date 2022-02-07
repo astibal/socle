@@ -350,7 +350,7 @@ void AppHostCX::pre_write() {
                 flow().append('w',delta_b);
                 peek_write_counter += delta_b.size();
 
-                buffer* last_flow = flow().flow().back().second;
+                auto& last_flow = flow().flow().back().second;
                 _dum("AppHostCX::pre_write:[%s]: Last flow entry is now: \n%s", c_type(),
                                                  hex_dump((unsigned char*)last_flow->data(),last_flow->size()).c_str());
                 _dia("AppHostCX::pre_write:[%s]: ...",c_type());
