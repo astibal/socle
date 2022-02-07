@@ -462,7 +462,7 @@ int baseHostCX::read() {
             _dia("baseHostCX::read[%s]: read buffer reached it's current capacity %d/%d bytes", c_type(),
                     readbuf_.size(), readbuf_.capacity());
 
-            if(readbuf_.capacity() * 2  <= get_HOSTCX_BUFFMAXSIZE()) {
+            if(readbuf_.capacity() * 2  <= get_max_buffsize()) {
 
                 if (readbuf_.capacity(readbuf_.capacity() * 2)) {
                     _dia("baseHostCX::read[%s]: read buffer resized capacity %d/%d bytes", c_type(),

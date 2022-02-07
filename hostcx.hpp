@@ -189,7 +189,7 @@ public:
     static inline params_t params {};
 
 private:
-    static inline std::size_t get_HOSTCX_BUFFMAXSIZE() { return params.buffsize_maxmul * params.buffsize; };
+    static inline std::size_t get_max_buffsize() { return params.buffsize_maxmul * params.buffsize; };
 
 	struct peer_stats_t {
 		uint16_t com_not_ready_counter = 0;
