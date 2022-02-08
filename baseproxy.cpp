@@ -167,10 +167,10 @@ void baseProxy::left_shutdown() {
 	
 	int ld = left_delayed_accepts.size();
 	
-	for(auto* ii: left_bind_sockets) { ii->shutdown(); };
-	for(auto* ii: left_sockets)       { ii->shutdown(); };
-	for(auto* ii: left_pc_cx)          { ii->shutdown(); };
-    for(auto* ii: left_delayed_accepts) { ii->shutdown(); };
+	for(auto* ii: left_bind_sockets) { ii->shutdown(); }
+	for(auto* ii: left_sockets)       { ii->shutdown(); }
+	for(auto* ii: left_pc_cx)          { ii->shutdown(); }
+    for(auto* ii: left_delayed_accepts) { ii->shutdown(); }
 
     std::vector<baseHostCX*> delit(2);
 
@@ -199,10 +199,10 @@ void baseProxy::right_shutdown() {
     
     int rd = right_delayed_accepts.size();
 	
-	for(auto ii: right_bind_sockets) { ii->shutdown(); };
-	for(auto ii: right_sockets)       { ii->shutdown(); };
-	for(auto ii: right_pc_cx)          { ii->shutdown(); };
-    for(auto ii: right_delayed_accepts) { ii->shutdown(); };
+	for(auto ii: right_bind_sockets) { ii->shutdown(); }
+	for(auto ii: right_sockets)       { ii->shutdown(); }
+	for(auto ii: right_pc_cx)          { ii->shutdown(); }
+    for(auto ii: right_delayed_accepts) { ii->shutdown(); }
 
 
 

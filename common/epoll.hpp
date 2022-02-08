@@ -207,16 +207,18 @@ struct epoll {
 class epoll_handler;
 
 // handler statistics/troubleshooting struct
-typedef struct handler_stats {
+struct handler_stats {
     unsigned long call_count;
 
     void clear() {
         call_count=0L;
     }
-} handler_stats_t;
+};
+
+using handler_stats_t = handler_stats;
 
 // handler + its stats holder
-typedef struct handler_info  {
+struct handler_info  {
     handler_stats_t stats;
     epoll_handler* handler;
 
@@ -224,7 +226,9 @@ typedef struct handler_info  {
         handler = nullptr;
         stats.clear();
     }
-} handler_info_t;
+};
+
+using handler_info_t = handler_info;
 /*
  * Class poller is HOLDER of epoll pointer. Reason for this is to have single point of self-initializing 
  * code. It's kind of wrapper, which doesn't init anything until there is an attempt to ADD something into it.

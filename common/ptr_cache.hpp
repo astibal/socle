@@ -269,8 +269,9 @@ private:
 
     queue_t items_;
     std::shared_ptr<DataBlockStats> dbs_;
-    
-    std::shared_ptr<T> default_value_{nullptr};
+
+    // don't waste control block allocations for nullptr
+    static inline std::shared_ptr<T> default_value_{nullptr};
     cache_t cache_;
     mutable std::recursive_mutex lock_;
 
