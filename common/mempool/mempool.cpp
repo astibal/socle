@@ -98,6 +98,10 @@ memPool::~memPool() noexcept {
 void memPool::allocate(std::size_t n_sz256, std::size_t n_sz1k, std::size_t n_sz5k,
                      std::size_t n_sz10k, std::size_t n_sz20k) {
 
+#ifdef MEMPOOL_DISABLE
+    return;
+#endif
+
     std::lock_guard<std::mutex> l_(lock);
 
     sz32  = n_sz256 * m32;
@@ -402,6 +406,11 @@ void memPool::release(mem_chunk_t xto_ret){
 }
 
 std::vector<mem_chunk_t>* memPool::pick_acq_set(size_t s) {
+
+#ifdef MEMPOOL_DISABLE
+    return nullptr;
+#endif
+
     if      (s > 50 * 1024) return nullptr;
     else if (s > 35 * 1024) return &available_50k;
     else if (s > 20 * 1024) return &available_35k;
@@ -416,6 +425,10 @@ std::vector<mem_chunk_t>* memPool::pick_acq_set(size_t s) {
 }
 
 std::vector<mem_chunk_t>* memPool::pick_ret_set(size_t s) {
+
+#ifdef MEMPOOL_DISABLE
+    return nullptr;
+#endif
 
     std::lock_guard<std::mutex> g(lock);
     if      (s == 50 * 1024) return  &available_50k;
