@@ -212,7 +212,7 @@ public:
     
     baseCom* com_;
     baseCom* com() const { return com_; };
-    epoll* poller() const { return com() ? com()->poller.poller : nullptr;  }
+    epoll* poller() const { return com() ? com()->poller.poller.get() : nullptr;  }
 
     explicit baseProxy(baseCom* c);
     ~baseProxy() override;

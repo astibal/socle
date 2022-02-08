@@ -468,12 +468,18 @@ void epoller::init_if_null()
 
         _deb("creating a new poller instance");
 
-        poller = new epoll(); 
+        poller = std::make_unique<epoll>();
         if (poller->init() < 0) {
             poller = nullptr;
             _fat("cannot create poller instance!!!");
             exit(-1);
         }
+    }
+}
+
+epoller::~epoller() {
+    for(auto& [sock, hi]: handler_db) {
+        hi.handler->registrant = nullptr;
     }
 }
 

@@ -234,7 +234,7 @@ using handler_info_t = handler_info;
  * code. It's kind of wrapper, which doesn't init anything until there is an attempt to ADD something into it.
  */
 struct epoller {
-    struct epoll* poller = nullptr;
+    std::unique_ptr<epoll> poller;
     virtual void init_if_null();
     
     bool in_read_set(int check);
@@ -264,7 +264,7 @@ struct epoller {
     void set_idle_watch(int check);
     void clear_idle_watch(int check);
 
-    virtual ~epoller() { delete poller; }
+    virtual ~epoller();
 
     logan_lite log = logan_lite("com.epoll");
     mutable std::mutex lock_;
@@ -289,7 +289,7 @@ public:
             }
         }
     }
-    
+
     friend struct epoller;
 protected:
     epoller* registrant = nullptr;
