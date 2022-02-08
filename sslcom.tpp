@@ -839,12 +839,12 @@ int baseSSLCom<L4Proto>::certificate_status_ocsp_check(baseSSLCom* com) {
                 auto crl_cache_entry = factory()->crl_cache().get(crl_url);
 
                 if(crl_cache_entry != nullptr) {
-                    auto crl_struct = crl_cache_entry->value()->ptr;
+                    auto crl_struct_e = crl_cache_entry->value()->ptr;
                     _dia("found cached crl: %s",crl_printable.c_str());
                     str_status = str_cached;
 
                     // we have crl cached, but it points to null (we indicate failed download)
-                    if(!crl_struct) {
+                    if(!crl_struct_e) {
                         _war("failed download was cached for crl: %s, waiting for expire", crl_printable.c_str());
                     }
 

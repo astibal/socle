@@ -38,7 +38,7 @@
 template <class T>
 struct expiring {
     expiring() = delete;
-    expiring(T v, unsigned int in_seconds): value_(v) { expired_at_ = ::time(nullptr) + in_seconds; }
+    expiring(T v, unsigned int in_seconds): value_(v), expired_at_(::time(nullptr) + in_seconds) {}
     virtual ~expiring() = default;
 
     T& value() { return value_; };
@@ -58,25 +58,24 @@ template <class T>
 struct expiring_ptr {
 
     expiring_ptr() = delete;
-    expiring_ptr(T* v, unsigned int in_seconds): value_(v) { expired_at_ = ::time(nullptr) + in_seconds; }
-    virtual ~expiring_ptr() { delete value_; };
+    expiring_ptr(T* v, unsigned int in_seconds): value_(v), expired_at_(::time(nullptr) + in_seconds) {}
 
-    T*& value() { return value_; };
+    T* value() { return value_.get(); };
     time_t& expired_at() { return expired_at_; };
 
     virtual bool expired() { return (this->expired_at_ <= ::time(nullptr)); }
     static bool is_expired(expiring<T> *ptr) { return ptr->expired(); }
 
 private:
-    T* value_;
+    std::unique_ptr<T> value_;
     time_t expired_at_;
 
 };
 
 
 
-typedef expiring<int> expiring_int;
-typedef expiring<std::string> expiring_string;
+using expiring_int = expiring<int>;
+using expiring_string = expiring<std::string> ;
 
 template <class K, class T>
 class ptr_cache {
@@ -101,6 +100,7 @@ public:
         void touch() { timestamp_ = std::chrono::system_clock::now(); counter_++; if(dbs_) dbs_->total_counter++; }
         [[nodiscard]] int age() const { return std::chrono::duration_cast<std::chrono::seconds>( std::chrono::system_clock::now() - timestamp_).count(); };
         [[nodiscard]] count_t count() const { return counter_; }
+
     private:
         std::shared_ptr<DataBlockStats> dbs_;
         std::shared_ptr<T> pointer_;
@@ -111,33 +111,37 @@ public:
 
     using cache_t = mp::unordered_map<K, std::unique_ptr<DataBlock>>;
     using queue_t = mp::list<K>;
-    enum class MODE { FIFO, LRU };
+    enum class mode_t { FIFO, LRU };
 
-    explicit ptr_cache(const char* n): auto_delete_(true), max_size_(0) {
-        log = logan::create("socle.ptrcache");
-
+    explicit ptr_cache(const char* name) {
+        std::string start("socle.ptrcache");
+        log = logan::create(start + "." + name);
     }
-    ptr_cache(const char* n, unsigned int max_size, bool auto_delete, bool (*fn_exp)(std::shared_ptr<T>) = nullptr): auto_delete_(auto_delete), max_size_(max_size) {
-        expiration_check(fn_exp);
-        log = logan::create("socle.ptrcache");
+    ptr_cache(const char* name, unsigned int max_size, bool auto_delete, std::optional<std::function<bool(std::shared_ptr<T>)>> fn_exp = std::nullopt): auto_delete_(auto_delete), max_size_(max_size) {
+        if(fn_exp) expiration_check(fn_exp.value());
+
+        std::string start("socle.ptrcache");
+        log = logan::create(start + "." + name);
     }
 
-    ptr_cache(const char* n, unsigned int max_size, bool auto_delete, MODE m): auto_delete_(auto_delete), max_size_(max_size) {
-        if(m == MODE::LRU) mode_lru();
-        log = logan::create("socle.ptrcache");
+    ptr_cache(const char* name, unsigned int max_size, bool auto_delete, mode_t m): auto_delete_(auto_delete), max_size_(max_size) {
+        if(m == mode_t::LRU) mode_lru();
+
+        std::string start("socle.ptrcache");
+        log = logan::create(start + "." + name);
     }
 
 
     virtual ~ptr_cache() { clear(); };
 
 
-    MODE mode_ = MODE::FIFO;
+    mode_t mode_ = mode_t::FIFO;
 
-    inline void mode_lru() { mode_ = MODE::LRU; if(not dbs_) dbs_ = std::make_shared<DataBlockStats>(); }
-    inline void mode_fifo() { mode_ = MODE::FIFO; }
+    inline void mode_lru() { mode_ = mode_t::LRU; if(not dbs_) dbs_ = std::make_shared<DataBlockStats>(); }
+    inline void mode_fifo() { mode_ = mode_t::FIFO; }
 
     void clear() {
-        std::lock_guard<std::recursive_mutex> l(lock_);
+        auto lc_ = std::scoped_lock(lock_);
 
         cache().clear();
         items_.clear();
@@ -154,13 +158,18 @@ public:
 
     unsigned int opportunistic_removal() const { return opportunistic_removal_; };
 
+    static std::string k2str(K& k) {return "";}
+    static std::string k2str(std::string const& r) { return r; }
+    static std::string k2str(const char* r) { return r; }
+
     bool erase(K k) {
-        std::lock_guard<std::recursive_mutex> l(lock_);
+        auto lc_ = std::scoped_lock(lock_);
+
         auto it = cache().find(k);
         if(it != cache().end()) {
             _deb("ptr_cache::erase[%s]: erase: key found ", c_type());
             cache().erase(k);
-            _dia("ptr_cache::erase[%s]: erase: key erased", c_type());
+            _dia("ptr_cache::erase[%s]: erase: key '%s' erased", c_type(), k2str(k).c_str());
             
             return true;
         } else {
@@ -172,25 +181,29 @@ public:
 
     // shortcut to erase cache iterator
     typename cache_t::iterator erase(typename cache_t::iterator& i) {
-        std::lock_guard<std::recursive_mutex> l(lock_);
+        auto lc_ = std::scoped_lock(lock_);
         return cache().erase(i);
     }
 
     std::shared_ptr<T> get(K k) {
-        std::lock_guard<std::recursive_mutex> l(lock_);
+        auto lc_ = std::scoped_lock(lock_);
+
         auto it = cache().find(k);
         if(it == cache().end()) {
             return default_value();
         }
-        else if (fn_expired_check != nullptr) {
+        else if (fn_expired_check) {
+
+            auto const& check_fn = fn_expired_check.value();
+
             // check if object isn't expired
-            if(fn_expired_check(it->second->ptr())) {
+            if(check_fn(it->second->ptr())) {
                 erase(k);
                 return default_value();
             }
         }
 
-        if(mode_ == MODE::LRU) {
+        if(mode_ == mode_t::LRU) {
             it->second->touch();
             lru_reoder();
         }
@@ -205,12 +218,13 @@ public:
 
     // set the key->value. Return true if other value had been replaced.
     bool set(const K k, std::shared_ptr<T> v) {
-        std::lock_guard<std::recursive_mutex> l(lock_);
+        auto lc_ = std::scoped_lock(lock_);
+
         bool ret = false;
         
         auto it = cache().find(k);
         if(it != cache().end()) {
-            _dia("ptr_cache::set[%s]: existing entry found", c_type());
+            _dia("ptr_cache::set[%s]: replacing existing entry '%s'", c_type(), k2str(k).c_str());
             cache()[k] = std::make_unique<DataBlock>(dbs_, v);
         } else {
 
@@ -218,23 +232,23 @@ public:
                 _deb("ptr_cache::set[%s]: current size %d/%d", c_type(), items().size(), max_size_);
 
                 while( items().size() >= max_size_) {
-                    _deb("ptr_cache::set[%s]: max size reached!", c_type());
+                    _dia("ptr_cache::set[%s]: max size reached!", c_type());
 
                     switch(mode_) {
-                        case MODE::LRU:
+                        case mode_t::LRU:
                             lru_reoder();
 
                             [[fallthrough]];
 
-                        case MODE::FIFO:
+                        case mode_t::FIFO:
                             if(delete_last()) {
-                                _dia("ptr_cache::set[%s]: max size: object removed from cache", c_type());
+                                _dia("ptr_cache::set[%s]: max size: object '%s' removed from cache", c_type(), k2str(k).c_str());
                             }
                             break;
                     }
                 }
             }
-            _dia("ptr_cache::set[%s]: new entry added", c_type());
+            _dia("ptr_cache::set[%s]: new entry '%s' added", c_type(), k2str(k).c_str());
             cache()[k] = std::make_unique<DataBlock>(dbs_, v);
             items().push_front(k);
         }
@@ -244,7 +258,8 @@ public:
 
     bool delete_last();
     bool lru_reoder();
-    void expiration_check(bool (*fn_expired_check_ptr)(std::shared_ptr<T>)) { fn_expired_check = fn_expired_check_ptr; };
+
+    void expiration_check(std::function<bool(std::shared_ptr<T>)> const& fn_expired_check_arg) { fn_expired_check = fn_expired_check_arg; };
     std::recursive_mutex& getlock() const { return lock_; }
 
 private:
@@ -258,8 +273,8 @@ private:
     std::shared_ptr<T> default_value_{nullptr};
     cache_t cache_;
     mutable std::recursive_mutex lock_;
-    
-    bool (*fn_expired_check)(std::shared_ptr<T>) = nullptr;
+
+    std::optional< std::function<bool(std::shared_ptr<T>)> > fn_expired_check;
 
     logan_lite log;
 

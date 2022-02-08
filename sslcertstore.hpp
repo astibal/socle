@@ -206,8 +206,8 @@ private:
     mutable std::recursive_mutex mutex_cache_write_;
 
     SSLFactory():
-            cert_cache_("certificate chache", CERTSTORE_CACHE_SIZE, true),
-            verify_cache("verify cache", VERIFY_CACHE_SIZE, true)
+            cert_cache_("pki.cert", CERTSTORE_CACHE_SIZE, true),
+            verify_cache("pki.verify", VERIFY_CACHE_SIZE, true)
     {
         cert_cache_.mode_lru();
     }
@@ -282,11 +282,11 @@ public:
     ptr_cache<std::string,expiring_verify_result> verify_cache;
 
     static ptr_cache<std::string,expiring_crl>& crl_cache() {
-        static ptr_cache<std::string,SSLFactory::expiring_crl> c("crl cache",CRL_CACHE_SIZE,true);
+        static ptr_cache<std::string,SSLFactory::expiring_crl> c("crl_cache",CRL_CACHE_SIZE,true);
         return c;
     };
     static ptr_cache<std::string,session_holder>& session_cache() {
-        static ptr_cache<std::string,session_holder> c("ssl session cache",SESSION_CACHE_SIZE,true, ptr_cache<std::string,session_holder>::MODE::LRU);
+        static ptr_cache<std::string,session_holder> c("ssl_session_cache",SESSION_CACHE_SIZE,true, ptr_cache<std::string,session_holder>::mode_t::LRU);
         return c;
     };
 
