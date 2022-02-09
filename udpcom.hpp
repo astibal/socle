@@ -53,33 +53,38 @@ struct Datagram {
 
     Datagram() = default;
 
-    Datagram(Datagram const& r) {
-        dst = r.dst;
-        src = r.src;
-        socket_left = r.socket_left;
-        reuse = r.reuse;
-        cx = r.cx;
-        rx_queue = r.rx_queue;
-    }
+    Datagram(Datagram const& r): dst(r.dst), src(r.src), socket_left(r.socket_left), reuse(r.reuse), cx(r.cx), rx_queue(r.rx_queue) {}
 
-    Datagram& operator=(Datagram const& r) {
-
-        dst = r.dst;
-        src = r.src;
-        socket_left = r.socket_left;
-
-        reuse = r.reuse;
-        cx = r.cx;
-        rx_queue = r.rx_queue;
-
+    Datagram& operator=(Datagram const& r)  {
+        assign(r);
         return *this;
+    }
+    void assign(Datagram const& r) {
+
+        dst = r.dst;
+        src = r.src;
+        socket_left = r.socket_left;
+
+        reuse = r.reuse;
+        cx = r.cx;
+        rx_queue = r.rx_queue;
     }
 
     sockaddr_storage dst{};
     sockaddr_storage src{};
+    std::optional<int> socket_left;
+
+    bool reuse = false;     // make this true if there is e.g. clash and closed CX/Com should not
+                            // trigger its removal from the pool: com()->close() will otherwise
+                            // erase it.
+                            // It's toggle type, whenever used, it should be again set to false,
+                            // in order to be deleted once in the future.
+
+
+    baseHostCX* cx = nullptr;
+    std::array<buffer,5> rx_queue;
 
     mutable std::mutex rx_queue_lock;
-    std::array<buffer,5> rx_queue;
 
     inline size_t queue_bytes() const {
         size_t elem_bytes = 0;
@@ -117,18 +122,8 @@ struct Datagram {
     }
 
 
-    std::optional<int> socket_left;
-
-    bool reuse = false;         // make this true if there is e.g. clash and closed CX/Com should not
-                                // trigger it's removal from the pool: com()->close() will otherwise
-                                // erase it.
-                                // It's toggle type, whenever used, it should be again set to false,
-                                // in order to be deleted once in the future.
-    baseHostCX* cx = nullptr;
-    
-
-    inline sockaddr_in* src_sockaddr_in() { sockaddr_in* ptr = (sockaddr_in*)&src; return ptr; }
-    inline sockaddr_in6* src_sockaddr_in6() { sockaddr_in6* ptr = (sockaddr_in6*)&src; return ptr; }
+    inline sockaddr_in* src_sockaddr_in() { return (sockaddr_in*)&src; }
+    inline sockaddr_in6* src_sockaddr_in6() { return (sockaddr_in6*)&src; }
     
     inline bool src_ipv4() const { return src.ss_family == AF_INET; } 
     inline bool src_ipv6() const { return src.ss_family == AF_INET6; } 
@@ -138,8 +133,8 @@ struct Datagram {
     inline unsigned short src_port6() { return src_sockaddr_in6()->sin6_port; }
     inline sa_family_t src_family() { return src.ss_family; }
     
-    inline sockaddr_in* dst_sockaddr_in() { sockaddr_in* ptr = (sockaddr_in*)&dst; return ptr; }
-    inline sockaddr_in6* dst_sockaddr_in6() { sockaddr_in6* ptr = (sockaddr_in6*)&dst; return ptr; }
+    inline sockaddr_in* dst_sockaddr_in() { return (sockaddr_in*)&dst; }
+    inline sockaddr_in6* dst_sockaddr_in6() { return (sockaddr_in6*)&dst; }
     
     inline bool dst_ipv4() const { return dst.ss_family == AF_INET; } 
     inline bool dst_ipv6() const { return dst.ss_family == AF_INET6; } 
@@ -168,38 +163,13 @@ class UDPCom : public virtual baseCom {
 
 public:
     // if someone needs external access, create reference!
-    static inline std::shared_ptr<DatagramCom> datagram_com_static() {
+    static std::shared_ptr<DatagramCom> datagram_com_static();
+    std::shared_ptr<DatagramCom> datagram_com() const;
 
-        if(not datagram_com_static_) {
-            static std::mutex only_one;
-            auto lc_ = std::scoped_lock(only_one);
-
-            // guard threads who entered this branch
-            if(not datagram_com_static_)
-                datagram_com_static_ = std::make_shared<DatagramCom>();
-        }
-        return datagram_com_static_;
-    }
-
-    inline auto& datagram_com() const {
-        if( not datagram_com_) datagram_com_ = datagram_com_static();
-        return datagram_com_;
-    }
-
-    using buffer_guard = locked_guard<lockbuffer>;
-
-    UDPCom(): baseCom() {
-        l4_proto(SOCK_DGRAM);
-        bind_sock_family = default_sock_family;
-
-        datagram_com_ = datagram_com_static();
-
-        log.sub_area("com.udp");
-    };
-    
+    UDPCom();
     void init(baseHostCX* owner) override;
     baseCom* replicate() override { return new UDPCom(); };
-    
+
     int connect(const char* host, const char* port) override;
     int bind(unsigned short port) override;
     int bind([[maybe_unused]] const char* path) override { return -1; };
@@ -218,13 +188,15 @@ public:
     
     ssize_t write(int _fd, const void* _buf, size_t _n, int _flags) override;
     virtual ssize_t write_to_pool(int _fd, const void* _buf, size_t _n, int _flags);
-    
+
+    int kill_socket(int fd);
+    size_t kill_and_deref_from_connnect(std::string const& key);
+    int remove_datagram_entry(int fd);
     void shutdown(int _fd) override;
     
     void cleanup() override {};
     
     bool is_connected(int s) override;
-    bool com_status() override;
 
     virtual bool resolve_nonlocal_socket(int sock);
     bool resolve_socket(bool source, int s, std::string* target_host, std::string* target_port, sockaddr_storage* target_storage) override;
@@ -249,20 +221,35 @@ protected:
     
     sockaddr_storage udpcom_addr {};
     socklen_t udpcom_addrlen {0};
-    
+
+public:
     // Connection socket pool
     //
     // If the same source IP:PORT connection is already in place
-    // transparent bind to source IP:PORT fails, delaying DNS resolution. 
+    // transparent bind to source IP:PORT fails, delaying DNS resolution.
+
     // this connection database maintains opened sockets, which will be reused.
-    
-    // Since we don't want one Com to close another's Com opened socket,
-    // we implement value as tuple of <fd,refcount>.
-    static inline std::map<std::string,std::pair<int,int>> connect_fd_cache;
-    static inline std::recursive_mutex connect_fd_cache_lock;
-    
-public:
-    
+    // Since we don't want one Com to close another Com opened socket,
+    // implement value as tuple of <fd,refcount>.
+
+    struct ConnectionsCache {
+        ConnectionsCache(UDPCom& slf): self(slf) {};
+
+        UDPCom& self;
+        std::optional<std::string> my_key;
+
+        std::optional<std::string> gen_cache_key (int _fd);
+        std::optional<std::string> gen_cache_key (const char *host, const char *port);
+
+        using fd_counter_type = std::pair<int,int>;
+        using map_type = mp::map<std::string, fd_counter_type, std::less<>>;
+
+        static inline map_type cache;
+        static inline std::recursive_mutex lock;
+    };
+
+    ConnectionsCache connections;
+
     // allow older kernels to use UDP -- we have to set bind_sock_family to IPv4 variant
     static inline unsigned int default_sock_family = AF_INET6;
 

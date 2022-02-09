@@ -27,6 +27,35 @@
 
 using namespace socle;
 
+
+UDPCom::UDPCom(): baseCom(), connections(*this) {
+    l4_proto(SOCK_DGRAM);
+    bind_sock_family = default_sock_family;
+
+    datagram_com_ = datagram_com_static();
+
+    log.sub_area("com.udp");
+};
+
+
+std::shared_ptr<DatagramCom> UDPCom::datagram_com_static() {
+
+    if(not datagram_com_static_) {
+        static std::mutex only_one;
+        auto lc_ = std::scoped_lock(only_one);
+
+        // guard threads who entered this branch
+        if(not datagram_com_static_)
+            datagram_com_static_ = std::make_shared<DatagramCom>();
+    }
+    return datagram_com_static_;
+}
+
+inline std::shared_ptr<DatagramCom> UDPCom::datagram_com() const {
+    if( not datagram_com_) datagram_com_ = datagram_com_static();
+    return datagram_com_;
+}
+
 int UDPCom::translate_socket(int vsock) const {
     
     if(vsock >= 0) { 
@@ -123,9 +152,6 @@ int UDPCom::bind(short unsigned int port) {
     return new_socket;
 }
 
-bool UDPCom::com_status() {
-    return baseCom::com_status();
-}
 
 int UDPCom::connect(const char* host, const char* port) {
     struct addrinfo hints {};
@@ -154,10 +180,10 @@ int UDPCom::connect(const char* host, const char* port) {
 
     for (rp = gai_result; rp != nullptr; rp = rp->ai_next) {
 
-        sfd = ::socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
-        
+
         _deb("UDPCom::connect: gai info found");
-        
+
+        sfd = ::socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
         if (sfd == -1) {
             _deb("UDPCom::connect: failed to create socket");
             continue;
@@ -169,45 +195,44 @@ int UDPCom::connect(const char* host, const char* port) {
         else if(l3_proto() == AF_INET6) {
             so_transparent_v6(sfd);
         }
-        
+
+
+        bool from_cache = false;
+        std::string connect_cache_key_cur;
+
         if(nonlocal_src()) {
             
             _dia("UDPCom::connect[%s:%s]: About to name socket[%d] after: %s:%d",host,port,sfd,nonlocal_src_host().c_str(),nonlocal_src_port());
 
-            std::string connect_cache_key = string_format("%s:%d-%s:%s",nonlocal_src_host().c_str(),nonlocal_src_port(),host,port);
+            connect_cache_key_cur = connections.gen_cache_key(host, port).value_or("");
             
-            std::scoped_lock<std::recursive_mutex> l(connect_fd_cache_lock);
+            std::scoped_lock<std::recursive_mutex> l(connections.lock);
             int bind_status = namesocket(sfd,nonlocal_src_host(),nonlocal_src_port(),l3_proto());
 
             if (bind_status != 0) {
-                _dia("UDPCom::connect[%s:%s]: socket[%d] transparency for %s/%s:%d failed, cannot bind", host, port,
-                     sfd,
-                     SocketInfo::inet_family_str(l3_proto()).c_str(), nonlocal_src_host().c_str(), nonlocal_src_port());
-                    
-                auto it_fd = connect_fd_cache.find(connect_cache_key);
+                ::close(sfd);
+
+                auto it_fd = connections.cache.find(connect_cache_key_cur);
                 
-                if(it_fd != connect_fd_cache.end()) {
+                if(it_fd != connections.cache.end()) {
                     std::pair<int,int>& cached_fd_ref = it_fd->second;
                     
                     
                     int cached_fd = cached_fd_ref.first;
                     cached_fd_ref.second++;
                     
-                    _dia("UDPCom::connect[%s:%s]: socket[%d] transparency for %s failed, but found fd %d in connect cache (refcount %d).",host,port,sfd,connect_cache_key.c_str(),cached_fd,cached_fd_ref.second);
-                    ::close(sfd);
-                    
+                    _dia("UDPCom::connect[%s:%s]: found socket %d in connect cache (refcount %d).", host, port, sfd, connect_cache_key_cur.c_str(), cached_fd, cached_fd_ref.second);
+
                     // reuse already opened socket
                     sfd = cached_fd;
+                    from_cache = true;
+                    connections.my_key = connect_cache_key_cur;
+
                 } else {
-                    _err("UDPCom::connect[%s:%s]: socket[%d] transparency for %s failed and not cached.",host,port,sfd, connect_cache_key.c_str());
+                    _err("UDPCom::connect[%s:%s]: socket[%d] transparency for %s/%s:%d failed, cannot bind, not cached.", host, port,
+                         sfd,
+                         SocketInfo::inet_family_str(l3_proto()).c_str(), nonlocal_src_host().c_str(), nonlocal_src_port());
                 }
-                
-                
-            } else {
-                
-                connect_fd_cache[connect_cache_key] = std::pair<int,int>(sfd,1);
-                
-                _dia("UDPCom::connect[%s:%s]: socket[%d] transparency for %s:%d OK",host,port,sfd,nonlocal_src_host().c_str(),nonlocal_src_port());
             }
         }
 
@@ -229,27 +254,38 @@ int UDPCom::connect(const char* host, const char* port) {
             int fa = SocketInfo::inet_ss_address_unpack(((sockaddr_storage*)&udpcom_addr), &rps, &rp_port);
             _deb("connect[%d]: rp contains: %s/%s:%d", sfd, SocketInfo::inet_family_str(fa).c_str(), rps.c_str(), rp_port);
         }
-        
-        auto con_ret = ::connect(sfd,(sockaddr*)&udpcom_addr,sizeof(sockaddr));
-        if(con_ret != 0) {
-            std::string rps;
-            unsigned short rp_port;
 
-            int fa = SocketInfo::inet_ss_address_unpack(((sockaddr_storage*)&udpcom_addr), &rps, &rp_port);
-            _deb("connect[%d]:  failed to %s/%s:%d : %s ", sfd, SocketInfo::inet_family_str(fa).c_str(), rps.c_str(), rp_port,
-                        string_error().c_str());
+        if(not from_cache) {
+            auto con_ret = ::connect(sfd, (sockaddr *) &udpcom_addr, sizeof(sockaddr));
+            if (con_ret != 0) {
+                std::string rps;
+                unsigned short rp_port;
+
+                int fa = SocketInfo::inet_ss_address_unpack(((sockaddr_storage *) &udpcom_addr), &rps, &rp_port);
+                _dia("connect[%d]:  failed to %s/%s:%d : %s ", sfd, SocketInfo::inet_family_str(fa).c_str(),
+                     rps.c_str(), rp_port,
+                     string_error().c_str());
+
+                ::close(sfd);
+                sfd = -1;
+
+            } else {
+                // connect OK
+                std::scoped_lock<std::recursive_mutex> l(connections.lock);
+                connections.cache[connect_cache_key_cur] = std::pair<int, int>(sfd, 1);
+                connections.my_key = connect_cache_key_cur;
+
+                _dia("UDPCom::connect[%s:%s]: socket[%d] transparency for %s:%d OK", host, port, sfd,
+                     nonlocal_src_host().c_str(), nonlocal_src_port());
+
+            }
         }
+
 
         if(! GLOBAL_IO_BLOCKING() ) {
             unblock(sfd);
         }
-        
-//         sockaddr_storage sa;
-//         inet::to_sockaddr_in6(&sa)->sin6_port = htons(std::atoi(port));
-//         inet_pton(l3_proto(),host,&inet::to_sockaddr_in6(&sa)->sin6_addr);
-        
-        //::connect(sfd,&udpcom_addr,udpcom_addrlen);
-        
+
         break;
     }
 
@@ -581,7 +617,7 @@ ssize_t UDPCom::write(int _fd, const void* _buf, size_t _n, int _flags)
 
 ssize_t UDPCom::write_to_pool(int _fd, const void* _buf, size_t _n, int _flags) {
     
-    std::scoped_lock<std::recursive_mutex> l_(datagram_com()->lock);
+    auto lc_ = std::scoped_lock(datagram_com()->lock);
     
     auto it_record = datagram_com()->datagrams_received.find((unsigned int)_fd);
     if(it_record != datagram_com()->datagrams_received.end()) {
@@ -604,8 +640,11 @@ ssize_t UDPCom::write_to_pool(int _fd, const void* _buf, size_t _n, int _flags) 
         }
 
 
-        std::string ip_src, ip_dst;
-        unsigned short port_src, port_dst;
+        std::string ip_src;
+        std::string ip_dst;
+        unsigned short port_src;
+        unsigned short port_dst;
+
         SocketInfo::inet_ss_address_unpack(&record->src, &ip_src, &port_src);
         
         sockaddr_storage record_src_4fix{};
@@ -750,7 +789,7 @@ ssize_t UDPCom::write_to_pool(int _fd, const void* _buf, size_t _n, int _flags) 
 
 bool UDPCom::resolve_socket(bool source, int s, std::string* target_host, std::string* target_port, sockaddr_storage* target_storage) {
     
-    std::lock_guard<std::recursive_mutex> l(datagram_com()->lock);
+    auto lc_ = std::scoped_lock(datagram_com()->lock);
     
     auto it_record = datagram_com()->datagrams_received.find((unsigned int)s);
     if(it_record != datagram_com()->datagrams_received.end()) {
@@ -822,126 +861,134 @@ bool UDPCom::resolve_socket(bool source, int s, std::string* target_host, std::s
     return true;
 }
 
+std::optional<std::string> UDPCom::ConnectionsCache::gen_cache_key(const char* host, const char* port) {
+    auto const& log = self.log;
+
+    if (self.nonlocal_src()) {
+        _dia("UDPCom::ConnectionsCache::gen_cache_key: from nonlocal+connect info");
+        return string_format("%s:%d-%s:%s", self.nonlocal_src_host().c_str(), self.nonlocal_src_port(), host, port);
+    }
+
+    return std::nullopt;
+}
+
+
+std::optional<std::string> UDPCom::ConnectionsCache::gen_cache_key(int fd) {
+    auto const& log = self.log;
+
+    std::string sip;
+    std::string sport;
+    std::string dip;
+    std::string dport;
+
+    _dia("UDPCom::ConnectionsCache::gen_cache_key(%d) from fd", fd);
+
+
+    if(self.resolve_socket_dst(fd, &sip, &sport) && self.resolve_socket_src(fd, &dip, &dport)) {
+
+        std::string key = string_format("%s:%s-%s:%s", sip.c_str(), sport.c_str(),dip.c_str(), dport.c_str());
+        return std::make_optional(key);
+    }
+
+    return std::nullopt;
+};
+
+int UDPCom::remove_datagram_entry(int fd) {
+    std::size_t count = 0;
+
+    auto lc_ = std::scoped_lock(datagram_com()->lock);
+
+    auto& db = datagram_com()->datagrams_received;
+    auto key = static_cast<uint64_t>(fd);
+
+    auto it_record = db.find(key);
+
+    if(it_record != db.end()) {
+        auto it = db[key];
+
+        if(not it->reuse) {
+            if(it->socket_left.has_value() && it->socket_left.value() > 0) {
+                int left = it->socket_left.value();
+
+                if(kill_socket(left) != 0) {
+                    _war("UDPCom::ConnectionsCache::remove_datagram_entry[%d]/[%d]: socket close error", fd, left);
+                } else {
+                    _deb("UDPCom::ConnectionsCache::remove_datagram_entry[%d]/[%d]: socket closed", fd, left);
+                }
+            }
+
+        } else {
+            _dia("UDPCom::ConnectionsCache::remove_datagram_entry[%d]: datagrams_received entry reuse flag set, entry not deleted.", fd);
+            it->reuse = false;
+        }
+
+        _dia("UDPCom::ConnectionsCache::remove_datagram_entry[%d]: datagrams_received entry erased", fd);
+        count = db.erase(key);
+    } else {
+        _dia("UDPCom::ConnectionsCache::remove_datagram_entry[%d]: datagrams_received entry NOT found, thus not erased", fd);
+    }
+
+    return count;
+};
+
+int UDPCom::kill_socket(int fd) {
+
+    int ret = 0;
+
+    int shutdown_ret = ::shutdown(fd, SHUT_RDWR);
+    if(shutdown_ret < 0) {
+        _not("UDPCom::kill_socket[%d] shutdown error: %s", fd, string_error().c_str());
+        ret = shutdown_ret;
+    } else {
+        _deb("UDPCom::kill_socket[%d] shut down", fd);
+    }
+
+    int close_ret = ::close(fd);
+    if(close_ret < 0) {
+        _not("UDPCom::kill_socket[%d] close error: %s", fd, string_error().c_str());
+        ret = close_ret;
+    } else {
+        _deb("UDPCom::kill_socket[%d] closed", fd);
+    }
+
+    return ret;
+};
+
+
+size_t UDPCom::kill_and_deref_from_connnect(std::string const& key)  {
+
+    size_t count = 0;
+
+    auto it_fd = ConnectionsCache::cache.find(key);
+
+    if(it_fd != ConnectionsCache::cache.end()) {
+        std::pair<int,int>& cached_fd_ref = it_fd->second;
+        auto& [sock, counter] = cached_fd_ref;
+
+        if(counter <= 1) {
+
+            if(kill_socket(sock) != 0) {
+                _war("UDPCom::kill_and_deref_from_connnect[%s]: socket close error", key.c_str());
+            } else {
+                _deb("UDPCom::kill_and_deref_from_connnect[%s]: socket closed", key.c_str());
+            }
+
+            count = ConnectionsCache::cache.erase(key);
+            _dia("UDPCom::kill_and_deref_from_connnect[%s]: %d removed", key.c_str(), count);
+
+        } else {
+            counter--;
+            _deb("UDPCom::kill_and_deref_from_connnect[%s]: still in use, refcount now %d", key.c_str(), counter);
+        }
+    } else {
+        _deb("UDPCom::kill_and_deref_from_connnect[%s]: not found in connect cache.", key.c_str());
+    }
+
+    return count;
+};
+
 
 void UDPCom::shutdown(int _fd) {
-
-    auto kill_socket = [&](int fd) -> int {
-
-        int ret = 0;
-
-        int shutdown_ret = ::shutdown(fd, SHUT_RDWR);
-        if(shutdown_ret < 0) {
-            _not("UDPCom::shutdown[%d] shutdown error: %s", fd, string_error().c_str());
-            ret = shutdown_ret;
-        } else {
-            _deb("UDPCom::shutdown[%d] shut down", fd);
-        }
-
-        int close_ret = ::close(fd);
-        if(close_ret < 0) {
-            _not("UDPCom::shutdown[%d] close error: %s", fd, string_error().c_str());
-            ret = close_ret;
-        } else {
-            _deb("UDPCom::shutdown[%d] closed", fd);
-        }
-
-        return ret;
-    };
-
-
-    auto kill_connect_cache = [&](std::string const& key) -> size_t {
-
-        size_t count = 0;
-
-        auto it_fd = connect_fd_cache.find(key.c_str());
-
-        if(it_fd != connect_fd_cache.end()) {
-            std::pair<int,int>& cached_fd_ref = it_fd->second;
-
-            if(cached_fd_ref.second <= 1) {
-
-                if(kill_socket(cached_fd_ref.first) != 0) {
-                    _war("UDPCom::shutdown[%d]/kill_connect_cache[%s]: socket close error", _fd, key.c_str());
-                } else {
-                    _deb("UDPCom::shutdown[%d]/kill_connect_cache[%s]: socket closed", _fd, key.c_str());
-                }
-
-                count = connect_fd_cache.erase(key);
-                _dia("UDPCom::shutdown[%d]/kill_connect_cache[%s]: %d removed", _fd, key.c_str(), count);
-
-            } else {
-                cached_fd_ref.second--;
-                _deb("UDPCom::shutdown[%d]/kill_connect_cache[%s]: still in use, refcount now %d", _fd, key.c_str(), cached_fd_ref.second);
-            }
-        } else {
-            _deb("UDPCom::shutdown[%d]/kill_connect_cache[%s]: not found in connect cache.", _fd, key.c_str());
-
-            // What if socket is already used somewhere else?
-            //::close(__fd) can't be used. Doing nothing is better.
-
-        }
-
-        return count;
-    };
-
-    auto create_connect_cache_key = [&](int fd) -> std::optional<std::string> {
-        std::string sip, sport;
-        std::string dip, dport;
-
-        // it's opposite in this case, so following is CORRECT
-
-        _dia("UDPCom::shutdown[%d]: request to shutdown socket", fd);
-
-        if(resolve_socket_dst(_fd, &sip, &sport) && resolve_socket_src(fd, &dip, &dport)) {
-
-            std::string key = string_format("%s:%s-%s:%s", sip.c_str(), sport.c_str(),dip.c_str(), dport.c_str());
-
-            _deb("UDPCom::shutdown[%d]: removing connect cache %s", fd, key.c_str());
-
-            return std::make_optional(key);
-        }
-
-        return std::nullopt;
-    };
-
-
-
-    auto kill_datagram_entry = [&](int fd) -> int {
-        int count = 0;
-
-        std::lock_guard<std::recursive_mutex> l(datagram_com()->lock);
-
-        auto it_record = datagram_com()->datagrams_received.find((unsigned int)fd);
-        if(it_record != datagram_com()->datagrams_received.end()) {
-            auto it = datagram_com()->datagrams_received[(unsigned int)fd];
-
-            if(! it->reuse) {
-                if(it->socket_left.has_value() && it->socket_left.value() > 0) {
-                    int left = it->socket_left.value();
-
-                    if(kill_socket(left) != 0) {
-                        _war("UDPCom::shutdown[%d]/kill_datagram_entry[%d]: socket close error", _fd, left);
-                    } else {
-                        _deb("UDPCom::shutdown[%d]/kill_datagram_entry[%d]: socket closed", _fd, left);
-                    }
-                }
-
-            } else {
-                _dia("UDPCom::shutdown[%d]/kill_datagram_entry: datagrams_received entry reuse flag set, entry  not deleted.", fd);
-                it->reuse = false;
-            }
-
-            _dia("UDPCom::shutdown[%d]/kill_datagram_entry: datagrams_received entry erased", fd);
-            count = datagram_com()->datagrams_received.erase((unsigned int)fd);
-        } else {
-            _dia("UDPCom::shutdown[%d]/kill_datagram_entry: datagrams_received entry NOT found, thus not erased", fd);
-        }
-
-        return count;
-    };
-
-
-    // ----
 
     _dia("UDPCom::shutdown[%d]: request to shutdown socket", _fd);
 
@@ -950,12 +997,20 @@ void UDPCom::shutdown(int _fd) {
         size_t killed_from_cache = 0;
 
         {
-            auto l_ = std::scoped_lock(connect_fd_cache_lock);
+            auto l_ = std::scoped_lock(ConnectionsCache::lock);
 
-            if (not connect_fd_cache.empty()) {
-                if (auto key = create_connect_cache_key(_fd); key.has_value()) {
-                    killed_from_cache = kill_connect_cache(key.value());
+            if (not ConnectionsCache::cache.empty()) {
+
+                // prefer stored connect cache key, or construct own
+                auto key = connections.my_key ? connections.my_key : connections.gen_cache_key(_fd);
+
+                if (key) {
+                    _deb("UDPCom::shutdown[%d]: removing connect cache key '%s'", _fd, key.value().c_str());
+
+                    killed_from_cache = kill_and_deref_from_connnect(key.value());
                     _dia("UDPCom::shutdown[%d]: removed %d from connect cache", _fd, killed_from_cache);
+                } else {
+                    _dia("UDPCom::shutdown[%d]: connect cache unchecked - cannot create a session key", _fd);
                 }
             }
         }
@@ -969,12 +1024,8 @@ void UDPCom::shutdown(int _fd) {
         auto remc = datagram_com()->in_virt_set.erase(_fd);
         _dia("UDPCom::shutdown[%d]: removed %d entries from in_virt_set on shutdown", _fd, remc);
 
-        remc = kill_datagram_entry(_fd);
+        remc = remove_datagram_entry(_fd);
         _dia("UDPCom::shutdown[%d]: removed %d entries from datagrams on shutdown", _fd, remc);
-
-
-        _deb("UDPCom::shutdown[%d]: eof virtual socket specific code", _fd);
-
     }
 
 
@@ -983,7 +1034,7 @@ void UDPCom::shutdown(int _fd) {
         auto remc = datagram_com()->in_virt_set.erase(embryonics().id);
         _dia("UDPCom::shutdown[%d]: removed embryonic id=%d from in_virt_set on shutdown (%d entries)", _fd, embryonics().id, remc);
 
-        remc = kill_datagram_entry(embryonics().id);
+        remc = remove_datagram_entry(embryonics().id);
         _dia("UDPCom::shutdown[%d]: closing embryonic id=%d datagram entry on shutdown (%d entries)", _fd, embryonics().id, remc);
 
     }
