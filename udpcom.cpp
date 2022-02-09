@@ -899,7 +899,8 @@ int UDPCom::remove_datagram_entry(int fd) {
     auto lc_ = std::scoped_lock(datagram_com()->lock);
 
     auto& db = datagram_com()->datagrams_received;
-    auto key = static_cast<uint64_t>(fd);
+    auto key = (unsigned int)fd;
+    _deb("UDPCom::remove_datagram_entry[%d]: socket mapped to %d", fd, key);
 
     auto it_record = db.find(key);
 
@@ -911,21 +912,21 @@ int UDPCom::remove_datagram_entry(int fd) {
                 int left = it->socket_left.value();
 
                 if(kill_socket(left) != 0) {
-                    _war("UDPCom::ConnectionsCache::remove_datagram_entry[%d]/[%d]: socket close error", fd, left);
+                    _war("UDPCom::remove_datagram_entry[%d]/[%d]: socket close error", fd, left);
                 } else {
-                    _deb("UDPCom::ConnectionsCache::remove_datagram_entry[%d]/[%d]: socket closed", fd, left);
+                    _deb("UDPCom::remove_datagram_entry[%d]/[%d]: socket closed", fd, left);
                 }
             }
 
         } else {
-            _dia("UDPCom::ConnectionsCache::remove_datagram_entry[%d]: datagrams_received entry reuse flag set, entry not deleted.", fd);
+            _dia("UDPCom::remove_datagram_entry[%d]: datagrams_received entry reuse flag set, entry not deleted.", fd);
             it->reuse = false;
         }
 
-        _dia("UDPCom::ConnectionsCache::remove_datagram_entry[%d]: datagrams_received entry erased", fd);
+        _dia("UDPCom::remove_datagram_entry[%d]: datagrams_received entry erased", fd);
         count = db.erase(key);
     } else {
-        _dia("UDPCom::ConnectionsCache::remove_datagram_entry[%d]: datagrams_received entry NOT found, thus not erased", fd);
+        _dia("UDPCom::remove_datagram_entry[%d]: datagrams_received entry NOT found, thus not erased", fd);
     }
 
     return count;
