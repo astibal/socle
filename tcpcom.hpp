@@ -94,7 +94,9 @@ protected:
     int bind_sock_family = AF_INET6;
     int bind_sock_type = SOCK_STREAM;
     int bind_sock_protocol = IPPROTO_TCP;
-    
+
+    bool connect_proven = false;
+
     TYPENAME_OVERRIDE("TCPCom")
     DECLARE_LOGGING(to_string)
     

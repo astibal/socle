@@ -711,7 +711,8 @@ bool baseProxy::handle_sockets_accept(unsigned char side, baseCom* xcom, baseHos
 
     if(client < 0) {
         _dia("baseProxy::handle_sockets_accept[%c]: bound socket accept failed: %s", side, string_error(errno).c_str());
-        return true; // still, it's not the error which should break socket list iteration
+        // Return false and make proxy reattempt later. Reporting error as the success is always a bad idea.
+        return false;
     }
     
     if(new_raw()) {

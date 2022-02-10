@@ -93,8 +93,11 @@ int TCPCom::connect(const char* host, const char* port) {
         if (not GLOBAL_IO_BLOCKING()) {
             unblock(sfd);
 
-            if (::connect(sfd, rp->ai_addr, rp->ai_addrlen) == 0)
+            if (::connect(sfd, rp->ai_addr, rp->ai_addrlen) == 0) {
+                _deb("TCPCom::connect[%s:%s]: socket[%d]: connect successful", host, port, sfd);
+                connect_proven = true;
                 break;
+            }
 
             if (errno == EINPROGRESS ) {
                 _deb("TCPCom::connect[%s:%s]: socket[%d]: connect errno: EINPROGRESS", host, port, sfd);
@@ -176,11 +179,14 @@ int TCPCom::accept ( int sockfd, sockaddr* addr, socklen_t* addrlen_ ) {
     int news = ::accept(sockfd, addr, addrlen_);
 
     if(news < 0) {
-        if(not (errno == EAGAIN or errno == EWOULDBLOCK)) {
-            // report uncommon error
-            _err("failed to accept socket: %s", string_error().c_str());
+        if(errno != EAGAIN) {
+            _err("accept[%d]: failed: %s", sockfd, string_error().c_str());
+            return -1;
+        } else {
+            _dia("accept[%d]: not ready: %s", sockfd, string_error().c_str());
         }
-        return -1;
+    } else {
+        _deb("accept[%d->%d]: ok ", sockfd, news);
     }
 
     on_new_socket(news);
@@ -188,7 +194,10 @@ int TCPCom::accept ( int sockfd, sockaddr* addr, socklen_t* addrlen_ ) {
 }
 
 bool TCPCom::is_connected(int s) {
-    
+
+    // we already **know** connection was established
+    if(connect_proven) return true;
+
     if(socket() == 0) {
         _deb("TCPCom::is_connected: called for non-connecting socket");
         return true;
@@ -211,21 +220,38 @@ bool TCPCom::is_connected(int s) {
     
     if ( r_getsockopt == 0 ) {
                                 
-        if(error_code != 0) {
-                _deb("TCPCom::is_connected[%d]: getsockopt errno %d = %s", s, error_code, string_error(error_code).c_str());
-        }
-        else {
+        if(error_code == 0) {
                 _dum("TCPCom::is_connected[%d]: getsockopt errno %d = %s", s, error_code, string_error(error_code).c_str());
+                _deb("TCPCom::is_connected[%d]: getsockopt now ok", s);
+                connect_proven = true;
         }
-        
-        if(error_code == EINPROGRESS) return false;
+
+        _deb("TCPCom::is_connected[%d]: getsockopt errno %d = %s", s, error_code, string_error(error_code).c_str());
+
+        // connection not proven yet, so check if poll returned something about this socket
+        if(error_code == EINPROGRESS) {
+            auto in_w = master()->in_writeset(s);
+            auto in_r = master()->in_readset(s);
+            if( in_r or in_w ) {
+
+                if(in_r) _deb("TCPCom::is_connected[%d]: in progress, in readset", s);
+                if(in_w) _deb("TCPCom::is_connected[%d]: in progress, in writeset", s);
+
+                // aye, don't check connection status anymore
+                connect_proven = true;
+                return true;
+            }
+            _deb("TCPCom::is_connected[%d]: in progress, waiting for poller sets presence", s);
+
+            return false;
+        }
 
         // optimized-out in Release
         _if_deb {
             if(master()->poller.in_write_set(s)) {
-                _deb("TCP::is_connected[%d]: writable", s);
+                _deb("TCPCom::is_connected[%d]: writable", s);
             } else {
-                _deb("TCP::is_connected[%d]: not writable", s);
+                _deb("TCPCom::is_connected[%d]: not writable", s);
             }
         }
 
