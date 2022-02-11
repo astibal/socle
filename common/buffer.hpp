@@ -35,16 +35,16 @@
 class buffer
 {
 public:
-  typedef std::size_t size_type;
+  using size_type =  std::size_t;
 
-  static const size_type npos = static_cast<size_type> (-1);
+  static constexpr const size_type npos = static_cast<size_type> (-1);
 
-  static unsigned long long alloc_bytes;
-  static unsigned long long alloc_count;
-  static unsigned long long free_bytes;
-  static unsigned long long free_count;
+  static inline unsigned long long alloc_bytes = 0LL;
+  static inline unsigned long long alloc_count = 0LL;
+  static inline unsigned long long free_bytes = 0LL;
+  static inline unsigned long long free_count = 0LL;
 
-  static bool use_pool;
+  static inline bool use_pool = true;
 
 
 #ifdef SOCLE_MEM_PROFILE  
@@ -72,7 +72,7 @@ public:
   buffer& operator= (const buffer&);
 
 
-  buffer(buffer&& ref) noexcept : data_(nullptr), size_(0), capacity_(0), free_(true) {
+  buffer(buffer&& ref) noexcept {
 
       if(&ref != this) {
           data_ = ref.data_;
@@ -80,9 +80,6 @@ public:
           size_ = ref.size_;
 
           free_ = ref.free_;
-
-          // auto log = logan::create("buffer");
-          // _deb("buffer owner move trace ctor(buffer&&):\n %s", bt(true).c_str());
 
           ref.free_ = false; // make the almost-invalid reference not free our memory
       }
@@ -93,12 +90,7 @@ public:
       if (free_ and data_ != nullptr ) {
           if(use_pool) {
 
-              try {
-                  memPool::pool().release( { data_, capacity_} );
-              }
-              catch(mempool_error const& e) {
-                  ; // there is nothing to do unfortunately
-              }
+              memPool::pool().release( { data_, capacity_} );
           }
           else {
               delete[] data_;  // we HAD ownership
@@ -120,7 +112,7 @@ public:
       return *this;
   };
   
-  void swap (buffer&);
+  void swap (buffer&) noexcept;
   unsigned char* detach ();
 
   void assign (const void* data, size_type size); // copy
@@ -156,13 +148,14 @@ public:
   template <typename T> static T get_at_ptr(unsigned char const* data);
 
   [[nodiscard]] size_type find (unsigned char, size_type pos = 0) const;
-  [[nodiscard]] size_type rfind (unsigned char, size_type pos = npos) const;
+  [[maybe_unused]] [[nodiscard]] size_type rfind (unsigned char, size_type pos = npos) const;
 
   //ast additions
-  std::string str();
+  [[nodiscard]] std::string str() const;
+  [[nodiscard]] std::string_view string_view() const;
   
   void flush (size_type);
-  buffer view(unsigned int, buffer::size_type);
+  buffer view(size_type pos, buffer::size_type len);
   buffer view();
 
   friend std::ostream& operator<<(std::ostream& os, buffer const& b);

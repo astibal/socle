@@ -37,7 +37,7 @@ public:
         static inline unsigned int max_detect_bytes = 20000;
     };
 
-    AppHostCX(baseCom* c, unsigned int s);
+    AppHostCX(baseCom* c, int s);
     AppHostCX(baseCom* c, const char* h, const char* p);
 
 
@@ -83,8 +83,8 @@ protected:
     void pre_read() override;
     void pre_write() override;
     
-    bool detect(const std::shared_ptr<sensorType> &cur_sensor, char side); // signature detection engine
-    bool detect(char side);
+    bool detect (const std::shared_ptr<sensorType> &cur_sensor); // signature detection engine
+    bool detect ();
     SignatureTree& signatures() { return signatures_; }
 
     virtual void inspect(char side) = 0; // to be overridden for ALG inspectors
@@ -102,7 +102,7 @@ private:
 
     bool upgrade_starttls = false;
 
-    SignatureTree signatures_;
+    SignatureTree signatures_ {2};
     mode_t mode_ = MODE_NONE;
 
     TYPENAME_BASE("AppHostCX")

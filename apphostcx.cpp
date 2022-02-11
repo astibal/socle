@@ -19,7 +19,7 @@
 #include <apphostcx.hpp>
 #include <sslcom.hpp>
 
-AppHostCX::AppHostCX(baseCom* c, const char* h, const char* p) : baseHostCX(c,h,p), signatures_(2) {
+AppHostCX::AppHostCX(baseCom* c, const char* h, const char* p) : baseHostCX(c, h, p) {
 
     log = logan::attach(this, "inspect");
 
@@ -27,7 +27,7 @@ AppHostCX::AppHostCX(baseCom* c, const char* h, const char* p) : baseHostCX(c,h,
         flow().domain(c->l4_proto());
     }
 }
-AppHostCX::AppHostCX(baseCom* c, unsigned int s) :baseHostCX(c,s), signatures_(2) {
+AppHostCX::AppHostCX(baseCom* c, int s) :baseHostCX(c, s) {
 
     log = logan::attach(this, "inspect");
 
@@ -61,7 +61,7 @@ int AppHostCX::make_sig_states(std::shared_ptr<sensorType> sig_states, std::shar
 
 
 // iterate over all enabled signature trees
-bool AppHostCX::detect(char side) {
+bool AppHostCX::detect () {
 
     bool ret = false;
 
@@ -76,7 +76,7 @@ bool AppHostCX::detect(char side) {
             if (signatures_.filter_.test(i)) {
                 _dia("AppHostCX::detect: tree group %d enabled", i);
 
-                if( detect(sensor_ptr, side) ) {
+                if(detect(sensor_ptr)) {
                     ret = true;
                 }
             }
@@ -91,7 +91,7 @@ bool AppHostCX::detect(char side) {
     return ret;
 }
 
-bool AppHostCX::detect(const std::shared_ptr<sensorType> &cur_sensor, char side) {
+bool AppHostCX::detect (const std::shared_ptr<sensorType> &cur_sensor) {
 
     if(not cur_sensor) return false;
 
@@ -148,7 +148,7 @@ void AppHostCX::post_read() {
             _dia("AppHostCX::post_read[%s]: side %c, flow path: %s", c_type(), 'r', flow().hr().c_str());
 
             // we can't detect starttls in POST mode
-            detect('r');
+            detect();
             inspect('r');
         }
         else {
@@ -168,14 +168,14 @@ void AppHostCX::post_write() {
         if(this->meter_write_bytes <= config::max_detect_bytes) {
             auto b = this->writebuf();
 
-            int f_s = flow().flow().size();
-            int f_last_data_size = flow().flow().back().second->size();
+            auto f_s = flow().flow().size();
+            auto f_last_data_size = flow().flow().back().second->size();
 
             _deb("AppHostCX::post_write[%s]: peek_counter %d, written to socket %d, write buffer size %d, flow size %d, flow data size %d",
                  c_type(), peek_write_counter, meter_write_bytes, b->size(), f_s, f_last_data_size);
 
             // how many data I am missing?
-            int delta = (meter_write_bytes + b->size()) - peek_write_counter;
+            auto delta = (meter_write_bytes + b->size()) - peek_write_counter;
             buffer delta_b = b->view(b->size() - delta, b->size());
 
             if (delta > 0) {
@@ -188,7 +188,7 @@ void AppHostCX::post_write() {
 
             // we can't detect starttls in POST mode
             _dia("AppHostCX::post_write[%s]: side %c, flow path: %s", c_type(), 'w', flow().hr().c_str());
-            detect('w');
+            detect();
             inspect('w');
         }
         else {
@@ -309,11 +309,11 @@ void AppHostCX::pre_read() {
             // check first few exchanges to upgrade socket, but only if com is not SSL already
             if(flow().exchanges < config::max_starttls_exchanges and dynamic_cast<TCPCom*>(com()) and not dynamic_cast<SSLCom*>(com())) {
 
-                if (detect(starttls_sensor(), 'r')) {
+                if (detect(starttls_sensor())) {
                     upgrade_starttls = true;
                 }
             }
-            detect('r');
+            detect();
             inspect('r');
         }
     }
@@ -366,11 +366,11 @@ void AppHostCX::pre_write() {
             // check first few exchanges to upgrade socket, but only if com is not SSL already
             if(flow().exchanges < config::max_starttls_exchanges and dynamic_cast<TCPCom*>(com()) and not dynamic_cast<SSLCom*>(com())) {
 
-                if (detect(starttls_sensor(), 'w')) {
+                if (detect(starttls_sensor())) {
                     upgrade_starttls = true;
                 }
             }
-            detect('w');
+            detect();
             inspect('w');
         }
     }

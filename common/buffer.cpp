@@ -1,20 +1,11 @@
 #include <buffer.hpp>
 
-unsigned long long buffer::alloc_bytes = 0;
-unsigned long long buffer::alloc_count = 0;
-unsigned long long buffer::free_bytes = 0;
-unsigned long long buffer::free_count = 0;
-
-bool    buffer::use_pool = true;
-
 
 #ifdef SOCLE_MEM_PROFILE  
 std::unordered_map<std::string,int> buffer::alloc_map;
 std::mutex buffer::alloc_map_lock_;
 #endif
 
-// regex_replace example
-#include <iostream>
 #include <string>
 #include <regex>
 #include <iterator>
@@ -33,19 +24,14 @@ std::mutex buffer::alloc_map_lock_;
 // 
 // Note on http chunked encoding: 
 // it seems that it's tolerated when client receives more bytes in the chunk than advertised.
-// On the contrary, it also seems that less bytes received than advertised is considered as transfer error.
+// On the contrary, it also seems that fewer bytes received than advertised is considered as transfer error.
 
 
 buffer::~buffer () {
     if (free_ && capacity_ > 0) {
 
         if(use_pool) {
-            try {
-                memPool::pool().release({data_, capacity_});
-            }
-            catch(mempool_error const& e) {
-                ; // there is nothing to do unfortunately
-            }
+            memPool::pool().release({data_, capacity_});
         }
         else {
             delete[] data_;
@@ -54,8 +40,7 @@ buffer::~buffer () {
     }
 }
 
-buffer::buffer (size_type s)
-        : free_ (true) {
+buffer::buffer (size_type s) {
 
     if (use_pool) {
         mem_chunk_t mch = memPool::pool().acquire(s);
@@ -71,11 +56,10 @@ buffer::buffer (size_type s)
     size_ = 0;
 }
 
-buffer::buffer (size_type s, size_type c)
-        : free_ (true)
-{
+buffer::buffer (size_type s, size_type c) {
+
     if (s > c)
-        throw std::invalid_argument ("size greater than capacity");
+        throw std::invalid_argument("size greater than capacity");
 
     if (use_pool) {
         mem_chunk_t mch = memPool::pool().acquire(c);
@@ -90,9 +74,8 @@ buffer::buffer (size_type s, size_type c)
     size_ = s;
 }
 
-buffer::buffer (const void* d, size_type s)
-        : free_ (true)
-{
+buffer::buffer (const void* d, size_type s) {
+
     if (s != 0) {
 
         if(use_pool) {
@@ -116,9 +99,8 @@ buffer::buffer (const void* d, size_type s)
     size_ = s;
 }
 
-buffer::buffer (const void* d, size_type size, size_type capacity)
-        : free_ (true)
-{
+buffer::buffer (const void* d, size_type size, size_type capacity) {
+
     size_type c = capacity;
 
     if (size > c)
@@ -155,9 +137,8 @@ buffer::buffer (void* d, size_type size, size_type capacity, bool own)
         counter_alloc(capacity);
 }
 
-buffer::buffer (const buffer& x)
-        : free_ (true)
-{
+buffer::buffer (const buffer& x) {
+
     if (x.capacity_ != 0)
     {
         if(x.free_) {
@@ -200,12 +181,7 @@ buffer& buffer::operator=(const buffer& x)
         if (free_ and data_ != nullptr ) {
             if(use_pool) {
 
-                try {
-                    memPool::pool().release( { data_, capacity_} );
-                }
-                catch(mempool_error const& e) {
-                    ; // there is nothing to do unfortunately
-                }
+                memPool::pool().release( { data_, capacity_} );
             }
             else {
                 delete[] data_;  // we HAD ownership
@@ -241,7 +217,7 @@ buffer& buffer::operator=(const buffer& x)
     return *this;
 }
 
-void buffer::swap (buffer& x)
+void buffer::swap (buffer& x) noexcept
 {
     unsigned char* d (x.data_);
     size_type s (x.size_);
@@ -259,7 +235,7 @@ void buffer::swap (buffer& x)
     free_ = f;
 }
 
-unsigned char* buffer::detach ()
+unsigned char* buffer::detach()
 {
     unsigned char* r (data_);
 
@@ -544,16 +520,16 @@ void buffer::flush(buffer::size_type b) {
 
 }
 
-buffer buffer::view(unsigned int pos, buffer::size_type len) {
+buffer buffer::view(size_type pos, buffer::size_type len) {
     if (pos < size_) {
         // starting pos in the buffer
 
         if( pos+len <= size_) {
             // view inside buffer
-            return buffer(data_ +pos, len, len, false);
+            return {data_ +pos, len, len, false};
         } else {
             // end of view outside buffer
-            return buffer(data_ +pos, size_ - pos, size_ - pos, false);
+            return {data_ +pos, size_ - pos, size_ - pos, false};
         }
     }
     else {
@@ -570,8 +546,12 @@ buffer buffer::view() {
 }
 
 
-std::string buffer::str() {
+std::string buffer::str() const {
     return std::string((const char*)data(),size());
+}
+
+std::string_view buffer::string_view() const {
+    return { (const char*) data(), size() };
 }
 
 
