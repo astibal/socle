@@ -712,10 +712,11 @@ void baseHostCX::to_write(buffer& b) {
 
     if(not fastlane) {
         writebuf_.append(b);
-        com()->set_write_monitor(socket());
         _deb("baseHostCX::to_write(buf)[%s]: appending %d bytes, buffer size now %d bytes", c_type(), b.size(),
              writebuf_.size());
     }
+
+    com()->set_write_monitor(socket());
 }
 
 void baseHostCX::to_write(const std::string& s) {

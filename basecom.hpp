@@ -191,6 +191,7 @@ public:
     int so_quickack(int sock) const;
     int so_transparent_v4(int sock) const;
     int so_transparent_v6(int sock) const;
+    int so_transparent(int sock) const;
     int so_recvorigdstaddr_v4(int sock) const;
     int so_recvorigdstaddr_v6(int sock) const;
 

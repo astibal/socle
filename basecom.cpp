@@ -371,6 +371,19 @@ int baseCom::so_transparent_v6(int sock) const {
     return sso;
 }
 
+int baseCom::so_transparent(int sock) const {
+    if(l3_proto() == AF_INET) {
+        return so_transparent_v4(sock);
+    }
+    else if(l3_proto() == AF_INET6) {
+        return so_transparent_v6(sock);
+    }
+    else {
+        _err("baseCom::so_transparent: fallback IPv4 setsockopt");
+        return so_transparent_v4(sock);
+    }
+}
+
 int baseCom::so_recvorigdstaddr_v4(int sock) const {
     constexpr int optval = 1;
     int sso = setsockopt(sock, SOL_IP, IP_RECVORIGDSTADDR, &optval, sizeof optval);
