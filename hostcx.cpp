@@ -688,10 +688,34 @@ buffer & baseHostCX::to_read() {
     return *readbuf();
 }
 
-void baseHostCX::to_write(buffer const& b) {
-    writebuf_.append(b);
-    com()->set_write_monitor(socket());
-    _deb("baseHostCX::to_write(buf)[%s]: appending %d bytes, buffer size now %d bytes", c_type(), b.size(), writebuf_.size());
+void baseHostCX::to_write(buffer& b) {
+
+    bool fastlane = false;
+    if(writebuf()->empty()) {
+        if(meter_write_bytes > params_t::fast_copy_start) {
+            _deb("baseHostCX::to_write(buf)[%s]: fastlane swap %dB buffer", c_type(), b.size());
+
+
+            b.swap(*writebuf());
+
+            // resize to original capacity
+            b.capacity(writebuf()->capacity());
+            b.size(0);
+
+            fastlane = true;
+        } else {
+            _deb("baseHostCX::to_write(buf)[%s]: going slow mode, detection phase", c_type());
+        }
+    } else {
+        _deb("baseHostCX::to_write(buf)[%s]: going slow mode, %dB in writebuf", c_type(), writebuf()->size());
+    }
+
+    if(not fastlane) {
+        writebuf_.append(b);
+        com()->set_write_monitor(socket());
+        _deb("baseHostCX::to_write(buf)[%s]: appending %d bytes, buffer size now %d bytes", c_type(), b.size(),
+             writebuf_.size());
+    }
 }
 
 void baseHostCX::to_write(const std::string& s) {

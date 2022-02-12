@@ -180,10 +180,11 @@ public:
 
     struct params_t {
         // allow these as tunables
-        static inline std::atomic<std::size_t> buffsize = 2048;
-        static inline std::atomic<std::size_t> buffsize_maxmul = 1024;
-        static inline std::atomic<std::size_t> write_full = 200000;
-        static inline uint16_t com_not_ready_slowdown = 20;
+        static inline std::atomic<std::size_t> buffsize = 2048;        // initial buffer size
+        static inline std::atomic<std::size_t> buffsize_maxmul = 1024; // maximum size as a multiple of initial
+        static inline std::atomic<std::size_t> write_full = 200000;    // when to slightly delay our reads if this bytes is queued from their writing
+        static inline uint16_t com_not_ready_slowdown = 20;            // when handshakes are not finished, how aggressive checking (higher, more aggressive)
+        static inline std::atomic<std::size_t> fast_copy_start = 20*1024;      // how many bytes copy before moving whole buffers (too low may break detection)
     };
 
     static inline params_t params {};
