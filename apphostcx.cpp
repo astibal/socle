@@ -141,7 +141,7 @@ void AppHostCX::post_read() {
     
     if ( mode() == MODE_POST) {
         if(this->meter_read_bytes <= config::max_detect_bytes) {
-            auto b = this->to_read();
+            auto& b = this->to_read();
             this->flow().append('r', b);
 
 

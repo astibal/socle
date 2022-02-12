@@ -683,9 +683,9 @@ ssize_t baseHostCX::finish() {
     }
 }
 
-buffer baseHostCX::to_read() {
+buffer & baseHostCX::to_read() {
     _deb("baseHostCX::to_read[%s]: returning buffer::view for %d bytes", c_type(), processed_in_);
-    return readbuf()->view(0, processed_in_);
+    return *readbuf();
 }
 
 void baseHostCX::to_write(buffer const& b) {

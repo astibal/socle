@@ -421,13 +421,13 @@ public:
 	virtual std::size_t process_in();
     virtual std::size_t process_out();
 
-	virtual void to_write(buffer const& b);
+	virtual void to_write(buffer& b);
     virtual void to_write(const std::string&);
 	virtual void to_write(unsigned char* c, unsigned int l); 
 	inline bool close_after_write() const { return close_after_write_; };
 	inline void close_after_write(bool b) { close_after_write_ = b; };
 	
-	virtual buffer to_read();
+	virtual buffer& to_read();
 	virtual ssize_t finish();
 	
 	// pre- and post- functions/hooks called as the very first or last command in the read() function
