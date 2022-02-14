@@ -42,6 +42,13 @@ namespace socle {
         return 'L';
     }
 
+    inline unsigned char arrow_from_side(side_t s) {
+        if(s == side_t::RIGHT)
+            return '<';
+
+        return '>';
+    }
+
     namespace raw {
         template <class T>
         struct lax {
