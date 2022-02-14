@@ -31,6 +31,10 @@ class SimpleLRProxy: public baseProxy {
 		
 		void on_left_bytes(baseHostCX*) override;
 		void on_right_bytes(baseHostCX*) override;
+
+private:
+    logan_lite log {"com.proxy"};
+
 };
 
 #endif

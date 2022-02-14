@@ -26,6 +26,8 @@
 #include <utility>
 #include <shared_mutex>
 
+#include <vars.hpp>
+
 using namespace log::level;
 
 
@@ -97,7 +99,7 @@ protected:
     std::string topic_;
 
     // loging message prefix in log line
-    std::string prefix_;
+    static thread_local inline std::string context_ {};
 
     mutable std::atomic<loglevel*> my_loglevel {0};
 
@@ -119,7 +121,7 @@ public:
             auto l_ = std::unique_lock(lock_);
 
             topic_ = r.topic_;
-            prefix_ = r.prefix_;
+            context_ = r.context_;
 
             // even if my_loglevel can be non-null, we don't own it, so don't delete it here
             my_loglevel = r.my_loglevel.load();
@@ -138,13 +140,11 @@ public:
     }
 
 
-    virtual std::string prefix() const {
-        auto l_ = std::shared_lock(lock_);
-        return prefix_;
+    static std::string context() {
+        return context_;
     }
-    virtual void prefix(std::string const& s) {
-        auto l_ = std::unique_lock(lock_);
-        prefix_ = s;
+    static void context(std::string_view s) {
+        context_ = s;
     }
 
 
@@ -198,9 +198,9 @@ public:
         if( *level() >= lev) {
             std::stringstream ms;
             if( ! flag_test(lev.flags(),LOG_FLRAW)) {
-                ms << "[" << topic;
-                if (!prefix().empty()) {
-                    ms << "|" << prefix();
+                ms << "[ " << topic;
+                if (!context().empty()) {
+                    ms << " | " << context();
                 }
                 ms << "]: ";
             }
@@ -218,69 +218,17 @@ public:
     }
 };
 
-template <class T>
-class logan_attached : public logan_lite {
-public:
-    logan_attached() = default;
-    explicit logan_attached(T* ptr) : logan_lite(), ptr_(ptr) {}
-    logan_attached(T* ptr, std::string  area) : logan_lite(), ptr_(ptr), area_(std::move(area)) {
-        if(ptr_) topic(ptr->c_type());
+
+struct logan_context {
+    logan_context(std::string_view s) : orig_pref(logan_lite::context()) {
+        logan_lite::context(s);
     }
+    logan_context(logan_context const&) = delete;
+    logan_context& operator=(logan_context const&) = delete;
 
-    inline logan_attached override() {
-        return logan_attached(this->ptr_);
-    }
+    ~logan_context() { logan_lite::context(orig_pref); }
 
-    inline logan_attached override(std::string area) {
-        return logan_attached(this->ptr_, area);
-    }
-
-    mutable loglevel* my_area_loglevel = nullptr;
-
-    std::string topic() const override {
-
-        // somebody's overridden topic, use it.
-        if(! topic_.empty())
-            return topic_;
-
-        if(ptr_)
-            return ptr_->c_type();
-
-        return "(nullptr)";
-    }
-    void topic(std::string const& s) override {
-        logan_lite::topic(s);
-    }
-
-    std::string prefix() const override {
-
-        // somebody's overridden prefix, use it.
-        if(! prefix_.empty())
-            return prefix_;
-
-        if(ptr_)
-            return ptr_->hr();
-
-        return "(nullptr)";
-    }
-
-    loglevel* level() const override;
-    void level(loglevel const& l) override;
-    virtual void this_level(loglevel const& l);
-
-    void area(const std::string& ref);
-    [[nodiscard]] std::string area() const {
-        return area_;
-    }
-
-    using sub_area_t = mp::set<std::string>;
-    const sub_area_t& sub_areas() const { return sub_areas_; };
-    inline void sub_area(std::string const& str) { sub_areas_.insert(str); };
-private:
-    T* ptr_ = nullptr;
-
-    std::string area_;
-    sub_area_t sub_areas_;
+    std::string orig_pref;
 };
 
 class logan_tracer : public logan_lite {
@@ -382,23 +330,10 @@ public:
     static logan_lite touch(T& ref) {
         logan_lite l = logan_lite();
         l.topic_ = ref.name();
-        l.prefix_ = ref.hr();
+        l.context_ = ref.hr();
 
         return l;
     }
-
-    template<class T>
-    static logan_attached<T> attach(T* ptr) {
-        logan_attached<T> l = logan_attached<T>(ptr);
-        return l;
-    }
-
-    template<class T>
-    static logan_attached<T> attach(T* ptr, std::string area) {
-        logan_attached<T> l = logan_attached<T>(ptr, area);
-        return l;
-    }
-
 
     static logan_lite create(std::string const& s) {
         logan_lite l = logan_lite(s);
@@ -479,84 +414,5 @@ private:
     std::recursive_mutex lock_;
 };
 
-template <class T>
-loglevel* logan_attached<T>::level() const {
-
-    loglevel* l_this = nullptr;
-    loglevel* l_name = nullptr;
-    loglevel* l_area = nullptr;
-
-    if(ptr_) {
-        l_this = &ptr_->this_log_level_ref();
-    }
-
-    if( ! area().empty() ) {
-        std::unique_lock l(lock_);
-
-        if(! my_area_loglevel) {
-            my_area_loglevel = logref()[area()];
-
-            // iterate subareas
-            if(! sub_areas().empty() ) {
-                for(auto const& suba: sub_areas()) {
-                    auto sa_level = logref()[suba];
-
-                    // sub_area with higher verbosity
-                    auto& lhs = *sa_level;
-                    auto& rhs = *my_area_loglevel;
-                    if( lhs > rhs) {
-
-                        // override area verbosity
-                        my_area_loglevel = sa_level;
-                    }
-                }
-            }
-        }
-        l_area = my_area_loglevel;
-    }
-
-    l_name = logan_lite::level();
-
-    if(l_this) {
-        if (l_area && *l_area > *l_this)
-            return l_area;
-
-        if (l_name && *l_name > *l_this)
-            return l_name;
-
-        if (*l_this > NON)
-            return l_this;
-    }
-
-    // return damn default
-    return logan_lite::level();
-}
-
-template <class T>
-void logan_attached<T>::level(loglevel const& l) {
-    auto l_ = std::unique_lock(lock_);
-    if(ptr_)
-        ptr_->log_level_ref() = l;
-}
-
-template <class T>
-void logan_attached<T>::this_level(loglevel const& l) {
-    auto l_ = std::unique_lock(lock_);
-    if(ptr_)
-        ptr_->get_this_log_level() = l;
-}
-
-template <class T>
-void logan_attached<T>::area(const std::string& ref) {
-    auto l_ = std::unique_lock(lock_);
-
-    if(area() == ref) return;
-
-    area_ = ref;
-
-      if(! my_area_loglevel) {
-        my_area_loglevel = logref()[area_];
-    }
-}
 
 #endif //LOGAN_HPP

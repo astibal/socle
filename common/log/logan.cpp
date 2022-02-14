@@ -24,7 +24,7 @@ logan_lite::logan_lite() : logan_(logan::get()) { };
 
 logan_lite::logan_lite(std::string str) noexcept: topic_(std::move(str)), logan_(logan::get()) { };
 
-logan_lite::logan_lite(logan_lite const& r): topic_(r.topic_), prefix_(r.prefix_), my_loglevel(r.my_loglevel.load()), logan_(logan::get()) {}
+logan_lite::logan_lite(logan_lite const& r): topic_(r.topic_), my_loglevel(r.my_loglevel.load()), logan_(logan::get()) {}
 
 
 loglevel* logan_lite::level() const {

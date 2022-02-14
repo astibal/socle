@@ -40,7 +40,6 @@ class TCPCom : public virtual baseCom {
 public:
     TCPCom(): baseCom() {
         l4_proto(SOCK_STREAM);
-        log.sub_area("com.tcp");
     };
     ~TCPCom() override = default;
 
@@ -99,7 +98,9 @@ protected:
 
     TYPENAME_OVERRIDE("TCPCom")
     DECLARE_LOGGING(to_string)
-    
+
+private:
+    logan_lite log {"com.tcp"};
 };
 
 #endif

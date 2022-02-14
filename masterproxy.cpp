@@ -45,7 +45,7 @@ bool MasterProxy::run_timers()
 
         for(auto i = proxies().begin(); i != proxies().end(); ) {
 
-            auto& p = i->first;
+            auto const& p = i->first;
 
             if(not p) {
                 _inf("null sub-proxy!!");
@@ -61,10 +61,12 @@ bool MasterProxy::run_timers()
                         _deb("MasterProxy::run_timers: finished handle thread");
                     }
 
+                    auto lcx = logan_context(p->to_string(iNOT));
                     i = proxies().erase(i);
                 }
                 continue;
             } else {
+                auto lcx = logan_context(p->to_string(iNOT));
                 p->run_timers();
             }
 
@@ -124,6 +126,8 @@ int MasterProxy::handle_sockets_once(baseCom* xcom) {
         if (not proxy->state().dead()) {
 
             auto run_proxy = [this, xcom](baseProxy* p) {
+                auto lcx = logan_context(p->to_string(iNOT));
+
                 try {
                     if(p->state().in_progress().fetch_add(1) == 0) {
                         p->handle_sockets_once(xcom);
@@ -157,7 +161,10 @@ int MasterProxy::handle_sockets_once(baseCom* xcom) {
                 thr = std::make_unique<std::thread>(run_proxy, proxy.get());
 
             } else {
+
+                auto pref = logan_lite::context();
                 run_proxy(proxy.get());
+                logan_lite::context(pref);
             }
         }
 
@@ -189,6 +196,7 @@ int MasterProxy::handle_sockets_once(baseCom* xcom) {
                 auto l_ = std::scoped_lock(proxies_lock_);
                 proxies_shutdown++;
 
+                auto lcx = logan_context(proxy->to_string(iNOT));
                 i = proxies().erase(i);
             }
 

@@ -83,8 +83,8 @@ namespace socle::traflog {
             return s;
         }
 
-        logan_lite log {"socle.pcaplog"};
-        logan_lite log_write {"socle.pcaplog.write"};
+        logan_lite log {"cap.pcap"};
+        logan_lite log_write {"cap.pcap.write"};
 
     };
 

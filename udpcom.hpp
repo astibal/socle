@@ -259,6 +259,9 @@ public:
     TYPENAME_OVERRIDE("UDPCom")
     DECLARE_LOGGING(to_string)
 
+private:
+    logan_lite log {"com.udp"};
+
 };
 
 #endif

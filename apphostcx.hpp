@@ -94,7 +94,6 @@ protected:
 
 
 private:
-    logan_attached<AppHostCX> log;
 
     duplexFlow appflow_;
     buffer::size_type peek_read_counter = 0;
@@ -107,6 +106,8 @@ private:
 
     TYPENAME_BASE("AppHostCX")
     DECLARE_LOGGING(to_string)
+
+    logan_lite log {"com.app"};
 };
 
 

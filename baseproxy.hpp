@@ -354,8 +354,8 @@ protected:
     TYPENAME_BASE("baseProxy")
     DECLARE_LOGGING(to_string)
 
-protected:
-    logan_attached<baseProxy> log;
+private:
+    logan_lite log {"com.proxy"};
 };
 
 #endif

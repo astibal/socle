@@ -63,6 +63,9 @@ namespace socle::traflog {
 
         TYPENAME_OVERRIDE("trafLog")
         DECLARE_LOGGING(to_string)
+
+    private:
+        logan_lite log {"cap.smcap"};
     };
 }
 

@@ -43,7 +43,6 @@ sleep_time_(1000),
 handle_last_status(0)
 {
     com_ = c;
-    log = logan_attached(this, "proxy");
 }
 
 
@@ -1155,6 +1154,8 @@ int baseProxy::run_poll() {
                     auto* proxy = dynamic_cast<baseProxy*>(p_handler);
                     if(proxy != nullptr) {
 
+                        auto lcx = logan_context(proxy->to_string(iNOT));
+
                         _deb("baseProxy::run_poll: socket %d -> handler 0x%x : executing", cur_socket, proxy);
                         // call poller-carried proxy handler!
                         proxy->handle_sockets_once(com());
@@ -1288,7 +1289,9 @@ int baseProxy::run_poll() {
 }
 
 int baseProxy::run() {
-    
+
+    auto lcx = logan_context(to_string(iNOT));
+
     while(! state().dead() ) {
         
         if(pollroot()) {
@@ -1483,11 +1486,11 @@ std::string baseProxy::to_string(int verbosity) const {
     else if(left_label.empty()) rtr_symbol = l_closed;
     else if(right_label.empty()) rtr_symbol = r_closed;
 
-    ret_ss << " " << left_label << rtr_symbol << right_label;
+    ret_ss << left_label << rtr_symbol << right_label;
 
 	if(verbosity > DIA) {
         ret_ss << "\n";
-        ret_ss << string_format("    parent id: 0x%x, poll_root: %d", parent(),pollroot());
+        ret_ss << string_format("    parent id: 0x%x, poll_root: %d", parent(), pollroot());
     }
 	
 	return ret_ss.str();

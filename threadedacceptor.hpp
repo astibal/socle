@@ -49,6 +49,8 @@ public:
     proxyType proxy_type() const { return proxy_type_; };
 private:
     proxyType proxy_type_;
+
+    logan_lite log {"com.tcp.acceptor"};
 };
 
 template<class SubWorker>
@@ -65,8 +67,10 @@ public:
         static std::atomic_int workers_total_ = 2;
         return workers_total_;
     };
+private:
+    logan_lite log {"com.tcp.worker"};
 };
 
-#include <threadedacceptor.cpp>
-
 #endif // _THREADED_ACCEPTOR_HPP_
+
+#include <threadedacceptor.cpp>

@@ -59,8 +59,6 @@ inline void set_timer_now(struct timeval* t) {
 template <class L4Proto>
 baseSSLCom<L4Proto>::baseSSLCom(): L4Proto() {
 
-    log.sub_area("com.ssl");
-
     sslcom_peer_hello_buffer.capacity(1500);
     set_timer_now(&timer_start);
     set_timer_now(&timer_read_timeout);

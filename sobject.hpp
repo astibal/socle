@@ -60,7 +60,7 @@ struct sobject_info {
     DECLARE_LOGGING(to_string)
 
 protected:
-    logan_attached<sobject_info> log = logan_attached<sobject_info>(this, "internal.sobject");
+    logan_lite log { "internal.sobject" };
 };
 
 struct meter {
@@ -168,8 +168,8 @@ public:
 
     DECLARE_LOGGING(to_string)
 
-protected:
-    logan_attached<sobjectDB> log = logan_attached<sobjectDB>(this, "internal.sobject");
+private:
+    logan_lite log {"internal.sobject"};
 };
 
 class sobject : public base_sobject {
@@ -197,8 +197,8 @@ public:
     TYPENAME_BASE("sobject")
     DECLARE_LOGGING(to_string)
 
-protected:
-    logan_attached<sobject> log = logan_attached<sobject>(this, "internal.sobject");
+private:
+    logan_lite log {"internal.sobject"};
 };
 
 

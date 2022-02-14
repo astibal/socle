@@ -21,15 +21,11 @@
 
 AppHostCX::AppHostCX(baseCom* c, const char* h, const char* p) : baseHostCX(c, h, p) {
 
-    log = logan::attach(this, "inspect");
-
     if(c->l4_proto() != 0) {
         flow().domain(c->l4_proto());
     }
 }
 AppHostCX::AppHostCX(baseCom* c, int s) :baseHostCX(c, s) {
-
-    log = logan::attach(this, "inspect");
 
     if(c->l4_proto() != 0) {
         flow().domain(c->l4_proto());

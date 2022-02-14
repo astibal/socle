@@ -50,7 +50,6 @@ public:
         bind_sock_type = SOCK_STREAM;
         bind_sock_protocol = 0;
 
-        log.sub_area("com.unix");
     };
     ~UxCom() override;
 
@@ -64,6 +63,9 @@ public:
     std::string to_string([ [maybe_unused]] int verbosity) const override { return c_type(); };
 
     std::string shortname() const override { return std::string("ux"); }
+
+private:
+    logan_lite log {"com.unix"};
 };
 
 #endif

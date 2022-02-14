@@ -56,6 +56,9 @@ public:
     bool run_timers() override;
 
 	std::string hr();
+
+private:
+    logan_lite log {"com.proxy"};
 };
 
 #endif // MASTERPROXY_H

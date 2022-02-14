@@ -73,6 +73,8 @@ public:
 private:
     proxyType proxy_type_;
     mp::vector<int>* quick_list_ = nullptr;
+
+    logan_lite log {"com.udp.acceptor"};
 };
 
 
@@ -117,6 +119,9 @@ public:
         static ReceiverRedirectMap r;
         return r;
     }
+
+private:
+    logan_lite log {"com.udp.acceptor"};
 };
 
 
@@ -141,7 +146,8 @@ public:
         return workers_total_;
     };
 
-
+private:
+    logan_lite log {"com.udp.worker"};
 };
 
 #endif //_THREADED_RECEIVER_HPP_

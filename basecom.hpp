@@ -87,9 +87,7 @@ public:
     int error_flags() const { return error_flag_; };
     inline void error(baseCom::err_flags e) { error_flag_ = e;}
     
-    explicit baseCom() {
-        log = logan_attached<baseCom>(this, "com");
-    }
+    explicit baseCom() =default;
     virtual ~baseCom() = default;
     virtual std::string flags_str() { return "0"; };
     virtual std::string full_flags_str();
@@ -473,8 +471,8 @@ public:
     TYPENAME_BASE("baseCom")
     DECLARE_LOGGING(to_string)
 
-protected:
-    logan_attached<baseCom> log;
+private:
+    logan_lite log {"com.base"};
 };
 
 # endif

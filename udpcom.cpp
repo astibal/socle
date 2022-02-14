@@ -33,8 +33,6 @@ UDPCom::UDPCom(): baseCom(), connections(*this) {
     bind_sock_family = default_sock_family;
 
     datagram_com_ = datagram_com_static();
-
-    log.sub_area("com.udp");
 };
 
 

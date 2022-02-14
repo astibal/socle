@@ -543,6 +543,8 @@ public:
     DECLARE_LOGGING(to_string)
 
 private:
+    logan_lite log {"com.tls"};
+
     unsigned int verify_status_ = VRF_NOTTESTED;
 
     // experimental switch to save SESSION data for left connections - WIP code
