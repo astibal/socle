@@ -1258,7 +1258,7 @@ int baseProxy::run_poll() {
     }
 
     if(counter_curr_proxy_handler || counter_curr_generic_handler || counter_curr_back_handler) {
-        _dia("baseProxy::run: 0x%x called handlers - proxy: %d/%d, gen: %d/%d, back-ins: %d/%d, hint: %d/%d",
+        _deb("baseProxy::run: 0x%x called handlers - proxy: %d/%d, gen: %d/%d, back-ins: %d/%d, hint: %d/%d",
              this,
              stats_.counter_proxy_handler, counter_curr_proxy_handler, stats_.counter_generic_handler, counter_curr_generic_handler,
              stats_.counter_back_handler, counter_curr_back_handler, stats_.counter_hint_handler, counter_curr_hint_handler);
