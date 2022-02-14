@@ -65,16 +65,16 @@ std::string string_format_old(const char* fmt, ...) {
 }
 
 
-std::string hex_dump(buffer const* b, unsigned int ltrim, unsigned char prefix, bool add_cr) {
+std::string hex_dump(buffer const* b, unsigned int ltrim, unsigned char prefix, bool add_cr, unsigned int fake_pos) {
 
-    return hex_dump(const_cast<unsigned char*>(b->data()), b->size(), ltrim, prefix, add_cr);
+    return hex_dump(const_cast<unsigned char*>(b->data()), b->size(), ltrim, prefix, add_cr, fake_pos);
 }
-std::string hex_dump(buffer const& b, unsigned int ltrim, unsigned char prefix,  bool add_cr) {
+std::string hex_dump(buffer const& b, unsigned int ltrim, unsigned char prefix,  bool add_cr, unsigned int fake_pos) {
 
-    return hex_dump(const_cast<unsigned char*>(b.data()), b.size(), ltrim, prefix, add_cr);
+    return hex_dump(const_cast<unsigned char*>(b.data()), b.size(), ltrim, prefix, add_cr, fake_pos);
 }
 
-std::string hex_dump(const unsigned char *data, size_t size, unsigned int ltrim, unsigned char prefix, bool add_cr)
+std::string hex_dump(const unsigned char *data, size_t size, unsigned int ltrim, unsigned char prefix, bool add_cr, unsigned int fake_pos)
 {
     /* dumps size bytes of *data to stdout. Looks like:
      * [0000] 75 6E 6B 6E 6F 77 6E 20 30 FF 00 00 00 00 39 00 unknown 0.....9.
@@ -112,7 +112,7 @@ std::string hex_dump(const unsigned char *data, size_t size, unsigned int ltrim,
         if (n%16 == 1) {
             /* store address for this line */
             snprintf(addrstr, sizeof(addrstr), "%.4x",
-               (unsigned int)(p-data) );
+               (unsigned int)(p-data+fake_pos) );
         }
 
         unsigned char c = *p;

@@ -43,9 +43,9 @@ std::string string_shorten(std::string const& orig, size_t max_len);
 
 std::string number_suffixed(unsigned long n);
 template<typename T> std::string hex_print(const T* data, std::size_t len);
-std::string hex_dump(const unsigned char *data, size_t size, unsigned int trim=0, unsigned char prefix=0, bool add_cr=false);
-std::string hex_dump(buffer const&, unsigned int trim=0, unsigned char prefix=0, bool add_cr=false);
-std::string hex_dump(buffer const*, unsigned int trim=0, unsigned char prefix=0, bool add_cr=false);
+std::string hex_dump(const unsigned char *data, size_t size, unsigned int trim=0, unsigned char prefix=0, bool add_cr=false, unsigned int fake_pos=0);
+std::string hex_dump(buffer const&, unsigned int trim=0, unsigned char prefix=0, bool add_cr=false, unsigned int fake_pos=0);
+std::string hex_dump(buffer const*, unsigned int trim=0, unsigned char prefix=0, bool add_cr=false, unsigned int fake_pos=0);
 std::string string_error();
 std::string string_error(int code);
 std::string bt(bool add_r=false);
