@@ -447,6 +447,14 @@ int safe_val(const std::string &str_val, int default_val) {
     return ret;
 }
 
+std::vector<std::string> args_to_vec(char* argv[], int argc) {
+    std::vector<std::string> arg;
+    for (int i = 0; i < argc; ++i) {
+        arg.emplace_back(argv[i]);
+    }
+
+    return arg;
+}
 
 std::string string_trim(const std::string& orig) {
     std::string ret;

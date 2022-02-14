@@ -101,14 +101,42 @@ protected:
     // loging message prefix in log line
     static thread_local inline std::string context_ {};
 
-    mutable std::atomic<loglevel*> my_loglevel {0};
+    struct ContextFilter {
+        ContextFilter() { active_.store(false); }
+
+        std::atomic_bool active_{false};
+        std::string value_{};
+        static inline std::shared_mutex lock_{};
+
+        void set(std::string_view s) {
+            auto lc_ = std::unique_lock(lock_);
+            value_ = s;
+
+            if(not value_.empty()) active_ = true;
+        };
+
+        [[nodiscard]] std::string value() const {
+            auto lc_ = std::shared_lock(lock_);
+            return value_;
+        }
+
+        void active(bool newval) {
+            active_ = newval;
+        }
+        [[nodiscard]] bool active() const {
+            return active_;
+        }
+    };
+
+
+    mutable std::atomic<loglevel*> my_loglevel {nullptr};
 
     // hold our own instance pointer
     std::shared_ptr<logan> logan_ {nullptr};
     logan& logref() const { return *logan_; }
 
 public:
-
+    static inline ContextFilter context_filter {};
     friend class logan;
 
     explicit logan_lite();
@@ -197,7 +225,16 @@ public:
     void log(loglevel const& lev, const std::string& topic, const char* fmt, Args ... args) const {
         if( *level() >= lev) {
             std::stringstream ms;
-            if( ! flag_test(lev.flags(),LOG_FLRAW)) {
+
+            if( not flag_test(lev.flags(),LOG_FLRAW) ) {
+
+                if(logan_lite::context_filter.active()) {
+                    if(logan_lite::context().empty()) return;
+                    if(logan_lite::context().find( logan_lite::context_filter.value() ) == std::string::npos) {
+                        return;
+                    }
+                }
+
                 ms << "[ " << topic;
                 if (!context().empty()) {
                     ms << " | " << context();
