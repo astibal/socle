@@ -233,19 +233,19 @@ void AppHostCX::pre_read() {
                 unsigned int w = this->readbuf()->size() - delta; // "+1" should be not there
                 _deb("AppHostCX::pre_read[%s]: Creating readbuf view at <%d,%d>", c_type(), w, delta);
                 buffer v = this->readbuf()->view(w, delta);
-                _deb("AppHostCX::pre_read[%s]:  = readbuf: %d bytes (allocated buffer size %d): %s", c_type(),
+                _deb("AppHostCX::pre_read[%s]:  = readbuf: %d bytes (allocated buffer size %d): \r\n%s", c_type(),
                      this->readbuf()->size(), this->readbuf()->capacity(),
-                     hex_dump(this->readbuf()->data(), this->readbuf()->size()).c_str());
-                _deb("AppHostCX::pre_read[%s]:  = view of %d bytes (allocated buffer size %d): %s", c_type(), v.size(),
-                     v.capacity(), hex_dump(v.data(), v.size()).c_str());
+                     hex_dump(this->readbuf()->data(), this->readbuf()->size(), 4, 0, true).c_str());
+                _deb("AppHostCX::pre_read[%s]:  = view of %d bytes (allocated buffer size %d): \r\n%s", c_type(), v.size(),
+                     v.capacity(), hex_dump(v.data(), v.size(), 4, 0, true).c_str());
 
 
                 if(v.size() > 0) {
                     this->flow().append('r', v);
                     _dia("AppHostCX::pre_read[%s]: detection pre-mode: salvaged %d bytes from readbuf", c_type(),
                            v.size());
-                    _deb("AppHostCX::pre_read[%s]: Appended from readbuf to flow %d bytes (allocated buffer size %d): \n%s",
-                         c_type(), v.size(), v.capacity(), hex_dump(v.data(), v.size()).c_str(), 4, '>');
+                    _deb("AppHostCX::pre_read[%s]: Appended from readbuf to flow %d bytes (allocated buffer size %d): \r\n%s",
+                         c_type(), v.size(), v.capacity(), hex_dump(v.data(), v.size(), 4, 0, true).c_str());
 
                     updated = true;
 
@@ -282,7 +282,8 @@ void AppHostCX::pre_read() {
                 peek_read_counter += l;
                 flow().append('r',b);
 
-                _deb("AppHostCX::pre_read[%s]: Appended to flow %d bytes (allocated buffer size %d): %s",c_type(),b.size(),b.capacity(),hex_dump(b.data(),b.size()).c_str());
+                _deb("AppHostCX::pre_read[%s]: Appended to flow %d bytes (allocated buffer size %d): \r\n%s",c_type(),b.size(),b.capacity(),
+                            hex_dump(b.data(),b.size(), 4, ' ', true).c_str());
                 next_read_limit(l);
 
                 updated = true;
@@ -331,8 +332,7 @@ void AppHostCX::pre_write() {
                 f_last_data_size = flow().flow().back().second->size();
             }
             
-            _dia("AppHostCX::pre_write[%s]: peek_counter %d, written already %d, "
-                 "                          write buffer size %d, whole flow size %d, flow data side '%c' size %d",
+            _dia("AppHostCX::pre_write[%s]: peek_counter %d, written already %d, write buffer size %d, whole flow size %d, flow data side '%c' size %d",
                                             c_type(), peek_write_counter,
                                             meter_write_bytes,b->size(), f_s,f_last_data_side,f_last_data_size);
 
@@ -347,8 +347,8 @@ void AppHostCX::pre_write() {
                 peek_write_counter += delta_b.size();
 
                 auto& last_flow = flow().flow().back().second;
-                _dum("AppHostCX::pre_write:[%s]: Last flow entry is now: \n%s", c_type(),
-                                                 hex_dump((unsigned char*)last_flow->data(),last_flow->size()).c_str());
+                _dum("AppHostCX::pre_write:[%s]: Last flow entry is now: \r\n%s", c_type(),
+                                                 hex_dump((unsigned char*)last_flow->data(),last_flow->size(), 4, 0, true).c_str());
                 _dia("AppHostCX::pre_write:[%s]: ...",c_type());
                 _dia("AppHostCX::pre_write:[%s]: peek_counter is now %d",c_type(),peek_write_counter);
             } else {

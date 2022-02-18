@@ -191,7 +191,7 @@ std::string LTVEntry::hr(int ltrim) {
     if (type_ == typ::cont) {
         r << p + "... " << std::to_string(contains().size()) << " element(s):\n";
 	} else {
-		r << hex_dump(data(),datalen(),ltrim);
+		r << hex_dump(data(),datalen(),ltrim,4);
 	}
 	
     if(tr) {

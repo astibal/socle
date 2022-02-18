@@ -74,8 +74,8 @@ public:
         else if (flow_.back().first == src) {
 
             _deb("Flow::append: to current side: %c: %d bytes", src, len);
-            _dum("Flow::append: to current side: %c: incoming  data:\n%s", src,
-                    hex_dump((unsigned char*)data,  len > 128 ? 128 : static_cast<int>(len)).c_str());
+            _dum("Flow::append: to current side: %c: incoming  data:\r\n%s", src,
+                    hex_dump((unsigned char*)data,  len > 128 ? 128 : static_cast<int>(len), 4, 0, true).c_str());
             
             if(domain() == SOCK_STREAM) {
                 flow_.back().second->append(data,len);
@@ -91,8 +91,8 @@ public:
         }
         else if (flow_.back().first != src) {
             _deb("Flow::append: to new side: %c: %d bytes", src, len);
-            _dum("Flow::append: to new side: %c: incoming data:\n%s", src,
-                    hex_dump((unsigned char*)data,len > 128 ? 128 : static_cast<int>(len)).c_str());
+            _dum("Flow::append: to new side: %c: incoming data:\r\n%s", src,
+                    hex_dump((unsigned char*)data,len > 128 ? 128 : static_cast<int>(len), 4, 0, true).c_str());
 
             flow_.template emplace_back(std::make_pair(src, new buffer(data,len)));
 
@@ -218,11 +218,11 @@ public:
         auto where = str.find(expr);
 
         if(*log.level() >= DUM) {
-            _dum("simpleMatch::search_function: \nexpr:\n%s\ndata:\n%s",expr.c_str(),
-                    hex_dump((unsigned char*)str.c_str(), str.size() > 128 ? 128 : static_cast<int>(str.size())).c_str());
+            _dum("simpleMatch::search_function: \nexpr:\n%s\ndata:\r\n%s",expr.c_str(),
+                    hex_dump((unsigned char*)str.c_str(), str.size() > 128 ? 128 : static_cast<int>(str.size()), 4, 0, true).c_str());
         }
         else {
-            _deb("simpleMatch::search_function: \nexpr: '%s'", expr.c_str());
+            _deb("simpleMatch::search_function: \r\nexpr: '%s'", expr.c_str());
         }
         
         if (where == std::string::npos) {
@@ -350,7 +350,7 @@ public:
                 _deb("flowMatch::match: processing signature[%s]: %s", std::to_string(sig_src).c_str(), sig_match->expr().c_str());
                 _deb("flowMatch::match: pattern[%s] view-size=%d", std::to_string(ff_src).c_str(), ff_view.size());
 
-                _dum("flowMatch::match: data=\n%s", hex_dump(ff_view.data(), ff_view.size()).c_str());
+                _dum("flowMatch::match: data=\r\n%s", hex_dump(ff_view.data(), ff_view.size(), 4, 0, true).c_str());
 
                 range r = sig_match->match((const char*)ff_view.data(),(unsigned int)ff_view.size());
                 
@@ -432,8 +432,8 @@ public:
         std::smatch m;
         if (std::regex_search ( str , m, expr_comp_ )) {
 
-            _dum("regexMatch::search_function: \nexpr:\n%s\ndata:\n%s", expr.c_str(),
-                 hex_dump((unsigned char *) str.c_str(), str.size()).c_str());
+            _dum("regexMatch::search_function: \r\nexpr:\r\n%s\r\ndata:\r\n%s", expr.c_str(),
+                 hex_dump((unsigned char *) str.c_str(), str.size(), 4, 0, true).c_str());
             _deb("regexMatch::search_function: matches %d times.", m.size());
 
             return range(m.position(0), m.str().size());

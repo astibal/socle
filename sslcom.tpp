@@ -339,7 +339,7 @@ void baseSSLCom<L4Proto>::ssl_msg_callback(int write_p, int version, int content
     _deb("[%s]: SSLCom::ssl_msg_callback: %s/%s has been %s",name.c_str(), msg_version, msg_content_type, msg_direction);
 
     if(content_type == 21) {
-        _dum("[%s]: SSLCom::ssl_msg_callback: alert dump:\n%s", name.c_str(), hex_dump((unsigned char*)buf,len).c_str());
+        _dum("[%s]: SSLCom::ssl_msg_callback: alert dump:\r\n%s", name.c_str(), hex_dump((unsigned char*)buf,len, 4, 0, true).c_str());
         uint16_t int_code = ntohs(buffer::get_at_ptr<uint16_t>((unsigned char*)buf));
         uint8_t level = buffer::get_at_ptr<uint8_t>((unsigned char*)buf);
         uint8_t code = buffer::get_at_ptr<uint8_t>((unsigned char*)buf+1);
@@ -652,8 +652,8 @@ int baseSSLCom<L4Proto>::ssl_alpn_select_callback(SSL *s, const unsigned char **
 
             if(inlen > 0) {
 
-                _dia("SSLCom::ssl_alpn_select_callback: server offered alpn: \n%s",
-                     hex_dump((unsigned char *) in, inlen).c_str());
+                _dia("SSLCom::ssl_alpn_select_callback: server offered alpn: \r\n%s",
+                     hex_dump((unsigned char *) in, inlen).c_str(), 4, 0, true);
 
                 *out = in;
                 *outlen = inlen;
@@ -1066,7 +1066,7 @@ std::pair<typename baseSSLCom<L4Proto>::staple_code_t, int> baseSSLCom<L4Proto>:
         goto the_end;
     }
 
-    _dum("[%s]: OCSP Response:  \n%s",name.c_str(),hex_dump((unsigned char*) stapling_body, stapling_len, 2).c_str());
+    _dum("[%s]: OCSP Response:  \r\n%s",name.c_str(),hex_dump((unsigned char*) stapling_body, stapling_len, 4, 0, true).c_str());
 
     ocsp_response = d2i_OCSP_RESPONSE(nullptr, &stapling_body, stapling_len);
     if (!ocsp_response) {
@@ -2573,7 +2573,8 @@ bool baseSSLCom<L4Proto>::waiting_peer_hello() {
                     sslcom_peer_hello_buffer.size(red);
 
                     _dia("SSLCom::waiting_peer_hello: %d bytes in buffer for hello analysis",red);
-                    _dum("SSLCom::waiting_peer_hello: ClientHello data:\n%s",hex_dump(sslcom_peer_hello_buffer.data(),sslcom_peer_hello_buffer.size()).c_str());
+                    _dum("SSLCom::waiting_peer_hello: ClientHello data:\r\n%s",
+                                hex_dump(sslcom_peer_hello_buffer.data(),sslcom_peer_hello_buffer.size(), 4, 0, true).c_str());
 
                     int parse_hello_result = 0;
                     try {
@@ -2585,7 +2586,8 @@ bool baseSSLCom<L4Proto>::waiting_peer_hello() {
 
                     if(parse_hello_result == 0) {
                         _dia("SSLCom::waiting_peer_hello: analysis failed");
-                        _dia("SSLCom::waiting_peer_hello: failed ClientHello data:\n%s",hex_dump(sslcom_peer_hello_buffer.data(),sslcom_peer_hello_buffer.size()).c_str());
+                        _dia("SSLCom::waiting_peer_hello: failed ClientHello data:\r\n%s",
+                                hex_dump(sslcom_peer_hello_buffer.data(),sslcom_peer_hello_buffer.size(), 4, 0, true).c_str());
                         
                         if(bypass_me_and_peer()) {
                             _inf("bypassing non-TLS connection");
@@ -2785,8 +2787,8 @@ int baseSSLCom<L4Proto>::parse_peer_hello() {
 
                         sslcom_peer_hello_id_ = hex_print(session_id.data(), session_id.size());
                         _deb("SSLCom::parse_peer_hello: session_id (length %d)", session_id_length);
-                        _dum("SSLCom::parse_peer_hello: session_id :\n%s",
-                             hex_dump(session_id.data(), session_id.size()).c_str());
+                        _dum("SSLCom::parse_peer_hello: session_id :\r\n%s",
+                             hex_dump(session_id.data(), session_id.size()).c_str(), 4, 0, true);
                     } else {
                         _deb("SSLCom::parse_peer_hello: no session_id found.");
                     }
@@ -2861,11 +2863,11 @@ int baseSSLCom<L4Proto>::parse_peer_hello() {
             
                 
         } else {
-            baseSSLCom* p = dynamic_cast<baseSSLCom*>(peer());
+            auto* p = dynamic_cast<baseSSLCom*>(peer());
             if(p != nullptr) 
                 master()->poller.rescan_in(p->socket());
             
-            _dia("SSLCom::parse_peer_hello: only %d bytes in peek:\n%s",b.size(),hex_dump(b.data(),b.size()).c_str());
+            _dia("SSLCom::parse_peer_hello: only %d bytes in peek:\n%s",b.size(),hex_dump(b.data(),b.size(), 4, 0, true).c_str());
             if(timeval_msdelta_now(&timer_start) > SSLCOM_CLIENTHELLO_TIMEOUT) {
                 _err("handshake timeout: waiting for ClientHello");
                 error(ERROR_UNSPEC);
