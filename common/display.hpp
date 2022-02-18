@@ -43,6 +43,9 @@ std::string string_shorten(std::string const& orig, size_t max_len);
 
 std::string number_suffixed(unsigned long n);
 template<typename T> std::string hex_print(const T* data, std::size_t len);
+
+
+constexpr size_t MAX_HEXDUMP_SIZE = 1024;
 std::string hex_dump(const unsigned char *data, size_t size, unsigned int trim=0, unsigned char prefix=0, bool add_cr=false, unsigned int fake_pos=0);
 std::string hex_dump(buffer const&, unsigned int trim=0, unsigned char prefix=0, bool add_cr=false, unsigned int fake_pos=0);
 std::string hex_dump(buffer const*, unsigned int trim=0, unsigned char prefix=0, bool add_cr=false, unsigned int fake_pos=0);

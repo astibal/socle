@@ -74,7 +74,7 @@ std::string hex_dump(buffer const& b, unsigned int ltrim, unsigned char prefix, 
     return hex_dump(const_cast<unsigned char*>(b.data()), b.size(), ltrim, prefix, add_cr, fake_pos);
 }
 
-std::string hex_dump(const unsigned char *data, size_t size, unsigned int ltrim, unsigned char prefix, bool add_cr, unsigned int fake_pos)
+std::string hex_dump2(const unsigned char *data, size_t size, unsigned int ltrim, unsigned char prefix, bool add_cr, unsigned int fake_pos)
 {
     /* dumps size bytes of *data to stdout. Looks like:
      * [0000] 75 6E 6B 6E 6F 77 6E 20 30 FF 00 00 00 00 39 00 unknown 0.....9.
@@ -156,6 +156,77 @@ std::string hex_dump(const unsigned char *data, size_t size, unsigned int ltrim,
     }
     
     return ret.str();
+}
+
+
+std::string hex_dump(const unsigned char *data, size_t orig_size, unsigned int ltrim, unsigned char prefix, bool add_cr, unsigned int fake_pos) {
+    mp::stringstream ss;
+
+
+    auto filter_visi = [](const unsigned char c) -> unsigned char {
+        if(c < 33 || c > 126 || c == 92 || c == 37) return '.';
+        return c;
+    };
+
+    mp::stringstream ascii_line;
+    bool truncated = false;
+
+    auto size = orig_size;
+
+    for (size_t i = 0; i < size ; ++i) {
+
+        if( i % 16 == 0 )  {
+
+            ss << ascii_line.str();
+            ascii_line.clear();
+            ascii_line.str(mp::string());
+            ascii_line << "  ";
+
+            if(ltrim > 0) for (unsigned int j = 0; j < ltrim; ++j) { ss << " "; }
+
+            if(prefix != 0) ss << prefix;
+
+            if(add_cr) ss << "\r";
+
+            ss << "\n";
+            ss << "[";
+            ss << string_format("%04X", i + fake_pos);
+            ss << "]  ";
+        }
+        else if( i % 8 == 0) {
+            ss << "  ";
+        }
+
+        auto curchar = data[i];
+        ss << string_format("%02X ", (uint8_t)curchar);
+        ascii_line << (char)filter_visi(curchar);
+
+        if(i >= MAX_HEXDUMP_SIZE) {
+            truncated = true;
+            size = i + 1;
+            break;
+        }
+    }
+
+    for (size_t i = 0; i < 16 - (size % 16); ++i) {
+        ss << "   ";
+    }
+
+    if((size % 16) != 0) {
+
+        if((size % 16) <= 8) ss << "  "; // center spacer
+        ss << ascii_line.str();
+    }
+
+    if(truncated) {
+        if (add_cr) ss << "\r";
+        ss << "\n[....]                                                      <data too large>";
+    }
+
+    if(add_cr) ss << "\r";
+    ss << "\n";
+
+    return ss.str().c_str();
 }
 
 std::string string_error() {
