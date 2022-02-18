@@ -60,6 +60,7 @@ public:
 
     vector_type& operator() () { return flow(); }
 
+    std::size_t size() const { return flow_.size(); }
     unsigned int append(SourceType src,buffer& b) { return append(src,b.data(),b.size());};
     unsigned int append(SourceType src,buffer* pb) { return append(src,pb->data(),pb->size());};
     unsigned int append(SourceType src,const void* data, size_t len) {
@@ -194,7 +195,7 @@ public:
         range result;
         
         auto s = std::string(str,len);
-        _ext("simpleMatch::match: '%s', len='%d' ",hex_dump((unsigned char*)s.c_str(), static_cast<int>(len)).c_str(), len);
+        _ext("simpleMatch::match: '%s', len='%d' ",hex_dump((unsigned char*)s.c_str(), static_cast<int>(len), 4, 0, true).c_str(), len);
         
         range loc = search_function(expr(),s);
         

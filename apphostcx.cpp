@@ -136,7 +136,9 @@ bool AppHostCX::detect (const std::shared_ptr<sensorType> &cur_sensor) {
 void AppHostCX::post_read() {
     
     if ( mode() == MODE_POST) {
-        if(this->meter_read_bytes <= config::max_detect_bytes) {
+        if( this->meter_read_bytes <= config::max_detect_bytes and
+            (this->flow().size() < config::max_exchanges or this->meter_read_bytes <= config::min_detect_bytes) ) {
+
             auto& b = this->to_read();
             this->flow().append('r', b);
 
@@ -160,8 +162,8 @@ void AppHostCX::post_read() {
 void AppHostCX::post_write() {
     
     if ( mode() == MODE_POST ) {
-        
-        if(this->meter_write_bytes <= config::max_detect_bytes) {
+        if(this->meter_write_bytes <= config::max_detect_bytes and
+           (this->flow().size() < config::max_exchanges or this->meter_read_bytes <= config::min_detect_bytes)) {
             auto b = this->writebuf();
 
             auto f_s = flow().flow().size();
@@ -214,7 +216,9 @@ void AppHostCX::pre_read() {
     bool behind_read = false;
     
     if (mode() == MODE_PRE) {
-        if(this->meter_read_bytes <= config::max_detect_bytes && peek_read_counter <= this->meter_read_bytes  ) {
+
+        if(this->meter_read_bytes <= config::max_detect_bytes and peek_read_counter <= this->meter_read_bytes and
+           (this->flow().size() < config::max_exchanges or this->meter_read_bytes <= config::min_detect_bytes)) {
 
             if (peek_read_counter < this->meter_read_bytes) {
                 behind_read = true;
@@ -321,9 +325,10 @@ void AppHostCX::pre_write() {
     
     if ( mode() == MODE_PRE ) {
         buffer* b = this->writebuf();
-        
-        if(this->meter_write_bytes <= config::max_detect_bytes && b->size() > 0) {
-            
+
+        if(this->meter_write_bytes <= config::max_detect_bytes and b->size() > 0 and
+           (this->flow().size() < config::max_exchanges or this->meter_read_bytes <= config::min_detect_bytes)) {
+
             int  f_s = flow().flow().size();
             int  f_last_data_size = 0;
             char f_last_data_side = '?';
