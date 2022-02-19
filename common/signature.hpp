@@ -49,7 +49,7 @@ public:
     unsigned int exchanges = 0; // count how many times flow changed side
 
     explicit Flow() {
-        log = logan::create("inspect");
+        log = logan::create("flow");
     }
 
     inline void domain(int domain) { domain_ = domain; };
@@ -158,12 +158,9 @@ public:
 class baseMatch {
 protected:
     std::string expr_;
-    explicit baseMatch(const char* e): expr_(e) {
-        log = logan::create("inspect");
-    };
-    explicit baseMatch(std::string& e): expr_(e) {
-        log = logan::create("inspect");
-    };
+    explicit baseMatch(const char* e): expr_(e) {};
+    explicit baseMatch(std::string& e): expr_(e) {};
+
     baseMatch(std::string& e, unsigned int o, unsigned int b) : expr_(e), match_limits_offset(o), match_limits_bytes(b) { expr() = e; }  
 public:
     // directly accessible match constrains
@@ -179,7 +176,7 @@ public:
     std::string& expr() { return expr_; }
 
 protected:
-    logan_lite log;
+    logan_lite log {"flow.match"};
 };
 
 class simpleMatch : public baseMatch {
@@ -241,9 +238,7 @@ template <class SourceType>
 class flowMatch {
     
 public:
-    explicit flowMatch() {
-        log = logan::create("inspect");
-    }
+    explicit flowMatch() = default;
 
     std::string& name() { return name_; }
 
@@ -252,7 +247,7 @@ public:
 private:
     std::string name_;                                                         
     std::vector<std::pair<SourceType,baseMatch*>>  signature_;                // series of L/R/X matches to be satisfied
-    logan_lite log;
+    logan_lite log {"flow.match"};
 
 public:    
     
