@@ -157,6 +157,7 @@ public:
   void flush (size_type);
   buffer view(size_type pos, buffer::size_type len);
   buffer view();
+  buffer view(size_type pos) { return view(pos, size() - pos); };
 
   friend std::ostream& operator<<(std::ostream& os, buffer const& b);
   
@@ -230,7 +231,7 @@ inline void buffer::counter_clear_bt() {
 template <typename T>
 inline T buffer::get_at(unsigned int idx) const
 {
-    if(idx + sizeof(T) - 1 >= size_)
+    if(idx + sizeof(T) > size_)
         throw std::out_of_range ("buffer: index out of range: " + std::to_string((int)idx) + " of " + std::to_string(size_));
 
     return *((T*)(&data_[idx]));
