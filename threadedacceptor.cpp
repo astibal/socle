@@ -85,12 +85,6 @@ int ThreadedAcceptor<Worker>::run() {
 	return this->tasks().size();
 }
 
-template<class Worker>
-void ThreadedAcceptor<Worker>::on_run_round() {
-    // std::this_thread::yield();
-}
-
-
 
 template<class SubWorker>
 int ThreadedAcceptorProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
@@ -137,9 +131,5 @@ int ThreadedAcceptorProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
 	return MasterProxy::handle_sockets_once(com());
 }
 
-template<class SubWorker>
-void ThreadedAcceptorProxy<SubWorker>::on_run_round() {
-    std::this_thread::yield();
-}
 
 #endif

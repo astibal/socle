@@ -1318,8 +1318,6 @@ int baseProxy::run() {
                 state().dead(true);
             }
         }
-
-        on_run_round();
     }
 
     return 0;

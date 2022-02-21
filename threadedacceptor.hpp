@@ -44,7 +44,6 @@ public:
 	void on_right_new_raw(int) override;
 	
 	int run() override;
-	void on_run_round() override;
 
     proxyType proxy_type() const { return proxy_type_; };
 private:
@@ -61,7 +60,6 @@ public:
             MasterProxy(c) {}
 
 	int handle_sockets_once(baseCom*) override;
-    void on_run_round() override;
 
     static std::atomic_int& workers_total() {
         static std::atomic_int workers_total_ = 2;
