@@ -74,7 +74,7 @@ public:
         }
         else if (flow_.back().first == src) {
 
-            _deb("Flow::append: to current side: %c: %d bytes", src, len);
+            _dia("Flow::append: to current side: %c: %d bytes", src, len);
             _dum("Flow::append: to current side: %c: incoming  data:\r\n%s", src,
                     hex_dump((unsigned char*)data,  len > 128 ? 128 : static_cast<int>(len), 4, 0, true).c_str());
             
@@ -84,14 +84,14 @@ public:
                 counter_ref++;
             }
             else {
-                _dia("Flow::append: datagrams, so packetized (new buffer on same side)");
+                _dia("Flow::append: datagrams, packetized (new buffer on same side)");
 
                 flow_.emplace_back(std::make_pair(src, new buffer(data,len)));
                 update_counters_.push_back(1);
             }
         }
         else if (flow_.back().first != src) {
-            _deb("Flow::append: to new side: %c: %d bytes", src, len);
+            _dia("Flow::append: to new side: %c: %d bytes", src, len);
             _dum("Flow::append: to new side: %c: incoming data:\r\n%s", src,
                     hex_dump((unsigned char*)data,len > 128 ? 128 : static_cast<int>(len), 4, 0, true).c_str());
 
