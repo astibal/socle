@@ -365,12 +365,6 @@ int ThreadedReceiver<Worker>::run() {
 }
 
 template<class Worker>
-void ThreadedReceiver<Worker>::on_run_round() {
-    //std::this_thread::yield();
-}
-
-
-template<class Worker>
 int ThreadedReceiver<Worker>::pop_for_worker(int id) {
 
     // this is unsolvable data race: we don't know if we pop fd for us or not.
@@ -548,11 +542,6 @@ int ThreadedReceiverProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
     return MasterProxy::handle_sockets_once(com());
 }
 
-
-template<class SubWorker>
-void ThreadedReceiverProxy<SubWorker>::on_run_round () {
-    std::this_thread::yield();
-}
 
 
 #endif

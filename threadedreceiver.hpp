@@ -61,7 +61,6 @@ public:
     void on_right_new_raw(int) override;
     
     int run() override;
-    void on_run_round() override;
 
     int pop_for_worker(int id);
 
@@ -139,7 +138,6 @@ public:
             MasterProxy(c) {}
 
     int handle_sockets_once(baseCom*) override;
-    void on_run_round() override;
 
     static std::atomic_int& workers_total() {
         static std::atomic_int workers_total_ = 2;
