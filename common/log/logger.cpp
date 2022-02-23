@@ -129,7 +129,7 @@ size_t LogMux::write_log(loglevel level, std::string& sss) {
         *target << sss << std::endl;
     }
 
-    for(auto [ rem_target, mut ]: remote_targets()) {
+    for(auto const& [ rem_target, mut ]: remote_targets()) {
         
         if(target_profiles().find((uint64_t) rem_target) != target_profiles().end()) {
             if(target_profiles()[(uint64_t) rem_target]->level_ < level ) { continue; }

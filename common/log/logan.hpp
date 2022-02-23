@@ -93,7 +93,7 @@ class logan;
 
 class logan_lite {
 
-protected:
+private:
     mutable std::shared_mutex lock_;
     // loging name in catalogue
     std::string topic_;
@@ -129,11 +129,11 @@ protected:
     };
 
 
-    mutable std::atomic<loglevel*> my_loglevel {nullptr};
+    mutable std::weak_ptr<loglevel> my_loglevel {};
 
     // hold our own instance pointer
-    std::shared_ptr<logan> logan_ {nullptr};
-    logan& logref() const { return *logan_; }
+    std::weak_ptr<logan> logan_ {};
+    std::shared_ptr<logan> logref() const { return logan_.lock(); }
 
 public:
     static inline ContextFilter context_filter {};
@@ -152,7 +152,7 @@ public:
             context_ = r.context_;
 
             // even if my_loglevel can be non-null, we don't own it, so don't delete it here
-            my_loglevel = r.my_loglevel.load();
+            my_loglevel = r.my_loglevel;
         }
 
         return *this;
@@ -176,7 +176,7 @@ public:
     }
 
 
-    virtual loglevel* level() const;
+    virtual std::shared_ptr<loglevel> level() const;
     virtual void     level(loglevel const& l);
 
     template<class ... Args>
@@ -322,28 +322,27 @@ private:
 class logan {
 public:
 
-    std::map <std::string, loglevel> topic_db_;
+    std::map <std::string, std::shared_ptr<loglevel>, std::less<>> topic_db_;
 
-    loglevel* entry(std::string const& subject) {
+    std::shared_ptr<loglevel> entry(std::string const& subject) {
         std::scoped_lock<std::recursive_mutex> l_(lock_);
 
         auto it = topic_db_.find(subject);
 
         if(it != topic_db_.end()) {
             // found loglevel
-            return &it->second;
+            return std::atomic_load(&it->second);
         } else {
-            //auto* l = new loglevel(0,0);
-            auto l = loglevel(0,0);
-            l.subject(subject);
 
-            // topic_db_.emplace( std::pair<std::string, loglevel*>(subject, l));
+            auto l = std::make_shared<loglevel>(0,0);
+            l->subject(subject);
+
             topic_db_.try_emplace(subject, std::move(l));
-            return this->entry(subject);
+            return entry(subject);
         }
     }
 
-    loglevel* operator[] (std::string const& subject) {
+    std::shared_ptr<loglevel> operator[] (std::string const& subject) {
         return entry(subject);
     }
 
@@ -444,7 +443,7 @@ public:
 
     [[nodiscard]] static std::shared_ptr<logan> get() {
         static auto l = std::make_shared<logan>();
-        return l;
+        return std::atomic_load(&l);
     }
 
 private:

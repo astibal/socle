@@ -24,31 +24,40 @@ logan_lite::logan_lite() : logan_(logan::get()) { };
 
 logan_lite::logan_lite(std::string str) noexcept: topic_(std::move(str)), logan_(logan::get()) { };
 
-logan_lite::logan_lite(logan_lite const& r): topic_(r.topic_), my_loglevel(r.my_loglevel.load()), logan_(logan::get()) {}
+logan_lite::logan_lite(logan_lite const& r): topic_(r.topic_), my_loglevel(r.my_loglevel), logan_(logan::get()) {}
 
 
-loglevel* logan_lite::level() const {
+std::shared_ptr<loglevel> logan_lite::level() const {
 
-    if(not my_loglevel) {
-        my_loglevel = logref()[topic_];
+    auto locked = my_loglevel.lock();
+    if(not locked) {
+        auto logan = logref();
+        if(logan) {
+            my_loglevel = logan->entry(topic_);
+            locked = my_loglevel.lock();
+        }
     }
 
-    return my_loglevel;
+    return locked;
 }
 
 void logan_lite::level(loglevel const& l) {
 
-    if(not my_loglevel) {
-        my_loglevel = logref()[topic_];
+    auto locked = my_loglevel.lock();
+
+    if(not locked) {
+        my_loglevel = logref()->entry(topic_);
+        locked = my_loglevel.lock();
     }
 
-    auto l_ = std::unique_lock(lock_);
+    if (locked){
+        auto l_ = std::unique_lock(lock_);
 
-    auto* ml_ptr = my_loglevel.load();
-    ml_ptr->level(l.level());
-    ml_ptr->topic(l.topic());
-    ml_ptr->more(l.more()); // shallow copy?
-    ml_ptr->flags(l.flags());
-    ml_ptr->subject(l.subject());
-    ml_ptr->area(l.area());
+        locked->level(l.level());
+        locked->topic(l.topic());
+        locked->more(l.more()); // shallow copy?
+        locked->flags(l.flags());
+        locked->subject(l.subject());
+        locked->area(l.area());
+    }
 }

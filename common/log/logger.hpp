@@ -94,7 +94,7 @@ public:
     using ostream_list_t = std::list<std::pair<std::unique_ptr<std::ostream>, std::unique_ptr<std::mutex>>>;
     ostream_list_t targets_;
 
-    using fd_list_t = std::list<std::pair<int, std::mutex*>>;
+    using fd_list_t = std::list<std::pair<int, std::unique_ptr<std::mutex>>>;
     fd_list_t remote_targets_;
 };
 
