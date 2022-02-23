@@ -75,9 +75,9 @@ int ThreadedAcceptor<Worker>::run() {
         thread_worker.second->pollroot(true);
         thread_worker.second->parent(this);
 
-		auto* ptr = new std::thread(&Worker::run, thread_worker.second);
+		auto* ptr = new std::thread(&Worker::run, thread_worker.second.get());
 		_dia("ThreadedAcceptor::run: started new thread[%d]: ptr=%x, thread_id=%d",i,ptr,ptr->get_id());
-        thread_worker.first = ptr;
+        thread_worker.first.reset(ptr);
 	}
 	
 	baseProxy::run();

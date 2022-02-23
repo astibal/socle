@@ -105,8 +105,6 @@ public:
                 if(t_w.first->joinable())
                     t_w.first->join();
 
-                delete t_w.first;
-                t_w.first = nullptr;
             }
 
             tasks_.clear();
@@ -155,7 +153,7 @@ public:
             _dia("create_workers: acceptor[0x%x][%d]: new worker id=%d, queue hint pipe socket %d", std::this_thread::get_id(), i, this_worker_id, pa.first);
             w->com()->set_hint_monitor(pa.first);
 
-            tasks_.push_back( {nullptr, w} );
+            tasks_.template emplace_back( std::make_pair(nullptr, std::unique_ptr<WorkerType>(w)) );
         }
 
         return nthreads;
@@ -163,7 +161,7 @@ public:
 
 private:
     int worker_count_preference_=0;
-    mp::vector<std::pair< std::thread*, WorkerType*>> tasks_;
+    mp::vector<std::pair< std::unique_ptr<std::thread>, std::unique_ptr<WorkerType>>> tasks_;
 };
 
 
