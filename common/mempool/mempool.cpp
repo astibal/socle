@@ -25,6 +25,8 @@
 memPool::memPool(std::size_t sz256, std::size_t sz1k, std::size_t sz5k, std::size_t sz10k, std::size_t sz20k):
         sz32(0), sz64(0), sz128(0), sz256(0), sz1k(0), sz5k(0), sz10k(0), sz20k(0), sz35k(0), sz50k(0)
 {
+#ifndef MEMPOOL_DISABLE
+
     auto get_env_size = []() -> int {
 
         auto ptr_str_size = std::getenv("SX_MEMSIZE");
@@ -49,8 +51,9 @@ memPool::memPool(std::size_t sz256, std::size_t sz1k, std::size_t sz5k, std::siz
     };
 
     auto size = get_env_size();
-
     allocate(sz256*size, sz1k*size, sz5k*size, sz10k*size, sz20k*size);
+#endif
+
     is_ready() = true; // mark memPool ready for use
 }
 
