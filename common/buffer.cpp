@@ -27,7 +27,7 @@ std::mutex buffer::alloc_map_lock_;
 // On the contrary, it also seems that fewer bytes received than advertised is considered as transfer error.
 
 
-buffer::~buffer () {
+void buffer::release() noexcept {
     if (free_ && capacity_ > 0) {
 
         if(use_pool) {
@@ -38,6 +38,15 @@ buffer::~buffer () {
             counter_free(capacity_);
         }
     }
+
+    capacity_ = 0L;
+    size_ = 0L;
+    data_ = nullptr;
+    free_ = false;
+}
+
+buffer::~buffer () {
+    release();
 }
 
 buffer::buffer (size_type s) {

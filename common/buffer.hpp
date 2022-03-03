@@ -60,6 +60,7 @@ public:
   static void counter_alloc(size_type s);
   static void counter_free(size_type s);
 
+  void release() noexcept;
   virtual ~buffer ();
 
   explicit buffer (size_type size = 0);
