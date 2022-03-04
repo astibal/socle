@@ -1532,8 +1532,9 @@ template <class L4Proto>
 void baseSSLCom<L4Proto>::init_ssl_callbacks() {
 
     SSL_set_msg_callback_arg(sslcom_ssl,(void*)this);
-#ifndef BUILD_RELEASE
+
     SSL_set_msg_callback(sslcom_ssl,ssl_msg_callback);
+#ifndef BUILD_RELEASE
     SSL_set_info_callback(sslcom_ssl,ssl_info_callback);
 #endif
     if((is_server() && opt_left_kex_dh) || (!is_server() && opt_right_kex_dh)) {

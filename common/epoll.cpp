@@ -224,11 +224,11 @@ int epoll::wait(int timeout) {
 
         count++;
 
-    } while (cur_nfds == EPOLLER_MAX_EVENTS and cur_nfds > 0);
+    } while (cur_nfds == EPOLLER_MAX_EVENTS);
 
     enforced_to_inset();
 
-    _dum("epoll::wait: == end");
+    _dum("epoll::wait: == end, %d loops", count);
     return nfds;
 }
 
@@ -451,7 +451,7 @@ unsigned long epoll::clear_idle_watch(int check) {
     if (ip <= 0) {
         iw = idle_watched.erase(check);
     }
-    if (iw > 0 || ip > 0) {
+    if (ip > 0) {
         _deb("epoll::clear_handler %d -> clearing idle watchlist [pre: %ld list: %ld]", check, ip, iw);
     }
 

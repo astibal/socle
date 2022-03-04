@@ -112,11 +112,9 @@ int TCPCom::connect(const char* host, const char* port) {
         }
 
         // all captive continue op - close fd
-        if(sfd >= 0) {
-            _not("TCPCom::connect[%s:%s]: socket[%d]: closing", host, port, sfd);
-            ::close(sfd);
-            sfd = -1;
-        }
+        _not("TCPCom::connect[%s:%s]: socket[%d]: closing", host, port, sfd);
+        ::close(sfd);
+        sfd = -1;
     }
 
     

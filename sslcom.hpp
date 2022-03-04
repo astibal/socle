@@ -525,18 +525,18 @@ public:
     static inline int SSLCOM_READ_TIMEOUT = 60*1000;       //in ms
 
 public:
-    static logan_lite& log_cb_info() { static logan_lite l_("com.ssl.cb.info");; return l_; };
-    static logan_lite& log_cb_msg() { static logan_lite l_("com.ssl.cb.msg");; return l_; };
-    static logan_lite& log_cb_verify() { static logan_lite l_("com.ssl.cb.verify");; return l_; };
-    static logan_lite& log_cb_ccert() { static logan_lite l_("com.ssl.cb.ccert");; return l_; };
-    static logan_lite& log_cb_session() { static logan_lite l_("com.ssl.cb.session");; return l_; };
-    static logan_lite& log_cb_ct() { static logan_lite l_("com.ssl.cb.ct");; return l_; };
-    static logan_lite& log_cb_dh() { static logan_lite l_("com.ssl.cb.dh"); return l_; };
-    static logan_lite& log_cb_ecdh() { static logan_lite l_("com.ssl.cb.ecdh"); return l_; };
-    static logan_lite& log_cb_alpn() { static logan_lite l_("com.ssl.cb.alpn"); return l_; };
+    static logan_lite& log_cb_info() { static logan_lite l_("com.tls.cb.info");; return l_; };
+    static logan_lite& log_cb_msg() { static logan_lite l_("com.tls.cb.msg");; return l_; };
+    static logan_lite& log_cb_verify() { static logan_lite l_("com.tls.cb.verify");; return l_; };
+    static logan_lite& log_cb_ccert() { static logan_lite l_("com.tls.cb.ccert");; return l_; };
+    static logan_lite& log_cb_session() { static logan_lite l_("com.tls.cb.session");; return l_; };
+    static logan_lite& log_cb_ct() { static logan_lite l_("com.tls.cb.ct");; return l_; };
+    static logan_lite& log_cb_dh() { static logan_lite l_("com.tls.cb.dh"); return l_; };
+    static logan_lite& log_cb_ecdh() { static logan_lite l_("com.tls.cb.ecdh"); return l_; };
+    static logan_lite& log_cb_alpn() { static logan_lite l_("com.tls.cb.alpn"); return l_; };
 
-    static logan_lite& log_ocsp() { static logan_lite l_("com.ssl.ocsp");; return l_; };
-    static logan_lite& log_ssl() { static logan_lite l_("com.ssl");; return l_; };
+    static logan_lite& log_ocsp() { static logan_lite l_("com.tls.ocsp");; return l_; };
+    static logan_lite& log_ssl() { static logan_lite l_("com.tls");; return l_; };
 
 
     TYPENAME_OVERRIDE("SSLCom")
