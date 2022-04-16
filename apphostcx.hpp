@@ -70,7 +70,7 @@ public:
         std::string ts = baseHostCX::to_string(verbosity);
         std::stringstream ss;
         if(verbosity > iINF) {
-            auto sz = cflow().cflow().size();
+            auto sz = cflow().cdata().size();
             ss << string_format("AppHostCX: sz:%ld ", sz, ts.c_str());
         }
 

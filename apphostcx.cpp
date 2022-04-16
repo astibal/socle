@@ -166,8 +166,8 @@ void AppHostCX::post_write() {
            (this->flow().size() < config::max_exchanges or this->meter_read_bytes <= config::min_detect_bytes)) {
             auto b = this->writebuf();
 
-            auto f_s = flow().flow().size();
-            auto f_last_data_size = flow().flow().back().second->size();
+            auto f_s = flow().data().size();
+            auto f_last_data_size = flow().data().back().second->size();
 
             _deb("AppHostCX::post_write[%s]: peek_counter %d, written to socket %d, write buffer size %d, flow size %d, flow data size %d",
                  c_type(), peek_write_counter, meter_write_bytes, b->size(), f_s, f_last_data_size);
@@ -329,12 +329,12 @@ void AppHostCX::pre_write() {
         if(this->meter_write_bytes <= config::max_detect_bytes and b->size() > 0 and
            (this->flow().size() < config::max_exchanges or this->meter_read_bytes <= config::min_detect_bytes)) {
 
-            int  f_s = flow().flow().size();
+            int  f_s = flow().data().size();
             int  f_last_data_size = 0;
             char f_last_data_side = '?';
             if(f_s > 0) {
-                f_last_data_side = flow().flow().back().first;
-                f_last_data_size = flow().flow().back().second->size();
+                f_last_data_side = flow().data().back().first;
+                f_last_data_size = flow().data().back().second->size();
             }
             
             _dia("AppHostCX::pre_write[%s]: peek_counter %d, written already %d, write buffer size %d, whole flow size %d, flow data side '%c' size %d",
@@ -351,7 +351,7 @@ void AppHostCX::pre_write() {
                 flow().append('w',delta_b);
                 peek_write_counter += delta_b.size();
 
-                auto& last_flow = flow().flow().back().second;
+                auto& last_flow = flow().data().back().second;
                 _dum("AppHostCX::pre_write:[%s]: Last flow entry is now: \r\n%s", c_type(),
                                                  hex_dump((unsigned char*)last_flow->data(),last_flow->size(), 4, 0, true).c_str());
                 _dia("AppHostCX::pre_write:[%s]: ...",c_type());
