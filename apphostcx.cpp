@@ -268,9 +268,30 @@ void AppHostCX::pre_read() {
 
         // peek from I/O
         if(meter_read_bytes < config::max_detect_bytes) {
-            buffer b(5000);
+            constexpr size_t max_peek_one = 5000;
+            buffer b(max_peek_one);
             b.size(0);
-            int l = this->peek(b);
+
+            auto peek_all = [&]() {
+
+                constexpr int max_rounds = 10;
+                int l = -1;
+                for (int i = 0; i < max_rounds; ++i) {
+                    auto cur_l = this->peek(b);
+
+                    // return what we got
+                    if(cur_l <= 0) break;
+
+                    l = cur_l;
+                    // return if we fit the buffer
+                    if(cur_l < static_cast<int>( b.capacity()) ) break;
+
+                    b.capacity(b.capacity() + max_peek_one);
+                }
+                return l;
+            };
+
+            int l = peek_all();
 
             if(behind_read && behind_read_warn) {
                 _war("AppHostCX::pre_read[%s]: peek returns %d bytes",c_type(),l);
