@@ -39,7 +39,7 @@ class Flow {
     using vector_type = std::vector<std::pair<SourceType,std::unique_ptr<buffer>>>;
 
     vector_type data_; // store flow data ... ala follow tcp stream :)
-                                     // Flowdata::side_ doesn't have to be necesarilly L or R
+                                     // Flowdata::side_ doesn't have to be necessarily L or R
     std::vector<int> update_counters_;
                      
     int domain_ = SOCK_STREAM;  // if flow is not stream, data same-side chunks are stored separately
@@ -64,7 +64,7 @@ public:
     unsigned int append(SourceType src,buffer& b) { return append(src,b.data(),b.size());};
     unsigned int append(SourceType src,buffer* pb) { return append(src,pb->data(),pb->size());};
     unsigned int append(SourceType src,const void* data, size_t len) {
-        if(data_.size() == 0) {
+        if(data_.empty()) {
 
             _dia("New flow init: side: %c: %d bytes",src,len);
             _dum("New flow init: side: %c: incoming  data:\n%s",src,hex_dump((unsigned char*)data,len).c_str());

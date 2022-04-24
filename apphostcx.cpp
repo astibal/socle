@@ -217,6 +217,7 @@ void AppHostCX::pre_read() {
     
     if (mode() == MODE_PRE) {
 
+        // copy missed readbuf bytes
         if(this->meter_read_bytes <= config::max_detect_bytes and peek_read_counter <= this->meter_read_bytes and
            (this->flow().size() < config::max_exchanges or this->meter_read_bytes <= config::min_detect_bytes)) {
 
@@ -265,6 +266,7 @@ void AppHostCX::pre_read() {
             }
         }
 
+        // peek from I/O
         if(meter_read_bytes < config::max_detect_bytes) {
             buffer b(5000);
             b.size(0);

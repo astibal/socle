@@ -59,6 +59,10 @@ std::string string_format(const char* format, Args ... args)
         //  The functions snprintf() and vsnprintf() write at most size bytes (including the terminating null byte ('\0')) to str.
         written_n = snprintf((char*)buffer, cursize, format, args...);
 
+        if(written_n < 0) {
+            written_n = cursize;
+        }
+
         mul++;
     } while(written_n >= cursize && mul <= max);
 
