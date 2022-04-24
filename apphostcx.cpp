@@ -277,14 +277,13 @@ void AppHostCX::pre_read() {
                 constexpr int max_rounds = 10;
                 int l = -1;
                 for (int i = 0; i < max_rounds; ++i) {
-                    auto cur_l = this->peek(b);
+                    l = this->peek(b);
 
                     // return what we got
-                    if(cur_l <= 0) break;
+                    if(l <= 0) break;
 
-                    l = cur_l;
                     // return if we fit the buffer
-                    if(cur_l < static_cast<int>( b.capacity()) ) break;
+                    if(l < static_cast<int>( b.capacity()) ) break;
 
                     b.capacity(b.capacity() + max_peek_one);
                 }
