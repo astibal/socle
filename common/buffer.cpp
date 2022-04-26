@@ -529,7 +529,7 @@ void buffer::flush(buffer::size_type b) {
 
 }
 
-buffer buffer::view(size_type pos, buffer::size_type len) {
+buffer buffer::view(size_type pos, buffer::size_type len) const {
     if (pos < size_) {
         // starting pos in the buffer
 
@@ -550,7 +550,7 @@ buffer buffer::view(size_type pos, buffer::size_type len) {
     }
 }
 
-buffer buffer::view() {
+buffer buffer::view() const {
     return view(0,size());
 }
 

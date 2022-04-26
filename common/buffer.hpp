@@ -156,9 +156,9 @@ public:
   [[nodiscard]] std::string_view string_view() const;
   
   void flush (size_type);
-  buffer view(size_type pos, buffer::size_type len);
-  buffer view();
-  buffer view(size_type pos) { return view(pos, size() - pos); };
+  buffer view(size_type pos, buffer::size_type len) const;
+  buffer view() const;
+  buffer view(size_type pos) const { return view(pos, size() - pos); };
 
   friend std::ostream& operator<<(std::ostream& os, buffer const& b);
   
