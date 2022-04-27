@@ -140,7 +140,7 @@ public:
     friend class logan;
 
     explicit logan_lite();
-    explicit logan_lite(std::string str) noexcept;
+    explicit logan_lite(std::string topic) noexcept;
     logan_lite(logan_lite const& r);
 
     logan_lite& operator=(logan_lite const& r) {

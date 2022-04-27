@@ -36,11 +36,12 @@
 template <class SourceType>
 class Flow {
 
-    using vector_type = std::vector<std::pair<SourceType,std::unique_ptr<buffer>>>;
+    using data_type = std::deque<std::pair<SourceType,std::unique_ptr<buffer>>>;
+    using counter_type = std::deque<int>;
 
-    vector_type data_; // store flow data ... ala follow tcp stream :)
+    data_type data_; // store flow data ... ala follow tcp stream :)
                                      // Flowdata::side_ doesn't have to be necessarily L or R
-    std::vector<int> update_counters_;
+    counter_type update_counters_;
                      
     int domain_ = SOCK_STREAM;  // if flow is not stream, data same-side chunks are stored separately
 
@@ -55,12 +56,17 @@ public:
     inline void domain(int domain) { domain_ = domain; };
     inline int domain() const { return domain_ ; };
 
-    vector_type& data() { return data_; }
-    vector_type const& cdata() const { return data_; }
+    data_type& data() { return data_; }
+    data_type const& cdata() const { return data_; }
 
-    vector_type& operator() () { return data(); }
+    data_type& operator() () { return data(); }
 
     std::size_t size() const { return data_.size(); }
+
+    void pop() {
+        if(not data_.empty()) data_.pop_front();
+        if(not update_counters_.empty()) update_counters_.pop_front();
+    }
     unsigned int append(SourceType src,buffer& b) { return append(src,b.data(),b.size());};
     unsigned int append(SourceType src,buffer* pb) { return append(src,pb->data(),pb->size());};
     unsigned int append(SourceType src,const void* data, size_t len) {
