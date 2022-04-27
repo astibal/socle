@@ -44,7 +44,21 @@ public:
     AppHostCX(baseCom* c, const char* h, const char* p);
 
 
-    typedef enum { MODE_NONE = 0, MODE_PRE = 1, MODE_POST = 2 } mode_t;
+    typedef enum { MODE_NONE = 0, MODE_PRE = 1, MODE_POST = 2, MODE_CONTINUOUS = 0xff } mode_t;
+
+    // how many continuous flow data should we capture in MODE_CONTINOUS before switching to MODE_NONE
+    size_t continuous_data_left = 0L;
+    static inline size_t continuous_data_left_default = 100000;
+    static inline bool opt_switch_to_continuous = true;
+
+    // acknowledge interest in capturing more flow data
+    void acknowledge_continuous_mode(size_t to_read_bytes) {
+        continuous_data_left = to_read_bytes == 0L ? continuous_data_left_default : to_read_bytes;
+        _dia("acknowledged continuous mode for next %ldB", continuous_data_left);
+    }
+
+    // check data size and keep/unset continous mode
+    void continous_mode_keeper(buffer const& data);
 
     [[nodiscard]]
     mode_t mode() const { return mode_; }
@@ -71,13 +85,16 @@ public:
         std::stringstream ss;
         if(verbosity > iINF) {
             auto sz = cflow().cdata().size();
-            ss << string_format("AppHostCX: sz:%ld ", sz, ts.c_str());
+            ss << string_format("AppHostCX: sz:%ld m:%d ", sz, mode());
         }
 
         ss << ts;
         return ss.str();
     };
 protected:
+
+    bool inside_detect_ranges();
+    bool inside_detect_on_continue();
 
     // detection mode is done in "post" phase
     void post_read() override;

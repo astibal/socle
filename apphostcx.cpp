@@ -132,15 +132,39 @@ bool AppHostCX::detect (const std::shared_ptr<sensorType> &cur_sensor) {
     return matched;
 }
 
+void AppHostCX::continous_mode_keeper(buffer const& data) {
+
+    if (flow().data().size() > 4) {
+        flow().pop();
+        flow().pop();
+    }
+
+    if(data.size() > continuous_data_left) {
+        _dia("continuous mode expired");
+
+        continuous_data_left = 0L;
+        mode(MODE_NONE);
+
+    }
+    else {
+        continuous_data_left -= data.size();
+    }
+
+}
 
 void AppHostCX::post_read() {
-    
-    if ( mode() == MODE_POST) {
-        if( this->meter_read_bytes <= config::max_detect_bytes and
-            (this->flow().size() < config::max_exchanges or this->meter_read_bytes <= config::min_detect_bytes) ) {
 
-            auto& b = this->to_read();
+    if(to_read().empty()) return;
+
+    if ( mode() == MODE_POST or mode() == MODE_CONTINUOUS) {
+        if(inside_detect_on_continue()) {
+
+            auto& b = to_read();
             this->flow().append('r', b);
+
+            if(mode() == MODE_CONTINUOUS) {
+                continous_mode_keeper(b);
+            }
 
 
             _dia("AppHostCX::post_read[%s]: side %c, flow path: %s", c_type(), 'r', flow().hr().c_str());
@@ -153,17 +177,14 @@ void AppHostCX::post_read() {
             _deb("AppHostCX::post_read[%s]: OUT OF INSPECT WINDOW: side %c, flow path: %s", c_type(), 'r', flow().hr().c_str());
         }
     }
-    
-    if (mode() == MODE_PRE) {
-        // check if we need to upgrade this CX
-    }
 }
 
 void AppHostCX::post_write() {
-    
+
+    if(writebuf()->empty()) return;
+
     if ( mode() == MODE_POST ) {
-        if(this->meter_write_bytes <= config::max_detect_bytes and
-           (this->flow().size() < config::max_exchanges or this->meter_read_bytes <= config::min_detect_bytes)) {
+        if(inside_detect_ranges()) {
             auto b = this->writebuf();
 
             auto f_s = flow().data().size();
@@ -218,8 +239,7 @@ void AppHostCX::pre_read() {
     if (mode() == MODE_PRE) {
 
         // copy missed readbuf bytes
-        if(this->meter_read_bytes <= config::max_detect_bytes and peek_read_counter <= this->meter_read_bytes and
-           (this->flow().size() < config::max_exchanges or this->meter_read_bytes <= config::min_detect_bytes)) {
+        if(inside_detect_ranges()) {
 
             if (peek_read_counter < this->meter_read_bytes) {
                 behind_read = true;
@@ -325,7 +345,6 @@ void AppHostCX::pre_read() {
             }
         }
 
-
         if(updated) {
             _dia("AppHostCX::pre_read[%s]: side %c, flow path: %s",c_type(), 'r', flow().hr().c_str());
 
@@ -343,13 +362,48 @@ void AppHostCX::pre_read() {
     _dum("AppHostCX::pre_read[%s]: === end",c_type());
 }
 
+bool AppHostCX::inside_detect_ranges() {
+
+    auto bytes_total = meter_write_bytes + meter_read_bytes;
+    bool inside_detect_range = bytes_total <= config::max_detect_bytes;
+
+    bool exchanges_bytes_override = bytes_total <= config::min_detect_bytes;
+    bool inside_detect_exchanges = flow().size() < config::max_exchanges or exchanges_bytes_override;
+
+    return (inside_detect_range and inside_detect_exchanges);
+}
+
+bool AppHostCX::inside_detect_on_continue() {
+
+    if(not inside_detect_ranges()) {
+        if(mode() == MODE_CONTINUOUS) {
+            return true;
+        } else {
+            if(opt_switch_to_continuous) {
+
+                _dia("continuous mode activated");
+
+                // assign default continuous flow data (after which continuous mode would expire)
+                acknowledge_continuous_mode(0L);
+                mode(MODE_CONTINUOUS);
+                return true;
+            }
+        }
+        return false;
+    }
+    return true;
+
+}
+
 void AppHostCX::pre_write() {
-    
-    if ( mode() == MODE_PRE ) {
+
+    // value-guard writebuf
+    if(writebuf()->empty()) return;
+
+    if (mode() == MODE_PRE or mode() == MODE_CONTINUOUS) {
         buffer* b = this->writebuf();
 
-        if(this->meter_write_bytes <= config::max_detect_bytes and b->size() > 0 and
-           (this->flow().size() < config::max_exchanges or this->meter_read_bytes <= config::min_detect_bytes)) {
+        if(inside_detect_on_continue()) {
 
             int  f_s = flow().data().size();
             int  f_last_data_size = 0;
@@ -372,6 +426,10 @@ void AppHostCX::pre_write() {
                 _dia("AppHostCX::pre_write[%s]: flow append new %d bytes",c_type(),delta_b.size());
                 flow().append('w',delta_b);
                 peek_write_counter += delta_b.size();
+
+                if(mode() == MODE_CONTINUOUS) {
+                    continous_mode_keeper(delta_b);
+                }
 
                 auto& last_flow = flow().data().back().second;
                 _dum("AppHostCX::pre_write:[%s]: Last flow entry is now: \r\n%s", c_type(),
