@@ -226,13 +226,16 @@ private:
 	lockbuffer readbuf_;  //!< read buffer
 	lockbuffer writebuf_; //!< write buffer
 	
-	
-	ssize_t processed_in_;    /// Number of bytes processed by last process_in(), which is called by read(). Processed bytes are flushed from
-	                          /// buffer prior reading operation by finish() call. if autofinish feature is enabled (default on).
-	                          /// Note: while there is process_out() called by write(), all written bytes to socket are flushed from the buffer,
-	                          ///       therefore no similar mechanic is needed when sending data out.
-	int next_read_limit_;     // limit next read() operation to this number. Zero means no restrictions.
-	                          // <0 means don't read at all
+	std::size_t processed_in_total_ = 0L;
+	std::size_t processed_out_total_ = 0L;
+
+	std::size_t processed_in_ = 0L; /// Number of bytes processed by last process_in(), which is called by read(). Processed bytes are flushed from
+	                            /// buffer prior reading operation by finish() call. if autofinish feature is enabled (default on).
+	                            /// Note: while there is process_out() called by write(), all written bytes to socket are flushed from the buffer,
+	                            ///       therefore no similar mechanic is needed when sending data out.
+    std::size_t processed_out_ = 0L;
+	int next_read_limit_;       // limit next read() operation to this number. Zero means no restrictions.
+	                            // <0 means don't read at all
 	
 	/*! 
 	 ! If you are not attempting to do something really special, you want it to keep it as true (default). See [HostCX::auto_finish()](@ref HostCX::auto_finish) */
@@ -319,7 +322,7 @@ public:
 	std::string& name(int level, bool force=false) const;
 	const char* c_type() const;
 	
-    inline ssize_t processed_bytes() const noexcept { return processed_in_; };
+    inline size_t processed_bytes() const noexcept { return processed_in_; };
     
 
 	inline bool opening() const { return opening_; }
@@ -411,8 +414,8 @@ public:
 	int read();
 	int io_read(void* where, size_t len, int flags);
 
-	std::size_t process_in_() { return process_in(); };
-    std::size_t process_out_() { return process_out(); };
+	std::size_t process_in_();
+    std::size_t process_out_();
 	int write();
 	int io_write(unsigned char* data, size_t tx_size, int flags) const;
 	

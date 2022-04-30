@@ -498,7 +498,13 @@ int baseHostCX::read() {
 
         _ext("baseHostCX::read[%s]: readbuf_ read %d bytes", c_type(), l);
 
-        processed_in_ = process_in_();
+        processed_in_ = 0L;
+
+        if(meter_read_bytes > processed_in_total_) {
+            processed_in_ = process_in_();
+            processed_in_total_ += processed_in_;
+        }
+
         _deb("baseHostCX::read[%s]: readbuf_ read %d bytes, process()-ed %d bytes, incomplete readbuf_ %d bytes",
              c_type(), l, processed_in_, l - processed_in_);
 
@@ -532,6 +538,13 @@ void baseHostCX::pre_read() {
 
 void baseHostCX::post_read() {
 }
+
+std::size_t baseHostCX::process_in_() {
+    return process_in();
+};
+std::size_t baseHostCX::process_out_() {
+    return process_out();
+};
 
 int baseHostCX::io_write(unsigned char* data, size_t tx_size, int flags = 0) const {
     return com()->write(socket(), data, tx_size, flags);
@@ -571,18 +584,30 @@ int baseHostCX::write() {
     // process-out operation
 
     tx_size_orig = writebuf_.size();
-    auto processed_bytes = static_cast<std::size_t>(process_out_());
-    tx_size = writebuf_.size();
+
+    tx_size = tx_size_orig;
+    processed_out_ = 0L;
+
+    // check for unseen data to be yet written
+    if(meter_write_bytes + tx_size > processed_out_total_) {
+        processed_out_ = process_out_();
+        processed_out_total_ += processed_out_;
+    }
+    else {
+        // there are still data in buffer, but we have seen them all already
+        processed_out_ = tx_size;
+    }
 
     _if_deb {
         _debug_tx_size(tx_size_orig, tx_size, "process_out");
-        if(processed_bytes != tx_size) {
-            _deb("baseHostCX::write[%s]: process_out processed %d of %d bytes in writebuf", c_type(), tx_size_orig, processed_bytes);
+        if(processed_out_ != tx_size) {
+            _deb("baseHostCX::write[%s]: process_out processed %d of %d bytes in writebuf", c_type(), tx_size_orig, processed_out_);
         }
     };
 
 
-    ssize_t l = io_write(writebuf_.data(), std::min(tx_size, processed_bytes), MSG_NOSIGNAL);
+
+    ssize_t l = io_write(writebuf_.data(), std::min(tx_size, processed_out_), MSG_NOSIGNAL);
 
     if (l > 0) {
         meter_write_bytes += l;
