@@ -282,9 +282,7 @@ void baseHostCX::shutdown() {
 
 std::string& baseHostCX::name(int level, bool force) const {
 
-    if(name_.empty() || online_name || force) {
-
-        std::scoped_lock<std::mutex> l(name_mutex_);
+    if(name_empty() || online_name || force) {
 
         if (reduced()) {
             std::string com_name = "?";
@@ -304,23 +302,23 @@ std::string& baseHostCX::name(int level, bool force) const {
                 }
 
                 if(socket_in_name) {
-                    name_ = string_format("%d::%s_%s:%s", socket(), com()->shortname().c_str() , chost().c_str(), cport().c_str());
+                    name(string_format("%d::%s_%s:%s", socket(), com()->shortname().c_str() , chost().c_str(), cport().c_str()));
                 } else {
-                    name_ = string_format("%s_%s:%s", com()->shortname().c_str() , chost().c_str(), cport().c_str());
+                    name(string_format("%s_%s:%s", com()->shortname().c_str() , chost().c_str(), cport().c_str()));
                 }
 
                 //name__ = string_format("%d:<reduced>",socket());
             }
             else {
-                name_ = std::string("?:<reduced>");
+                name(std::string("?:<reduced>"));
             }
 
         } else {
 
             if(socket_in_name) {
-                name_ = string_format("%d::%s_%s:%s", socket(), com()->shortname().c_str() , chost().c_str(), cport().c_str());
+                name(string_format("%d::%s_%s:%s", socket(), com()->shortname().c_str() , chost().c_str(), cport().c_str()));
             } else {
-                name_ = string_format("%s_%s:%s", com()->shortname().c_str() , chost().c_str(), cport().c_str());
+                name(string_format("%s_%s:%s", com()->shortname().c_str() , chost().c_str(), cport().c_str()));
             }
         }
     }

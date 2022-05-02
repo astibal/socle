@@ -320,6 +320,18 @@ public:
     void rename() const { name(iINF, true); }
     std::string& name() const { return name(iINF, false); }
 	std::string& name(int level, bool force=false) const;
+    // renaming is not changing the state
+    void name(std::string&& newname) const {
+        auto lc_ = std::scoped_lock(name_mutex_);
+        name_ = newname;
+    }
+
+    auto name_empty() const {
+        auto lc_ = std::scoped_lock(name_mutex_);
+        return name_.empty();
+    }
+
+
 	const char* c_type() const;
 	
     inline size_t processed_bytes() const noexcept { return processed_in_; };
