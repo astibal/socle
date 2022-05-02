@@ -22,9 +22,6 @@
 #include "crc32.hpp"
 #include "iproxy.hpp"
 
-bool baseHostCX::socket_in_name = false;
-bool baseHostCX::online_name = false;
-
 
 namespace std
 {
@@ -47,26 +44,8 @@ bool operator==(const Host& h, const Host& hh) {
 
 baseHostCX::baseHostCX(baseCom* c, const char* h, const char* p): Host(h, p) {
 
-    permanent_ = false;
-    last_reconnect_ = 0;
-    reconnect_delay_ = 7;
-    fds_ = 0;
-    error_ = false;
-
-    writebuf_.capacity(params.buffsize);
-
-    readbuf_.capacity(params.buffsize);
-
-    processed_in_ = 0;
-    next_read_limit_ = 0;
-    auto_finish_ = true;
-    read_waiting_for_peercom_ = false;
-    write_waiting_for_peercom_ = false;
-
-    meter_read_count = 0;
-    meter_write_count = 0;
-    meter_read_bytes = 0;
-    meter_write_bytes = 0;
+    writebuf_.capacity(baseHostCX::params_t::buffsize);
+    readbuf_.capacity(baseHostCX::params_t::buffsize);
 
     //whenever we initialize object with socket, we will be already opening!
     opening(true);
@@ -79,28 +58,10 @@ baseHostCX::baseHostCX(baseCom* c, const char* h, const char* p): Host(h, p) {
     com()->init(this);
 }
 
-baseHostCX::baseHostCX(baseCom* c, int s) {
+baseHostCX::baseHostCX(baseCom* c, int s): fds_(s) {
 
-    permanent_ = false;
-    last_reconnect_ = 0;
-    reconnect_delay_ = 7;
-    fds_ = s;
-    error_ = false;
-
-    writebuf_.capacity(params.buffsize);
-
-    readbuf_.capacity(params.buffsize);
-
-    processed_in_ = 0;
-    next_read_limit_ = 0;
-    auto_finish_ = true;
-    read_waiting_for_peercom_ = false;
-    write_waiting_for_peercom_ = false;
-
-    meter_read_count = 0;
-    meter_write_count = 0;
-    meter_read_bytes = 0;
-    meter_write_bytes = 0;
+    writebuf_.capacity(baseHostCX::params_t::buffsize);
+    readbuf_.capacity(baseHostCX::params_t::buffsize);
 
     //whenever we initialize object with socket, we will be already opening!
     opening(true);
@@ -174,9 +135,19 @@ bool baseHostCX::opening_timeout() {
 }
 
 
-bool baseHostCX::idle_timeout() {
+bool baseHostCX::idle_timeout() const {
     time_t now = time(nullptr);
+    bool read_timeout = false;
+    bool write_timeout = false;
+
     if (now - w_activity > idle_delay() && now - w_activity) {
+        write_timeout = true;
+    }
+    if (now - r_activity > idle_delay() && now - r_activity) {
+        read_timeout = true;
+    }
+
+    if(write_timeout and read_timeout) {
         _dia("baseHostCX::idle_timeout: timeout");
         return true;
     }
@@ -195,7 +166,7 @@ bool baseHostCX::read_waiting_for_peercom () {
         } else {
             _dia("baseHostCX::read_waiting_for_peercom: peer's com status not ready (%dx), rescanning read", peer_stats.com_not_ready_counter);
 
-            ++peer_stats.com_not_ready_counter > params.com_not_ready_slowdown ?
+            ++peer_stats.com_not_ready_counter > baseHostCX::params_t::com_not_ready_slowdown ?
                 peercom()->rescan_read(peercom()->socket()) : peercom()->set_monitor(peercom()->socket());
         }
     }
@@ -218,7 +189,7 @@ bool baseHostCX::write_waiting_for_peercom () {
             }
             else {
                 _dia("baseHostCX::write_waiting_for_peercom: peer's com status not ready (%dx), rescanning write", peer_stats.com_not_ready_counter);
-                ++peer_stats.com_not_ready_counter > params.com_not_ready_slowdown ?
+                ++peer_stats.com_not_ready_counter > baseHostCX::params_t::com_not_ready_slowdown ?
                 peercom()->rescan_write(peercom()->socket()) : peercom()->set_write_monitor(peercom()->socket());
             }
         }
@@ -358,7 +329,7 @@ bool baseHostCX::reconnect(int delay) {
 }
 
 
-int baseHostCX::io_read(void* where, size_t len, int flags = 0) {
+ssize_t baseHostCX::io_read(void* where, size_t len, int flags = 0) const {
     return com()->read(socket(), where, len, flags);
 }
 
@@ -373,7 +344,7 @@ int baseHostCX::read() {
         return -1;
     }
 
-    if(peer() && peer()->writebuf()->size() > params.write_full) {
+    if(peer() && peer()->writebuf()->size() > baseHostCX::params_t::write_full) {
         _deb("baseHostCX::read[%d]: deferring read operation",socket());
         com()->rescan_read(socket());
         return -1;
@@ -405,7 +376,7 @@ int baseHostCX::read() {
         void *cur_read_ptr = &(readbuf_.data()[readbuf_.size()]);
 
         // read only amount of bytes fitting the buffer capacity
-        ssize_t cur_read_max = readbuf_.capacity()-readbuf_.size();
+        auto cur_read_max = static_cast<ssize_t>(readbuf_.capacity()-readbuf_.size());
 
         if (cur_read_max + l > next_read_limit() && next_read_limit() > 0) {
             _deb("HostCX::read[%s]: read buffer limiter: %d",c_type(), next_read_limit() - l);
@@ -484,7 +455,7 @@ int baseHostCX::read() {
 
         meter_read_bytes += l;
         meter_read_count++;
-        time(&r_activity);
+        r_activity = time(nullptr);
 
         // claim opening socket already opened
         if (opening()) {
@@ -528,7 +499,7 @@ int baseHostCX::read() {
     // before return, don't forget to reset read limiter
     next_read_limit_ = 0;
 
-    return l;
+    return static_cast<int>(l);
 }
 
 void baseHostCX::pre_read() {
@@ -544,7 +515,7 @@ std::size_t baseHostCX::process_out_() {
     return process_out();
 };
 
-int baseHostCX::io_write(unsigned char* data, size_t tx_size, int flags = 0) const {
+ssize_t baseHostCX::io_write(unsigned char* data, size_t tx_size, int flags = 0) const {
     return com()->write(socket(), data, tx_size, flags);
 }
 
@@ -610,7 +581,7 @@ int baseHostCX::write() {
     if (l > 0) {
         meter_write_bytes += l;
         meter_write_count++;
-        time(&w_activity);
+        w_activity = time(nullptr);
 
         if (opening()) {
             _deb("baseHostCX::write[%s]: connection established", c_type());
@@ -646,16 +617,16 @@ int baseHostCX::write() {
 
         writebuf_.flush(l);
 
-        if(com()->debug_log_data_crc) {
+        if(baseCom::debug_log_data_crc) {
             _deb("baseHostCX::write[%s]: after: buffer crc = %X", c_type(),
                     socle::tools::crc32::compute(0, writebuf()->data(), writebuf()->size()));
         }
 
-        if(close_after_write() && writebuf()->size() == 0) {
+        if(close_after_write() && writebuf()->empty()) {
             shutdown();
         }
     }
-    else if(l == 0 && writebuf()->size() > 0) {
+    else if(l == 0 and not writebuf()->empty()) {
         // write unsuccessful, we have to try immediately socket is writable!
         _dia("baseHostCX::write[%s]: %d bytes written out of %d -> setting socket write monitor",
                 c_type(), l, writebuf_.size());

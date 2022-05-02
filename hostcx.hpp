@@ -49,42 +49,43 @@ protected:
 public:
 
 	Host() = default;
+    //! Constructor filling hostname and the port
+    /*!
+     *  Create host structure
+     *  \param h - hostname string
+     *  \param p - port number (as the string
+     */
+    Host(const char* h, const char* p) : host_(h),port_(p) {}
+	Host(Host const& r): host_(r.host_), port_(r.port_) {}
 
-	Host(Host const& r) {
-	    host_ = r.host_;
-	    port_ = r.port_;
-	}
-
-	Host& operator=(Host const& r) {
-
-	    if(&r != this) {
+    void clone(Host const& r) {
+        if(&r != this) {
             host_ = r.host_;
             port_ = r.port_;
         }
-
+    }
+	Host& operator=(Host const& r) {
+        clone(r);
         return *this;
     }
 
-	//! Constructor filling hostname and the port
-	/*!
-	 *  Create host structure
-	 *  \param h - hostname string
-	 *  \param p - port number (as the string
-	 */
-	Host(const char* h, const char* p) : host_(h),port_(p) {}
-	
+
 	//! returns host part of the structure
-	std::string host() { return host_; }
+	std::string host() const {
+        auto l_ = std::unique_lock(host_lock_);
+        return host_;
+    }
 	//! returns port part of the structure
-	std::string port() { return port_; }
+	std::string port() const {
+        auto l_ = std::unique_lock(host_lock_);
+        return port_;
+    }
 
     void host(std::string const& s) const {
-
-         auto l_ = std::unique_lock(host_lock_);
+        auto l_ = std::unique_lock(host_lock_);
         host_ = s;
     }
     void port(std::string const& s) const {
-
         auto l_ = std::unique_lock(host_lock_);
         port_ = s;
     }
@@ -190,7 +191,8 @@ public:
     static inline params_t params {};
 
 private:
-    static inline std::size_t get_max_buffsize() { return params.buffsize_maxmul * params.buffsize; };
+    static inline std::size_t get_max_buffsize() {
+        return baseHostCX::params_t::buffsize_maxmul * baseHostCX::params_t::buffsize; };
 
 	struct peer_stats_t {
 		uint16_t com_not_ready_counter = 0;
@@ -205,13 +207,13 @@ private:
 
 	int fds_ = 0;			//!< socket/file descriptor itself
 	int closing_fds_ = 0;   // to close com we call shutdown() which actually don't close fds_. We have to store it and close on very object destruction.
-	bool error_ = false;//!< indicates that the last read operation on socket returned 0
+	bool error_ = false;    //!< indicates that the last read operation on socket returned 0
 	
 	
 	/* Reconnection facility */
 	
-	bool permanent_; 	      //!< indice if we want to reconnect, if socket fails (unless HostCX is reduced)
-	time_t last_reconnect_;   //!< last time of an attempt to reconnect
+	bool permanent_ = false; 	  //!< indice if we want to reconnect, if socket fails (unless HostCX is reduced)
+	time_t last_reconnect_ = 0;   //!< last time of an attempt to reconnect
 	unsigned short reconnect_delay_ = 7; //!< how often we will reconnect the socket (in seconds)
 	unsigned short idle_delay_ = 3600;     // when connection is idle for this time, it will timeout
 
@@ -234,12 +236,12 @@ private:
 	                            /// Note: while there is process_out() called by write(), all written bytes to socket are flushed from the buffer,
 	                            ///       therefore no similar mechanic is needed when sending data out.
     std::size_t processed_out_ = 0L;
-	int next_read_limit_;       // limit next read() operation to this number. Zero means no restrictions.
+	int next_read_limit_ = 0L;  // limit next read() operation to this number. Zero means no restrictions.
 	                            // <0 means don't read at all
 	
 	/*! 
 	 ! If you are not attempting to do something really special, you want it to keep it as true (default). See [HostCX::auto_finish()](@ref HostCX::auto_finish) */
-	bool auto_finish_; //!< mark if processed bytes should be automatically removed from read buffer
+	bool auto_finish_ = true; //!< mark if processed bytes should be automatically removed from read buffer
 
 	
 	/* Custom state facility */
@@ -300,10 +302,10 @@ public:
     inline std::string& comlog() const { if(com()) return com()->log_buffer_; throw socle::com_is_null(); };
 public:
 	/* meters */
-	unsigned int  meter_read_count;
-    unsigned int  meter_write_count;
-    buffer::size_type  meter_read_bytes;
-    buffer::size_type  meter_write_bytes;
+	unsigned int  meter_read_count = 0;
+    unsigned int  meter_write_count = 0;
+    buffer::size_type  meter_read_bytes = 0L;
+    buffer::size_type  meter_write_bytes = 0L;
 	
 public:
 	
@@ -317,7 +319,6 @@ public:
 	virtual ~baseHostCX();
 
 	// forcing rename or calling name with force=true is ok for const, name is mutable and protected by mutex
-    void rename() const { name(iINF, true); }
     std::string& name() const { return name(iINF, false); }
 	std::string& name(int level, bool force=false) const;
     // renaming is not changing the state
@@ -334,19 +335,25 @@ public:
 
 	const char* c_type() const;
 	
-    inline size_t processed_bytes() const noexcept { return processed_in_; };
-    
+    [[maybe_unused]] inline std::size_t processed_in() const noexcept { return processed_in_; };
+    [[maybe_unused]] inline std::size_t processed_out() const noexcept { return processed_out_; };
 
 	inline bool opening() const { return opening_; }
-	inline void opening(bool b) { opening_ = b; if (b) { time(&t_connected); time(&w_activity); time(&r_activity); } }
+	inline void opening(bool b) { opening_ = b;
+        if (b) {
+            t_connected = time(nullptr);
+            w_activity = t_connected;
+            r_activity = t_connected;
+        }
+    }
 	// if we are trying to open socket too long - effective for non-blocking sockets only
 	bool opening_timeout();
-    bool idle_timeout();
+    bool idle_timeout() const;
 
 	bool read_waiting_for_peercom ();
     bool write_waiting_for_peercom ();
-	inline void read_waiting_for_peercom (bool p) { read_waiting_for_peercom_ = p; }
-	inline void write_waiting_for_peercom (bool p) { write_waiting_for_peercom_ = p; }
+    [[maybe_unused]] inline void read_waiting_for_peercom (bool p) { read_waiting_for_peercom_ = p; }
+    [[maybe_unused]] inline void write_waiting_for_peercom (bool p) { write_waiting_for_peercom_ = p; }
 	inline void waiting_for_peercom (bool p) {
 	    read_waiting_for_peercom(p);
         write_waiting_for_peercom(p);
@@ -406,7 +413,7 @@ public:
     [[maybe_unused]] inline lockbuffer const* writebuf() const { return &readbuf_; }
 	
 	inline void send(buffer& b) { writebuf_.append(b); }
-	inline int  peek(buffer& b) const { int r = com()->peek(this->socket(),b.data(),b.capacity(),0); if (r > 0) { b.size(r); } return r; }
+	inline int  peek(buffer& b) const { auto r = com()->peek(this->socket(),b.data(),b.capacity(),0); if (r > 0) { b.size(r); } return r; }
 	
 	inline int next_read_limit() const { return next_read_limit_; }
 	inline void next_read_limit(int s) { next_read_limit_ = s; }
@@ -424,12 +431,12 @@ public:
 	}
 
 	int read();
-	int io_read(void* where, size_t len, int flags);
+	ssize_t io_read(void* where, size_t len, int flags) const;
 
 	std::size_t process_in_();
     std::size_t process_out_();
 	int write();
-	int io_write(unsigned char* data, size_t tx_size, int flags) const;
+	ssize_t io_write(unsigned char* data, size_t tx_size, int flags) const;
 	
 	
 	//overide this, and return number of bytes to be possible to passed to application/another hostcx
@@ -467,8 +474,8 @@ public:
     std::string full_name(unsigned char);
     
     // debug options
-    static bool socket_in_name;
-    static bool online_name;
+    static inline bool socket_in_name = false;
+    static inline bool online_name = false;
 
 };
 
