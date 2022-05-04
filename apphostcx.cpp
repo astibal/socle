@@ -132,7 +132,7 @@ bool AppHostCX::detect (const std::shared_ptr<sensorType> &cur_sensor) {
     return matched;
 }
 
-void AppHostCX::continous_mode_keeper(buffer const& data) {
+void AppHostCX::continuous_mode_keeper(buffer const& data) {
 
     if (flow().data().size() > 4) {
         flow().pop();
@@ -163,7 +163,7 @@ void AppHostCX::post_read() {
             this->flow().append('r', b);
 
             if(mode() == MODE_CONTINUOUS) {
-                continous_mode_keeper(b);
+                continuous_mode_keeper(b);
             }
 
 
@@ -428,7 +428,7 @@ void AppHostCX::pre_write() {
                 peek_write_counter += delta_b.size();
 
                 if(mode() == MODE_CONTINUOUS) {
-                    continous_mode_keeper(delta_b);
+                    continuous_mode_keeper(delta_b);
                 }
 
                 auto& last_flow = flow().data().back().second;

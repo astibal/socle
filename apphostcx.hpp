@@ -58,7 +58,7 @@ public:
     }
 
     // check data size and keep/unset continous mode
-    void continous_mode_keeper(buffer const& data);
+    void continuous_mode_keeper(buffer const& data);
 
     [[nodiscard]]
     mode_t mode() const { return mode_; }
