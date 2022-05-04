@@ -218,9 +218,6 @@ void AppHostCX::post_write() {
     // react on specific signatures 
     if (mode() == MODE_PRE) {
         if(upgrade_starttls) {
-            
-            //FIXME: check if all data were sent to client, otherwise block and wait till it's done
-            
             upgrade_starttls = false;
             on_starttls(); // now it's safe to upgrade socket
         }
@@ -265,7 +262,7 @@ void AppHostCX::pre_read() {
                      v.capacity(), hex_dump(v.data(), v.size(), 4, 0, true).c_str());
 
 
-                if(v.size() > 0) {
+                if(not v.empty()) {
                     this->flow().append('r', v);
                     _dia("AppHostCX::pre_read[%s]: detection pre-mode: salvaged %d bytes from readbuf", c_type(),
                            v.size());
@@ -401,7 +398,7 @@ void AppHostCX::pre_write() {
     if(writebuf()->empty()) return;
 
     if (mode() == MODE_PRE or mode() == MODE_CONTINUOUS) {
-        buffer* b = this->writebuf();
+        auto const* b = this->writebuf();
 
         if(inside_detect_on_continue()) {
 
@@ -431,9 +428,9 @@ void AppHostCX::pre_write() {
                     continuous_mode_keeper(delta_b);
                 }
 
-                auto& last_flow = flow().data().back().second;
+                auto const& last_flow = flow().data().back().second;
                 _dum("AppHostCX::pre_write:[%s]: Last flow entry is now: \r\n%s", c_type(),
-                                                 hex_dump((unsigned char*)last_flow->data(),last_flow->size(), 4, 0, true).c_str());
+                                                 hex_dump(last_flow->data(),last_flow->size(), 4, 0, true).c_str());
                 _dia("AppHostCX::pre_write:[%s]: ...",c_type());
                 _dia("AppHostCX::pre_write:[%s]: peek_counter is now %d",c_type(),peek_write_counter);
             } else {
