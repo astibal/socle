@@ -551,11 +551,16 @@ private:
     static inline bool EXP_left_session_cache_enabled = false;
 };
 
-const char* SCT_validation_status_str(sct_validation_status_t const& st);
+
 
 typedef baseSSLCom<TCPCom> SSLCom;
 typedef baseSSLCom<UDPCom> DTLSCom;
 
+
+namespace socle::com::ssl {
+    const char* SCT_validation_status_str(sct_validation_status_t const& st);
+    std::string connection_name(baseCom *com, bool reverse);
+}
 
 
 #ifdef USE_OPENSSL11

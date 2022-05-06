@@ -1451,7 +1451,7 @@ int baseSSLCom<L4Proto>::ct_verify_callback(const CT_POLICY_EVAL_CTX *ctx, const
                 int ret_validate  = SCT_validate(sc_entry, ctx);
                 auto  res_validate = SCT_get_validation_status(sc_entry);
 
-                _dia("ct: sct#%d - ret:%d,%s", i, ret_validate, SCT_validation_status_str(res_validate));
+                _dia("ct: sct#%d - ret:%d,%s", i, ret_validate, socle::com::ssl::SCT_validation_status_str(res_validate));
 
                 if(*log.level() > DIA) {
                     const CTLOG_STORE *log_store = SSL_CTX_get0_ctlog_store(SSLFactory::factory().default_tls_client_cx());
