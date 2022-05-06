@@ -518,17 +518,31 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int lib_preverify, X509_STORE_
         com->sslcom_target_issuer_issuer = X509_dup(xcert);
     }
 
-    if (!lib_preverify) {
-        _deb("[%s]: SSLCom::ssl_client_vrfy_callback: %d:%s",name.c_str(), err, X509_verify_cert_error_string(err));
+    auto report_cert_issue = [&log, &err, &err_cert, &name, &com]() {
+
+        auto better_name = socle::com::ssl::connection_name(com, true);
+
+        _deb("[%s]: SSLCom::ssl_client_vrfy_callback: %d:%s",better_name.c_str(), err, X509_verify_cert_error_string(err));
+        log.event(ERR, "[%s]: certificate verify problem: %d:%s", better_name.c_str(), err, X509_verify_cert_error_string(err));
 
         if (err_cert) {
-            _dia("[%s]: SSLCom::ssl_client_vrfy_callback: '%s' issued by '%s'", name.c_str(),
-                    SSLFactory::print_cn(err_cert).c_str(),
-                    SSLFactory::print_issuer(err_cert).c_str());
+            _dia("[%s]: SSLCom::ssl_client_vrfy_callback: '%s' issued by '%s'", better_name.c_str(),
+                 SSLFactory::print_cn(err_cert).c_str(),
+                 SSLFactory::print_issuer(err_cert).c_str());
+
+            log.event(ERR, "[%s]: certificate verify problem: '%s' issued by '%s'", better_name.c_str(),
+                 SSLFactory::print_cn(err_cert).c_str(),
+                 SSLFactory::print_issuer(err_cert).c_str());
+
         }
         else {
-            _dia("[%s]: SSLCom::ssl_client_vrfy_callback: no server certificate", name.c_str());
+            _dia("[%s]: SSLCom::ssl_client_vrfy_callback: no server certificate", better_name.c_str());
+            log.event(ERR, "%s: no server certificate", better_name.c_str());
         }
+    };
+
+    if (!lib_preverify) {
+        report_cert_issue();
     }
 
     switch (err)  {
@@ -539,8 +553,10 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int lib_preverify, X509_STORE_
             _dia("[%s]: SSLCom::ssl_client_vrfy_callback: unknown issuer: %d", name.c_str(), err);
 
             com->verify_bitset(VRF_UNKNOWN_ISSUER);
+            report_cert_issue();
             if(com->opt_allow_unknown_issuer || com->opt_failed_certcheck_replacement) {
                 callback_return = 1;
+                log.event(INF, "[%s]: replacement enabled", name.c_str());
             }
 
             break;
@@ -551,8 +567,10 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int lib_preverify, X509_STORE_
             _dia("[%s]: SSLCom::ssl_client_vrfy_callback: self-signed cert in the chain: %d", name.c_str(), err);
 
             com->verify_bitset(VRF_SELF_SIGNED_CHAIN);
+            report_cert_issue();
             if(com->opt_allow_self_signed_chain || com->opt_failed_certcheck_replacement) {
                 callback_return = 1;
+                log.event(INF, "[%s]: replacement enabled", name.c_str());
             }
 
             break;
@@ -562,8 +580,10 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int lib_preverify, X509_STORE_
             _dia("[%s]: SSLCom::ssl_client_vrfy_callback: end-entity cert is self-signed: %d", name.c_str(), err);
 
             com->verify_bitset(VRF_SELF_SIGNED);
+            report_cert_issue();
             if(com->opt_allow_self_signed_cert || com->opt_failed_certcheck_replacement) {
                 callback_return = 1;
+                log.event(INF, "[%s]: replacement enabled", name.c_str());
             }
 
             break;
@@ -574,8 +594,10 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int lib_preverify, X509_STORE_
                     SSLFactory::print_not_before(err_cert).c_str());
 
             com->verify_bitset(VRF_INVALID);
+            report_cert_issue();
             if(com->opt_allow_not_valid_cert || com->opt_failed_certcheck_replacement) {
                 callback_return = 1;
+                log.event(INF, "[%s]: replacement enabled", name.c_str());
             }
 
             break;
@@ -586,8 +608,10 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int lib_preverify, X509_STORE_
                     SSLFactory::print_not_after(err_cert).c_str());
 
             com->verify_bitset(VRF_INVALID);
+            report_cert_issue();
             if(com->opt_allow_not_valid_cert || com->opt_failed_certcheck_replacement) {
                 callback_return = 1;
+                log.event(INF, "[%s]: replacement enabled", name.c_str());
             }
 
             break;
@@ -616,7 +640,6 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int lib_preverify, X509_STORE_
 
 
     // Note: OCSP checks were removed from here. Only place to do OCSP is *status callback*
-    //
 
     return callback_return;
 }
