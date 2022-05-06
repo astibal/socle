@@ -253,6 +253,18 @@ public:
             }
         }
     }
+
+    template<class ... Args>
+    void event(loglevel const& level, const char* fmt, Args ... args) const {
+        auto lout = Log::get();
+
+        if(lout) {
+            lout->event(level, fmt, args...);
+        }
+        else {
+            std::cerr << "no LogOutput target\n";
+        }
+    }
 };
 
 

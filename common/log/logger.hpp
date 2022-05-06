@@ -30,6 +30,7 @@
 #include <list>
 #include <map>
 #include <set>
+#include <deque>
 #include <functional>
 #include <algorithm>
 #include <iomanip>
@@ -112,6 +113,11 @@ protected:
     std::map<uint64_t,std::unique_ptr<logger_profile>> target_profiles_;
     std::map<uint64_t,std::string> target_names_;
 
+    mutable std::mutex events_lock_;
+    using event_queue_t = std::deque<std::string>;
+    event_queue_t events_; // events ring buffer
+    static inline size_t events_max_ = 1000;
+
     friend class Log;
     LogMux() { level_= log::level::NON; period_ =5; target_names_[0]="unknown";};
 public:
@@ -149,14 +155,21 @@ public:
 
     template <class ... Args>
     void log(loglevel const& l, const std::string& fmt, Args ... args);
-    //void log_w_name(loglevel l, const char* n, const std::string& fmt, ...);
+
+    void events_clear() {
+        auto lc_ = std::scoped_lock(events_lock_);
+        events_.clear();
+    }
+    event_queue_t const& events() const { return events_; }
+    std::mutex& events_lock() { return events_lock_; };
+    template <class ... Args>
+    void event(loglevel const& l, const std::string& fmt, Args ... args);
 
     template <class ... Args>
     void log_w_name(loglevel const& l, std::string n, const std::string& fmt, Args ... args);
 
     template <class ... Args>
     void log2(loglevel const& l, const char* f, int li, const std::string& fmt, Args ... args);
-    //void log2_w_name(loglevel l, const char* f, int li, const char* n, const std::string& fmt, ...);
 
     template <class ... Args>
     void log2_w_name(loglevel const& l, const char* f, int li, std::string n, const std::string& fmt, Args ... args);
@@ -166,17 +179,19 @@ public:
     const char* target_name(uint64_t k) {
         auto it = target_names().find(k);
         if(it != target_names().end()) {
-            std::string& r = target_names()[k];
+            std::string const& r = target_names()[k];
             return r.c_str();
         }
         else return target_name(0);
     }
 
-    [[maybe_unused]] inline unsigned int period() { return period_; }
+    [[maybe_unused]] inline unsigned int period() const { return period_; }
     [[maybe_unused]] inline void period(unsigned int p) { period_ = p; }
 
     bool periodic_start(unsigned int s);
     bool periodic_end();
+    static std::tm get_tm(time_t const& tt);
+    static unsigned long get_usec();
 
      // any change in target profiles could imply adjusting internal logging level.
     // For example: having internal level set to 5 (NOTify), so is the file logging level.
@@ -205,6 +220,8 @@ public:
     static inline const std::string levels[] = {"None    ", "Fatal   ", "Critical", "Error   ", "Warning ", "Notify  ",
                                                 "Informat", "Diagnose", "Debug   ", "Dumpit  ", "Extreme "};
 
+    static std::string level_name(int l);
+
     static void init() { self = std::make_shared<Log>(); }
     Log() : lout_(default_logger()) {};
 private:
@@ -226,18 +243,33 @@ void LogMux::log_simple(std::stringstream& ss) {
     std::cerr << s << std::endl;
 }
 
+
+template <class ... Args>
+void LogMux::event(loglevel const& l, const std::string& fmt, Args ... args) {
+    std::stringstream ss;
+
+    if(not flag_test(l.flags(),LOG_FLRAW)) {
+        time_t tt = time(nullptr);
+        auto tm = get_tm(tt);
+        ss << std::put_time(&tm, "%y-%m-%d %H:%M:%S") << "." << string_format("%06d", get_usec()) << ": ";
+        ss << Log::level_name(l.level()) << ": ";
+    }
+    ss << string_format(fmt.c_str(), args...);
+
+    auto lc_ = std::scoped_lock(events_lock_);
+    events_.emplace_back(ss.str());
+
+    if(events_.size() > events_max_) {
+        events_.pop_front();
+    }
+}
+
+
+
 template <class ... Args>
 void LogMux::log(loglevel const& l, const std::string& fmt, Args ... args) {
 
-
-    auto now = std::chrono::system_clock::now();
-    auto usec_total=
-            std::chrono::duration_cast<std::chrono::microseconds>(
-                    now.time_since_epoch()
-            );
-  
-    auto usec   = (usec_total.count() % (1000 * 1000));
-    std::tm tm{};
+    auto usec = get_usec();
 
 #ifndef _POSIX_C_SOURCE
     auto tt = std::chrono::system_clock::to_time_t(now);
@@ -245,40 +277,8 @@ void LogMux::log(loglevel const& l, const std::string& fmt, Args ... args) {
     time_t tt = time(nullptr);
 #endif
 
-
-    // protect thread-unsafe function  (it returns pointer to its internal state)
-    auto get_tm = [&tt, &tm]() -> std::tm const& {
-#ifndef _POSIX_C_SOURCE
-        static std::mutex m;
-        auto l_ = std::scoped_lock(m);
-        tm = *std::localtime(&tt);
-
-        return tm;
-#else
-        struct tm time_result{};
-        auto* r = localtime_r(&tt, &time_result);
-        tm.tm_hour = r->tm_hour;
-        tm.tm_min = r->tm_min;
-        tm.tm_sec = r->tm_sec;
-        tm.tm_year = r->tm_year;
-        tm.tm_mon = r->tm_mon;
-        tm.tm_mday = r->tm_mday;
-
-        return tm;
-#endif
-    };
-
     std::string str = string_format(fmt.c_str(), args...);
-
-
-    std::string desc = std::string(Log::levels[0]);
-
-    if (l > sizeof(Log::Log::levels) - 1) {
-        desc = string_format("%d", l.level());
-    } else {
-        desc = Log::levels[l.level()];
-    }
-
+    auto desc = Log::level_name(l.level());
 
     std::stringstream ss;
 
@@ -286,17 +286,13 @@ void LogMux::log(loglevel const& l, const std::string& fmt, Args ... args) {
         ss << str;
     }
     else {
-        auto tm = get_tm();
-        ss << std::put_time( &tm, "%y-%m-%d %H:%M:%S") << "." << string_format("%06d", usec) << " <";
+        auto timestamp = get_tm(tt);
+        ss << std::put_time(&timestamp, "%y-%m-%d %H:%M:%S") << "." << string_format("%06d", usec) << " <";
         ss << std::hex << std::this_thread::get_id() << "> " << desc << " - " << str;
     }
 
-
-    std::string sss = ss.str();
-
-    //std::lock_guard<std::recursive_mutex> lck(mtx_lout);
-
-    write_log(l,sss);
+    auto sss = ss.str();
+    write_log(l, sss);
 }
 
 

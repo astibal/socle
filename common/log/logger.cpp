@@ -34,6 +34,15 @@ std::shared_ptr<LogMux> Log::default_logger() {
     return r;
 }
 
+std::string Log::level_name(int l) {
+
+    if (l > (int) sizeof(Log::Log::levels) - 1) {
+        return string_format("%d", l);
+    } else {
+        return Log::levels[l];
+    }
+}
+
 void Log::set(std::shared_ptr<LogMux> l) {
     instance()->lout_ = l;
 }
@@ -51,6 +60,32 @@ logger_profile::~logger_profile() {
             optr->flush();
         }
     }
+}
+
+unsigned long LogMux::get_usec() {
+    auto now = std::chrono::system_clock::now();
+    auto usec_total=
+            std::chrono::duration_cast<std::chrono::microseconds>(
+                    now.time_since_epoch()
+            );
+
+    auto usec   = (usec_total.count() % (1000 * 1000));
+    return usec;
+}
+
+std::tm LogMux::get_tm(time_t const& tt) {
+    std::tm result{};
+
+#ifndef _POSIX_C_SOURCE
+    static std::mutex m;
+    auto l_ = std::scoped_lock(m);
+    result = *std::localtime(&tt);
+
+    return result;
+#else
+    localtime_r(&tt, &result);
+    return result;
+#endif
 }
 
 bool LogMux::periodic_start(unsigned int s) {
