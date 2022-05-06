@@ -34,7 +34,7 @@ public:
 
     struct config {
         static inline unsigned int max_starttls_exchanges = 10;
-        static inline unsigned int max_detect_bytes = 20000;
+        static inline unsigned int max_detect_bytes = 2048;
 
         static inline unsigned int min_detect_bytes = 1024;
         static inline unsigned int max_exchanges = 20;
