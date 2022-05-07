@@ -556,7 +556,6 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int lib_preverify, X509_STORE_
             report_cert_issue();
             if(com->opt_allow_unknown_issuer || com->opt_failed_certcheck_replacement) {
                 callback_return = 1;
-                log.event(INF, "[%s]: replacement enabled", name.c_str());
             }
 
             break;
@@ -570,7 +569,6 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int lib_preverify, X509_STORE_
             report_cert_issue();
             if(com->opt_allow_self_signed_chain || com->opt_failed_certcheck_replacement) {
                 callback_return = 1;
-                log.event(INF, "[%s]: replacement enabled", name.c_str());
             }
 
             break;
@@ -583,7 +581,6 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int lib_preverify, X509_STORE_
             report_cert_issue();
             if(com->opt_allow_self_signed_cert || com->opt_failed_certcheck_replacement) {
                 callback_return = 1;
-                log.event(INF, "[%s]: replacement enabled", name.c_str());
             }
 
             break;
@@ -597,7 +594,6 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int lib_preverify, X509_STORE_
             report_cert_issue();
             if(com->opt_allow_not_valid_cert || com->opt_failed_certcheck_replacement) {
                 callback_return = 1;
-                log.event(INF, "[%s]: replacement enabled", name.c_str());
             }
 
             break;
@@ -611,7 +607,6 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int lib_preverify, X509_STORE_
             report_cert_issue();
             if(com->opt_allow_not_valid_cert || com->opt_failed_certcheck_replacement) {
                 callback_return = 1;
-                log.event(INF, "[%s]: replacement enabled", name.c_str());
             }
 
             break;
@@ -965,6 +960,9 @@ int baseSSLCom<L4Proto>::certificate_status_ocsp_check(baseSSLCom* com) {
         if (res.revoked > 0) {
             com->verify_bitreset(VRF_OK);
             com->verify_bitset(VRF_REVOKED);
+
+            log.event(ERR, "[%s]: certificate is revoked (OCSP query)", socle::com::ssl::connection_name(com, true).c_str());
+
         } else if (res.revoked == 0) {
             com->verify_bitset(VRF_OK);
         } else {
@@ -1007,6 +1005,7 @@ int baseSSLCom<L4Proto>::certificate_status_oob_check(baseSSLCom* com, int defau
                 if(is_revoked > 0) {
                     com->verify_bitreset(VRF_OK);
                     com->verify_bitset(VRF_REVOKED);
+                    log.event(ERR, "[%s]: certificate is revoked (OCSP query)", socle::com::ssl::connection_name(com, true).c_str());
                 } else {
                     // is_revoked < 0 - various errors
                     com->verify_bitreset(VRF_OK);
@@ -1366,6 +1365,7 @@ int baseSSLCom<L4Proto>::status_resp_callback(SSL* ssl, void* arg) {
             _war("Connection from %s: certificate %s is revoked (stapling OCSP), replacement=%d)", name.c_str(),
                        cn.c_str(),
                        com->opt_failed_certcheck_replacement);
+            log.event(ERR, "[%s]: certificate is revoked (OCSP stapling status)", socle::com::ssl::connection_name(com, true).c_str());
 
             return com->opt_failed_certcheck_replacement;
         }
