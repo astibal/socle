@@ -261,8 +261,9 @@ public:
         for( auto& match: signature_) {
             _deb("flowmatch::destructor: deleting signature %p", match.second);
             delete match.second;
-            signature_.clear();
+            match.second = nullptr;
         }
+        signature_.clear();
     }
     
     void add(SourceType s, baseMatch* m) { 
