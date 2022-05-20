@@ -272,7 +272,7 @@ protected:
 
     bool rescan_out_flag_ = false;
 
-    logan_lite log = logan_lite("proxy");
+    LOGAN_LITE("proxy");
 public:
 
     // return raw pointer for temporary use

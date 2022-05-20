@@ -32,7 +32,22 @@ AppHostCX::AppHostCX(baseCom* c, int s) :baseHostCX(c, s) {
     }
 }
 
+std::string AppHostCX::to_string(int verbosity) const {
+
+    std::string ts = baseHostCX::to_string(verbosity);
+    std::stringstream ss;
+    if(verbosity > iINF) {
+        auto sz = flow().flow_queue().size();
+        ss << string_format("AppHostCX: sz:%ld m:%d ", sz, mode());
+    }
+
+    ss << ts;
+    return ss.str();
+}
+
 int AppHostCX::make_sig_states(std::shared_ptr<sensorType> sig_states, std::shared_ptr<sensorType> source_signatures) {
+    auto const& log = log_instance();
+
     sig_states->clear();
     int r = 0;
     
@@ -98,16 +113,12 @@ bool AppHostCX::detect (const std::shared_ptr<sensorType> &cur_sensor) {
     }
 
     auto& ref = *cur_sensor;
-    for (auto& sig: ref) {
-        
-        // get zipped results with signature pointers
-        std::shared_ptr<duplexFlowMatch> sig_sig = std::get<1>(sig);
-        flowMatchState& sig_res = std::get<0>(sig);
-        
+    for (auto& [ sig_res, sig_sig ]: ref) {
+
         if (! sig_res.hit()) {
             _dia("AppHostCX::detect[%s]: Sensor %x, signature name %s", c_type(), base_sensor().get(), sig_sig->name().c_str());
             
-            bool r = sig_res.update(this->flowptr(),sig_sig);
+            bool r = sig_res.update(&flow(),sig_sig);
             
             vector_range& ret = sig_res.result();
             
@@ -134,7 +145,7 @@ bool AppHostCX::detect (const std::shared_ptr<sensorType> &cur_sensor) {
 
 void AppHostCX::continuous_mode_keeper(buffer const& data) {
 
-    if (flow().data().size() > 4) {
+    if (flow().flow_queue().size() > 4) {
         flow().pop();
         flow().pop();
     }
@@ -143,7 +154,7 @@ void AppHostCX::continuous_mode_keeper(buffer const& data) {
         _dia("continuous mode expired");
 
         continuous_data_left = 0L;
-        mode(MODE_NONE);
+        mode(mode_t::NONE);
 
     }
     else {
@@ -156,13 +167,13 @@ void AppHostCX::post_read() {
 
     if(to_read().empty()) return;
 
-    if ( mode() == MODE_POST or mode() == MODE_CONTINUOUS) {
+    if ( mode() == mode_t::POST or mode() == mode_t::CONTINUOUS) {
         if(inside_detect_on_continue()) {
 
-            auto& b = to_read();
+            auto const& b = to_read();
             this->flow().append('r', b);
 
-            if(mode() == MODE_CONTINUOUS) {
+            if(mode() == mode_t::CONTINUOUS) {
                 continuous_mode_keeper(b);
             }
 
@@ -183,12 +194,12 @@ void AppHostCX::post_write() {
 
     if(writebuf()->empty()) return;
 
-    if ( mode() == MODE_POST ) {
+    if ( mode() == mode_t::POST ) {
         if(inside_detect_ranges()) {
             auto b = this->writebuf();
 
-            auto f_s = flow().data().size();
-            auto f_last_data_size = flow().data().back().second->size();
+            auto f_s = flow().flow_queue().size();
+            auto f_last_data_size = flow().flow_queue().back().size();
 
             _deb("AppHostCX::post_write[%s]: peek_counter %d, written to socket %d, write buffer size %d, flow size %d, flow data size %d",
                  c_type(), peek_write_counter, meter_write_bytes, b->size(), f_s, f_last_data_size);
@@ -216,11 +227,9 @@ void AppHostCX::post_write() {
     }
     
     // react on specific signatures 
-    if (mode() == MODE_PRE) {
-        if(upgrade_starttls) {
-            upgrade_starttls = false;
-            on_starttls(); // now it's safe to upgrade socket
-        }
+    if (mode() == mode_t::PRE and upgrade_starttls) {
+        upgrade_starttls = false;
+        on_starttls(); // now it's safe to upgrade socket
     }
 }
 
@@ -229,57 +238,48 @@ void AppHostCX::pre_read() {
     _dum("AppHostCX::pre_read[%s]: === start",c_type());
     
     bool updated = false;
-    
-    const bool behind_read_warn = true;
     bool behind_read = false;
     
-    if (mode() == MODE_PRE) {
+    if (mode() == mode_t::PRE) {
 
         // copy missed readbuf bytes
-        if(inside_detect_ranges()) {
+        if(inside_detect_ranges() and peek_read_counter < meter_read_bytes) {
 
-            if (peek_read_counter < this->meter_read_bytes) {
-                behind_read = true;
+            behind_read = true;
 
-                if (behind_read_warn) {
-                    _war("AppHostCX::pre_read[%s]: More data read than seen by peek: %d vs. %d", c_type(),
-                         this->meter_read_bytes, peek_read_counter);
-                } else {
-                    _deb("AppHostCX::pre_read[%s]: More data read than seen by peek: %d vs. %d", c_type(),
-                         this->meter_read_bytes, peek_read_counter);
-                }
-                _deb("AppHostCX::pre_read[%s]: METER_READ_COUNT=%d METER_READ_BYTES=%d PEEK_READ_BYTES=%d", c_type(),
-                        meter_read_count, meter_read_bytes,peek_read_counter);
+            _war("AppHostCX::pre_read[%s]: More data read than seen by peek: %d vs. %d", c_type(), meter_read_bytes, peek_read_counter);
+            _deb("AppHostCX::pre_read[%s]: METER_READ_COUNT=%d METER_READ_BYTES=%d PEEK_READ_BYTES=%d", c_type(),
+                    meter_read_count, meter_read_bytes,peek_read_counter);
 
-                unsigned int delta = this->meter_read_bytes - peek_read_counter;
-                unsigned int w = this->readbuf()->size() - delta; // "+1" should be not there
-                _deb("AppHostCX::pre_read[%s]: Creating readbuf view at <%d,%d>", c_type(), w, delta);
-                buffer v = this->readbuf()->view(w, delta);
-                _deb("AppHostCX::pre_read[%s]:  = readbuf: %d bytes (allocated buffer size %d): \r\n%s", c_type(),
-                     this->readbuf()->size(), this->readbuf()->capacity(),
-                     hex_dump(this->readbuf()->data(), this->readbuf()->size(), 4, 0, true).c_str());
-                _deb("AppHostCX::pre_read[%s]:  = view of %d bytes (allocated buffer size %d): \r\n%s", c_type(), v.size(),
-                     v.capacity(), hex_dump(v.data(), v.size(), 4, 0, true).c_str());
+            std::size_t delta = this->meter_read_bytes - peek_read_counter;
+            std::size_t w = this->readbuf()->size() - delta; // "+1" should be not there
+
+            _deb("AppHostCX::pre_read[%s]: Creating readbuf view at <%d,%d>", c_type(), w, delta);
+            buffer v = this->readbuf()->view(w, delta);
+            _deb("AppHostCX::pre_read[%s]:  = readbuf: %d bytes (allocated buffer size %d): \r\n%s", c_type(),
+                 this->readbuf()->size(), this->readbuf()->capacity(),
+                 hex_dump(this->readbuf()->data(), this->readbuf()->size(), 4, 0, true).c_str());
+            _deb("AppHostCX::pre_read[%s]:  = view of %d bytes (allocated buffer size %d): \r\n%s", c_type(), v.size(),
+                 v.capacity(), hex_dump(v.data(), v.size(), 4, 0, true).c_str());
 
 
-                if(not v.empty()) {
-                    this->flow().append('r', v);
-                    _dia("AppHostCX::pre_read[%s]: detection pre-mode: salvaged %d bytes from readbuf", c_type(),
-                           v.size());
-                    _deb("AppHostCX::pre_read[%s]: Appended from readbuf to flow %d bytes (allocated buffer size %d): \r\n%s",
-                         c_type(), v.size(), v.capacity(), hex_dump(v.data(), v.size(), 4, 0, true).c_str());
+            if(not v.empty()) {
+                this->flow().append('r', v);
+                _dia("AppHostCX::pre_read[%s]: detection pre-mode: salvaged %d bytes from readbuf", c_type(),
+                       v.size());
+                _deb("AppHostCX::pre_read[%s]: Appended from readbuf to flow %d bytes (allocated buffer size %d): \r\n%s",
+                     c_type(), v.size(), v.capacity(), hex_dump(v.data(), v.size(), 4, 0, true).c_str());
 
-                    updated = true;
+                updated = true;
 
-                    // adapt peek_counter so we know we recovered data from readbuf
-                    peek_read_counter += v.size();
+                // adapt peek_counter so we know we recovered data from readbuf
+                peek_read_counter += v.size();
 
-                } else {
-                    _war("AppHostCX::pre_read[%s]: FIXME: peek counter behind read counter, but readbuf is empty!",
-                         c_type());
-                    _war("AppHostCX::pre_read[%s]:   s attempt to create readbuf view at <%d,%d> ptr %p", c_type(), w,
-                         delta, readbuf()->data());
-                }
+            } else {
+                _war("AppHostCX::pre_read[%s]: FIXME: peek counter behind read counter, but readbuf is empty!",
+                     c_type());
+                _war("AppHostCX::pre_read[%s]:   s attempt to create readbuf view at <%d,%d> ptr %p", c_type(), w,
+                     delta, readbuf()->data());
             }
         }
 
@@ -309,7 +309,7 @@ void AppHostCX::pre_read() {
 
             int l = peek_all();
 
-            if(behind_read && behind_read_warn) {
+            if(behind_read) {
                 _war("AppHostCX::pre_read[%s]: peek returns %d bytes",c_type(),l);
             } else {
                 _dum("AppHostCX::pre_read[%s]: peek returns %d bytes",c_type(),l);
@@ -373,16 +373,16 @@ bool AppHostCX::inside_detect_ranges() {
 bool AppHostCX::inside_detect_on_continue() {
 
     if(not inside_detect_ranges()) {
-        if(mode() == MODE_CONTINUOUS) {
+        if(mode() == mode_t::CONTINUOUS) {
             return true;
         } else {
-            if(opt_switch_to_continuous) {
+            if(config::opt_switch_to_continuous) {
 
                 _dia("continuous mode activated");
 
                 // assign default continuous flow data (after which continuous mode would expire)
                 acknowledge_continuous_mode(0L);
-                mode(MODE_CONTINUOUS);
+                mode(mode_t::CONTINUOUS);
                 return true;
             }
         }
@@ -397,17 +397,17 @@ void AppHostCX::pre_write() {
     // value-guard writebuf
     if(writebuf()->empty()) return;
 
-    if (mode() == MODE_PRE or mode() == MODE_CONTINUOUS) {
+    if (mode() == mode_t::PRE or mode() == mode_t::CONTINUOUS) {
         auto const* b = this->writebuf();
 
         if(inside_detect_on_continue()) {
 
-            int  f_s = flow().data().size();
-            int  f_last_data_size = 0;
+            std::size_t  f_s = flow().flow_queue().size();
+            std::size_t  f_last_data_size = 0;
             char f_last_data_side = '?';
             if(f_s > 0) {
-                f_last_data_side = flow().data().back().first;
-                f_last_data_size = flow().data().back().second->size();
+                f_last_data_side = flow().flow_queue().back().source();
+                f_last_data_size = flow().flow_queue().back().size();
             }
             
             _dia("AppHostCX::pre_write[%s]: peek_counter %d, written already %d, write buffer size %d, whole flow size %d, flow data side '%c' size %d",
@@ -424,11 +424,11 @@ void AppHostCX::pre_write() {
                 flow().append('w',delta_b);
                 peek_write_counter += delta_b.size();
 
-                if(mode() == MODE_CONTINUOUS) {
+                if(mode() == mode_t::CONTINUOUS) {
                     continuous_mode_keeper(delta_b);
                 }
 
-                auto const& last_flow = flow().data().back().second;
+                auto const& last_flow = flow().flow_queue().back().data();
                 _dum("AppHostCX::pre_write:[%s]: Last flow entry is now: \r\n%s", c_type(),
                                                  hex_dump(last_flow->data(),last_flow->size(), 4, 0, true).c_str());
                 _dia("AppHostCX::pre_write:[%s]: ...",c_type());

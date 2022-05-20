@@ -16,8 +16,8 @@
     License along with this library.
 */
 
-#ifndef __APPHOSTCX_HPP__
- # define __APPHOSTCX_HPP__
+#ifndef APPHOSTCX_HPP
+ # define APPHOSTCX_HPP
 
 #include <vector>
  
@@ -32,28 +32,28 @@ class AppHostCX: public baseHostCX {
 public:
     using sensorType = SignatureTree::sensorType;
 
+    AppHostCX(baseCom* c, int s);
+    AppHostCX(baseCom* c, const char* h, const char* p);
+    ~AppHostCX() override = default;
+
+    std::string to_string(int verbosity) const override;
+
     struct config {
         static inline unsigned int max_starttls_exchanges = 10;
         static inline unsigned int max_detect_bytes = 2048;
 
         static inline unsigned int min_detect_bytes = 1024;
         static inline unsigned int max_exchanges = 20;
+
+        static inline size_t continuous_data_left_default = 100000;
+        static inline bool opt_switch_to_continuous = true;
     };
 
-    AppHostCX(baseCom* c, int s);
-    AppHostCX(baseCom* c, const char* h, const char* p);
-
-
-    typedef enum { MODE_NONE = 0, MODE_PRE = 1, MODE_POST = 2, MODE_CONTINUOUS = 0xff } mode_t;
-
-    // how many continuous flow data should we capture in MODE_CONTINOUS before switching to MODE_NONE
-    size_t continuous_data_left = 0L;
-    static inline size_t continuous_data_left_default = 100000;
-    static inline bool opt_switch_to_continuous = true;
+    enum class mode_t { NONE = 0, PRE = 1, POST = 2, CONTINUOUS = 0xff };
 
     // acknowledge interest in capturing more flow data
     void acknowledge_continuous_mode(size_t to_read_bytes) {
-        continuous_data_left = to_read_bytes == 0L ? continuous_data_left_default : to_read_bytes;
+        continuous_data_left = to_read_bytes == 0L ? config::continuous_data_left_default : to_read_bytes;
         _dia("acknowledged continuous mode for next %ldB", continuous_data_left);
     }
 
@@ -69,28 +69,11 @@ public:
     auto get_sensor(unsigned int index) { return signatures_.sensors_[index]; }
 
     // create pairs of results and pointers to (somewhere, already created) signatures.
-    int make_sig_states(std::shared_ptr<sensorType> sig_states, std::shared_ptr<sensorType> source_signatures);
+    static int make_sig_states(std::shared_ptr<sensorType> sig_states, std::shared_ptr<sensorType> source_signatures);
     
-    ~AppHostCX() override = default;
-
     inline duplexFlow& flow() { return appflow_; }
-    inline duplexFlow* flowptr() { return &appflow_; }
+    inline duplexFlow const& flow() const { return appflow_; }
 
-    inline duplexFlow const & cflow() const { return appflow_; }
-    inline  duplexFlow  const* cflowptr() const { return &appflow_; }
-
-    [[nodiscard]] inline std::string to_string(int verbosity) const override {
-
-        std::string ts = baseHostCX::to_string(verbosity);
-        std::stringstream ss;
-        if(verbosity > iINF) {
-            auto sz = cflow().cdata().size();
-            ss << string_format("AppHostCX: sz:%ld m:%d ", sz, mode());
-        }
-
-        ss << ts;
-        return ss.str();
-    };
 protected:
 
     bool inside_detect_ranges();
@@ -122,13 +105,16 @@ private:
     bool upgrade_starttls = false;
 
     SignatureTree signatures_ {2};
-    mode_t mode_ = MODE_NONE;
+    mode_t mode_ = mode_t::NONE;
+
+    // how many continuous flow data should we capture in CONTINUOUS before switching to NONE
+    size_t continuous_data_left = 0L;
 
     TYPENAME_BASE("AppHostCX")
     DECLARE_LOGGING(to_string)
 
-    logan_lite log {"com.app"};
+    LOGAN_LITE("com.app");
 };
 
 
-#endif //__APPHOSTCX_HPP__
+#endif //APPHOSTCX_HPP

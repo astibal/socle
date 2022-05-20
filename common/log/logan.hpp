@@ -267,6 +267,9 @@ public:
     }
 };
 
+#define LOGAN_LITE(x) \
+    static logan_lite& log_instance() { static auto l_ = logan_lite((x)); return l_; }; \
+    logan_lite& log = { log_instance() };                                                    \
 
 struct logan_context {
     logan_context(std::string_view s) : orig_pref(logan_lite::context()) {

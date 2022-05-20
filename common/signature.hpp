@@ -32,18 +32,40 @@
 #include <log/logan.hpp>
 #include <ranges.hpp>
 
+template <class SourceType>
+struct FlowEntry {
+    FlowEntry(SourceType const&  s, std::unique_ptr<buffer> d) : source_(s), data_(std::move(d)) {};
+    FlowEntry() = delete;
+
+    FlowEntry& operator=(FlowEntry&) = delete;
+
+    [[nodiscard]] buffer const* data() const { return data_.get(); }
+    [[nodiscard]] auto size() const { return data_ ? data_->size() : 0; }
+    [[nodiscard]] SourceType source() const { return source_; }
+    auto& counter() { return counter_; }
+    auto counter() const { return counter_; }
+
+    auto append(unsigned char const* data_buf, std::size_t len) {
+        if(data_) {
+            data_->append(data_buf, len);
+            counter()++;
+        }
+    }
+
+private:
+    SourceType source_;
+    std::unique_ptr<buffer> data_;
+    std::size_t counter_ {1L};
+};
 
 template <class SourceType>
 class Flow {
 
-    using data_type = std::deque<std::pair<SourceType,std::unique_ptr<buffer>>>;
+    using flow_queue_type = std::deque<FlowEntry<SourceType>>;
     using counter_type = std::deque<int>;
 
-    data_type data_; // store flow data ... ala follow tcp stream :)
-                                     // Flowdata::side_ doesn't have to be necessarily L or R
-    counter_type update_counters_;
-                     
-    int domain_ = SOCK_STREAM;  // if flow is not stream, data same-side chunks are stored separately
+    flow_queue_type flow_queue_; // store flow data ... ala follow tcp stream :)
+    int domain_ = SOCK_STREAM;   // if flow is not stream, data same-side chunks are stored separately
 
     logan_lite log;
 public:
@@ -52,58 +74,50 @@ public:
     explicit Flow() {
         log = logan::create("flow");
     }
+    virtual ~Flow() = default;
 
     inline void domain(int domain) { domain_ = domain; };
     inline int domain() const { return domain_ ; };
 
-    data_type& data() { return data_; }
-    data_type const& cdata() const { return data_; }
+    flow_queue_type& flow_queue() { return flow_queue_; }
+    flow_queue_type const& flow_queue() const { return flow_queue_; }
 
-    data_type& operator() () { return data(); }
-
-    std::size_t size() const { return data_.size(); }
+    std::size_t size() const { return flow_queue_.size(); }
 
     void pop() {
-        if(not data_.empty()) data_.pop_front();
-        if(not update_counters_.empty()) update_counters_.pop_front();
+        if(not flow_queue_.empty()) flow_queue_.pop_front();
     }
-    unsigned int append(SourceType src,buffer& b) { return append(src,b.data(),b.size());};
-    unsigned int append(SourceType src,buffer* pb) { return append(src,pb->data(),pb->size());};
-    unsigned int append(SourceType src,const void* data, size_t len) {
-        if(data_.empty()) {
+    unsigned int append(SourceType src, buffer const& b) { return append(src, b.data(), b.size()); };
+    unsigned int append(SourceType src, buffer const* pb) { return append(src, pb->data(), pb->size()); };
+    unsigned int append(SourceType src,const unsigned char* data, size_t len) {
+        if(flow_queue_.empty()) {
 
             _dia("New flow init: side: %c: %d bytes",src,len);
-            _dum("New flow init: side: %c: incoming  data:\n%s",src,hex_dump((unsigned char*)data,len).c_str());
+            _dum("New flow init: side: %c: incoming  data:\n%s",src,hex_dump(data,len).c_str());
 
-            data_.emplace_back(std::make_pair(src, new buffer(data, len)));
-            update_counters_.push_back(1);
+            flow_queue_.emplace_back(src, std::make_unique<buffer>(data, len));
         }
-        else if (data_.back().first == src) {
+        else if (flow_queue_.back().source() == src) {
 
             _dia("Flow::append: to current side: %c: %d bytes", src, len);
             _dum("Flow::append: to current side: %c: incoming  data:\r\n%s", src,
-                    hex_dump((unsigned char*)data,  len > 128 ? 128 : static_cast<int>(len), 4, 0, true).c_str());
+                    hex_dump(data,  len > 128 ? 128 : static_cast<int>(len), 4, 0, true).c_str());
             
             if(domain() == SOCK_STREAM) {
-                data_.back().second->append(data, len);
-                int& counter_ref = update_counters_.back();
-                counter_ref++;
+                flow_queue_.back().append(data, len);
             }
             else {
                 _dia("Flow::append: datagrams, packetized (new buffer on same side)");
 
-                data_.emplace_back(std::make_pair(src, new buffer(data, len)));
-                update_counters_.push_back(1);
+                flow_queue_.emplace_back(src, std::make_unique<buffer>(data, len));
             }
         }
-        else if (data_.back().first != src) {
+        else if (flow_queue_.back().source() != src) {
             _dia("Flow::append: to new side: %c: %d bytes", src, len);
             _dum("Flow::append: to new side: %c: incoming data:\r\n%s", src,
-                    hex_dump((unsigned char*)data,len > 128 ? 128 : static_cast<int>(len), 4, 0, true).c_str());
+                    hex_dump(data,len > 128 ? 128 : static_cast<int>(len), 4, 0, true).c_str());
 
-            data_.emplace_back(std::make_pair(src, new buffer(data, len)));
-
-            update_counters_.push_back(1);
+            flow_queue_.emplace_back(src, std::make_unique<buffer>(data, len));
             exchanges++;
         }
         
@@ -112,7 +126,7 @@ public:
     
     buffer* at(SourceType t, int idx) const {
         int i = 0;
-        for(auto it = data_.begin() ; it < data_.end(); ++it) {
+        for(auto it = flow_queue_.begin() ; it < flow_queue_.end(); ++it) {
             SourceType tt = it->first;
             buffer* ff = it->second;
             if (tt == t) {
@@ -131,23 +145,22 @@ public:
         std::stringstream r;
         r << string_format("0x%x: ", this);
 
-        if( data_.empty() ) {
+        if( flow_queue_.empty() ) {
             r << "<empty>";
         }
         else {
-            for(unsigned int i = 0; i < data_.size(); i++) {
-                char s =  data_.at(i).first;
-                auto& b = data_.at(i).second;
-
-                int updates = 1;
-                if(i < update_counters_.size()) updates = update_counters_.at(i);
+            for(unsigned int i = 0; i < flow_queue_.size(); i++) {
+                auto const& entry = flow_queue_.at(i);
+                char s =  entry.source();
+                auto const* b = entry.data();
+                int updates = entry.counter();
 
                 r << string_format("%c:%s[%d]", s, updates == 1 ? "" : string_format("<%d>:",updates).c_str(), b->size());
                 if(verbose) {
-                    r << string_format("\n%s\n", hex_dump(b.get()).c_str());
+                    r << string_format("\n%s\n", hex_dump(b).c_str());
                 }
 
-                if(i+1 != data_.size()) {
+                if(i+1 != flow_queue_.size()) {
                     if(!verbose)
                         r << ", ";
                 }
@@ -156,8 +169,6 @@ public:
         
         return r.str();
     }
-    
-    virtual ~Flow() = default;
 };
 
 
@@ -248,26 +259,18 @@ public:
 
     std::string& name() { return name_; }
 
-    const std::vector<std::pair<SourceType,baseMatch*>>& sig_chain() const { return signature_; }
+    auto const& sig_chain() const { return signature_; }
 
 private:
     std::string name_;                                                         
-    std::vector<std::pair<SourceType,baseMatch*>>  signature_;                // series of L/R/X matches to be satisfied
+    std::vector<std::pair<SourceType,std::unique_ptr<baseMatch>>>  signature_;                // series of L/R/X matches to be satisfied
     logan_lite log {"flow.match"};
 
 public:    
     
-    virtual ~flowMatch() {
-        for( auto& match: signature_) {
-            _deb("flowmatch::destructor: deleting signature %p", match.second);
-            delete match.second;
-            match.second = nullptr;
-        }
-        signature_.clear();
-    }
-    
+    virtual ~flowMatch() = default;
     void add(SourceType s, baseMatch* m) { 
-            signature_.push_back(std::pair<SourceType,baseMatch*>(s,m));             
+            signature_.template emplace_back(s,m);
     };
     
     
@@ -275,8 +278,7 @@ public:
         vector_range v;
         unsigned int p;
         
-        bool b = match(f,v,p);
-        if(b) {
+        if(match(f,v,p)) {
             return v;
         }
         
@@ -298,19 +300,19 @@ public:
         }
         
         unsigned int cur_flow = flow_step;
-        baseMatch* sig_match = nullptr;
+        baseMatch* current_sig_match = nullptr;
 
-        _deb("flowMatch::match: search flow from #%d/%d: %s :sig pos = %d/%d", flow_step, f->data().size(),
+        _deb("flowMatch::match: search flow from #%d/%d: %s :sig pos = %d/%d", flow_step, f->flow_queue().size(),
                                                                                 vrangetos(ret).c_str(),
                                                                                 sig_pos,signature_.size());
         
         bool first_iter = true;
         SourceType last_src;
-        for( ; cur_flow < f->data().size() && sig_pos < signature_.size(); cur_flow++) {
-            auto& ff = f->data().at(cur_flow);
+        for( ; cur_flow < f->flow_queue().size() && sig_pos < signature_.size(); cur_flow++) {
+            auto& ff = f->flow_queue().at(cur_flow);
             
-            SourceType ff_src = ff.first;
-            auto&    ff_buf = ff.second;
+            SourceType ff_src = ff.source();
+            auto const&    ff_buf = ff.data();
 
             // init unknown type of source
             if(first_iter) {
@@ -327,7 +329,9 @@ public:
             // check size and boundaries
             SourceType   sig_src = signature_.at(sig_pos).first;
 
-            sig_match = signature_.at(sig_pos).second;
+            auto& sig_match = signature_.at(sig_pos).second;
+            current_sig_match = sig_match.get();
+
             unsigned int sig_match_limit_offset = sig_match->match_limits_offset;
             unsigned int sig_match_limit_bytes = sig_match->match_limits_bytes;
             
@@ -349,7 +353,7 @@ public:
                 }
                 
                 // DEBUGS
-                _deb("flowMatch::match: flow %d/%d : dirchange: %d", cur_flow, f->data().size(), direction_change);
+                _deb("flowMatch::match: flow %d/%d : dirchange: %d", cur_flow, f->flow_queue().size(), direction_change);
                 _deb("flowMatch::match: processing signature[%s]: %s", std::to_string(sig_src).c_str(), sig_match->expr().c_str());
                 _deb("flowMatch::match: pattern[%s] view-size=%d", std::to_string(ff_src).c_str(), ff_view.size());
 
@@ -395,8 +399,8 @@ public:
             if(*log.level() >= DIA) {
 
                 std::string sig;
-                if (sig_match)
-                    sig = sig_match->expr();
+                if (current_sig_match)
+                    sig = current_sig_match->expr();
                 else
                     sig = "<unknown>";
 
@@ -432,8 +436,7 @@ public:
     
     // expr is ignored, regex is already compiled
     range search_function(std::string &expr, std::string &str) override {
-        std::smatch m;
-        if (std::regex_search ( str , m, expr_comp_ )) {
+        if (std::smatch m; std::regex_search ( str , m, expr_comp_ )) {
 
             _dum("regexMatch::search_function: \r\nexpr:\r\n%s\r\ndata:\r\n%s", expr.c_str(),
                  hex_dump((unsigned char *) str.c_str(), str.size(), 4, 0, true).c_str());
@@ -452,9 +455,8 @@ public:
 
 
 
-// typedef SignatureType<flowMatch<unsigned char>> duplexSignature;
-typedef Flow<char> duplexFlow;
-typedef flowMatch<char> duplexFlowMatch;
+using duplexFlow = Flow<char>;
+using duplexFlowMatch = flowMatch<char>;
 
 
 class flowMatchState {
