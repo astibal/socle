@@ -52,6 +52,28 @@ struct FlowEntry {
         }
     }
 
+
+    // OK - data in the flow are as expected, or not checked (fail-open logic)
+    // MORE - data attempted to parse, but not enough data (see more_index)
+    // CONTINUATION - data are continuation of previous same-size flow entry, user must assemble it himself
+    // TRUNCATED - data not appended due to quota (implies further parsing of inconsistent data doesn't make sense)
+    struct validation_t {
+        using up_validity = enum class up_validity { OK, MORE, CONTINUATION, TRUNCATED };
+
+        up_validity validity() const { return validity_; }
+        void validity(up_validity nv) { validity_ = nv; }
+
+        up_validity validity_ { up_validity::OK };
+        std::size_t more_index_ {0L}; // if upper_validity::MORE is set, indicates from where data expects more bytes
+    };
+
+    struct config_t {
+        static inline std::size_t max_flow_size = 10 * 1024 * 1024;
+    };
+
+    validation_t validation {};
+    config_t config{};
+
 private:
     SourceType source_;
     std::unique_ptr<buffer> data_;
@@ -61,8 +83,10 @@ private:
 template <class SourceType>
 class Flow {
 
-    using flow_queue_type = std::deque<FlowEntry<SourceType>>;
-    using counter_type = std::deque<int>;
+    using FlowType = FlowEntry<SourceType>;
+
+    using flow_queue_type = std::deque<FlowType>;
+    using up_validity = typename FlowType::validation_t::up_validity;
 
     flow_queue_type flow_queue_; // store flow data ... ala follow tcp stream :)
     int domain_ = SOCK_STREAM;   // if flow is not stream, data same-side chunks are stored separately
@@ -104,7 +128,13 @@ public:
                     hex_dump(data,  len > 128 ? 128 : static_cast<int>(len), 4, 0, true).c_str());
             
             if(domain() == SOCK_STREAM) {
-                flow_queue_.back().append(data, len);
+                auto& flow_entry = flow_queue_.back();
+                if(flow_entry.size() + len > FlowType::config_t::max_flow_size) {
+                    flow_entry.validation.validity(up_validity::TRUNCATED);
+                    _dia("Flow::append: to current side: %c: not appended due to size", src);
+                } else {
+                    flow_entry.append(data, len);
+                }
             }
             else {
                 _dia("Flow::append: datagrams, packetized (new buffer on same side)");
