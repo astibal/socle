@@ -100,11 +100,7 @@ int LTVEntry::unpack(uint8_t* buffer, unsigned int buflen) {
 			
 			// allocate memory for the whole content of the packet (there could be more data, but we are dealing now only with first package)
 			data_ = new uint8_t[len_];
-			
-			// FIXME: above seems to be more correct than:
-			//data = new uint8_t[buflen-__fsso_header_size()];
-			
-			
+
 			_ext(">> LTVEntry::unpack: orig.  buffer: 0x%x         | len,type,id: %u,%u,%u", (long)buffer, (unsigned int)len_, (unsigned int)type_, (unsigned int)id_);
 			_ext(">> LTVEntry::unpack: target buffer:         0x%x | len %uB", (unsigned long)data_,len_);
 			_ext(">> LTVEntry::unpack: copy   buffer: 0x%x -> 0x%x | len %uB", (unsigned long)buffer, (unsigned long)data_,len_);

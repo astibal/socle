@@ -606,9 +606,6 @@ std::optional<std::string> SSLFactory::find_subject_by_fqdn(std::string const& f
     return std::nullopt;
 }
 
-//don't call erase for now, it can delete cert/key while being used by different threads!!!
-//FIXME: either duplicates should be returned, or each pair should contain some reference checking/delete flag to kill themselves
-
 bool SSLFactory::erase(const std::string &subject) {
 
     bool op_status = true;

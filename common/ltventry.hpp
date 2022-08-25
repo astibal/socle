@@ -115,8 +115,7 @@ public:
     [[nodiscard]] std::string data_str_ip() const;
 	
  	int pack(::buffer *buf=nullptr);
-	
-	//FIXME: return single string (hr = human readable)
+
 	std::string hr(int=0);
 	
     LTVEntry* search(const std::vector<int>&);

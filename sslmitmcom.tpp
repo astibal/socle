@@ -34,11 +34,10 @@ bool baseSSLMitmCom<SSLProto>::check_cert(const char* peer_name) {
     bool r = SSLProto::check_cert(peer_name);
     X509* cert = SSL_get_peer_certificate(SSLProto::sslcom_ssl);
     
-    auto* p = dynamic_cast<baseSSLMitmCom*>(this->peer());
+    auto* remote = dynamic_cast<baseSSLMitmCom*>(this->peer());
     
-    if(p != nullptr) {
-        // FIXME: this is not right, design another type of test
-        p->sslcom_server_ = true;
+    if(remote) {
+        remote->sslcom_server_ = true;
         
         SpoofOptions spo;
         if (this->verify_get() != SSLCom::VRF_OK) {
@@ -164,19 +163,19 @@ bool baseSSLMitmCom<SSLProto>::check_cert(const char* peer_name) {
         }
 
 
-        if(p->sslcom_server_) {
+        if(remote->sslcom_server_) {
             
             if(! this->sslcom_peer_sni_shortcut) {
                 _dia("SSLMitmCom::check_cert[%x]: slow-path, calling to spoof peer certificate",this);
-                r = p->spoof_cert(cert,spo);
+                r = remote->spoof_cert(cert, spo);
                 if (r) {
                     // this is inefficient: many SSLComs are already initialized, this is running it once 
                     // more ...
                     // check if is waiting would help
-                    if (p->sslcom_waiting) {
-                        p->init_server();
+                    if (remote->sslcom_waiting) {
+                        remote->init_server();
                     } else {
-                        _war("FIXME: Trying to init SSL server while it's already running!");
+                        _war("Trying to init SSL server while it's already running!");
                     } 
                 }
             } else {

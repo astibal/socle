@@ -391,7 +391,6 @@ void baseSSLCom<L4Proto>::ssl_msg_callback(int write_p, int version, int content
 template <class L4Proto>
 int baseSSLCom<L4Proto>::check_server_dh_size(SSL* ssl) {
 #ifdef USE_OPENSSL11
-    // FIXME: adapt 1.0.2 API code to 1.1.x.
     // Currently it doesn't seem to be possible to get DH parameters for current SSL_SESSION
 
     // Workaround: return acceptable strength. Ugly.
@@ -1565,9 +1564,6 @@ void baseSSLCom<L4Proto>::init_ssl_callbacks() {
 
 #ifndef USE_OPENSSL11
         // OpenSSL 1.1 API doesn't seem to contain ECDH callback.
-        // considering ECDH callback only prints out bit size, we can disable it
-        // makking it:
-        // FIXME - is ECDH callback needed with openssl 1.1.x
         SSL_set_tmp_ecdh_callback(sslcom_ssl,ssl_ecdh_callback);
 #endif
     }
@@ -1836,12 +1832,6 @@ bool baseSSLCom<L4Proto>::check_cert (const char* host) {
     }
 
     X509_free(peer);
-    // X509_NAME_free(x509_name);
-
-    // finally, SSL is up, set status flag
-
-    // FIXME: this is bogus code for testing - sslcom_status should be set after certificate revocation status
-    //sslcom_status(sslcom_status());
     sslcom_status(true);
 
     return true;
@@ -2673,7 +2663,7 @@ bool baseSSLCom<L4Proto>::waiting_peer_hello() {
             } else {
                 _dia("SSLCom::waiting_peer_hello: SSLCom peer doesn't have sslcom_fd set, socket %d",peer_scom->socket());
                
-                // FIXME: definitely not correct
+                // This is untested code for virtual sockets
                 if(peer_scom->l4_proto() == SOCK_DGRAM) {
                     // atm don't wait for hello
                     sslcom_peer_hello_received(true);
