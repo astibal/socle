@@ -255,9 +255,9 @@ public:
     baseHostCX * listen(int sock, unsigned char side);
         
     // permanently (re)connected sockets
-    int left_connect(const char*, const char*,bool=false);
-    int right_connect(const char*, const char*,bool=false);
-    int connect(const char*, const char*,char,bool=false);
+    int left_connect(const char*, const char*);
+    int right_connect(const char*, const char*);
+    int connect(const char*, const char*,char);
 
 
     // shutdown utils, deletes HostCX
@@ -339,7 +339,8 @@ protected:
     clicker clicker_;
 
     bool on_cx_timer(baseHostCX*);
-    
+
+public:
     // implement advanced logging
     TYPENAME_BASE("baseProxy")
     DECLARE_LOGGING(to_string)

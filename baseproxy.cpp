@@ -1384,15 +1384,14 @@ baseHostCX* baseProxy::new_cx(const char* host, const char* port) {
 
 
 
-int baseProxy::connect ( const char* host, const char* port, char side,bool blocking) {
+int baseProxy::connect ( const char* host, const char* port, char side) {
 	if (side == 'L') {
-		return left_connect(host,port,blocking);
+		return left_connect(host,port);
 	}
-	return right_connect(host,port,blocking);
+	return right_connect(host,port);
 }
 
-
-int baseProxy::left_connect ( const char* host, const char* port, bool blocking)
+int baseProxy::left_connect ( const char* host, const char* port)
 {
 	baseHostCX* cx = new_cx(host,port);
 	
@@ -1407,7 +1406,7 @@ int baseProxy::left_connect ( const char* host, const char* port, bool blocking)
         return sock;
 }
 
-int baseProxy::right_connect ( const char* host, const char* port, bool blocking)
+int baseProxy::right_connect ( const char* host, const char* port)
 {
 	baseHostCX* cx = new_cx(host,port);
         int sock = cx->connect();
