@@ -37,7 +37,8 @@
 
 bool SSLFactory::load() {
 
-    std::lock_guard<std::recursive_mutex> l_(lock());
+    auto lc_ = std::scoped_lock(lock());
+
     auto const& log = get_log();
 
     bool ret = true;
@@ -109,8 +110,8 @@ bool SSLFactory::load_ca_cert() {
     }
 
 
-    {
-        std::lock_guard<std::recursive_mutex> l_(lock());
+    [&]{
+        auto lc_ = std::scoped_lock(lock());
 
         if (ca_cert) {
             X509_free(ca_cert);
@@ -121,7 +122,7 @@ bool SSLFactory::load_ca_cert() {
 
         ca_cert = PEM_read_X509(fp_crt, nullptr, nullptr, nullptr);
         ca_key = PEM_read_PrivateKey(fp_key, nullptr, nullptr, (void *) certs_password().c_str());
-    }
+    }();
 
     fclose(fp_crt);
     fclose(fp_key);
@@ -151,12 +152,19 @@ bool SSLFactory::load_def_cl_cert() {
         return false;
     }
 
-    {
-        std::lock_guard<std::recursive_mutex> l_(lock());
+    [&]{
+        auto lc_ = std::scoped_lock(lock());
+
+        if (def_cl_cert) {
+            X509_free(def_cl_cert);
+        }
+        if (def_cl_key) {
+            EVP_PKEY_free(def_cl_key);
+        }
 
         def_cl_cert = PEM_read_X509(fp_crt, nullptr, nullptr, nullptr);
-        def_cl_key = PEM_read_PrivateKey(fp_key, nullptr, nullptr, nullptr);
-    }
+        def_cl_key = PEM_read_PrivateKey(fp_key, nullptr, nullptr, (void *) certs_password().c_str());
+    }();
     
     fclose(fp_crt);
     fclose(fp_key);
@@ -186,12 +194,20 @@ bool SSLFactory::load_def_sr_cert() {
         return false;
     }
 
-    {
-        std::lock_guard<std::recursive_mutex> l_(lock());
+    [&]{
+        auto lc_ = std::scoped_lock(lock());
+
+        if (def_sr_cert) {
+            X509_free(def_sr_cert);
+        }
+        if (def_sr_key) {
+            EVP_PKEY_free(def_sr_key);
+        }
 
         def_sr_cert = PEM_read_X509(fp_crt, nullptr, nullptr, nullptr);
-        def_sr_key = PEM_read_PrivateKey(fp_key, nullptr, nullptr, nullptr);
-    }
+        def_sr_key = PEM_read_PrivateKey(fp_key, nullptr, nullptr, (void *) certs_password().c_str());
+    }();
+
     fclose(fp_crt);
     fclose(fp_key);
     
@@ -249,7 +265,6 @@ SSL_CTX* SSLFactory::client_dtls_ctx_setup(EVP_PKEY* priv, X509* cert, const cha
 
     if (!ctx) {
         _err("SSLCom::client_ctx_setup: Error creating SSL context!");
-        //log_if_error(ERR,"SSLCom::init_client");
         exit(2);
     }
 
@@ -316,7 +331,7 @@ SSL_CTX* SSLFactory::server_dtls_ctx_setup(EVP_PKEY* priv, X509* cert, const cha
     }
 
     ciphers == nullptr ? SSL_CTX_set_cipher_list(ctx,"ALL:!ADH:!LOW:!EXP:!MD5:@STRENGTH") : SSL_CTX_set_cipher_list(ctx,ciphers);
-    //SSL_CTX_set_options(ctx,factory()->def_sr_options);
+
     SSL_CTX_set_session_cache_mode(ctx, SSL_SESS_CACHE_NO_INTERNAL);
 
     _deb("SSLCom::server_dtls_ctx_setup: loading default key/cert");
@@ -344,7 +359,7 @@ SSLFactory& SSLFactory::init () {
 
     SSLFactory& fac = SSLFactory::factory();
 
-    std::lock_guard<std::recursive_mutex> l_(fac.lock());
+    auto lc_ = std::scoped_lock(fac.lock());
 
     bool ret = fac.load();
 
@@ -381,7 +396,7 @@ SSLFactory& SSLFactory::init () {
 
 void SSLFactory::destroy() {
 
-    std::lock_guard<std::recursive_mutex> l_(lock());
+    auto lc_ = std::scoped_lock(lock());
     auto const& log = get_log();
 
     if(ca_cert) {
@@ -451,7 +466,7 @@ bool SSLFactory::add(std::string &store_key, X509_PAIR parek) {
 
     try {
         // lock, don't mess with cache_, I will write into it now
-        std::lock_guard<std::recursive_mutex> l_(lock());
+        auto lc_  = std::scoped_lock(lock());
 
         // free underlying keypair
         auto it = cache().get(store_key);
@@ -556,7 +571,7 @@ std::string SSLFactory::make_store_key(X509* cert_orig, const SpoofOptions& spo)
 
 std::optional<const SSLFactory::X509_PAIR> SSLFactory::find(std::string const& subject) {
 
-    std::lock_guard<std::recursive_mutex> l_(lock());
+    auto lc_ = std::scoped_lock(lock());
     auto const& log = get_log();
 
     auto entry = cache().get(subject);
@@ -574,7 +589,7 @@ std::optional<const SSLFactory::X509_PAIR> SSLFactory::find(std::string const& s
 std::optional<std::string> SSLFactory::find_subject_by_fqdn(std::string const& fqdn) {
 
     {
-        std::lock_guard<std::recursive_mutex> l_(lock());
+        auto lc_ = std::scoped_lock(lock());
         auto const& log = get_log();
 
         auto entry = cache().get(fqdn);
@@ -591,7 +606,7 @@ std::optional<std::string> SSLFactory::find_subject_by_fqdn(std::string const& f
     std::string wildcard_fqdn = std::regex_replace(fqdn, re_hostname, re_wildcard);
 
     {
-        std::lock_guard<std::recursive_mutex> l_(lock());
+        auto lc_ = std::scoped_lock(lock());
         auto const& log = get_log();
 
         auto entry = cache().get(wildcard_fqdn);
@@ -612,7 +627,7 @@ bool SSLFactory::erase(const std::string &subject) {
     auto const& log = get_log();
 
     try {
-        std::lock_guard<std::recursive_mutex> l_(lock());
+        auto lc_ = std::scoped_lock(lock());
 
         if(find(subject).has_value()) {
             cache().erase(subject);
