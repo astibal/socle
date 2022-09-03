@@ -786,7 +786,7 @@ int baseSSLCom<L4Proto>::certificate_status_ocsp_check(baseSSLCom* com) {
 
         std::string name = "unknown_cx";
 
-        baseSSLCom* pcom = dynamic_cast<baseSSLCom*>(com->peer());
+        auto* pcom = dynamic_cast<baseSSLCom*>(com->peer());
         if(pcom != nullptr) {
             name = pcom->hr();
         }
@@ -804,7 +804,7 @@ int baseSSLCom<L4Proto>::certificate_status_ocsp_check(baseSSLCom* com) {
         const char* str_status = "unknown";
 
 
-        auto cached_result = com->factory()->verify_cache.get(cn);;
+        auto cached_result = com->factory()->verify_cache().get(cn);;
 
         if (cached_result) {
             res.revoked = cached_result->value().revoked;
@@ -815,8 +815,8 @@ int baseSSLCom<L4Proto>::certificate_status_ocsp_check(baseSSLCom* com) {
             res = inet::ocsp::ocsp_check_cert(com->sslcom_target_cert, com->sslcom_target_issuer);
             str_status = str_fresh;
             {
-                std::lock_guard<std::recursive_mutex> l_(com->factory()->verify_cache.getlock());
-                factory()->verify_cache.set(cn, SSLFactory::make_exp_ocsp_status(res.revoked, res.ttl));
+                auto lc_ = std::scoped_lock(com->factory()->verify_cache().getlock());
+                factory()->verify_cache().set(cn, SSLFactory::make_exp_ocsp_status(res.revoked, res.ttl));
             }
             origin = verify_origin_t::OCSP;
         }
@@ -847,7 +847,7 @@ int baseSSLCom<L4Proto>::certificate_status_ocsp_check(baseSSLCom* com) {
             X509_CRL* crl_struct = nullptr;
 
 
-            std::lock_guard<std::recursive_mutex> l_(com->factory()->crl_cache().getlock());
+            auto lc_ = std::scoped_lock(com->factory()->crl_cache().getlock());
             for(auto crl_url: crls) {
 
                 std::string crl_printable = printable(crl_url);
@@ -990,7 +990,7 @@ int baseSSLCom<L4Proto>::certificate_status_oob_check(baseSSLCom* com, int defau
             std::string name = "unknown_cx";
             if(is_revoked != 0) {
 
-                baseSSLCom* pcom = dynamic_cast<baseSSLCom*>(com->peer());
+                auto* pcom = dynamic_cast<baseSSLCom*>(com->peer());
                 if(pcom != nullptr) {
                     name = pcom->hr();
                 } else {
@@ -1265,7 +1265,7 @@ int baseSSLCom<L4Proto>::status_resp_callback(SSL* ssl, void* arg) {
     void* data = SSL_get_ex_data(ssl, sslcom_ssl_extdata_index);
     std::string name = "unknown_cx";
 
-    baseSSLCom* com = static_cast<baseSSLCom*>(data);
+    auto* com = static_cast<baseSSLCom*>(data);
 
     bool opt_ocsp_require = false; // refuse to continue if OCSP is not responded
 
@@ -1282,7 +1282,7 @@ int baseSSLCom<L4Proto>::status_resp_callback(SSL* ssl, void* arg) {
     // status callback comes usually earlier then certificate verify callback, but this can't be guaranteed.
     // keeping it here.
 
-    baseSSLCom* pcom = dynamic_cast<baseSSLCom*>(com->peer());
+    auto* pcom = dynamic_cast<baseSSLCom*>(com->peer());
     if(pcom != nullptr) {
         name = pcom->hr();
     } else {
@@ -1405,7 +1405,7 @@ int baseSSLCom<L4Proto>::ssl_client_cert_callback(SSL* ssl, X509** x509, EVP_PKE
     *pkey = nullptr;
 
     
-    baseSSLCom* com = static_cast<baseSSLCom*>(data);
+    auto* com = static_cast<baseSSLCom*>(data);
     if(com != nullptr) {
         baseSSLCom* pcom = dynamic_cast<baseSSLCom*>(com->peer());
         if(pcom != nullptr) {
@@ -1450,7 +1450,7 @@ int baseSSLCom<L4Proto>::ct_verify_callback(const CT_POLICY_EVAL_CTX *ctx, const
     bool result = true;
 
     auto sc_num = sk_SCT_num(scts);
-    auto sslcom = static_cast<baseSSLCom*>(arg);
+    auto* sslcom = static_cast<baseSSLCom*>(arg);
 
     if(sslcom) {
         auto const& log = log_cb_ct();
@@ -1632,14 +1632,14 @@ void baseSSLCom<L4Proto>::init_client() {
 
     if(l4_proto() == SOCK_STREAM) {
 
-        std::lock_guard<std::recursive_mutex> l_(factory()->lock());
+        auto lc_ = std::scoped_lock(factory()->lock());
 
         sslcom_ctx = factory()->default_tls_client_cx();
         sslcom_ssl = SSL_new(sslcom_ctx);
     } else 
     if(l4_proto() == SOCK_DGRAM) {
 
-        std::lock_guard<std::recursive_mutex> l_(factory()->lock());
+        auto lc_ = std::scoped_lock(factory()->lock());
 
         sslcom_ctx = factory()->default_dtls_client_cx();
         sslcom_ssl = SSL_new(sslcom_ctx);
@@ -1704,21 +1704,19 @@ void baseSSLCom<L4Proto>::init_server() {
     
     if(l4_proto() == SOCK_STREAM) {
 
-        std::lock_guard<std::recursive_mutex> l_(factory()->lock());
+        auto lc_ = std::scoped_lock(factory()->lock());
 
         sslcom_ctx = factory()->default_tls_server_cx();
         sslcom_ssl = SSL_new(sslcom_ctx);
     } else
     if(l4_proto() == SOCK_DGRAM) {
 
-        std::lock_guard<std::recursive_mutex> l_(factory()->lock());
+        auto lc_ = std::scoped_lock(factory()->lock());
 
         sslcom_ctx = factory()->default_dtls_server_cx();
         sslcom_ssl = SSL_new(sslcom_ctx);
         SSL_set_options(sslcom_ssl, SSL_OP_COOKIE_EXCHANGE);
     }
-    
-    //if(l4_proto() == SOCK_DGRAM) _inf("DTLS sslcom_ssl 0x%x",sslcom_ssl);
 
     std::string my_filter = ci_def_filter;
     
@@ -1819,8 +1817,6 @@ bool baseSSLCom<L4Proto>::check_cert (const char* host) {
 
 
     if(host) {
-
-        //     _err("what:\n%s",hex_dump((unsigned char*)peer_CN,256).c_str());
         std::string str_host(host);
         std::string str_peer(peer_CN,255);
 
@@ -1841,7 +1837,7 @@ bool baseSSLCom<L4Proto>::check_cert (const char* host) {
 /* OK set  */
 template <class L4Proto>
 bool baseSSLCom<L4Proto>::readable(int s) {
-    // 	bool r = ( sslcom_write_blocked_on_read  || !sslcom_read_blocked_on_write || sslcom_waiting );
+
     bool r = !sslcom_read_blocked_on_write;
     sslcom_read_blocked_on_write = false;
 
@@ -1859,7 +1855,6 @@ bool baseSSLCom<L4Proto>::readable(int s) {
 
 template <class L4Proto>
 bool baseSSLCom<L4Proto>::writable(int s) {
-    // 	bool r  = ( sslcom_read_blocked_on_write ||  !sslcom_write_blocked_on_read ||  sslcom_waiting );
 
     bool r = !sslcom_write_blocked_on_read;
     sslcom_write_blocked_on_read = false;
@@ -2001,7 +1996,7 @@ void baseSSLCom<L4Proto>::accept_socket (int sockfd) {
 template <class L4Proto>
 void baseSSLCom<L4Proto>::ssl_keylog_callback(const SSL* ssl, const char* line) {
     void* data = SSL_get_ex_data(ssl, sslcom_ssl_extdata_index);
-    baseSSLCom* com = static_cast<baseSSLCom*>(data);
+    auto* com = static_cast<baseSSLCom*>(data);
 
     if(com && com->sslkeylog) {
         com->log.log(loglevel(NON,flag_add(iNOT,CRT|KEYS),&log::level::LOG_EXEXACT,LOG_FLRAW),"com.ssl.callback.keys",line);
@@ -2423,7 +2418,7 @@ bool baseSSLCom<L4Proto>::store_session_if_needed() {
                 if(SSL_SESSION_is_resumable(SSL_get0_session(sslcom_ssl))
                    and
                    SSL_SESSION_has_ticket(SSL_get0_session(sslcom_ssl)) == 0) {
-                    std::lock_guard<std::recursive_mutex> l_(factory()->session_cache().getlock());
+                    auto lc_ = std::scoped_lock(factory()->session_cache().getlock());
 
                     auto ns = new session_holder(SSL_get0_session(sslcom_ssl));
                     SSL_SESSION_up_ref(ns->ptr);
@@ -2438,7 +2433,7 @@ bool baseSSLCom<L4Proto>::store_session_if_needed() {
             }
             if(verify_bitcheck(VRF_OK)) {
 
-                std::lock_guard<std::recursive_mutex> l_(factory()->session_cache().getlock() );
+                auto lc_ = std::scoped_lock(factory()->session_cache().getlock() );
 
 #if defined USE_OPENSSL111
                 if(SSL_SESSION_is_resumable(SSL_get0_session(sslcom_ssl))) {
@@ -2520,7 +2515,7 @@ bool baseSSLCom<L4Proto>::load_session_if_needed() {
         std::string current_sni;
 
         if(is_server()) {
-            auto peerscom = dynamic_cast<SSLCom*>(peer());
+            auto* peerscom = dynamic_cast<SSLCom*>(peer());
             if(peerscom) {
                 // this is actually mine SNI :)
                 current_sni = peerscom->get_peer_sni();
@@ -2546,7 +2541,7 @@ bool baseSSLCom<L4Proto>::load_session_if_needed() {
             key = pref + string_format("%s:%s",owner_cx()->host().c_str(),owner_cx()->port().c_str());
         }
 
-        std::lock_guard<std::recursive_mutex> l_(factory()->session_cache().getlock());
+        auto lc_ = std::scoped_lock(factory()->session_cache().getlock());
 
         auto h = factory()->session_cache().get(key);
         
@@ -2577,7 +2572,7 @@ bool baseSSLCom<L4Proto>::waiting_peer_hello() {
 
     _dum("SSLCom::waiting_peer_hello: called");
     if(peer()) {
-        baseSSLCom *peer_scom = dynamic_cast<baseSSLCom*>(peer());
+        auto* peer_scom = dynamic_cast<baseSSLCom*>(peer());
         if(peer_scom != nullptr) {
             if(peer_scom->socket() > 0) {
                 _dum("SSLCom::waiting_peer_hello: peek max %d bytes from peer socket %d",sslcom_peer_hello_buffer.capacity(),peer_scom->socket());
@@ -2613,13 +2608,8 @@ bool baseSSLCom<L4Proto>::waiting_peer_hello() {
                         
                     } else {
                         if(parse_hello_result < 0) {
-
                             // not enough of data
                             return false;
-                        }
-                        else /* > 0*/ {
-                            // we are okay
-                            ;
                         }
                     }
                     
@@ -2628,7 +2618,7 @@ bool baseSSLCom<L4Proto>::waiting_peer_hello() {
 
                     if(not sslcom_peer_hello_sni_.empty()) {
 
-                        std::lock_guard<std::recursive_mutex> l_(factory()->lock());
+                        auto lc_ = std::scoped_lock(factory()->lock());
 
                         auto res_subj = factory()->find_subject_by_fqdn(sslcom_peer_hello_sni_);
                         if(res_subj.has_value()) {
@@ -2689,12 +2679,12 @@ bool baseSSLCom<L4Proto>::enforce_peer_cert_from_cache(std::string & subj) {
         if(peer()->owner_cx() != nullptr) {
             _dia("SSLCom::enforce_peer_cert_from_cache: about to force peer's side to use cached certificate");
 
-            std::lock_guard<std::recursive_mutex> l_(factory()->lock());
+            auto lc_ = std::scoped_lock(factory()->lock());
 
             auto parek = factory()->find(subj);
             if (parek.has_value()) {
                 _dia("Found cached certificate %s based on fqdn search.",subj.c_str());
-                baseSSLCom* p = dynamic_cast<baseSSLCom*>(peer());
+                auto* p = dynamic_cast<baseSSLCom*>(peer());
                 if(p != nullptr) {
 
                     if(p->sslcom_waiting) {
@@ -3127,7 +3117,7 @@ ssize_t baseSSLCom<L4Proto>::read (int _fd, void* _buf, size_t _n, int _flags ) 
                     rescan_write(socket());
                     read_want_write_cur = 0;
                 } else {
-                    // master()->poller.modify(_fd, EPOLLIN|EPOLLOUT);
+
                     set_write_monitor(socket());
                 }
 
@@ -3157,7 +3147,7 @@ ssize_t baseSSLCom<L4Proto>::read (int _fd, void* _buf, size_t _n, int _flags ) 
                 if (r != -1 && err != 1) {
                     _dia("SSLCom::read[%d] problem: %d, read returned %4d", _fd, err, r);
                 }
-                // 			SSL_shutdown (sslcom_ssl);
+
                 if(total_r > 0) return total_r;
                 return r;
         }
@@ -3193,9 +3183,6 @@ ssize_t baseSSLCom<L4Proto>::write (int _fd, const void* _buf, size_t _n, int _f
     if(opt_bypass) {
         return L4Proto::write(_fd, _buf, _n, _flags);
     }
-
-    // this one will be much trickier than just single call of SSL_read
-    // return SSL_write(sslcom_ssl, __buf, __n);
 
     // non-blocking socket can be still opening
     if( sslcom_waiting ) {
@@ -3373,11 +3360,6 @@ void baseSSLCom<L4Proto>::cleanup()  {
           prof_accept_cnt   , prof_connect_cnt   , prof_peek_cnt   , prof_read_cnt   , prof_want_read_cnt   , prof_want_write_cnt   , prof_write_cnt);
     _dia("   prof_accept_ok %d, prof_connect_ok %d",prof_accept_ok, prof_connect_ok);
 
-//     if(sslcom_sbio) {
-//         BIO_free(sslcom_sbio); // produces Invalid read of size 8: at 0x539D840: BIO_free (in /usr/lib/x86_64-linux-gnu/libcrypto.so.1.0.0)
-//         sslcom_sbio = nullptr;
-//     }
-
     if (!sslcom_waiting) {
         int shit = SSL_shutdown(sslcom_ssl);  //_sh_utdown _it_
         if (shit == 0) {
@@ -3419,7 +3401,6 @@ int baseSSLCom<L4Proto>::upgrade_client_socket(int sock) {
         if(sslcom_ssl == nullptr) {
             _err("SSLCom::upgrade_client_socket[%d]: failed to create SSL structure!",sock);
         }
-        //  SSL_set_fd (sslcom_ssl, sock);
 
         if(not sslcom_peer_hello_sni_.empty()) {
             _dia("SSLCom::upgrade_client_socket[%d]: set sni extension to: %s",sock, sslcom_peer_hello_sni_.c_str());
@@ -3560,7 +3541,6 @@ bool baseSSLCom<L4Proto>::com_status() {
         return l5_status;
     }
 
-    // T__dia("sslcom_status_nok",1,"SSLCom::com_status: returning 0");
     _deb("SSLCom::com_status: L4 layer not ready, returning 0");
     return false;
 }
@@ -3575,4 +3555,4 @@ void baseSSLCom<L4Proto>::shutdown(int _fd) {
 }
 
 
-#endif // __SSLCOM_INCL__
+#endif // SSLCOM_INCL

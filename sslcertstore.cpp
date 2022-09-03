@@ -45,16 +45,9 @@ bool SSLFactory::load() {
     
     OpenSSL_add_all_algorithms();
     
-    serial=time(nullptr);
-    
-    load_ca_cert();
-    load_def_cl_cert();
-    load_def_sr_cert();
-    
-    // final check
-    if (ca_cert == nullptr || ca_key == nullptr
-        || def_cl_cert == nullptr || def_cl_key == nullptr
-        || def_sr_cert == nullptr || def_sr_key == nullptr) {
+    serial += time(nullptr);
+
+    if (not (load_ca_cert() and load_def_cl_cert() and load_def_sr_cert())) {
         _dia("SSLFactory::load: key/certs: ca(%x/%x) def_cl(%x/%x) def_sr(%x/%x)", ca_key,ca_cert,
              def_cl_key,def_cl_cert,  def_sr_key,def_sr_cert);
         
@@ -71,25 +64,16 @@ bool SSLFactory::load() {
         _err("cannot load trusted store.");
     }
 
-    verify_cache.clear();
-    verify_cache.expiration_check(expiring_verify_result::is_expired);
+    verify_cache().clear();
+    verify_cache().expiration_check(expiring_verify_result::is_expired);
     
     return ret;
 }
 
-int SSLFactory::password_callback(char* buf, int size, int rwflag, void* u) {
-    const char* pw = "pwd";
-    const int len = strlen(pw);
-    memcpy(buf,pw,len);
-    
-    return 0;
-}
-
-
 bool SSLFactory::load_ca_cert() {
 
     auto const& log = get_log();
-    std::string cer = certs_path() + CA_CERTF;
+    std::string cer = certs_path() + config_t::CA_CERTF;
 
     FILE *fp_crt = fopen(cer.c_str(), "r");
     FILE *fp_key = nullptr;
@@ -99,7 +83,7 @@ bool SSLFactory::load_ca_cert() {
         return false;
     }
     
-    std::string key = certs_path() + CA_KEYF;
+    std::string key = certs_path() + config_t::CA_KEYF;
     fp_key = fopen(key.c_str(), "r");
     
     if (!fp_key) {
@@ -127,14 +111,14 @@ bool SSLFactory::load_ca_cert() {
     fclose(fp_crt);
     fclose(fp_key);
     
-    return true;
+    return ( ca_cert and ca_key );
 }
 
 bool SSLFactory::load_def_cl_cert() {
 
     auto const& log = get_log();
-    std::string cer = certs_path() + CL_CERTF;
-    
+    std::string cer = certs_path() + config_t::CL_CERTF;
+
     FILE *fp_crt = fopen(cer.c_str(), "r");
     FILE *fp_key = nullptr;
     
@@ -143,7 +127,7 @@ bool SSLFactory::load_def_cl_cert() {
         return false;
     }
     
-    std::string key = certs_path() + CL_KEYF;
+    std::string key = certs_path() + config_t::CL_KEYF;
     fp_key = fopen(key.c_str(), "r");
     
     if (!fp_key) {
@@ -169,13 +153,13 @@ bool SSLFactory::load_def_cl_cert() {
     fclose(fp_crt);
     fclose(fp_key);
     
-    return true;
+    return ( def_cl_cert and def_cl_key );
 }
 
 bool SSLFactory::load_def_sr_cert() {
 
     auto const& log = get_log();
-    std::string cer = certs_path() + SR_CERTF;
+    std::string cer = certs_path() + config_t::SR_CERTF;
     
     FILE *fp_crt = fopen(cer.c_str(), "r");
     FILE *fp_key = nullptr;
@@ -185,7 +169,7 @@ bool SSLFactory::load_def_sr_cert() {
         return false;
     }
     
-    std::string key = certs_path() + SR_KEYF;
+    std::string key = certs_path() + config_t::SR_KEYF;
     fp_key = fopen(key.c_str(), "r");
     
     if (!fp_key) {
@@ -211,12 +195,12 @@ bool SSLFactory::load_def_sr_cert() {
     fclose(fp_crt);
     fclose(fp_key);
     
-    return true;
+    return ( def_sr_cert and def_sr_key );
 }
 
 
-SSL_CTX* SSLFactory::client_ctx_setup(EVP_PKEY* priv, X509* cert, const char* ciphers) {
-//SSL_CTX* SSLCom::client_ctx_setup() {
+SSL_CTX* SSLFactory::client_ctx_setup(const char* ciphers) {
+
     auto const& log = get_log();
     const SSL_METHOD *method = SSLv23_client_method();
 
@@ -224,7 +208,6 @@ SSL_CTX* SSLFactory::client_ctx_setup(EVP_PKEY* priv, X509* cert, const char* ci
 
     if (!ctx) {
         _err("SSLCom::client_ctx_setup: Error creating SSL context!");
-        //log_if_error(ERR,"SSLCom::init_client");
         exit(2);
     }
 
@@ -248,12 +231,10 @@ SSL_CTX* SSLFactory::client_ctx_setup(EVP_PKEY* priv, X509* cert, const char* ci
         _war("certificate transparency log not found: %s", SSLFactory::ctlogfile().c_str());
     }
 
-    // SSL_CTX_set_default_ctlog_list_file(ctx);
-
     return ctx;
 }
 
-SSL_CTX* SSLFactory::client_dtls_ctx_setup(EVP_PKEY* priv, X509* cert, const char* ciphers) {
+SSL_CTX* SSLFactory::client_dtls_ctx_setup(const char* ciphers) {
     auto const& log = get_log();
 #ifdef USE_OPENSSL11
     const SSL_METHOD *method = DTLS_client_method();
@@ -373,8 +354,8 @@ SSLFactory& SSLFactory::init () {
 
     _dia("SSLFactory::init: default ssl client context: ok");
 
-    if(! ca_path().empty()) {
-        int r = SSL_CTX_load_verify_locations(fac.def_cl_ctx, nullptr, ca_path().c_str());
+    if(! fac.ca_path().empty()) {
+        int r = SSL_CTX_load_verify_locations(fac.def_cl_ctx, nullptr, fac.ca_path().c_str());
         _deb("SSLFactory::init: loading default certification store: %s", r > 0 ? "ok" : "failed");
 
         if(r <= 0) {
@@ -453,7 +434,7 @@ void SSLFactory::destroy() {
     _deb("SSLFactory::destroy: finished");
 }
 
-bool SSLFactory::add(std::string &store_key, X509_PAIR parek) {
+bool SSLFactory::add(std::string const& store_key, X509_PAIR parek) {
 
     auto const& log = get_log();
     bool op_status = true;
@@ -1101,33 +1082,33 @@ int SSLFactory::convert_ASN1TIME(ASN1_TIME *t, char* buf, size_t len) {
 
 
 std::string SSLFactory::print_cn(X509* x) {
-    char tmp[SSLCERTSTORE_BUFSIZE];
+    char tmp[config_t::SSLCERTSTORE_BUFSIZE];
     std::string s;
 
     // get info from the peer certificate
-    X509_NAME_get_text_by_NID(X509_get_subject_name(x),NID_commonName, tmp,SSLCERTSTORE_BUFSIZE-1);
+    X509_NAME_get_text_by_NID(X509_get_subject_name(x),NID_commonName, tmp, config_t::SSLCERTSTORE_BUFSIZE - 1);
     s.append(tmp);
     
     return s;
 }
 
 std::string SSLFactory::print_issuer(X509* x) {
-    char tmp[SSLCERTSTORE_BUFSIZE];
+    char tmp[config_t::SSLCERTSTORE_BUFSIZE];
     std::string s;
 
     // get info from the peer certificate
-    X509_NAME_get_text_by_NID(X509_get_issuer_name(x),NID_commonName, tmp,SSLCERTSTORE_BUFSIZE-1);
+    X509_NAME_get_text_by_NID(X509_get_issuer_name(x),NID_commonName, tmp, config_t::SSLCERTSTORE_BUFSIZE - 1);
     s.append(tmp);
     
     return s;
 }
 
 std::string SSLFactory::print_not_before(X509* x) {
-    char tmp[SSLCERTSTORE_BUFSIZE];
+    char tmp[config_t::SSLCERTSTORE_BUFSIZE];
     std::string s;
     ASN1_TIME *not_before = X509_get_notBefore(x);
     
-    convert_ASN1TIME(not_before, tmp, SSLCERTSTORE_BUFSIZE-1); 
+    convert_ASN1TIME(not_before, tmp, config_t::SSLCERTSTORE_BUFSIZE - 1);
     s.append(tmp);
     
     return s;
@@ -1135,18 +1116,18 @@ std::string SSLFactory::print_not_before(X509* x) {
 
 
 std::string SSLFactory::print_not_after(X509* x) {
-    char tmp[SSLCERTSTORE_BUFSIZE];
+    char tmp[config_t::SSLCERTSTORE_BUFSIZE];
     std::string s;
     ASN1_TIME *not_after = X509_get_notAfter(x);
     
-    convert_ASN1TIME(not_after, tmp, SSLCERTSTORE_BUFSIZE-1); 
+    convert_ASN1TIME(not_after, tmp, config_t::SSLCERTSTORE_BUFSIZE - 1);
     s.append(tmp);
     
     return s;
 }
 
 std::string SSLFactory::print_cert(X509* x, int indent) {
-    char tmp[SSLCERTSTORE_BUFSIZE];
+    char tmp[config_t::SSLCERTSTORE_BUFSIZE];
     std::stringstream s;
 
     std::string pref;
@@ -1156,13 +1137,13 @@ std::string SSLFactory::print_cert(X509* x, int indent) {
 
     // get info from the peer certificate
     // TODO: should be replaced, as per https://linux.die.net/man/3/x509_name_get_text_by_nid - examples section
-    X509_NAME_get_text_by_NID(X509_get_subject_name(x),NID_commonName, tmp,SSLCERTSTORE_BUFSIZE-1);
+    X509_NAME_get_text_by_NID(X509_get_subject_name(x),NID_commonName, tmp, config_t::SSLCERTSTORE_BUFSIZE - 1);
     s << pref << "Common Name: ";
     s << std::string(tmp);
     s << "\n ";
     
 
-    X509_NAME_oneline(X509_get_subject_name(x), tmp, SSLCERTSTORE_BUFSIZE-1);
+    X509_NAME_oneline(X509_get_subject_name(x), tmp, config_t::SSLCERTSTORE_BUFSIZE - 1);
     s << pref << "Subject: ";
     s << std::string(tmp);
     s << "\n ";
@@ -1171,7 +1152,7 @@ std::string SSLFactory::print_cert(X509* x, int indent) {
     if(!issuer) {
     s << pref << "# Issuer: <unable to obtain issuer from certificate> \n ";
     } else {
-        X509_NAME_oneline(issuer,tmp,SSLCERTSTORE_BUFSIZE-1);
+        X509_NAME_oneline(issuer,tmp, config_t::SSLCERTSTORE_BUFSIZE - 1);
         s << pref << string_format("Issuer: '%s'\n ",tmp);
         s << "\n ";
         
@@ -1190,10 +1171,10 @@ std::string SSLFactory::print_cert(X509* x, int indent) {
     ASN1_TIME *not_before = X509_get_notBefore(x);
     ASN1_TIME *not_after = X509_get_notAfter(x);            
     
-    convert_ASN1TIME(not_before, tmp, SSLCERTSTORE_BUFSIZE-1);    
+    convert_ASN1TIME(not_before, tmp, config_t::SSLCERTSTORE_BUFSIZE - 1);
     s << pref << "Valid from: " << std::string(tmp) << "\n ";
 
-    convert_ASN1TIME(not_after, tmp, SSLCERTSTORE_BUFSIZE-1);
+    convert_ASN1TIME(not_after, tmp, config_t::SSLCERTSTORE_BUFSIZE - 1);
     s << pref << "Valid to: " << std::string(tmp) << "\n ";
 
 

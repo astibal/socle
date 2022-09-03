@@ -40,20 +40,6 @@
 #include <string>
 #include <optional>
 
-/* define HOME to be dir for key and cert files... */
-#define HOME "./certs/"
-/* Make these what you want for cert & key files */
-#define CL_CERTF  "cl-cert.pem"
-#define CL_KEYF   "cl-key.pem"
-#define SR_CERTF  "srv-cert.pem"
-#define SR_KEYF   "srv-key.pem"
-
-#define CA_CERTF  "ca-cert.pem"
-#define CA_KEYF   "ca-key.pem"
-
-
-#define SSLCERTSTORE_BUFSIZE 512
-
 struct session_holder;
 
 struct crl_holder {
@@ -71,8 +57,6 @@ struct session_holder {
 };
 
 struct SpoofOptions;
-
-
 
 using namespace inet::cert;
 
@@ -137,10 +121,24 @@ class SSLFactory : public SSLFactorySizing {
 
 public:
 
-    constexpr static size_t CERTSTORE_CACHE_SIZE = socle::size::base_table * cert_multi;
-    constexpr static size_t VERIFY_CACHE_SIZE = socle::size::base_table * verify_multi;
-    constexpr static size_t SESSION_CACHE_SIZE = socle::size::base_table * session_multi;
-    constexpr static size_t CRL_CACHE_SIZE = socle::size::base_table * crl_multi;
+    struct config_t {
+        constexpr static const char* CL_CERTF = "cl-cert.pem";
+        constexpr static const char* CL_KEYF = "cl-key.pem";
+        constexpr static const char* SR_CERTF = "srv-cert.pem";
+        constexpr static const char* SR_KEYF = "srv-key.pem";
+
+        constexpr static const char* CA_CERTF = "ca-cert.pem";
+        constexpr static const char* CA_KEYF =  "ca-key.pem";
+
+        constexpr static size_t SSLCERTSTORE_BUFSIZE = 512;
+
+        constexpr static size_t CERTSTORE_CACHE_SIZE = socle::size::base_table * cert_multi;
+        constexpr static size_t VERIFY_CACHE_SIZE = socle::size::base_table * verify_multi;
+        constexpr static size_t SESSION_CACHE_SIZE = socle::size::base_table * session_multi;
+        constexpr static size_t CRL_CACHE_SIZE = socle::size::base_table * crl_multi;
+    };
+
+    static SSLFactory::config_t config;
 
     using X509_PAIR = CertCacheEntry::X509_PAIR;
     using X509_CACHE = ptr_cache<std::string, CertCacheEntry>;
@@ -159,20 +157,26 @@ public:
                                 { return new SSLFactory::expiring_crl(new crl_holder(crl), ssl_crl_status_ttl); }
 
     // default path for CA trust-store. It's marked as CL, since CL side will use it (sx -> real server)
-    static std::string& ca_path() { static std::string ca_path; return ca_path; };
+    std::string ca_path_;
+    std::string& ca_path() { return ca_path_; };
 
     // path for smithproxy own PKI authority and certificates
-    static std::string& certs_path() { static std::string certs_path = "./certs/"; return certs_path; };
-    static std::string& certs_password() { static std::string certs_password = "password"; return certs_password; };
+    std::string certs_path_ = "./certs/";
+    std::string& certs_path() {  return certs_path_; };
 
-    static std::string& ctlogfile() { static std::string ctl = "ct_log_list.cnf"; return ctl; };
+    std::string certs_password_ = "";
+    std::string& certs_password() { return certs_password_; };
+
+    std::string ctlog_ = "ct_log_list.cnf";
+    std::string& ctlogfile() { return ctlog_; };
 
     bool is_ct_available() const { return is_ct_available_; };
+
 private:
     void is_ct_available(bool n) { is_ct_available_ = n; };
     bool is_ct_available_ = false;
     
-    int       serial=0xCABA1A;
+    long serial = 0xCABA1AL;
     
     X509*     ca_cert = nullptr; // ca certificate
     EVP_PKEY* ca_key = nullptr;  // ca key to self-sign 
@@ -190,27 +194,27 @@ private:
     static inline unsigned long def_cl_options = SSL_OP_NO_SSLv3+SSL_OP_NO_SSLv2;
     static inline unsigned long def_sr_options = SSL_OP_NO_SSLv3+SSL_OP_NO_SSLv2;
 
-    [[maybe_unused]]
-    static int password_callback(char* buf, int size, int rwflag, void*u);
-private:
-
     bool load_ca_cert();
     bool load_def_cl_cert();
     bool load_def_sr_cert();
 
     std::regex re_hostname = std::regex("^[a-zA-Z0-9-]+\\.");
 
-    X509_CACHE cert_cache_;
+    X509_CACHE cert_cache_ = X509_CACHE("pki.cert", config_t::CERTSTORE_CACHE_SIZE, true);
+
+    using verify_cache_t = ptr_cache<std::string,expiring_verify_result>;
+    using crl_cache_t = ptr_cache<std::string,SSLFactory::expiring_crl>;
+    using session_cache_t = ptr_cache<std::string,session_holder>;
+
+    verify_cache_t verify_cache_ = verify_cache_t("pki.verify", config_t::VERIFY_CACHE_SIZE, true);
+    crl_cache_t crl_cache_ = crl_cache_t("crl_cache", config_t::CRL_CACHE_SIZE,true);
+    session_cache_t session_cache_ = session_cache_t("ssl_session_cache", config_t::SESSION_CACHE_SIZE,true, ptr_cache<std::string,session_holder>::mode_t::LRU);
+
     X509_STORE* trust_store_ = nullptr;
 
     mutable std::recursive_mutex mutex_cache_write_;
 
-    SSLFactory():
-            cert_cache_("pki.cert", CERTSTORE_CACHE_SIZE, true),
-            verify_cache("pki.verify", VERIFY_CACHE_SIZE, true)
-    {
-        cert_cache_.mode_lru();
-    }
+    SSLFactory() = default;
 
 public:
     // avoid having copies of SSLFactory
@@ -224,9 +228,10 @@ public:
     // creates static instance and calls load() and creates default values
     static SSLFactory& init();
 
-    SSL_CTX* client_ctx_setup(EVP_PKEY* priv = nullptr, X509* cert = nullptr, const char* ciphers = nullptr);
+    SSL_CTX* client_ctx_setup(const char* ciphers = nullptr);
     SSL_CTX* server_ctx_setup(EVP_PKEY* priv = nullptr, X509* cert = nullptr, const char* ciphers = nullptr);
-    SSL_CTX* client_dtls_ctx_setup(EVP_PKEY* priv = nullptr, X509* cert = nullptr, const char* ciphers = nullptr);
+
+    SSL_CTX* client_dtls_ctx_setup(const char* ciphers = nullptr);
     SSL_CTX* server_dtls_ctx_setup(EVP_PKEY* priv = nullptr, X509* cert = nullptr, const char* ciphers = nullptr);
 
     // load certs, initialize stores and cache structures (all you need to use this Factory)
@@ -243,6 +248,16 @@ public:
     X509_STORE* trust_store() { return trust_store_; };
     X509_STORE const* trust_store() const { return trust_store_; };
 
+    verify_cache_t& verify_cache() { return verify_cache_; }
+    verify_cache_t const& verify_cache() const { return verify_cache_; }
+
+    crl_cache_t& crl_cache() { return crl_cache_; }
+    crl_cache_t const& crl_cache() const { return crl_cache_; }
+
+    session_cache_t& session_cache() { return session_cache_; }
+    session_cache_t const& session_cache() const { return session_cache_; }
+
+
     [[nodiscard]] inline SSL_CTX* default_tls_server_cx() const  { return def_sr_ctx; }
     [[nodiscard]] inline SSL_CTX* default_tls_client_cx() const  { return def_cl_ctx; }
     [[nodiscard]] inline SSL_CTX* default_dtls_server_cx() const  { return def_dtls_sr_ctx; }
@@ -251,7 +266,7 @@ public:
 
     // our killer feature here
     [[nodiscard]] // discarding result will leak memory
-    std::optional<SSLFactory::X509_PAIR> spoof(X509* cert_orig, bool self_sign=false, std::vector<std::string>* additional_sans=nullptr);
+    std::optional<X509_PAIR> spoof(X509* cert_orig, bool self_sign=false, std::vector<std::string>* additional_sans=nullptr);
      
     static int convert_ASN1TIME(ASN1_TIME*, char*, size_t);
     static std::string print_cert(X509* cert, int indent=4);
@@ -268,9 +283,9 @@ public:
 
     static std::string make_store_key(X509* cert_orig, const SpoofOptions& spo);
 
-    bool add (std::string &store_key, X509_PAIR parek);
+    bool add(std::string const& store_key, X509_PAIR parek);
 
-    std::optional<const SSLFactory::X509_PAIR> find(std::string const& subject);
+    std::optional<const X509_PAIR> find(std::string const& subject);
     std::optional<std::string> find_subject_by_fqdn(std::string const& fqdn);
     bool erase(const std::string &subject);
      
@@ -279,37 +294,23 @@ public:
     static inline int ssl_ocsp_status_ttl = 1800;
     static inline int ssl_crl_status_ttl = 86400;
 
-    ptr_cache<std::string,expiring_verify_result> verify_cache;
-
-    static ptr_cache<std::string,expiring_crl>& crl_cache() {
-        static ptr_cache<std::string,SSLFactory::expiring_crl> c("crl_cache",CRL_CACHE_SIZE,true);
-        return c;
-    };
-    static ptr_cache<std::string,session_holder>& session_cache() {
-        static ptr_cache<std::string,session_holder> c("ssl_session_cache",SESSION_CACHE_SIZE,true, ptr_cache<std::string,session_holder>::mode_t::LRU);
-        return c;
-    };
-
     void destroy();
     virtual ~SSLFactory();
 
     static logan_lite& get_log() {
-        static logan_lite l = logan_lite("pki.store");
+        static auto l = logan_lite("pki.store");
         return l;
     }
+    using extensions_t = std::vector<std::pair<std::string,std::string>>;
+    extensions_t const& extensions() const { return extensions_; }
 
-    static std::vector<std::pair<std::string,std::string>> const& extensions() {
-
-        static std::vector<std::pair<std::string,std::string>> r = {
-
+private:
+    extensions_t extensions_ {
             std::make_pair("basicConstraints", "CA:FALSE"),
             std::make_pair("nsComment", "\"Mitm generated certificate\""),
             std::make_pair("subjectKeyIdentifier", "hash"),
             std::make_pair("authorityKeyIdentifier", "keyid,issuer:always")
-        };
-
-        return r;
-    }
+    };
 };
 
 #endif //__SSLCERTSTORE_HPP__
