@@ -69,20 +69,12 @@ private:                                                       \
 
 
 #define TYPENAME_BASE(string_name)     \
-private:                                \
-    static constexpr const char* type_name_ = string_name; \
-                                                    \
-public:                                             \
-    [[nodiscard]] virtual const char* c_type() const { return type_name_; };    \
+    [[nodiscard]] virtual const char* c_type() const { return string_name; };
 
 
 
 #define TYPENAME_OVERRIDE(string_name)     \
-private:                                \
-    static constexpr const char* type_name_ = string_name; \
-                                                    \
-public:                                             \
-    [[nodiscard]] const char* c_type() const override { return type_name_; };    \
+    [[nodiscard]] const char* c_type() const override { return string_name; };
 
 
 
