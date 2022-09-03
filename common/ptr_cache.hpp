@@ -279,6 +279,7 @@ private:
 
     logan_lite log;
 
+public:
     TYPENAME_BASE("object cache")
 };
 

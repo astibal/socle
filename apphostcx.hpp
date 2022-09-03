@@ -110,6 +110,7 @@ private:
     // how many continuous flow data should we capture in CONTINUOUS before switching to NONE
     size_t continuous_data_left = 0L;
 
+public:
     TYPENAME_BASE("AppHostCX")
     DECLARE_LOGGING(to_string)
 
