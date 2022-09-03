@@ -117,7 +117,6 @@ public:
     using vector_type = mp::vector<T>;
 protected:
 
-
     struct proxy_state {
 
         // dead can be written by other threads - make it atomic
@@ -168,11 +167,6 @@ protected:
     //        => it's useful for session *original* direction side (usually and by convention it's the left side)
     vector_type<baseHostCX*> left_delayed_accepts;
     vector_type<baseHostCX*> right_delayed_accepts;
-
-    
-    unsigned int sleep_time_; // microseconds
-    unsigned int sleep_factor_ = 0; // how many times we slept already. Resets if we woke up.
-
 
     struct metering {
         int last_read = 0;
@@ -252,12 +246,6 @@ public:
 
     inline bool new_raw() const { return new_raw_; }
     inline void new_raw(bool r) { new_raw_ = r; } 	
-    
-    inline void sleep_time(unsigned int n) { sleep_time_ = n; };
-    inline unsigned int sleep_time() const { return sleep_time_; }
-    void sleep();
-
-
 
     // bind proxy to a port (typically left side)
     int bind(unsigned short port, unsigned char side);

@@ -1314,22 +1314,6 @@ int baseProxy::run() {
     return 0;
 }
 
-void baseProxy::sleep() {
-  
-	unsigned int x_time = sleep_time();
-  
-	if(sleep_factor_ > 0 && sleep_factor_ < 10) {
-
-	  // do some progressive slowdown
-	  x_time = sleep_time() * sleep_factor_;
-	}
-  
-	usleep(x_time);
-	sleep_factor_++;
-}
-
-
-
 baseHostCX * baseProxy::listen(int sock, unsigned char side) {
 
 
