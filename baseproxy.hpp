@@ -73,8 +73,8 @@ struct lock_for {
         return new_item;
     }
 
-    MapType& lock_db() { return lock_db_; }
-    std::shared_mutex& lock_db_lock() const { return lock_; }
+    [[maybe_unused]] MapType& lock_db() { return lock_db_; }
+    [[maybe_unused]] std::shared_mutex& lock_db_lock() const { return lock_; }
 
 protected:
 
@@ -107,7 +107,7 @@ private:
 
 class proxy_error : public std::runtime_error {
 public:
-    explicit proxy_error(const char* w) : std::runtime_error(w) {};
+    using runtime_error::runtime_error;
 };
 
 class baseProxy : public epoll_handler, public Proxy
@@ -136,7 +136,7 @@ protected:
         [[nodiscard]] inline std::atomic_uint& in_progress() { return in_progress_; }
 
         [[nodiscard]] inline bool dead() const { return dead_.load(); }
-        inline void dead(bool d) { dead_ = d; /* might be handy sometimes. if(dead_) { _inf("dead bt: %s",bt().c_str()); } */ }
+        inline void dead(bool d) { dead_ = d; }
 
         [[nodiscard]] inline bool write_left_bottleneck() const { return  write_left_neck_; }
         void write_left_bottleneck(bool n) { write_left_neck_ = n; }
@@ -147,7 +147,7 @@ protected:
 
     proxy_state status_;
 
-    bool new_raw_;
+    bool new_raw_ = false;
     baseProxy* parent_ = nullptr;
 
 
@@ -189,7 +189,7 @@ protected:
     };
     metering stats_;
 
-    unsigned int handle_last_status;
+    unsigned int handle_last_status = 0;
         
     bool pollroot_ = false;    
 
@@ -214,7 +214,7 @@ public:
     baseCom* com() const { return com_; };
     epoll* poller() const { return com() ? com()->poller.poller.get() : nullptr;  }
 
-    explicit baseProxy(baseCom* c);
+    explicit baseProxy(baseCom* c) : com_(c) {};
     ~baseProxy() override;
     
     void parent(baseProxy *p) { parent_ = p; }
@@ -284,9 +284,11 @@ public:
     int prepare_sockets(baseCom*) override;   // which Com should be set: typically it should be the parent's proxy's Com
     
     // normal sockets (proxying data)
-    virtual bool handle_cx_events(unsigned char side, baseHostCX* cx); // return false to break socket loop. Always call this one in your override.
-    virtual bool handle_cx_read(unsigned char side, baseHostCX* cx);   // return false to break socket loop. Always call this one in your override.
-    virtual bool handle_cx_write(unsigned char side, baseHostCX* cx);  // return false to break socket loop. Always call this one in your override.
+    // handle_ functions returning false to indicate we should break socket loop. Always call this one in your override.
+
+    virtual bool handle_cx_events(unsigned char side, baseHostCX* cx);
+    virtual bool handle_cx_read(unsigned char side, baseHostCX* cx);
+    virtual bool handle_cx_write(unsigned char side, baseHostCX* cx);
     virtual bool handle_cx_read_once(unsigned char side, baseCom* xcom, baseHostCX* cx);
     virtual bool handle_cx_write_once(unsigned char side, baseCom* xcom, baseHostCX* cx);
 
@@ -322,6 +324,7 @@ public:
     virtual void on_left_new(baseHostCX*);
     virtual void on_right_new(baseHostCX*);
 
+    // empty virtual to allow the logic without need to implement it via abstract mechanisms
     virtual void on_left_new_raw(int sock) {};
     virtual void on_right_new_raw(int sock) {};
         
@@ -335,11 +338,11 @@ public:
 protected:
 
     struct clicker {
-        time_t last_tick_;
-        time_t clock_;
+        time_t last_tick_ = 0;
+        time_t clock_ = 0;
         unsigned int timer_interval = 1;
 
-        clicker(): last_tick_(0), clock_(0) {
+        clicker() {
             time(&last_tick_);
             time(&clock_);
         };

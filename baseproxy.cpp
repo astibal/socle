@@ -19,9 +19,7 @@
 #include <vector>
 #include <string>
 #include <unistd.h>
-#include <sys/types.h>
 #include <sys/socket.h>
-#include <netinet/in.h>
 
 #include <cstring>
 #include <cerrno>
@@ -35,19 +33,13 @@
 
 #include <vars.hpp>
 
-
-baseProxy::baseProxy(baseCom* c) :
-new_raw_(false),
-parent_(nullptr),
-sleep_time_(1000),
-handle_last_status(0)
-{
-    com_ = c;
-}
-
-
 baseProxy::~baseProxy() {
-	baseProxy::shutdown();
+    try {
+        baseProxy::shutdown();
+    }
+    catch(std::exception const& e) {
+        _err("Proxy: d-tor exception: %s", e.what());
+    }
     
     if (com_ != nullptr) {
         _dum("Proxy: deleting com");
@@ -60,7 +52,6 @@ baseProxy::~baseProxy() {
 void baseProxy::ladd(baseHostCX* cs) {
     cs->unblock();
     
-    //int s = cs->com()->translate_socket(cs->socket());
     int s = cs->socket();
     com()->set_monitor(s);
     com()->set_poll_handler(s,this);
