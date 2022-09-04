@@ -1126,9 +1126,16 @@ std::string SSLFactory::print_not_after(X509* x) {
     return s;
 }
 
-std::string SSLFactory::print_cert(X509* x, int indent) {
-    char tmp[config_t::SSLCERTSTORE_BUFSIZE];
+std::string SSLFactory::print_cert(X509* x, int indent, bool add_cr) {
+
+    if(not x) return {};
+
     std::stringstream s;
+    auto ar = [&s,&add_cr] {
+        if(add_cr) s << '\r';
+    };
+
+    char tmp[config_t::SSLCERTSTORE_BUFSIZE];
 
     std::string pref;
     for(int i = 0; i < indent; i++) {
@@ -1140,22 +1147,25 @@ std::string SSLFactory::print_cert(X509* x, int indent) {
     X509_NAME_get_text_by_NID(X509_get_subject_name(x),NID_commonName, tmp, config_t::SSLCERTSTORE_BUFSIZE - 1);
     s << pref << "Common Name: ";
     s << std::string(tmp);
-    s << "\n ";
+    ar(); s << "\n ";
     
 
     X509_NAME_oneline(X509_get_subject_name(x), tmp, config_t::SSLCERTSTORE_BUFSIZE - 1);
     s << pref << "Subject: ";
     s << std::string(tmp);
-    s << "\n ";
+    ar(); s << "\n ";
     
-    X509_NAME* issuer = X509_get_issuer_name(x);
+    X509_NAME const* issuer = X509_get_issuer_name(x);
     if(!issuer) {
-    s << pref << "# Issuer: <unable to obtain issuer from certificate> \n ";
+        s << pref << "# Issuer: <unable to obtain issuer from certificate> ";
+        ar(); s << "\n ";
+
     } else {
         X509_NAME_oneline(issuer,tmp, config_t::SSLCERTSTORE_BUFSIZE - 1);
-        s << pref << string_format("Issuer: '%s'\n ",tmp);
-        s << "\n ";
-        
+        s << pref << string_format("Issuer: '%s'",tmp);
+        ar(); s << "\n ";
+        ar(); s << "\n ";
+
     }
 
 #ifdef USE_OPENSSL11
@@ -1166,16 +1176,18 @@ std::string SSLFactory::print_cert(X509* x, int indent) {
     const char* sslbuf = OBJ_nid2ln(pkey_nid);
     s << pref << "Signature type: ";
     s << sslbuf;
-    s << "\n ";
+    ar(); s << "\n ";
 
     ASN1_TIME *not_before = X509_get_notBefore(x);
     ASN1_TIME *not_after = X509_get_notAfter(x);            
     
     convert_ASN1TIME(not_before, tmp, config_t::SSLCERTSTORE_BUFSIZE - 1);
-    s << pref << "Valid from: " << std::string(tmp) << "\n ";
+    s << pref << "Valid from: " << std::string(tmp);
+    ar(); s << "\n ";
 
     convert_ASN1TIME(not_after, tmp, config_t::SSLCERTSTORE_BUFSIZE - 1);
-    s << pref << "Valid to: " << std::string(tmp) << "\n ";
+    s << pref << "Valid to: " << std::string(tmp);
+    ar(); s << "\n ";
 
 
 #ifdef USE_OPENSSL11
@@ -1187,7 +1199,7 @@ std::string SSLFactory::print_cert(X509* x, int indent) {
         return s.str();
     }
 
-    X509V3_extensions_print(ext_bio, nullptr, exts, 0, 0);
+    X509V3_extensions_print(ext_bio, nullptr, exts, 0, indent);
 
     BUF_MEM *bptr = nullptr;
     BIO_get_mem_ptr(ext_bio, &bptr);

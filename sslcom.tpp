@@ -522,6 +522,9 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int lib_preverify, X509_STORE_
         auto better_name = socle::com::ssl::connection_name(com, true);
 
         _deb("[%s]: SSLCom::ssl_client_vrfy_callback: %d:%s",better_name.c_str(), err, X509_verify_cert_error_string(err));
+
+        auto event = log.event_block();
+
         log.event(ERR, "[%s]: certificate verify problem: %d:%s", better_name.c_str(), err, X509_verify_cert_error_string(err));
 
         if (err_cert) {
@@ -533,6 +536,7 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int lib_preverify, X509_STORE_
                  SSLFactory::print_cn(err_cert).c_str(),
                  SSLFactory::print_issuer(err_cert).c_str());
 
+            log.event_details().emplace(event.eid, com->cert_detail());
         }
         else {
             _dia("[%s]: SSLCom::ssl_client_vrfy_callback: no server certificate", better_name.c_str());
@@ -774,6 +778,15 @@ EC_KEY* baseSSLCom<L4Proto>::ssl_ecdh_callback(SSL* s, int is_export, int key_le
 }
 
 template <class L4Proto>
+std::string baseSSLCom<L4Proto>::cert_detail() {
+    std::stringstream info;
+    info << "Target certificate \r\n" << SSLFactory::print_cert(sslcom_target_cert) << "\r\nIssuer \r\n" << SSLFactory::print_cert(sslcom_target_issuer) << "\r\n";
+    auto ret = info.str();
+
+    return ret;
+}
+
+template <class L4Proto>
 int baseSSLCom<L4Proto>::certificate_status_ocsp_check(baseSSLCom* com) {
 
     inet::cert::VerifyStatus res;
@@ -960,7 +973,8 @@ int baseSSLCom<L4Proto>::certificate_status_ocsp_check(baseSSLCom* com) {
             com->verify_bitreset(VRF_OK);
             com->verify_bitset(VRF_REVOKED);
 
-            log.event(ERR, "[%s]: certificate is revoked (OCSP query)", socle::com::ssl::connection_name(com, true).c_str());
+            auto eid = log.event(ERR, "[%s]: certificate is revoked (OCSP query)", socle::com::ssl::connection_name(com, true).c_str());
+            log.event_details().emplace(eid, com->cert_detail());
 
         } else if (res.revoked == 0) {
             com->verify_bitset(VRF_OK);
@@ -1364,7 +1378,8 @@ int baseSSLCom<L4Proto>::status_resp_callback(SSL* ssl, void* arg) {
             _war("Connection from %s: certificate %s is revoked (stapling OCSP), replacement=%d)", name.c_str(),
                        cn.c_str(),
                        com->opt_failed_certcheck_replacement);
-            log.event(ERR, "[%s]: certificate is revoked (OCSP stapling status)", socle::com::ssl::connection_name(com, true).c_str());
+            auto eid = log.event(ERR, "[%s]: certificate is revoked (OCSP stapling status)", socle::com::ssl::connection_name(com, true).c_str());
+            log.event_details().emplace(eid, com->cert_detail());
 
             return com->opt_failed_certcheck_replacement;
         }

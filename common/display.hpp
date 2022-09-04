@@ -56,7 +56,6 @@ std::string bt(bool add_r=false);
 std::string escape(std::string const& orig, bool ascii_only = false);
 [[maybe_unused]] inline std::string printable(std::string const& orig) {  return escape(orig,true);  }
 int safe_val(std::string const& str_val, int default_val=-1);
-unsigned long long safe_ull_val(const std::string &str_val, unsigned long long default_val);
 std::vector<std::string> args_to_vec(char* argv[], int argc);
 
 
@@ -125,8 +124,8 @@ std::string string_printf(const std::string& fmt, const Args& ... args)
 }
 
 
-std::optional<unsigned long long> safe_ull_value(const std::string &str_val);
-std::optional<long long> safe_ll_value(const std::string &str_val);
+inline std::optional<unsigned long long> safe_ull_value(const std::string &str_val);
+inline std::optional<long long> safe_ll_value(const std::string &str_val);
 
 
 template<typename T>
@@ -144,4 +143,27 @@ inline std::string hex_print(const T* t_data, std::size_t len) {
     return out.str();
 }
 
+inline std::optional<unsigned long long> safe_ull_value(const std::string &str_val) {
+
+    try {
+        return std::stoull(str_val);
+    }
+    catch(std::invalid_argument const&) {}
+    catch(std::out_of_range const& ) {}
+    catch(std::exception const&) {}
+
+    return std::nullopt;
+}
+
+inline std::optional<long long> safe_ll_value(const std::string &str_val) {
+
+    try {
+        return std::stoll(str_val);
+    }
+    catch(std::invalid_argument const&) {}
+    catch(std::out_of_range const& ) {}
+    catch(std::exception const&) {}
+
+    return std::nullopt;
+}
 #endif // DISPLAY_HPP

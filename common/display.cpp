@@ -359,7 +359,7 @@ void chr_cstrlit(unsigned char u, char *buffer, size_t buflen, bool to_print = f
  * - to use string internally
  * - for printing
  * it behaves slightly different way, depending on mode.
- * For internal only, it will escape everything to be escaped, except formating character '%'
+ * For internal only, it will escape everything to be escaped, except formatting character '%'
  * For printing purposes, it will escape only non-printables, + formatting character '%'
  */
 std::string escape(const std::string &orig, bool ascii_only) {
@@ -588,26 +588,3 @@ std::string string_shorten(std::string const& orig, size_t max_len) {
     return orig;
 };
 
-std::optional<unsigned long long> safe_ull_value(const std::string &str_val) {
-
-    try {
-        return std::stoull(str_val);
-    }
-    catch(std::invalid_argument const&) {}
-    catch(std::out_of_range const& ) {}
-    catch(std::exception const&) {}
-
-    return std::nullopt;
-}
-
-std::optional<long long> safe_ll_value(const std::string &str_val) {
-
-    try {
-        return std::stoll(str_val);
-    }
-    catch(std::invalid_argument const&) {}
-    catch(std::out_of_range const& ) {}
-    catch(std::exception const&) {}
-
-    return std::nullopt;
-}

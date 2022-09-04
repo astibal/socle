@@ -57,9 +57,10 @@ struct timer {
 typedef struct timer timer_tt;
 
 struct logger_profile_syslog {
+
     int facility = 23; // local7
-    int severity = 6;  // information;
-    
+    int severity = 6;  // information level
+
     inline int prival() const { return facility * 8 + ( (severity > log::level::DEB) ? log::level::DEB.level() : severity ); };
 };
 
@@ -71,18 +72,18 @@ public:
     [[maybe_unused]]
     typedef enum { FILE=0, REMOTE_RAW=1, REMOTE_SYSLOG=3 } logger_type_t;
     logger_type_t logger_type = FILE;
-    
+
     logger_profile_syslog syslog_settings;
-    
-    virtual ~logger_profile();    
+
+    virtual ~logger_profile();
     loglevel level_ = log::level::INF;
     unsigned int period_ = 5;
     time_t last_period = 0;
     bool last_period_status = false;
-    
+
     //if target is set, should we write also to std::cout?
     bool dup_to_cout_ = true;
-    
+
     //should we print also source with line, if loglevel >= DIA?
     bool print_srcline_ = true;
 
@@ -100,34 +101,70 @@ public:
 };
 
 class Log;
+std::tm get_tm(time_t const& tt);
+unsigned long get_usec();
+
+struct Events {
+    mutable std::mutex events_lock_;
+
+    // eventID,string - eventID can be used to store more details
+    using event_queue_t = std::deque<std::pair<uint64_t, std::string>>;
+    event_queue_t events_; // events ring buffer
+    static inline size_t events_max_ = 1000;
+
+    using event_detail_db_t = std::unordered_map<uint64_t, std::string>;
+    event_detail_db_t event_detail_db_;
+
+    // global eventid counter
+    static inline uint64_t event_count_ = 100L;
+    // if nonzero, current thread uses this exact eid. Use it instead of increment of global counter
+    static inline thread_local uint64_t current_event_id_ = 0L;
+
+    void clear() {
+        auto lc_ = std::scoped_lock(events_lock_);
+        events_.clear();
+        event_detail_db_.clear();
+    }
+    event_queue_t const& entries() const { return events_; }
+    std::mutex& events_lock() const { return events_lock_; };
+    template <class ... Args>
+    uint64_t insert(loglevel const& l, const std::string& fmt, Args ... args);
+    static uint64_t lock_event_id() { if(current_event_id_ > 0L) return current_event_id_; current_event_id_ = ++event_count_; return current_event_id_; }
+    static void release_event_id() { current_event_id_ = 0L; }
+
+    struct event_id_block {
+        event_id_block() = default;
+        event_id_block(event_id_block const&) = default;
+
+        const uint64_t eid = lock_event_id();
+        ~event_id_block() { release_event_id(); }
+    };
+
+    [[nodiscard]] event_id_block event_block() { event_id_block r; return r; }
+    auto& event_details() { return event_detail_db_; }
+};
 
 // inherit default setting from logger_profile
 class LogMux : public logger_profile {
-protected:
 
     mutable std::recursive_mutex mtx_lout;
-    std::map<std::string,timer_tt> timers;
+    std::map<std::string,timer_tt, std::less<>> timers;
     mutable std::mutex mtx_timers;
 
 
     std::map<uint64_t,std::unique_ptr<logger_profile>> target_profiles_;
     std::map<uint64_t,std::string> target_names_;
 
-    mutable std::mutex events_lock_;
-    using event_queue_t = std::deque<std::string>;
-    event_queue_t events_; // events ring buffer
-    static inline size_t events_max_ = 1000;
-
-    friend class Log;
-    LogMux() { level_= log::level::NON; period_ =5; target_names_[0]="unknown";};
+    Events events_;
 public:
+    LogMux() { level_= log::level::NON; period_ =5; target_names_[0]="unknown";};
     ~LogMux() override = default;
 
     inline void level(loglevel const& l) { level_ = l; };
     inline loglevel level() const { return level_; };
 
     inline void dup2_cout(bool b) { dup_to_cout_ = b; }
-    inline bool dup2_cout() { return dup_to_cout_; }
+    inline bool dup2_cout() const { return dup_to_cout_; }
 
     inline void print_srcline(bool b) { print_srcline_ = b; }
     inline bool& print_srcline() { return print_srcline_; }
@@ -136,43 +173,33 @@ public:
 
     bool click_timer (const std::string &xname, int interval);
 
-
     logger_profile::ostream_list_t& targets() { return targets_; }
-    void targets(std::string name, std::ostream* o) { targets_.emplace_back(o, new std::mutex()); target_names_[(uint64_t)o] = name; }
+    void targets(std::string_view name, std::ostream* o) { targets_.emplace_back(o, new std::mutex()); target_names_[(uint64_t)o] = name; }
 
     logger_profile::fd_list_t& remote_targets() { return remote_targets_; }
-    void remote_targets(std::string name, int s) { remote_targets_.emplace_back(s, new std::mutex()); target_names_[s] = name; }
+    void remote_targets(std::string_view name, int s) { remote_targets_.emplace_back(s, new std::mutex()); target_names_[s] = name; }
 
     virtual size_t write_log(loglevel level, std::string& sss);
 
     bool should_log_topic(loglevel& writer, loglevel& msg);
 
     template <class ... Args>
-    void log_simple(const char* str);
+    void log_simple(const char* str) const;
 
     template <class ... Args>
-    void log_simple(std::stringstream& ss);
+    void log_simple(std::stringstream& ss) const;
 
     template <class ... Args>
     void log(loglevel const& l, const std::string& fmt, Args ... args);
 
-    void events_clear() {
-        auto lc_ = std::scoped_lock(events_lock_);
-        events_.clear();
-    }
-    event_queue_t const& events() const { return events_; }
-    std::mutex& events_lock() { return events_lock_; };
     template <class ... Args>
-    void event(loglevel const& l, const std::string& fmt, Args ... args);
-
-    template <class ... Args>
-    void log_w_name(loglevel const& l, std::string n, const std::string& fmt, Args ... args);
+    void log_w_name(loglevel const& l, std::string const& n, const std::string& fmt, Args ... args);
 
     template <class ... Args>
     void log2(loglevel const& l, const char* f, int li, const std::string& fmt, Args ... args);
 
     template <class ... Args>
-    void log2_w_name(loglevel const& l, const char* f, int li, std::string n, const std::string& fmt, Args ... args);
+    void log2_w_name(loglevel const& l, const char* f, int li, std::string const& n, const std::string& fmt, Args ... args);
 
     auto& target_profiles() { return target_profiles_; }
     std::map<uint64_t,std::string>& target_names() { return target_names_; }
@@ -190,8 +217,8 @@ public:
 
     bool periodic_start(unsigned int s);
     bool periodic_end();
-    static std::tm get_tm(time_t const& tt);
-    static unsigned long get_usec();
+
+    Events& events() { return events_; }
 
      // any change in target profiles could imply adjusting internal logging level.
     // For example: having internal level set to 5 (NOTify), so is the file logging level.
@@ -206,8 +233,6 @@ public:
      loglevel adjust_level();
 };
 
-
-
 class Log {
 
 public:
@@ -221,22 +246,21 @@ public:
                                                 "Informat", "Diagnose", "Debug   ", "Dumpit  ", "Extreme "};
 
     static std::string level_name(int l);
-
     static void init() { self = std::make_shared<Log>(); }
-    Log() : lout_(default_logger()) {};
+
 private:
 
-    std::shared_ptr<LogMux> lout_;
+    std::shared_ptr<LogMux> lout_ = default_logger();
     static inline std::shared_ptr<Log> self;
 };
 
 template <class ... Args>
-void LogMux::log_simple(const char* str) {
+void LogMux::log_simple(const char* str) const {
     std::cerr << str << std::endl;
 }
 
 template <class ... Args>
-void LogMux::log_simple(std::stringstream& ss) {
+void LogMux::log_simple(std::stringstream& ss) const {
     std::string s = ss.str();
     ss.clear();
 
@@ -245,7 +269,7 @@ void LogMux::log_simple(std::stringstream& ss) {
 
 
 template <class ... Args>
-void LogMux::event(loglevel const& l, const std::string& fmt, Args ... args) {
+uint64_t Events::insert(loglevel const& l, const std::string& fmt, Args ... args) {
     std::stringstream ss;
 
     if(not flag_test(l.flags(),LOG_FLRAW)) {
@@ -257,11 +281,19 @@ void LogMux::event(loglevel const& l, const std::string& fmt, Args ... args) {
     ss << string_format(fmt.c_str(), args...);
 
     auto lc_ = std::scoped_lock(events_lock_);
-    events_.emplace_back(ss.str());
+
+    auto use_eid = current_event_id_ > 0L ? current_event_id_ : ++event_count_;
+
+    events_.emplace_back( use_eid, ss.str());
 
     if(events_.size() > events_max_) {
+
+        auto eid = events_.front().first;
         events_.pop_front();
+        event_detail_db_.erase(eid);
     }
+
+    return use_eid;
 }
 
 
@@ -299,7 +331,7 @@ void LogMux::log(loglevel const& l, const std::string& fmt, Args ... args) {
 template <class ... Args>
 void LogMux::log2(loglevel const& l, const char* src, int line, const std::string& fmt, Args ... args ) {
 
-    std::lock_guard<std::recursive_mutex> lck(mtx_lout);
+    auto lc_ = std::scoped_lock(mtx_lout);
 
     std::string src_info = string_format("%20s:%-4d: ",src,line);
 
@@ -310,18 +342,18 @@ void LogMux::log2(loglevel const& l, const char* src, int line, const std::strin
 
 
 template <class ... Args>
-void LogMux::log_w_name(loglevel const& l, std::string name, const std::string& fmt, Args ... args) {
+void LogMux::log_w_name(loglevel const& l, std::string const& name, const std::string& fmt, Args ... args) {
 
-    std::lock_guard<std::recursive_mutex> lck(mtx_lout);
+    auto lc_ = std::scoped_lock(mtx_lout);
 
     std::string  str = string_format(fmt.c_str(), args...);
     log(l,string_format("[%s]: ",name.c_str())+str);
 }
 
 template <class ... Args>
-void LogMux::log2_w_name(loglevel const&  l, const char* f, int li, std::string name, const std::string& fmt, Args ... args) {
+void LogMux::log2_w_name(loglevel const&  l, const char* f, int li, std::string const& name, const std::string& fmt, Args ... args) {
 
-    std::lock_guard<std::recursive_mutex> lck(mtx_lout);
+    auto lc_ = std::scoped_lock(mtx_lout);
 
     std::string src_info = string_format("%20s:%-4d: ",f,li);
     std::string c_name = string_format("[%s]: ",name.c_str());

@@ -255,15 +255,30 @@ public:
     }
 
     template<class ... Args>
-    void event(loglevel const& level, const char* fmt, Args ... args) const {
+    uint64_t event(loglevel const& level, const char* fmt, Args ... args) const {
         auto lout = Log::get();
 
         if(lout) {
-            lout->event(level, fmt, args...);
+            return lout->events().insert(level, fmt, args...);
         }
         else {
             std::cerr << "no LogOutput target\n";
         }
+
+        return 0L;
+    }
+
+    auto event_block() const {
+        auto lout = Log::get();
+
+        if(not lout) throw std::runtime_error("no logger to print events!");
+        return lout->events().event_block();
+    }
+    auto& event_details() const {
+        auto lout = Log::get();
+
+        if(not lout) throw std::runtime_error("no logger to print events!");
+        return lout->events().event_details();
     }
 };
 

@@ -62,7 +62,7 @@ logger_profile::~logger_profile() {
     }
 }
 
-unsigned long LogMux::get_usec() {
+unsigned long get_usec() {
     auto now = std::chrono::system_clock::now();
     auto usec_total=
             std::chrono::duration_cast<std::chrono::microseconds>(
@@ -73,7 +73,7 @@ unsigned long LogMux::get_usec() {
     return usec;
 }
 
-std::tm LogMux::get_tm(time_t const& tt) {
+std::tm get_tm(time_t const& tt) {
     std::tm result{};
 
 #ifndef _POSIX_C_SOURCE

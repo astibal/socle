@@ -269,7 +269,7 @@ public:
     std::optional<X509_PAIR> spoof(X509* cert_orig, bool self_sign=false, std::vector<std::string>* additional_sans=nullptr);
      
     static int convert_ASN1TIME(ASN1_TIME*, char*, size_t);
-    static std::string print_cert(X509* cert, int indent=4);
+    static std::string print_cert(X509* cert, int indent=4, bool add_cr=false);
 
     [[maybe_unused]] static std::string print_cn(X509*);
     [[maybe_unused]] static std::string print_issuer(X509* x);
