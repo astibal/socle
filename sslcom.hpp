@@ -423,7 +423,7 @@ public:
     [[maybe_unused]] static int certificate_status_oob_check(baseSSLCom* com, int required);
 
     // helper event functions
-    std::string cert_detail();
+    virtual std::string ssl_error_details();
 
     enum class staple_code_t {
             NOT_PROCESSED,

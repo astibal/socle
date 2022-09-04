@@ -536,7 +536,7 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int lib_preverify, X509_STORE_
                  SSLFactory::print_cn(err_cert).c_str(),
                  SSLFactory::print_issuer(err_cert).c_str());
 
-            log.event_details().emplace(event.eid, com->cert_detail());
+            log.event_details().emplace(event.eid, com->ssl_error_details());
         }
         else {
             _dia("[%s]: SSLCom::ssl_client_vrfy_callback: no server certificate", better_name.c_str());
@@ -778,9 +778,12 @@ EC_KEY* baseSSLCom<L4Proto>::ssl_ecdh_callback(SSL* s, int is_export, int key_le
 }
 
 template <class L4Proto>
-std::string baseSSLCom<L4Proto>::cert_detail() {
+std::string baseSSLCom<L4Proto>::ssl_error_details() {
     std::stringstream info;
-    info << "Target certificate \r\n" << SSLFactory::print_cert(sslcom_target_cert) << "\r\nIssuer \r\n" << SSLFactory::print_cert(sslcom_target_issuer) << "\r\n";
+    info << "Target certificate: \r\n";
+    info << SSLFactory::print_cert(sslcom_target_cert) << "\r\n";
+    info << "Issuer certificate:  \r\n";
+    info << SSLFactory::print_cert(sslcom_target_issuer) << "\r\n";
     auto ret = info.str();
 
     return ret;
@@ -974,7 +977,7 @@ int baseSSLCom<L4Proto>::certificate_status_ocsp_check(baseSSLCom* com) {
             com->verify_bitset(VRF_REVOKED);
 
             auto eid = log.event(ERR, "[%s]: certificate is revoked (OCSP query)", socle::com::ssl::connection_name(com, true).c_str());
-            log.event_details().emplace(eid, com->cert_detail());
+            log.event_details().emplace(eid, com->ssl_error_details());
 
         } else if (res.revoked == 0) {
             com->verify_bitset(VRF_OK);
@@ -1379,7 +1382,7 @@ int baseSSLCom<L4Proto>::status_resp_callback(SSL* ssl, void* arg) {
                        cn.c_str(),
                        com->opt_failed_certcheck_replacement);
             auto eid = log.event(ERR, "[%s]: certificate is revoked (OCSP stapling status)", socle::com::ssl::connection_name(com, true).c_str());
-            log.event_details().emplace(eid, com->cert_detail());
+            log.event_details().emplace(eid, com->ssl_error_details());
 
             return com->opt_failed_certcheck_replacement;
         }
