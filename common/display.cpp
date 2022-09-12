@@ -361,12 +361,13 @@ void chr_cstrlit(unsigned char u, char *buffer, size_t buflen, bool to_print = f
  * it behaves slightly different way, depending on mode.
  * For internal only, it will escape everything to be escaped, except formatting character '%'
  * For printing purposes, it will escape only non-printables, + formatting character '%'
+ * Sometimes is also handy to escape spaces, set `escape_space` if needed.
  */
-std::string escape(const std::string &orig, bool ascii_only) {
+std::string escape(const std::string &orig, bool ascii_only, bool escape_space) {
     std::stringstream ret;
     
     for (char c : orig) {
-        if (isprint(c) && c != '\'' && c != '\"' && c != '\\' && c != '\?' && c != '%') {
+        if (isprint(c) && c != '\'' && c != '\"' && c != '\\' && c != '\?' && c != '%' && c != ' ') {
             ret << c;
         }
         else {
@@ -429,7 +430,13 @@ std::string escape(const std::string &orig, bool ascii_only) {
                 if(! ascii_only)
                     ret << "\\\?";
                 break;
-            
+
+            case ' ':
+                if(escape_space)
+                    ret << "\\ ";
+                else
+                    ret << " ";
+                break;
             
             default:
                 if(! ascii_only) ret << string_format("\\%03o", c);

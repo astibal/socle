@@ -53,7 +53,7 @@ std::string string_error();
 std::string string_error(int code);
 std::string bt(bool add_r=false);
 
-std::string escape(std::string const& orig, bool ascii_only = false);
+std::string escape(std::string const& orig, bool ascii_only = false, bool escape_space = false);
 [[maybe_unused]] inline std::string printable(std::string const& orig) {  return escape(orig,true);  }
 int safe_val(std::string const& str_val, int default_val=-1);
 std::vector<std::string> args_to_vec(char* argv[], int argc);
