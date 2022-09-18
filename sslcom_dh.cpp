@@ -17,7 +17,10 @@
 */
 
 #include <socle_common.hpp>
+
+#ifndef USE_OPENSSL300
 #include <sslcom_dh.hpp>
+
 
 DH *get_dh512()
         {
@@ -420,3 +423,5 @@ ELfDAVXr8IgfORktc+KeGTsFC17ou+t+OiMZX3HXqenAvHkQN7pMcqkgqZqEIVFY
 AoJJgKVpyPA0UjxlGNGjZ3xIg2sYaWjbhyWDqqigyrmaJY0hu3KdyrMCAQI=
 -----END DH PARAMETERS-----
 */
+
+#endif

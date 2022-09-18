@@ -133,10 +133,12 @@ protected:
     //preferred key/cert pair to be loaded, instead of default one
     X509*     sslcom_pref_cert = nullptr;
     EVP_PKEY* sslcom_pref_key  = nullptr;
-	
+
+#ifndef USE_OPENSSL300
     //ECDH parameters
     EC_KEY *sslcom_ecdh = nullptr;
-    
+#endif
+
     //Peer information
     X509* sslcom_target_cert = nullptr;
     X509* sslcom_target_issuer = nullptr;
@@ -295,8 +297,13 @@ public:
 
     static void ssl_msg_callback(int write_p, int version, int content_type, const void *buf, size_t len, SSL *ssl, void *arg);
     static void ssl_info_callback(const SSL *s, int where, int ret);
+#ifndef USE_OPENSSL300
     static DH* ssl_dh_callback(SSL* s, int is_export, int key_length);
+#endif
+
+#ifndef USE_OPENSSL11
     static EC_KEY* ssl_ecdh_callback(SSL* s, int is_export, int key_length);
+#endif
 
     bool is_verify_status_opt_allowed();
     static int status_resp_callback(SSL *s, void *arg);
@@ -355,11 +362,13 @@ public:
             SSL_free(sslcom_ssl);
             sslcom_ssl = nullptr;
         }
-        
+
+#ifndef USE_OPENSSL300
         if(sslcom_ecdh != nullptr) {
             EC_KEY_free(sslcom_ecdh);
             sslcom_ecdh = nullptr;
         }
+#endif
 
         if(sslcom_target_cert != nullptr) X509_free(sslcom_target_cert);
         if(sslcom_target_issuer != nullptr) X509_free(sslcom_target_issuer);

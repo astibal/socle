@@ -727,6 +727,7 @@ unsigned long baseSSLCom<L4Proto>::log_if_error2(unsigned int level, const char*
     return err2;
 }
 
+#ifndef USE_OPENSSL300
 template <class L4Proto>
 DH* baseSSLCom<L4Proto>::ssl_dh_callback(SSL* s, int is_export, int key_length)  {
     void* data = SSL_get_ex_data(s, sslcom_ssl_extdata_index);
@@ -759,8 +760,10 @@ DH* baseSSLCom<L4Proto>::ssl_dh_callback(SSL* s, int is_export, int key_length) 
 
     return nullptr;
 }
+#endif
 
 
+#ifndef  USE_OPENSSL11
 template <class L4Proto>
 EC_KEY* baseSSLCom<L4Proto>::ssl_ecdh_callback(SSL* s, int is_export, int key_length) {
     void* data = SSL_get_ex_data(s, sslcom_ssl_extdata_index);
@@ -776,6 +779,7 @@ EC_KEY* baseSSLCom<L4Proto>::ssl_ecdh_callback(SSL* s, int is_export, int key_le
     _dia("[%s]: SSLCom::ssl_ecdh_callback: %d bits requested", name.c_str(), key_length);
     return nullptr;
 }
+#endif
 
 template <class L4Proto>
 std::string baseSSLCom<L4Proto>::ssl_error_details() {
@@ -1577,12 +1581,24 @@ void baseSSLCom<L4Proto>::init_ssl_callbacks() {
 #ifndef BUILD_RELEASE
     SSL_set_info_callback(sslcom_ssl,ssl_info_callback);
 #endif
+
     if((is_server() && opt_left_kex_dh) || (!is_server() && opt_right_kex_dh)) {
+
+    // Note: various historic and new OpenSSL versions have different
+    //       level of DH/ECDH parameters callback deprecation.
+
+#ifndef USE_OPENSSL300
+        /// OpenSSL 3.x API deprecates DH callbacks
         SSL_set_tmp_dh_callback(sslcom_ssl,ssl_dh_callback);
+#else
+        SSL_set_dh_auto(sslcom_ssl, 1);
+#endif
 
 #ifndef USE_OPENSSL11
         // OpenSSL 1.1 API doesn't seem to contain ECDH callback.
         SSL_set_tmp_ecdh_callback(sslcom_ssl,ssl_ecdh_callback);
+#else
+        SSL_set_ecdh_auto(sslcom_ssl, 1);
 #endif
     }
 
@@ -1706,11 +1722,13 @@ void baseSSLCom<L4Proto>::init_client() {
 template <class L4Proto>
 void baseSSLCom<L4Proto>::init_server() {
 
+#ifndef USE_OPENSSL300
     if(sslcom_ecdh) {
         EC_KEY_free(sslcom_ecdh);
         sslcom_ecdh = nullptr;
     }
-    
+#endif
+
     if(sslcom_ssl) {
         _deb("SSLCom::init_server: freeing old sslcom_ssl");
         SSL_free(sslcom_ssl);
@@ -1749,6 +1767,9 @@ void baseSSLCom<L4Proto>::init_server() {
     if(!opt_left_kex_dh) {
                 my_filter += " !kEECDH !kEDH";
     } else {
+#ifdef USE_OPENSSL300
+        SSL_set1_groups_list(sslcom_ssl, "X25519:P-521:P-384:P-256:ffdhe2048");
+#else
                 // ok, use DH, in that case select 
                 if(sslcom_ecdh == nullptr) {
                     sslcom_ecdh = EC_KEY_new_by_curve_name(NID_X9_62_prime256v1);
@@ -1756,7 +1777,8 @@ void baseSSLCom<L4Proto>::init_server() {
                 if(sslcom_ecdh != nullptr) {
                     // this actually disables ecdh callback
                     SSL_set_tmp_ecdh(sslcom_ssl,sslcom_ecdh);
-                }        
+                }
+#endif
     }
                 
     if(!opt_left_kex_rsa)
@@ -1827,9 +1849,9 @@ bool baseSSLCom<L4Proto>::check_cert (const char* host) {
 
         // cannot proceed, next checks require peer X509 data
         return false;
-    };
+    }
 
-    X509_NAME* x509_name = X509_get_subject_name(peer);
+    auto* x509_name = X509_get_subject_name(peer);
     
     X509_NAME_get_text_by_NID(x509_name,NID_commonName, peer_CN, 255);
 

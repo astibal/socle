@@ -23,6 +23,9 @@
 #include <openssl/dh.h>
 #endif
 
+#include <common/socle_common.hpp>
+
+#ifndef USE_OPENSSL300
 
 DH *get_dh512();
 DH *get_dh768();
@@ -32,5 +35,6 @@ DH *get_dh2048();
 DH *get_dh3072();
 DH *get_dh4096();
 
+#endif
 
 #endif //__SSLCOM_DH_HPP
