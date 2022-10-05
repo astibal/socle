@@ -71,11 +71,11 @@ int UDPCom::translate_socket(int vsock) const {
             
             _dia("UDPCom::translate_socket[%d]: found in table",vsock);
             if(d->socket_left.has_value()) {
-                _dia("UDPCom::translate_socket[%d]: translated to real", vsock, d->socket_left);
+                _dia("UDPCom::translate_socket[%d]: translated to real %d", vsock, d->socket_left.value_or(-1));
                 return d->socket_left.value();
             }
             else {
-                _dia("UDPCom::translate_socket[%d]: translated to tproxy socket ", vsock, d->socket_left);
+                _dia("UDPCom::translate_socket[%d]: no value entry, using virtual socket", vsock);
             }
             // real socket is here bound/connected socket back to source IP.
             // if there is no backward socket, we don't want return TPROXY bound socket, since it can't 
@@ -152,6 +152,29 @@ int UDPCom::bind(short unsigned int port) {
 
 
 int UDPCom::connect(const char* host, const char* port) {
+
+    auto use_cached_connection = [this](std::string const& cache_key) -> std::optional<int> {
+        std::scoped_lock<std::recursive_mutex> l(connections.lock);
+        auto it_fd = connections.cache.find(cache_key);
+
+        if (it_fd != connections.cache.end()) {
+            std::pair<int, int> &cached_fd_ref = it_fd->second;
+
+
+            int cached_fd = cached_fd_ref.first;
+            cached_fd_ref.second++;
+
+            _dia("UDPCom::connect[%s]: found socket %d in connect cache (refcount %d).", cache_key.c_str(), cached_fd,
+                 cache_key.c_str(), cached_fd, cached_fd_ref.second);
+
+            // reuse already opened socket
+            connections.my_key = cache_key;
+
+            return std::make_optional<int>(cached_fd);
+        }
+        return std::nullopt;
+    };
+
     struct addrinfo hints {};
     struct addrinfo *gai_result, *rp;
     int sfd = -1;
@@ -181,83 +204,68 @@ int UDPCom::connect(const char* host, const char* port) {
 
         _deb("UDPCom::connect: gai info found");
 
-        sfd = ::socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
-        if (sfd == -1) {
-            _deb("UDPCom::connect: failed to create socket");
-            continue;
-        }
-
         bool from_cache = false;
         std::string connect_cache_key_cur;
 
-        if(nonlocal_src()) {
 
-            if(so_transparent(sfd) != 0) {
-                _err("UDPCom::connect[%s:%s]: nonlocal socket[%d] transparency failed",host,port,sfd);
-                ::close(sfd);
-                sfd = -1;
-                continue;
-            }
-            else {
-                _dia("UDPCom::connect[%s:%s]: socket[%d] transparency for %s:%d OK", host, port, sfd,
-                     nonlocal_src_host().c_str(), nonlocal_src_port());
-            }
+        try {
+            if (nonlocal_src()) {
 
-            _dia("UDPCom::connect[%s:%s]: About to name socket[%d] after: %s:%d",host,port,sfd,nonlocal_src_host().c_str(),nonlocal_src_port());
+                connect_cache_key_cur = connections.gen_cache_key(host, port).value_or("");
 
-            connect_cache_key_cur = connections.gen_cache_key(host, port).value_or("");
-            
-            std::scoped_lock<std::recursive_mutex> l(connections.lock);
-            int bind_status = namesocket(sfd,nonlocal_src_host(),nonlocal_src_port(),l3_proto());
-
-            if (bind_status != 0) {
-                ::close(sfd);
-                sfd = -1;
-
-                auto it_fd = connections.cache.find(connect_cache_key_cur);
-
-                if(it_fd != connections.cache.end()) {
-                    std::pair<int,int>& cached_fd_ref = it_fd->second;
-
-
-                    int cached_fd = cached_fd_ref.first;
-                    cached_fd_ref.second++;
-
-                    _dia("UDPCom::connect[%s:%s]: found socket %d in connect cache (refcount %d).", host, port, sfd, connect_cache_key_cur.c_str(), cached_fd, cached_fd_ref.second);
-
-                    // reuse already opened socket
-                    sfd = cached_fd;
+                auto c_sfd = use_cached_connection(connect_cache_key_cur);
+                if (c_sfd.has_value()) {
+                    sfd = c_sfd.value_or(-1);
                     from_cache = true;
-                    connections.my_key = connect_cache_key_cur;
+
+                    _dia("UDPCom::connect[%s:%s]: socket[%d] from cache (key: %s)",host,port,sfd, connect_cache_key_cur.c_str());
 
                 } else {
-                    _err("UDPCom::connect[%s:%s]: socket[%d] transparency for %s/%s:%d failed, cannot bind, not cached.", host, port,
-                         sfd,
-                         SocketInfo::inet_family_str(l3_proto()).c_str(), nonlocal_src_host().c_str(), nonlocal_src_port());
-                    continue;
+
+                    sfd = SocketInfo::socket_create(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+
+                    if (so_transparent(sfd) != 0) {
+                        _err("UDPCom::connect[%s:%s]: nonlocal socket[%d] transparency failed", host, port, sfd);
+                        ::close(sfd);
+                        sfd = -1;
+                        continue;
+                    } else {
+                        _dia("UDPCom::connect[%s:%s]: socket[%d] transparency for %s:%d OK", host, port, sfd,
+                             nonlocal_src_host().c_str(), nonlocal_src_port());
+                    }
+
+                    _dia("UDPCom::connect[%s:%s]: About to name socket[%d] after: %s:%d", host, port, sfd,
+                         nonlocal_src_host().c_str(), nonlocal_src_port());
+
+                    int bind_status = namesocket(sfd, nonlocal_src_host(), nonlocal_src_port(), l3_proto());
+                    if (bind_status != 0) {
+                        ::close(sfd);
+                        sfd = -1;
+
+                        _err("UDPCom::connect[%s:%s]: socket[%d] transparency for %s/%s:%d failed, cannot bind, not cached.",
+                             host, port,
+                             sfd,
+                             SocketInfo::inet_family_str(l3_proto()).c_str(), nonlocal_src_host().c_str(),
+                             nonlocal_src_port());
+                        continue;
+                    }
                 }
+
+            } else {
+                sfd = SocketInfo::socket_create(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
             }
         }
+        catch(socket_info_error const& e) {
+            if(sfd >= 0) ::close(sfd);
+            sfd = -1;
 
+            _err("UDPCom::connect[%s:%s]: error: %s", host, port, e.what());
+            continue;
+        }
         
-        //udpcom_addr =    rp->ai_addr;
-        //udpcom_addrlen = rp->ai_addrlen;
         udpcom_addrlen = rp->ai_addrlen;
         ::memcpy(&udpcom_addr,rp->ai_addr,udpcom_addrlen);
         
-        _ext("UDPCom::connect: rp->aiaddrlen = %d",rp->ai_addrlen);
-        _ext("UDPCom::connect: sizeof udpcom_add = %d",sizeof(udpcom_addr));
-        _ext("UDPCom::connect: sizeof sockaddr_storage = %d",sizeof(sockaddr_storage));
-
-        // optimized-out in Release
-        _if_deb {
-            std::string rps;
-            unsigned short rp_port;
-
-            int fa = SocketInfo::inet_ss_address_unpack(((sockaddr_storage*)&udpcom_addr), &rps, &rp_port);
-            _deb("connect[%d]: rp contains: %s/%s:%d", sfd, SocketInfo::inet_family_str(fa).c_str(), rps.c_str(), rp_port);
-        }
-
         if(not from_cache) {
             std::string rps;
             unsigned short rp_port;
@@ -292,16 +300,6 @@ int UDPCom::connect(const char* host, const char* port) {
                      nonlocal_src_host().c_str(), nonlocal_src_port());
 
             }
-        } else {
-            _if_deb {
-                std::string rps;
-                unsigned short rp_port;
-
-                int fa = SocketInfo::inet_ss_address_unpack(((sockaddr_storage *) &udpcom_addr), &rps, &rp_port);
-                _dia("connect[%d]: cache entry found for %s/%s:%d", sfd, SocketInfo::inet_family_str(fa).c_str(),
-                     rps.c_str(), rp_port);
-            }
-            _dia("UDPCom::connect[%s:%s]: socket[%d] from cache",host,port,sfd);
         }
 
 
