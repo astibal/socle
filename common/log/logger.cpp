@@ -192,8 +192,6 @@ size_t LogMux::write_log(loglevel level, std::string& sss) {
         if(::send(rem_target, a.c_str(),a.size(),0) < 0) {
             std::cerr << string_format("logger::write_log: cannot write remote socket: %d", rem_target);
         }
-        
-        //if(target_profiles()[(uint64_t)*i]->dup_to_cout_) really_dup = true;
     }
 
 

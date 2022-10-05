@@ -196,9 +196,6 @@ int SocketInfo::create_socket_left (int l4_proto) {
     pack_src_ss();
     pack_dst_ss();
 
-    //_cons(inet_ss_str(& src_ss.value()).c_str());
-    //_cons(inet_ss_str(& dst_ss.value()).c_str());
-
     auto plug_socket = [&](int fd, sockaddr* bind_ss, sockaddr* connect_ss) {
 
         static std::mutex like_a_barrier;
