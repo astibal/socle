@@ -142,56 +142,61 @@ uint32_t SocketInfo::create_session_key6(sockaddr_storage* from, sockaddr_storag
     return mirand; // however we return it as the key, therefore cast to unsigned int
 }
 
+int SocketInfo::socket_create(int family ,int l4proto, int protocol) {
+    int fd = socket(family, l4proto, protocol);
 
-int SocketInfo::create_socket_left (int l4_proto) {
+    if (fd < 0) {
+        throw socket_info_error("socket call failed");
 
-    auto socket_setup = [&]() -> int {
-        int fd = socket(src_family, l4_proto, 0);
+    }
+    int n;
 
-        if (fd < 0) {
-            throw socket_info_error("socket call failed");
+    if (n = 1; 0 != ::setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &n, sizeof(int))) {
+        throw socket_info_error(string_format("cannot set socket %d option SO_REUSEADDR\n", fd).c_str());
+    }
 
+    if (n = 1; 0 != ::setsockopt(fd, SOL_IP, IP_RECVORIGDSTADDR, &n, sizeof(int))) {
+        throw socket_info_error(string_format("cannot set socket %d option IP_RECVORIGDSTADDR\n", fd).c_str());
+    }
+
+    if (n = 1; 0 != ::setsockopt(fd, SOL_IP, SO_BROADCAST, &n, sizeof(int))) {
+        throw socket_info_error(string_format("cannot set socket %d option SO_BROADCAST\n", fd).c_str());
+    }
+
+    if (int oldf = fcntl(fd, F_GETFL, 0) ; ! (oldf & O_NONBLOCK)) {
+        if (fcntl(fd, F_SETFL, oldf | O_NONBLOCK) < 0) {
+            throw socket_info_error(string_format("Error setting socket %d as non-blocking\n", fd).c_str());
+
+            return -1;
         }
-        int n;
+    }
 
-        if (n = 1; 0 != ::setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &n, sizeof(int))) {
-            throw socket_info_error(string_format("cannot set socket %d option SO_REUSEADDR\n", fd).c_str());
+    return fd;
+}
+
+void SocketInfo::socket_transparent(int fd, int family) {
+
+    int n = 1;
+
+    if(family == AF_INET) {
+        if (n = 1; 0 != ::setsockopt(fd, SOL_IP, IP_TRANSPARENT, &n, sizeof(int))) {
+            throw socket_info_error(string_format("cannot set socket %d option IP_TRANSPARENT\n", fd).c_str());
         }
-
-        if (n = 1; 0 != ::setsockopt(fd, SOL_IP, IP_RECVORIGDSTADDR, &n, sizeof(int))) {
-            throw socket_info_error(string_format("cannot set socket %d option IP_RECVORIGDSTADDR\n", fd).c_str());
+    }
+    else if (family == AF_INET6) {
+        if (n = 1; 0 != ::setsockopt(fd, SOL_IPV6, IPV6_TRANSPARENT, &n, sizeof(int))) {
+            throw socket_info_error(string_format("cannot set socket %d option IPV6_TRANSPARENT\n", fd).c_str());
         }
+    }
+    else {
+        throw socket_info_error("cannot set transparency for unknown family");
+    }
+}
 
-        if (n = 1; 0 != ::setsockopt(fd, SOL_IP, SO_BROADCAST, &n, sizeof(int))) {
-            throw socket_info_error(string_format("cannot set socket %d option SO_BROADCAST\n", fd).c_str());
-        }
+int SocketInfo::create_socket_left(int l4_proto) {
 
-        if(src_family == AF_INET) {
-            if (n = 1; 0 != ::setsockopt(fd, SOL_IP, IP_TRANSPARENT, &n, sizeof(int))) {
-                throw socket_info_error(string_format("cannot set socket %d option IP_TRANSPARENT\n", fd).c_str());
-            }
-        }
-        else if (src_family == AF_INET6) {
-            if (n = 1; 0 != ::setsockopt(fd, SOL_IPV6, IPV6_TRANSPARENT, &n, sizeof(int))) {
-                throw socket_info_error(string_format("cannot set socket %d option IPV6_TRANSPARENT\n", fd).c_str());
-            }
-        }
-        else {
-            throw socket_info_error("cannot set transparency for unknown family");
-        }
-
-        if (int oldf = fcntl(fd, F_GETFL, 0) ; ! (oldf & O_NONBLOCK)) {
-            if (fcntl(fd, F_SETFL, oldf | O_NONBLOCK) < 0) {
-                throw socket_info_error(string_format("Error setting socket %d as non-blocking\n", fd).c_str());
-
-                return -1;
-            }
-        }
-
-        return fd;
-    };
-
-    int fd_left = socket_setup();
+    int fd_left = socket_create(src_family, l4_proto, 0);
+    socket_transparent(fd_left, src_family);
 
     pack_src_ss();
     pack_dst_ss();

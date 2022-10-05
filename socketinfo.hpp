@@ -42,6 +42,10 @@ struct SocketInfo {
     void pack() { pack_src_ss(); pack_dst_ss(); }
     void pack_dst_ss();
     void pack_src_ss();
+
+    static void socket_transparent(int fd, int family);
+    static int socket_create(int family ,int l4proto, int protocol);
+
     int create_socket_left (int l4_proto);
 
 
