@@ -32,6 +32,8 @@ struct SpoofOptions {
 template <class SSLProto>
 class baseSSLMitmCom : public SSLProto {
 public:
+    using verify_status_t = SSLCom::verify_status_t;
+
     virtual ~baseSSLMitmCom() = default;
 
     virtual bool check_cert(const char*);

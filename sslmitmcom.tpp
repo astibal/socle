@@ -40,8 +40,8 @@ bool baseSSLMitmCom<SSLProto>::check_cert(const char* peer_name) {
         remote->sslcom_server_ = true;
         
         SpoofOptions spo;
-        if (this->verify_get() != SSLCom::VRF_OK) {
-            if(!this->opt_failed_certcheck_replacement) {
+        if (this->verify_get() != verify_status_t::VRF_OK) {
+            if(not this->opt.cert.failed_check_replacement) {
                 spo.self_signed = true;
             } else {
 
@@ -68,7 +68,7 @@ bool baseSSLMitmCom<SSLProto>::check_cert(const char* peer_name) {
             bool validated = false;
             std::string validated_san;
 
-            for(std::string& candidate: hostnames) {
+            for(std::string const& candidate: hostnames) {
                 _dia("Target server SAN/CN line: %s",candidate.c_str());
 
                 std::vector<std::string> can_dns = string_split(candidate,',');
@@ -138,9 +138,9 @@ bool baseSSLMitmCom<SSLProto>::check_cert(const char* peer_name) {
             }
             else {
                 _war("SSL hostname check failed (sni %s).",this->sslcom_peer_hello_sni().c_str());
-                this->verify_bitset(SSLCom::VRF_HOSTNAME_FAILED);
+                this->verify_bitset(verify_status_t::VRF_HOSTNAME_FAILED);
 
-                if(!this->opt_failed_certcheck_replacement) {
+                if(!this->opt.cert.failed_check_replacement) {
                     spo.self_signed = true;
                 } else {
                     // if neither DNS nor IP could be added, fallback to self-signed cert
@@ -197,13 +197,8 @@ bool baseSSLMitmCom<SSLProto>::spoof_cert(X509* cert_orig, SpoofOptions& spo) {
     auto const& log = log::mitm();
 
     _deb("SSLMitmCom::spoof_cert[%x]: about to spoof certificate!",this);
-    // get info from the peer certificate
-    //
-    // not used at this time
-    // X509_NAME_get_text_by_NID(X509_get_subject_name(cert_orig),NID_commonName, tmp,512);
-    // std::string cn(tmp);
 
-    std::scoped_lock<std::recursive_mutex> l_(this->factory()->lock());
+    auto lc_ = std::scoped_lock(this->factory()->lock());
 
     std::string store_key = SSLFactory::make_store_key(cert_orig, spo);
 

@@ -93,6 +93,126 @@ namespace socle::ex {
         };
     }
 
+struct SSLComOptionsCert {
+    // unknown issuers
+    bool allow_unknown_issuer = false;
+    bool allow_self_signed_chain = false;
+
+    // common mistakes/misconfigs
+    bool allow_not_valid = false;    //expired or not yet valid
+    bool allow_self_signed = false;  //for depth 0
+
+    bool failed_check_replacement = true; //if this is set to true, opt_allow* above will not cause session to terminate,
+    //it will succeed to connect. It's then up to proxy to display replacement message.
+    //currently works only for port 443, should be extended.
+    bool failed_check_override = false;       //failed ssl replacement will contain option to temporarily allow the connection for the source IP.
+    int  failed_check_override_timeout = 600; // if failed ssl override is active, this is the timeout.
+    int  failed_check_override_timeout_type = 0; // 0 - hard timeout, 1 - idle timeout (reset timer on traffic)
+
+    int client_cert_action = 1;                     // 0 - display a warning message and block, or drop the connection
+    // 1 - pass, don't provide any certificate to server
+    // 2 - bypass next connection
+};
+
+struct SSLComOptionsOcsp {
+    bool stapling_enabled = false; // should we insist on OCSP response?
+    int  stapling_mode = 0;        // 0 - allow all, log unverified. 1 - allow all, but don't allow unverified. 2 - as 1. but require all connections to have stapling reponse
+    bool enforce_in_verify = false;     // stapling was not able to get status, we need use OCSP at the end of verify
+    int  mode = 0;
+};
+
+struct SSLComCryptoFeatures {
+    bool kex_dh = true;       // enable/disable pfs (DHE and ECDHE suites)
+    bool kex_rsa = true;      // enable also kRSA
+    bool allow_sha1 = true;   // should sha1 be enabled?
+    bool allow_rc4 = false;   // should rc4 be enabled?
+    bool allow_aes128 = true; // should we allow aes-128?
+    bool no_tickets = false;  // enable abbreviated TLS handshake
+};
+
+struct SSLComOptions {
+    // total bypass
+    bool bypass = false;
+
+    // Certificate Transparency support
+    bool ct_enable = true;
+    bool alpn_block = false;
+
+    SSLComCryptoFeatures left;
+    SSLComCryptoFeatures right;
+
+    SSLComOptionsCert cert;
+    SSLComOptionsOcsp ocsp;
+};
+
+struct SSLComCounters {
+    int prof_accept_cnt=0;
+    int prof_accept_bypass_cnt=0;
+    int prof_connect_cnt=0;
+    int write_want_read_cur=0; // immediate counter used to rescan socket
+    int read_want_read_cur=0; // immediate counter used to rescan socket
+    int prof_want_read_cnt=0;
+    int write_want_write_cur=0; // immediate counter used to rescan socket
+    int read_want_write_cur=0; // immediate counter used to rescan socket
+
+    int prof_want_write_cnt=0;
+    int prof_write_cnt=0;
+    int prof_read_cnt=0;
+    int prof_peek_cnt=0;
+
+    int prof_accept_ok=0;
+    int prof_connect_ok=0;
+};
+
+namespace socle::com::ssl {
+    enum class staple_code_t {
+        NOT_PROCESSED,
+        MISSING_BODY,
+        PARSING_FAILED,
+        STATUS_NOK,
+        GET_BASIC_FAILED,
+        BASIC_VERIFY_FAILED,
+        CERT_TO_ID_FAILED,
+        NO_FIND_STATUS,
+        INVALID_TIME,
+        SUCCESS
+    };
+
+    enum class verify_origin_t {
+        NONE,
+        OCSP_STAPLING,
+        OCSP_CACHE,
+        OCSP,
+        CRL_CACHE,
+        CRL,
+        EXEMPT
+    };
+
+    // verify status. Added also verify pseudo-status for client cert request.
+    typedef enum {
+        VRF_OK=0x1,
+        VRF_UNKNOWN_ISSUER=0x2,
+        VRF_SELF_SIGNED=0x4,
+        VRF_INVALID=0x8,
+            VRF_SELF_SIGNED_CHAIN=0x10,
+            VRF_REVOKED=0x20,
+            VRF_CLIENT_CERT_RQ=0x40,
+            VRF_HOSTNAME_FAILED=0x80,
+                VRF_CT_MISSING=0x100,
+                VRF_CT_FAILED=0x200,
+                    VRF_DEFERRED=0x1000,
+                    VRF_EXTENDED_INFO=0x2000,
+                    VRF_ALLFAILED=0x4000,
+                    VRF_NOTTESTED=0x8000
+    } verify_status_t;
+
+    typedef enum {
+        VRF_OTHER_SHA1_SIGNATURE=42,  // sha1 signature in the chain
+        VRF_OTHER_CT_INVALID,         // some of CT entries are invalid
+        VRF_OTHER_CT_FAILED,          // add this for each failed CT entry
+    } vrf_other_values_t;
+}
+
 template <class L4Proto>
 class baseSSLCom : public L4Proto, public virtual baseCom {
 
@@ -111,8 +231,6 @@ public:
     client_state_t client_state_ = client_state_t::NONE;
 
     static int extdata_index() { return sslcom_ssl_extdata_index; };
-    static SSL_SESSION* server_get_session_callback(SSL* ssl, const unsigned char* , int, int* );
-    static int new_session_callback(SSL* ssl, SSL_SESSION* session);
 
     SSL* get_SSL() const { return sslcom_ssl; }
     X509* target_cert() const { return sslcom_target_cert; }
@@ -147,8 +265,8 @@ protected:
 	// states of read/writes
 	int sslcom_read_blocked_on_write = 0;
 	
-    int sslcom_write_blocked_on_read=0;
-    int sslcom_write_blocked_on_write=0;
+    int sslcom_write_blocked_on_read = 0;
+    int sslcom_write_blocked_on_write = 0;
 
     //handshake pending flag
 	bool sslcom_waiting=true;
@@ -288,36 +406,17 @@ public:
     int upgrade_server_socket(int s);
 
     bool sslkeylog = false;
-    // openssl API >= 1.1.1
-    static void ssl_keylog_callback(const SSL* ssl, const char* line);
-    // openssl API <=1.1.0
+
     void dump_keys();
 
     bool is_server() const  { return sslcom_server_; }
 protected:
     void is_server(bool b) { sslcom_server_ = b; }
-public:    
-
-    static void ssl_msg_callback(int write_p, int version, int content_type, const void *buf, size_t len, SSL *ssl, void *arg);
-    static void ssl_info_callback(const SSL *s, int where, int ret);
-#ifndef USE_OPENSSL300
-    static DH* ssl_dh_callback(SSL* s, int is_export, int key_length);
-#endif
-
-#ifndef USE_OPENSSL11
-    static EC_KEY* ssl_ecdh_callback(SSL* s, int is_export, int key_length);
-#endif
+public:
 
     bool is_verify_status_opt_allowed();
-    static int status_resp_callback(SSL *s, void *arg);
-    static int ssl_client_cert_callback(SSL *ssl, X509 **x509, EVP_PKEY **pkey);
-    static int ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx);
-    static int ssl_alpn_select_callback(SSL *s, const unsigned char **out, unsigned char *outlen,
-                                        const unsigned char *in, unsigned int inlen,
-                                        void *arg);
     static int check_server_dh_size(SSL* ssl);
     unsigned long log_if_error(unsigned int level, const char* prefix);
-    static unsigned long log_if_error2(unsigned int level, const char* prefix);
     void log_profiling_stats(unsigned int level);
     
 	virtual bool check_cert(const char*);
@@ -381,54 +480,21 @@ public:
     
    
 public:
-    int prof_accept_cnt=0;
-    int prof_accept_bypass_cnt=0;
-    int prof_connect_cnt=0;
-    int write_want_read_cur=0; // immediate counter used to rescan socket
-    int read_want_read_cur=0; // immediate counter used to rescan socket
-    int prof_want_read_cnt=0;
-    int write_want_write_cur=0; // immediate counter used to rescan socket
-    int read_want_write_cur=0; // immediate counter used to rescan socket
+
+    SSLComCounters counters;
+    SSLComOptions opt;
+
+    using verify_origin_t = com::ssl::verify_origin_t;
+    using staple_code_t = com::ssl::staple_code_t;
+    using verify_status_t = com::ssl::verify_status_t;
+    using vrf_other_values_t = com::ssl::vrf_other_values_t;
 
     static const int rescan_threshold_read = 30;
     static const int rescan_threshold_write = 30;
 
-    int prof_want_write_cnt=0;
-    int prof_write_cnt=0;
-    int prof_read_cnt=0;
-    int prof_peek_cnt=0;
-
-    int prof_accept_ok=0;
-    int prof_connect_ok=0;
-
-    
-    // total bypass
-    bool opt_bypass = false;
     bool bypass_me_and_peer();
-    
     static inline const char* ci_def_filter
         = "HIGH RC4 !aNULL !eNULL !LOW !3DES !MD5 !EXP !DSS !PSK !SRP !kECDH !CAMELLIA !IDEA !SEED @STRENGTH";
-    
-    bool opt_left_kex_dh = true;       // enable/disable pfs (DHE and ECDHE suites)
-    bool opt_left_kex_rsa = true;      // enable also kRSA
-    bool opt_left_allow_sha1 = true;   // should sha1 be enabled?
-    bool opt_left_allow_rc4 = false;   // should rc4 be enabled?
-    bool opt_left_allow_aes128 = true; // should we allow aes-128?
-    bool opt_left_no_tickets = false;  // enable abbreviated TLS handshake
-    
-    
-                                       // the same as above, for right side
-    bool opt_right_kex_dh = true;
-    bool opt_right_kex_rsa = true;
-    bool opt_right_allow_sha1 = true;
-    bool opt_right_allow_rc4 = false;
-    bool opt_right_allow_aes128 = true;
-    bool opt_right_no_tickets = false;
-
-    bool opt_ocsp_stapling_enabled = false; // should we insist on OCSP response?
-    int  opt_ocsp_stapling_mode = 0;        // 0 - allow all, log unverified. 1 - allow all, but don't allow unverified. 2 - as 1. but require all connections to have stapling reponse
-    bool opt_ocsp_enforce_in_verify = false;     // stapling was not able to get status, we need use OCSP at the end of verify
-    int  opt_ocsp_mode = 0;
 
     int ocsp_cert_is_revoked = -1;
     [[maybe_unused]] static int certificate_status_ocsp_check(baseSSLCom* com);
@@ -437,79 +503,17 @@ public:
     // helper event functions
     virtual std::string ssl_error_details();
 
-    enum class staple_code_t {
-            NOT_PROCESSED,
-            MISSING_BODY,
-            PARSING_FAILED,
-            STATUS_NOK,
-            GET_BASIC_FAILED,
-            BASIC_VERIFY_FAILED,
-            CERT_TO_ID_FAILED,
-            NO_FIND_STATUS,
-            INVALID_TIME,
-            SUCCESS
-        };
-
-    enum class verify_origin_t {
-        NONE,
-        OCSP_STAPLING,
-        OCSP_CACHE,
-        OCSP,
-        CRL_CACHE,
-        CRL,
-        EXEMPT
-    };
     verify_origin_t verify_origin_ {verify_origin_t::NONE};
     [[nodiscard]] verify_origin_t verify_origin() const { return verify_origin_; }
 
     void verify_origin(verify_origin_t v) { verify_origin_ = v; }
     static std::string verify_origin_str(verify_origin_t const& v);
 
-    static std::pair<typename baseSSLCom<L4Proto>::staple_code_t, int> check_revocation_stapling(std::string const& name, baseSSLCom*, SSL* ssl);
-    
-    // unknown issuers
-    bool opt_allow_unknown_issuer = false;
-    bool opt_allow_self_signed_chain = false;
-    
-    // common mistakes/misconfigs
-    bool opt_allow_not_valid_cert = false;    //expired or not yet valid
-    bool opt_allow_self_signed_cert = false;  //for depth 0
-    
-    bool opt_failed_certcheck_replacement = true; //if this is set to true, opt_allow* above will not cause session to terminate,
-                                                  //it will succeed to connect. It's then up to proxy to display replacement message.
-                                                  //currently works only for port 443, should be extended.
-    bool opt_failed_certcheck_override = false;       //failed ssl replacement will contain option to temporarily allow the connection for the source IP.
-    int  opt_failed_certcheck_override_timeout = 600; // if failed ssl override is active, this is the timeout.
-    int  opt_failed_certcheck_override_timeout_type = 0; // 0 - hard timeout, 1 - idle timeout (reset timer on traffic)
-    
-    int opt_client_cert_action = 1;                     // 0 - display a warning message and block, or drop the connection
-                                                        // 1 - pass, don't provide any certificate to server
-                                                        // 2 - bypass next connection
-    
-    // verify status. Added also verify pseudo-status for client cert request.
-    typedef enum {
-            VRF_OK=0x1,
-            VRF_UNKNOWN_ISSUER=0x2,
-            VRF_SELF_SIGNED=0x4,
-            VRF_INVALID=0x8,
-                    VRF_SELF_SIGNED_CHAIN=0x10,
-                    VRF_REVOKED=0x20,
-                    VRF_CLIENT_CERT_RQ=0x40,
-                    VRF_HOSTNAME_FAILED=0x80,
-                            VRF_CT_MISSING=0x100,
-                            VRF_CT_FAILED=0x200,
-                                    VRF_DEFERRED=0x1000,
-                                    VRF_EXTENDED_INFO=0x2000,
-                                    VRF_ALLFAILED=0x4000,
-                                    VRF_NOTTESTED=0x8000
-    } verify_status_t;
+    static std::pair<staple_code_t, int> check_revocation_stapling(std::string const& name, baseSSLCom*, SSL* ssl);
 
     using vrf_other_list = std::vector<short>;
     vrf_other_list vrf_other_;
-    typedef enum { VRF_OTHER_SHA1_SIGNATURE=42,  // sha1 signature in the chain
-                   VRF_OTHER_CT_INVALID,         // some of CT entries are invalid
-                   VRF_OTHER_CT_FAILED,          // add this for each failed CT entry
-                 } vrf_other_values_t;
+
     vrf_other_list& verify_extended_info() { return vrf_other_; }
 
     [[maybe_unused]] inline void verify_reset(verify_status_t s) { verify_status_ = s; }
@@ -529,47 +533,59 @@ public:
     }
 
 
-    // Certificate Transparency support
-    bool opt_ct_enable = true;
     static int ct_verify_callback(const CT_POLICY_EVAL_CTX *ctx, const STACK_OF(SCT) *scts, void *arg);
-
-    bool opt_alpn_block = false;
 
     static inline int SSLCOM_CLIENTHELLO_TIMEOUT = 3*1000; //in ms
     static inline int SSLCOM_WRITE_TIMEOUT = 60*1000;      //in ms
     static inline int SSLCOM_READ_TIMEOUT = 60*1000;       //in ms
 
 public:
-    static logan_lite& log_cb_info() { static logan_lite l_("com.tls.cb.info");; return l_; };
-    static logan_lite& log_cb_msg() { static logan_lite l_("com.tls.cb.msg");; return l_; };
-    static logan_lite& log_cb_verify() { static logan_lite l_("com.tls.cb.verify");; return l_; };
-    static logan_lite& log_cb_ccert() { static logan_lite l_("com.tls.cb.ccert");; return l_; };
-    static logan_lite& log_cb_session() { static logan_lite l_("com.tls.cb.session");; return l_; };
-    static logan_lite& log_cb_ct() { static logan_lite l_("com.tls.cb.ct");; return l_; };
+    static logan_lite& log_cb_info() { static logan_lite l_("com.tls.cb.info"); return l_; };
+    static logan_lite& log_cb_msg() { static logan_lite l_("com.tls.cb.msg"); return l_; };
+    static logan_lite& log_cb_verify() { static logan_lite l_("com.tls.cb.verify"); return l_; };
+    static logan_lite& log_cb_ccert() { static logan_lite l_("com.tls.cb.ccert"); return l_; };
+    static logan_lite& log_cb_session() { static logan_lite l_("com.tls.cb.session"); return l_; };
+    static logan_lite& log_cb_ct() { static logan_lite l_("com.tls.cb.ct"); return l_; };
     static logan_lite& log_cb_dh() { static logan_lite l_("com.tls.cb.dh"); return l_; };
     static logan_lite& log_cb_ecdh() { static logan_lite l_("com.tls.cb.ecdh"); return l_; };
     static logan_lite& log_cb_alpn() { static logan_lite l_("com.tls.cb.alpn"); return l_; };
 
-    static logan_lite& log_ocsp() { static logan_lite l_("com.tls.ocsp");; return l_; };
-    static logan_lite& log_ssl() { static logan_lite l_("com.tls");; return l_; };
+    static logan_lite& log_ocsp() { static logan_lite l_("com.tls.ocsp"); return l_; };
+    static logan_lite& log_ssl() { static logan_lite l_("com.tls"); return l_; };
 
+    static SSL_SESSION *server_get_session_callback(SSL *ssl, const unsigned char *, int, int *);
+    static int new_session_callback(SSL *ssl, SSL_SESSION *session);
+    static void ssl_keylog_callback(const SSL *ssl, const char *line);
+    static void ssl_msg_callback(int write_p, int version, int content_type, const void *buf, size_t len, SSL *ssl, void *arg);
+    static void ssl_info_callback(const SSL *s, int where, int ret);
+    #ifndef USE_OPENSSL300
+    static DH* ssl_dh_callback(SSL* s, int is_export, int key_length);
+    #endif
+
+    #ifndef USE_OPENSSL11
+    static EC_KEY* ssl_ecdh_callback(SSL* s, int is_export, int key_length);
+    #endif
+    static int status_resp_callback(SSL *s, void *arg);
+    static int ssl_client_cert_callback(SSL *ssl, X509 **x509, EVP_PKEY **pkey);
+    static int ssl_client_vrfy_callback(int ok, X509_STORE_CTX *ctx);
+    static int ssl_alpn_select_callback(SSL *s, const unsigned char **out, unsigned char *outlen,
+                                        const unsigned char *in, unsigned int inlen,
+                                        void *arg);
 
     TYPENAME_OVERRIDE("SSLCom")
     DECLARE_LOGGING(to_string)
 
 private:
-    logan_lite log {"com.tls"};
+    logan_lite& log = log_ssl();
 
-    unsigned int verify_status_ = VRF_NOTTESTED;
+    unsigned int verify_status_ = verify_status_t::VRF_NOTTESTED;
 
     // experimental switch to save SESSION data for left connections - WIP code
     static inline bool EXP_left_session_cache_enabled = false;
 };
 
-
-
-typedef baseSSLCom<TCPCom> SSLCom;
-typedef baseSSLCom<UDPCom> DTLSCom;
+using SSLCom = baseSSLCom<TCPCom>;
+using  DTLSCom = baseSSLCom<UDPCom>;
 
 
 namespace socle::com::ssl {
