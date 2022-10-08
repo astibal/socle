@@ -45,27 +45,15 @@
 
 
 #define DECLARE_LOGGING(get_name_func)  \
-public:                                      \
-    std::string hr() const { hr(get_name_func(iINF)); return hr_; }; \
-    void hr(std::string const& s) const { \
-       std::scoped_lock<std::mutex> l(hr_lock_.mtx_);  \
-       hr_ = s;   \
-    } \
-    static loglevel& log_level_ref() { return log_level(); } \
-    static loglevel& log_level() { static loglevel l = NON; return l; };                             \
-    loglevel& this_log_level_ref() { return this_log_level_; } \
-    virtual loglevel get_this_log_level() const { return this_log_level_ > log_level() ? this_log_level_: log_level() ; }     \
-    virtual void set_this_log_level(loglevel const& nl) { this_log_level_ = nl; }  \
-    struct lock_struct {                    \
-       lock_struct() = default;             \
-       lock_struct(lock_struct const& r) {} \
-       lock_struct& operator=(lock_struct const&) { return *this; } \
-       std::mutex mtx_;                     \
-    };                                      \
-private:                                                       \
-    mutable std::string hr_;                                   \
-    mutable lock_struct hr_lock_; \
-    loglevel this_log_level_ = NON;
+private:                                \
+    mutable logdata_t logdata;           \
+public:                                 \
+    std::string hr(bool update=true) const { if(update or logdata.empty()) hr(get_name_func(iINF)); return logdata.optional().value_or(""); }; \
+    void hr(std::string const& s) const {                    \
+       std::scoped_lock<std::mutex> l(logdata.mtx_);        \
+       logdata.hr_ = s;                                     \
+    }                                                        \
+    static loglevel& log_level() {  return logdata_t::lg_; };  \
 
 
 #define TYPENAME_BASE(string_name)     \

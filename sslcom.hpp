@@ -103,9 +103,9 @@ public:
 
     // get_peer_* return values as captured on the network
     // note: get_peer* don't necessarily return used values
-    std::string get_peer_sni() { return sslcom_peer_hello_sni().c_str(); } //return copy of SNI
-    std::string get_peer_id() { return sslcom_peer_hello_id().c_str(); } //return copy of SNI
-    std::string get_peer_alpn() { return sslcom_peer_hello_alpn(); } //return copy of ALPN
+    std::string get_peer_sni() const { return sslcom_peer_hello_sni(); } //return copy of SNI
+    std::string get_peer_id() const { return sslcom_peer_hello_id(); } //return copy of SNI
+    std::string get_peer_alpn() const { return sslcom_peer_hello_alpn(); } //return copy of ALPN
 
     enum class client_state_t { NONE, INIT, PEER_CLIENTHELLO_WAIT , PEER_CLIENTHELLO_RECVD, CONNECTING, CONNECTED };
     client_state_t client_state_ = client_state_t::NONE;
@@ -217,14 +217,17 @@ protected:
     buffer sslcom_peer_hello_buffer;
 
     std::string sslcom_peer_hello_sni_;
+    std::string sslcom_peer_hello_sni() const { return sslcom_peer_hello_sni_; }
     std::string& sslcom_peer_hello_sni() { return sslcom_peer_hello_sni_; }
 
     std::string sslcom_peer_hello_alpn_;
+    std::string sslcom_peer_hello_alpn() const { return sslcom_peer_hello_alpn_; }
     std::string& sslcom_peer_hello_alpn() { return sslcom_peer_hello_alpn_; }
 
     std::string sslcom_alpn_;
 
     std::string sslcom_peer_hello_id_;
+    std::string sslcom_peer_hello_id() const { return sslcom_peer_hello_id_; }
     std::string& sslcom_peer_hello_id() { return sslcom_peer_hello_id_; }
 
     std::shared_ptr<std::vector<std::string>> sni_filter_to_bypass_;
@@ -290,7 +293,7 @@ public:
     // openssl API <=1.1.0
     void dump_keys();
 
-    bool is_server() { return sslcom_server_; }
+    bool is_server() const  { return sslcom_server_; }
 protected:
     void is_server(bool b) { sslcom_server_ = b; }
 public:    

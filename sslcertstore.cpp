@@ -1306,6 +1306,8 @@ SSLFactory::~SSLFactory() {
 
 std::string SSLFactory::fingerprint(X509* cert) {
 
+    if(not cert) return {};
+
     const EVP_MD *fprint_type = nullptr;
     unsigned fprint_size;
     unsigned char fprint[EVP_MAX_MD_SIZE];

@@ -20,6 +20,7 @@
 #define LOGLEVEL_HPP
 
 #include <string>
+#include <mutex>
 
 #include <display.hpp>
 #include <log/loggermac.hpp>
@@ -37,18 +38,18 @@ class loglevel {
 public:
     explicit loglevel(unsigned int l) noexcept: level_(l), topic_(0) {}
     loglevel(unsigned int l, unsigned int t) noexcept: level_(l), topic_(t) {}
-    loglevel(loglevel& l, unsigned int t)  noexcept: level_(l.level_), topic_(t) {}
-    loglevel(loglevel& l, unsigned int t, unsigned int f)  noexcept: level_(l.level_), topic_(t), flags_(f) {}
-    loglevel(unsigned int l, unsigned int t, loglevelmore* a)  noexcept: level_(l), topic_(t), adv_(a) {}
-    loglevel(loglevel& l, unsigned int t, loglevelmore* a)  noexcept: level_(l.level_), topic_(t), adv_(a) {}
-    loglevel(loglevel& l, unsigned int t, loglevelmore* a, unsigned int f)  noexcept: level_(l.level_), topic_(t), adv_(a), flags_(f) {}
+    loglevel(loglevel const& l, unsigned int t)  noexcept: level_(l.level_), topic_(t) {}
+    loglevel(loglevel const& l, unsigned int t, unsigned int f)  noexcept: level_(l.level_), topic_(t), flags_(f) {}
+    loglevel(unsigned int l, unsigned int t, loglevelmore const* a)  noexcept: level_(l), topic_(t), adv_(a) {}
+    loglevel(loglevel const& l, unsigned int t, loglevelmore const* a)  noexcept: level_(l.level_), topic_(t), adv_(a) {}
+    loglevel(loglevel const& l, unsigned int t, loglevelmore const* a, unsigned int f)  noexcept: level_(l.level_), topic_(t), adv_(a), flags_(f) {}
 
 
     [[nodiscard]] inline unsigned int level() const { return level_; }
     [[nodiscard]] inline unsigned int& level_ref() { return level_; }
 
     [[nodiscard]] inline unsigned int topic() const { return topic_; }
-    [[nodiscard]] inline loglevelmore* more() const { return adv_; }
+    [[nodiscard]] inline loglevelmore const* more() const { return adv_; }
     [[nodiscard]] inline unsigned int flags() const { return flags_; }
     [[nodiscard]] inline std::string subject() const { return subject_; }
     [[nodiscard]] inline std::string area() const { return area_; }
@@ -56,7 +57,7 @@ public:
 
     void level(unsigned int l) { level_ = l; }
     void topic(unsigned int t) { topic_ = t; }
-    void more(loglevelmore* a) { adv_ = a; }
+    void more(loglevelmore const* a) { adv_ = a; }
     void flags(unsigned int f) { flags_ = f; }
     void subject(std::string const& str) { subject_ = str; }
     void area(std::string const& str) { area_ = str; }
@@ -67,7 +68,7 @@ public:
 private:
     unsigned int level_ {iINF};
     unsigned int topic_ {iNON};
-    loglevelmore* adv_{nullptr};
+    loglevelmore const* adv_{nullptr};
 
     unsigned int flags_{LOG_FLNONE};
 
@@ -113,20 +114,34 @@ loglevel operator+(const loglevel& a, const unsigned int& b);
 namespace socle::log::level {
 
 
-    extern loglevel NON;
-    extern loglevel FAT;
-    extern loglevel CRI;
-    extern loglevel ERR;
-    extern loglevel WAR;
-    extern loglevel NOT;
-    extern loglevel INF;
-    extern loglevel DIA;
-    extern loglevel DEB;
-    extern loglevel DUM;
-    extern loglevel EXT;
+    extern const loglevel NON;
+    extern const loglevel FAT;
+    extern const loglevel CRI;
+    extern const loglevel ERR;
+    extern const loglevel WAR;
+    extern const loglevel NOT;
+    extern const loglevel INF;
+    extern const loglevel DIA;
+    extern const loglevel DEB;
+    extern const loglevel DUM;
+    extern const loglevel EXT;
 
-    extern loglevelmore LOG_EXTOPIC;
-    extern loglevelmore LOG_EXEXACT;
+    extern const loglevelmore LOG_EXTOPIC;
+    extern const loglevelmore LOG_EXEXACT;
 }
+
+struct logdata_t {
+    logdata_t() = default;
+    logdata_t(logdata_t const&) {};
+    logdata_t& operator=(logdata_t const&) { return *this; };
+    std::mutex mtx_;
+
+
+    bool empty() const { return not hr_.has_value(); }  \
+    std::optional<std::string> optional() const { return hr_; }  \
+
+    mutable std::optional<std::string> hr_;
+    static inline loglevel lg_ {socle::log::level::NON};
+};
 
 #endif

@@ -270,7 +270,7 @@ bool baseProxy::run_timers () {
             if(idle_check && cx->idle_timeout()) {
                 state().dead(true);
 
-                _dia("%s: timed out!", this->hr().c_str());
+                _dia("%s: timed out!", hr().c_str());
             }
         };
 
@@ -1295,7 +1295,7 @@ int baseProxy::run() {
                     com()->poll();
                 }
 
-                // FIXME: we currently ignore should_rerun:
+                //  We currently ignore should_rerun:
                 //  virtual udp set would trigger loop run on all threads when there are data for single one
                 //  which is a bit expensive.
                 //  This needs to be solved in the future.

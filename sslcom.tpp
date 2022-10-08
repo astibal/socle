@@ -110,24 +110,17 @@ void baseSSLCom<L4Proto>::init(baseHostCX* owner)  {
 
 template <class L4Proto>
 std::string baseSSLCom<L4Proto>::to_string(int verbosity) const {
-
-    bool online = false;
-    if(owner_cx() != nullptr) {
-        online = owner_cx()->online_name;
+    mp::stringstream ss;
+    ss << "SSLCom[" << ( is_server() ? "server] <-" : "client] ->" );
+    if(is_server()) {
+        ss << "sni:" << get_peer_sni() << " alpn: " << get_peer_alpn();
     }
-
-    if( ( not hr_.empty() ) && ! online) {
-        return hr_;
+    else if(auto const* server_side = dynamic_cast<baseSSLCom*>(peer()); server_side) {
+        ss << "sni:" << server_side->get_peer_sni();
     }
+    if(opt_bypass) ss << " bypassed";
 
-    if(owner_cx() != nullptr) {
-        hr(owner_cx()->full_name('L'));
-        return hr_;
-    }
-
-    // last resort
-    hr("baseSSLCom");
-    return hr_;
+    return ss.str().c_str();
 }
 
 // server callback on internal cache miss
@@ -355,9 +348,24 @@ void baseSSLCom<L4Proto>::ssl_msg_callback(int write_p, int version, int content
             
             // if level is Fatal, log com error and close. 
             if(level > 1) {
-                _err("[%s]: SSL alert: %s/%s [%d/%d]", name.c_str(),
+                _err("[%s]: TLS alert: %s/%s [%d/%d]", name.c_str(),
                         SSL_alert_type_string_long(int_code),SSL_alert_desc_string_long(int_code),level,code);
                 com->error(ERROR_UNSPEC);
+
+                auto event = log.event_block();
+
+                const char* side_comment = com->is_server() ? "server side" : "client side";
+
+                log.event(ERR, "[%s|%s]: TLS alert: %s/%s [%d/%d]", com->to_string(iINF).c_str(), side_comment,
+                          SSL_alert_type_string_long(int_code),SSL_alert_desc_string_long(int_code),level,code);
+
+                baseSSLCom* details_com = com;
+                if(com->is_server()) {
+                    details_com = nullptr;
+                    if(com->peer()) details_com = dynamic_cast<baseSSLCom*>(com->peer());
+                }
+
+                if(details_com) log.event_details().emplace(event.eid, details_com->ssl_error_details());
             }
             
         }
@@ -3535,9 +3543,6 @@ int baseSSLCom<L4Proto>::connect(const char* host, const char* port)  {
     _dia("SSLCom::connect[%d]: %s connected",sock,L4Proto::c_type());
     sock = upgrade_client_socket(sock);
 
-//     _err("DIABLING MEM CHECK");
-//     CRYPTO_mem_ctrl(CRYPTO_MEM_CHECK_DISABLE);
-    
     if(upgraded()) {
         _dia("SSLCom::connect[%d]: socket upgraded at 1st attempt!",sock);
     }
@@ -3555,7 +3560,6 @@ bool baseSSLCom<L4Proto>::com_status() {
         }
 
         bool l5_status = sslcom_status();
-        // T__dia("sslcom_status_ok",1,"SSLCom::com_status: returning %d",r);
 
         if(l5_status) {
             if(! is_server()) {

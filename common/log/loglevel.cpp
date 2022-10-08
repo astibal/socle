@@ -20,20 +20,20 @@
 
 namespace socle::log::level {
 
-    loglevel NON = loglevel(0, 0);
-    loglevel FAT = loglevel(1, 0);
-    loglevel CRI = loglevel(2, 0);
-    loglevel ERR = loglevel(3, 0);
-    loglevel WAR = loglevel(4, 0);
-    loglevel NOT = loglevel(5, 0);
-    loglevel INF = loglevel(6, 0);
-    loglevel DIA = loglevel(7, 0);
-    loglevel DEB = loglevel(8, 0);
-    loglevel DUM = loglevel(9, 0);
-    loglevel EXT = loglevel(10, 0);
+    const loglevel NON = loglevel(0, 0);
+    const loglevel FAT = loglevel(1, 0);
+    const loglevel CRI = loglevel(2, 0);
+    const loglevel ERR = loglevel(3, 0);
+    const loglevel WAR = loglevel(4, 0);
+    const loglevel NOT = loglevel(5, 0);
+    const loglevel INF = loglevel(6, 0);
+    const loglevel DIA = loglevel(7, 0);
+    const loglevel DEB = loglevel(8, 0);
+    const loglevel DUM = loglevel(9, 0);
+    const loglevel EXT = loglevel(10, 0);
 
-    loglevelmore LOG_EXTOPIC = loglevelmore(true, false);
-    loglevelmore LOG_EXEXACT = loglevelmore(true, true);
+    const loglevelmore LOG_EXTOPIC = loglevelmore(true, false);
+    const loglevelmore LOG_EXEXACT = loglevelmore(true, true);
 
 }
 
