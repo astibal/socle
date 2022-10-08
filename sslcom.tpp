@@ -113,10 +113,10 @@ std::string baseSSLCom<L4Proto>::to_string(int verbosity) const {
     mp::stringstream ss;
     ss << "SSLCom[" << ( is_server() ? "server] <-" : "client] ->" );
     if(is_server()) {
-        ss << "sni:" << get_peer_sni() << " alpn: " << get_peer_alpn();
+        ss << "sni:" << get_peer_sni() << " alpn: " << sslcom_alpn_;
     }
     else if(auto const* server_side = dynamic_cast<baseSSLCom*>(peer()); server_side) {
-        ss << "sni:" << server_side->get_peer_sni();
+        ss << "sni:" << server_side->get_peer_sni() << " alpn: " << sslcom_alpn_;
     }
     if(opt_bypass) ss << " bypassed";
 
