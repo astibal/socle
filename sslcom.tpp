@@ -2640,6 +2640,9 @@ bool baseSSLCom<L4Proto>::waiting_peer_hello() {
                         // not enough of data
                         return false;
                     }
+
+                    // set peers SNI the same
+                    peer_scom->sslcom_sni() = sslcom_sni();
                     
                     sslcom_peer_hello_received(true);
                     set_monitor(socket());
