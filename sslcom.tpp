@@ -379,7 +379,9 @@ void baseSSLCom<L4Proto>::ssl_msg_callback(int write_p, int version, int content
             if(bits < 768) {
                 if(bits > 0) {
                     _war("  [%s]: server dh key bits equivalent: %d",name.c_str(),bits);
-                    SSL_shutdown(ssl);
+                    if(not sslcom_fatal)
+                        SSL_shutdown(ssl);
+
                     if(com->owner_cx() != nullptr) {
                         com->owner_cx()->error(true);
                     }
@@ -2317,6 +2319,12 @@ ret_handshake baseSSLCom<L4Proto>::handshake() {
             }
             return ret_handshake::AGAIN;
         }
+        else if (err == SSL_ERROR_SYSCALL) {
+
+            auto x_errno = errno;
+            _dia("SSLCom::handshake: SSL_%s[%d]: error_syscall: %d %s", op_descr, socket(), x_errno, (x_errno == 0 ? "EOT from peer" : "" ));
+            return ret_handshake::FATAL;
+        }
         // this is error code produced by SSL_connect via OCSP callback. 
         // Unfortunately this error code is undocumented, added here to make it work
         // our way based on observation.
@@ -2987,8 +2995,14 @@ ssize_t baseSSLCom<L4Proto>::read (int _fd, void* _buf, size_t _n, int _flags ) 
             _dum("SSLCom:: read[%d]: ssl_waiting() returned %d: still waiting", _fd, c);
             return -1;
 
-        } else if (c == ret_handshake::ERROR) {
+        }
+        else if (c == ret_handshake::ERROR) {
             _dia("SSLCom:: read[%d]: ssl_waiting() returned %d: unrecoverable!", _fd, c);
+            return 0;
+        }
+        else if (c == ret_handshake::FATAL) {
+            _dia("SSLCom:: read[%d]: ssl_waiting() returned %d: unexpected termination!", _fd, c);
+            sslcom_fatal = true;
             return 0;
         }
 
@@ -3160,8 +3174,13 @@ ssize_t baseSSLCom<L4Proto>::read (int _fd, void* _buf, size_t _n, int _flags ) 
                 return r;
 
             case SSL_ERROR_SYSCALL:
-                _dia("SSLCom::read[%d]: syscall error", _fd);
-                if(total_r > 0) return total_r;
+                {
+                auto x_errno = errno;
+                _dia("SSLCom::read[%d]: syscall error: %d %s", _fd, x_errno, (x_errno == 0 ? "unexpected EOT from peer" : ""));
+                }
+                sslcom_fatal = true;
+
+                if (total_r > 0) return total_r;
                 return r;
 
             default:
@@ -3220,10 +3239,17 @@ ssize_t baseSSLCom<L4Proto>::write (int _fd, const void* _buf, size_t _n, int _f
             _dum("SSLCom::write[%d]: ssl_waiting() returned %d: still waiting", _fd, c);
             return 0;
 
-        } else if (c == ret_handshake::ERROR) {
+        }
+        else if (c == ret_handshake::ERROR) {
             _dia("SSLCom::write[%d]: ssl_waiting() returned %d: unrecoverable!", _fd, c);
             return -1;
         }
+        else if (c == ret_handshake::FATAL) {
+            _dia("SSLCom::write[%d]: ssl_waiting() returned %d: unexpedted termination!", _fd, c);
+            sslcom_fatal = true;
+            return -1;
+        }
+
         _dia("SSLCom::write[%d]: handshake finished, continue with writing to socket", _fd);
         // if we were waiting, force next round of write
         forced_write(true);
@@ -3382,15 +3408,14 @@ void baseSSLCom<L4Proto>::cleanup()  {
          counters.prof_want_read_cnt   , counters.prof_want_write_cnt   , counters.prof_write_cnt);
     _dia("   prof_accept_ok %d, prof_connect_ok %d", counters.prof_accept_ok, counters.prof_connect_ok);
 
-    if (!sslcom_waiting) {
+    if (not sslcom_waiting and not sslcom_fatal) {
+
         int shit = SSL_shutdown(sslcom_ssl);  //_sh_utdown _it_
         if (shit == 0) {
-                _deb("  shutdown success");
-            }
-        else {
-            if(shit < 0) {
-                _deb("  shutdown failed: %d", SSL_get_error(sslcom_ssl, shit));
-            }
+            _deb("  shutdown success");
+        }
+        else if(shit < 0) {
+            _deb("  shutdown failed: %d", SSL_get_error(sslcom_ssl, shit));
         }
     }
 
@@ -3565,7 +3590,7 @@ bool baseSSLCom<L4Proto>::com_status() {
 template <class L4Proto>
 void baseSSLCom<L4Proto>::shutdown(int _fd) {
     
-    if(sslcom_ssl != nullptr) {
+    if(sslcom_ssl != nullptr and not sslcom_fatal) {
         SSL_shutdown(sslcom_ssl);
     }
     L4Proto::shutdown(_fd);

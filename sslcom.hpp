@@ -80,7 +80,7 @@ struct CompatThreading {
     static void dyn_destroy_function(CompatThreading::CRYPTO_dynlock_value *l, const char *file, int line);
 };
 
-enum class ret_handshake { ERROR=-1, AGAIN=0, SUCCESS=1, BYPASS=2 };
+enum class ret_handshake { FATAL=-2, ERROR=-1, AGAIN=0, SUCCESS=1, BYPASS=2 };
 
 namespace socle::ex {
         class SSL_clienthello_malformed : public std::exception {
@@ -270,6 +270,9 @@ protected:
 
     //handshake pending flag
 	bool sslcom_waiting=true;
+
+    // fatal signalling - no SSL_Shutdown must be called
+    bool sslcom_fatal=false;
     
     //set if we are server/client
 	bool sslcom_server_=false;
