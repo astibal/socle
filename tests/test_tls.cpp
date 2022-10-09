@@ -178,9 +178,9 @@ TEST(TLS_Tests, ParseClientHello_SNI) {
 
     std::stringstream ss;
 
-    std::cout << s.hr() << " SNI: " << s.get_peer_sni() << "\n";
+    std::cout << s.hr() << " SNI: " << s.get_sni() << "\n";
 
-    ASSERT_TRUE(s.get_peer_sni() == "smithproxy.org");
+    ASSERT_TRUE(s.get_sni() == "smithproxy.org");
 }
 
 TEST(TLS_Tests, ParseClientHello_SNI_NoExtensions) {
@@ -224,7 +224,7 @@ TEST(TLS_Tests, ParseClientHello_ALPN) {
 
     std::stringstream ss;
 
-    std::cout << s.hr() << " SNI: " << s.get_peer_sni() << " ALPN: " << s.get_peer_alpn() << "\n";
+    std::cout << s.hr() << " SNI: " << s.get_sni() << " ALPN: " << s.get_peer_alpn() << "\n";
 
     std::stringstream exp;
     exp << static_cast<unsigned char>(0x02);

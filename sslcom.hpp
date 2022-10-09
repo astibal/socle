@@ -223,7 +223,7 @@ public:
 
     // get_peer_* return values as captured on the network
     // note: get_peer* don't necessarily return used values
-    std::string get_peer_sni() const { return sslcom_peer_hello_sni(); } //return copy of SNI
+    std::string get_sni() const { return sslcom_sni(); } //return copy of SNI
     std::string get_peer_id() const { return sslcom_peer_hello_id(); } //return copy of SNI
     std::string get_peer_alpn() const { return sslcom_peer_hello_alpn(); } //return copy of ALPN
 
@@ -337,9 +337,9 @@ protected:
     bool sslcom_peer_hello_received_ = false;
     buffer sslcom_peer_hello_buffer;
 
-    std::string sslcom_peer_hello_sni_;
-    std::string sslcom_peer_hello_sni() const { return sslcom_peer_hello_sni_; }
-    std::string& sslcom_peer_hello_sni() { return sslcom_peer_hello_sni_; }
+    std::string sslcom_sni_;
+    std::string sslcom_sni() const { return sslcom_sni_; }
+    std::string& sslcom_sni() { return sslcom_sni_; }
 
     std::string sslcom_peer_hello_alpn_;
     std::string sslcom_peer_hello_alpn() const { return sslcom_peer_hello_alpn_; }

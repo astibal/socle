@@ -50,8 +50,8 @@ bool baseSSLMitmCom<SSLProto>::check_cert(const char* peer_name) {
 
                 // there is problem, and we do relaxed cert check. Add DNS and IP SAN,
                 // to raise significantly possibility to pass e.g. browser checks
-                if(this->sslcom_peer_hello_sni().size() > 0) {
-                    spo.sans.push_back(string_format("DNS:%s",this->sslcom_peer_hello_sni().c_str()));
+                if(this->sslcom_sni().size() > 0) {
+                    spo.sans.push_back(string_format("DNS:%s", this->sslcom_sni().c_str()));
                 }
                 if(this->owner_cx()) {
                     spo.sans.push_back(string_format("IP:%s",this->owner_cx()->host().c_str()));
@@ -76,7 +76,7 @@ bool baseSSLMitmCom<SSLProto>::check_cert(const char* peer_name) {
                     std::string item = string_trim(can_dns_item);
                     _dia("           SAN/CN entry: '%s'",item.c_str());
 
-                    if(this->sslcom_peer_hello_sni().size() > 0) {
+                    if(this->sslcom_sni().size() > 0) {
                         if(item.size() > 4 && item.find("DNS:") == 0) {
                             item = item.substr(4);
                             std::transform(item.begin(), item.end(), item.begin(), ::tolower);
@@ -86,9 +86,9 @@ bool baseSSLMitmCom<SSLProto>::check_cert(const char* peer_name) {
                             if(item.find("*.") == 0) {
                                 std::string sni_wild;
 
-                                std::size_t firstdot = this->sslcom_peer_hello_sni().find(".");
+                                std::size_t firstdot = this->sslcom_sni().find(".");
                                 if( firstdot != std::string::npos) {
-                                    sni_wild = "*" + this->sslcom_peer_hello_sni().substr(firstdot);
+                                    sni_wild = "*" + this->sslcom_sni().substr(firstdot);
                                     std::transform(sni_wild.begin(), sni_wild.end(), sni_wild.begin(), ::tolower);
                                 }
 
@@ -102,11 +102,11 @@ bool baseSSLMitmCom<SSLProto>::check_cert(const char* peer_name) {
                             // FQDN
                             else {
 
-                                std::string sni = this->sslcom_peer_hello_sni();
+                                std::string sni = this->sslcom_sni();
                                 std::transform(sni.begin(), sni.end(), sni.begin(), ::tolower);
 
-                                if(this->sslcom_peer_hello_sni() == item) {
-                                    _dia("Matched sni: '%s' to cert san/cn: '%s'",this->sslcom_peer_hello_sni().c_str(),item.c_str());
+                                if(this->sslcom_sni() == item) {
+                                    _dia("Matched sni: '%s' to cert san/cn: '%s'", this->sslcom_sni().c_str(), item.c_str());
                                     validated = true;
                                     validated_san = "DNS:" + item;
                                     break;
@@ -137,7 +137,7 @@ bool baseSSLMitmCom<SSLProto>::check_cert(const char* peer_name) {
                 _dia("SSL hostname check succeeded on %s",validated_san.c_str());
             }
             else {
-                _war("SSL hostname check failed (sni %s).",this->sslcom_peer_hello_sni().c_str());
+                _war("SSL hostname check failed (sni %s).", this->sslcom_sni().c_str());
                 this->verify_bitset(verify_status_t::VRF_HOSTNAME_FAILED);
 
                 if(!this->opt.cert.failed_check_replacement) {
@@ -146,8 +146,8 @@ bool baseSSLMitmCom<SSLProto>::check_cert(const char* peer_name) {
                     // if neither DNS nor IP could be added, fallback to self-signed cert
                     spo.self_signed = true;
 
-                    if(this->sslcom_peer_hello_sni().size()) {
-                        spo.sans.push_back(string_format("DNS:%s",this->sslcom_peer_hello_sni().c_str()));
+                    if(this->sslcom_sni().size()) {
+                        spo.sans.push_back(string_format("DNS:%s", this->sslcom_sni().c_str()));
                         spo.self_signed = false;
                     }
                     else

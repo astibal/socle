@@ -111,10 +111,10 @@ std::string baseSSLCom<L4Proto>::to_string(int verbosity) const {
     mp::stringstream ss;
     ss << "SSLCom[" << ( is_server() ? "server] <-" : "client] ->" );
     if(is_server()) {
-        ss << "sni:" << get_peer_sni() << " alpn: " << sslcom_alpn_;
+        ss << "sni:" << get_sni() << " alpn: " << sslcom_alpn_;
     }
-    else if(auto const* server_side = dynamic_cast<baseSSLCom*>(peer()); server_side) {
-        ss << "sni:" << server_side->get_peer_sni() << " alpn: " << sslcom_alpn_;
+    else {
+        ss << "sni:" << get_sni() << " alpn: " << sslcom_alpn_;
     }
     if(opt.bypass) ss << " bypassed";
 
@@ -2137,9 +2137,9 @@ bool baseSSLCom<L4Proto>::handshake_peer_client() {
         // and check all entries in the filter.
 
         if (sni_filter_to_bypass()) {
-            _deb("SSLCom:waiting: check SNI filter for '%s'", sslcom_peer_hello_sni().c_str());
+            _deb("SSLCom:waiting: check SNI filter for '%s'", sslcom_sni().c_str());
 
-            if (! sslcom_peer_hello_sni().empty()) {
+            if (!sslcom_sni().empty()) {
 
                 for (std::string const& filter_element_raw: *sni_filter_to_bypass()) {
 
@@ -2152,17 +2152,17 @@ bool baseSSLCom<L4Proto>::handshake_peer_client() {
 
                     _deb("SSLCom:waiting: check SNI filter: %s %s", filter_element.c_str(), wildcard_planted ? "(*.)" : "");
 
-                    std::size_t pos = sslcom_peer_hello_sni().rfind(filter_element);
-                    if (pos != std::string::npos && pos + filter_element.size() >= sslcom_peer_hello_sni().size()) {
+                    std::size_t pos = sslcom_sni().rfind(filter_element);
+                    if (pos != std::string::npos && pos + filter_element.size() >= sslcom_sni().size()) {
 
                         //ok, we know SNI ends with the filter entry. We need to check if the character BEFORE match pos in SNI is '.' to prevent
                         // match www.mycnn.com with cnn.com SNI entry.
                         bool cont = true;
 
                         if (pos > 0) {
-                            if (sslcom_peer_hello_sni().at(pos - 1) != '.') {
-                                _deb("%s NOT bypassed with sni filter %s", sslcom_peer_hello_sni().c_str(),
-                                       filter_element.c_str());
+                            if (sslcom_sni().at(pos - 1) != '.') {
+                                _deb("%s NOT bypassed with sni filter %s", sslcom_sni().c_str(),
+                                     filter_element.c_str());
                                 cont = false;
                             }
                         }
@@ -2172,8 +2172,8 @@ bool baseSSLCom<L4Proto>::handshake_peer_client() {
                             sni_filter_to_bypass_matched = true;
 
                             if (bypass_me_and_peer()) {
-                                _inf("%s bypassed with sni filter %s %s", sslcom_peer_hello_sni().c_str(),
-                                       filter_element.c_str(), wildcard_planted ? " (*.)" : "");
+                                _inf("%s bypassed with sni filter %s %s", sslcom_sni().c_str(),
+                                     filter_element.c_str(), wildcard_planted ? " (*.)" : "");
                                 return false;
                             } else {
                                 _dia("SSLCom:waiting: SNI filter matched, but peer is not SSLCom");
@@ -2411,7 +2411,7 @@ bool baseSSLCom<L4Proto>::store_session_if_needed() {
             auto peerscom = dynamic_cast<SSLCom*>(peer());
             if(peerscom) {
                 // this is actually mine SNI :)
-                current_sni = peerscom->get_peer_sni();
+                current_sni = peerscom->get_sni();
             }
 
             auto sess = SSL_get0_session(sslcom_ssl);
@@ -2425,8 +2425,8 @@ bool baseSSLCom<L4Proto>::store_session_if_needed() {
 
 
         } else {
-            if (sslcom_peer_hello_sni().length() > 0) {
-                current_sni = sslcom_peer_hello_sni();
+            if (sslcom_sni().length() > 0) {
+                current_sni = sslcom_sni();
             }
         }
         
@@ -2547,7 +2547,7 @@ bool baseSSLCom<L4Proto>::load_session_if_needed() {
             auto* peerscom = dynamic_cast<SSLCom*>(peer());
             if(peerscom) {
                 // this is actually mine SNI :)
-                current_sni = peerscom->get_peer_sni();
+                current_sni = peerscom->get_sni();
             }
 
             pref += owner_cx()->host() + "-";
@@ -2558,8 +2558,8 @@ bool baseSSLCom<L4Proto>::load_session_if_needed() {
             }
 
         } else {
-            if (sslcom_peer_hello_sni().length() > 0) {
-                current_sni = sslcom_peer_hello_sni();
+            if (sslcom_sni().length() > 0) {
+                current_sni = sslcom_sni();
             }
         }
         
@@ -2629,27 +2629,26 @@ bool baseSSLCom<L4Proto>::waiting_peer_hello() {
                         
                         if(bypass_me_and_peer()) {
                             _inf("bypassing non-TLS connection");
+                            log.event(INF, "[%s] cannot read ClientHello: bypassed", peer_scom->to_string(iINF).c_str());
                             return false;
                         }
                         
                         error_flag_ = ERROR_UNSPEC; // peer nullptr or its com() is not SSLCom
                         return false;
                         
-                    } else {
-                        if(parse_hello_result < 0) {
-                            // not enough of data
-                            return false;
-                        }
+                    } else if(parse_hello_result < 0) {
+                        // not enough of data
+                        return false;
                     }
                     
                     sslcom_peer_hello_received(true);
                     set_monitor(socket());
 
-                    if(not sslcom_peer_hello_sni_.empty()) {
+                    if(not sslcom_sni_.empty()) {
 
                         auto lc_ = std::scoped_lock(factory()->lock());
 
-                        auto res_subj = factory()->find_subject_by_fqdn(sslcom_peer_hello_sni_);
+                        auto res_subj = factory()->find_subject_by_fqdn(sslcom_sni_);
                         if(res_subj.has_value()) {
                             _dia("SSLCom::waiting_peer_hello: peer's SNI found in subject cache: '%s'", res_subj.value().c_str());
                             if(! enforce_peer_cert_from_cache(res_subj.value() )) {
@@ -2946,7 +2945,7 @@ unsigned short baseSSLCom<L4Proto>::parse_peer_hello_extensions(buffer& b, unsig
 
             _dia("SSLCom::parse_peer_hello_extensions:    SNI hostname: %s", s.c_str());
 
-            sslcom_peer_hello_sni_ = s;
+            sslcom_sni_ = s;
         }
     }
     else if(ext_id == 16) {
@@ -3449,9 +3448,9 @@ int baseSSLCom<L4Proto>::upgrade_client_socket(int sock) {
             _err("SSLCom::upgrade_client_socket[%d]: failed to create SSL structure!",sock);
         }
 
-        if(not sslcom_peer_hello_sni_.empty()) {
-            _dia("SSLCom::upgrade_client_socket[%d]: set sni extension to: %s",sock, sslcom_peer_hello_sni_.c_str());
-            SSL_set_tlsext_host_name(sslcom_ssl, sslcom_peer_hello_sni_.c_str());
+        if(not sslcom_sni_.empty()) {
+            _dia("SSLCom::upgrade_client_socket[%d]: set sni extension to: %s", sock, sslcom_sni_.c_str());
+            SSL_set_tlsext_host_name(sslcom_ssl, sslcom_sni_.c_str());
         }
 
         if(not opt.alpn_block and not sslcom_peer_hello_alpn_.empty()) {
