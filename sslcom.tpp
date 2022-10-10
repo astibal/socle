@@ -110,12 +110,8 @@ template <class L4Proto>
 std::string baseSSLCom<L4Proto>::to_string(int verbosity) const {
     mp::stringstream ss;
     ss << "SSLCom[" << ( is_server() ? "server] <-" : "client] ->" );
-    if(is_server()) {
-        ss << "sni:" << get_sni() << " alpn: " << sslcom_alpn_;
-    }
-    else {
-        ss << "sni:" << get_sni() << " alpn: " << sslcom_alpn_;
-    }
+    ss << "sni:" << get_sni() << " alpn: " << sslcom_alpn_;
+
     if(opt.bypass) ss << " bypassed";
 
     return ss.str().c_str();
