@@ -1412,11 +1412,9 @@ int baseSSLCom<L4Proto>::ssl_client_cert_callback(SSL* ssl, X509** x509, EVP_PKE
     
     auto* com = static_cast<baseSSLCom*>(data);
     if(com != nullptr) {
-        baseSSLCom* pcom = dynamic_cast<baseSSLCom*>(com->peer());
-        if(pcom != nullptr) {
-            name = pcom->hr();
-        } else {
-            name = com->hr();
+        name = "sni:[" + com->get_sni();
+        if(com->owner_cx()) {
+             name += "]/" + com->owner_cx()->to_string(iINF);
         }
         
         com->verify_bitset(verify_status_t::VRF_CLIENT_CERT_RQ);
@@ -1425,10 +1423,13 @@ int baseSSLCom<L4Proto>::ssl_client_cert_callback(SSL* ssl, X509** x509, EVP_PKE
             case 0:
                 _dia("[%s] sending empty client certificate disabled", name.c_str());
                 if(com->opt.cert.failed_check_replacement) {
-                    _dia("[%s] replacement will be displayed", name.c_str());
+                    _dia("[%s]: client certificate requested - replacement will be displayed", name.c_str());
+                    log.event(INF, "[%s]: client certificate requested - replacement will be displayed", name.c_str());
                     return 0;
                 }
                 else {
+                    _dia("[%s]: client certificate requested - configured to drop connection", name.c_str());
+                    log.event(INF,"[%s]: client certificate requested - configured to drop connection", name.c_str());
                     com->error(ERROR_UNSPEC);
                     return 1;
                 }
@@ -1436,6 +1437,7 @@ int baseSSLCom<L4Proto>::ssl_client_cert_callback(SSL* ssl, X509** x509, EVP_PKE
                 
             case 1:
                 _dia("[%s] sending empty client certificate", name.c_str());
+                log.event(INF,"[%s]: client certificate requested - sent empty", name.c_str());
                 return 0;
                 
             default:
