@@ -144,14 +144,14 @@ namespace socle::com::ssl {
         }
     }
 
-    std::string connection_name(baseCom *com, bool reverse) {
+    std::string connection_name(baseCom const* com, bool reverse) {
 
         if (not com) return {};
 
         std::stringstream ss;
 
-        baseCom *left = reverse ? com->peer() : com;
-        baseCom *right = reverse ? com : com->peer();
+        baseCom const *left = reverse ? com->peer() : com;
+        baseCom const *right = reverse ? com : com->peer();
 
         if (left->owner_cx()) {
             ss << left->owner_cx()->name();
@@ -160,7 +160,7 @@ namespace socle::com::ssl {
         }
         if (right) {
             if (right->owner_cx()) {
-                auto *rssl = dynamic_cast<SSLCom *>(right);
+                auto const *rssl = dynamic_cast<SSLCom const*>(right);
 
                 if (rssl) {
                     auto sni = rssl->get_sni();

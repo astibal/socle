@@ -765,7 +765,7 @@ EC_KEY* baseSSLCom<L4Proto>::ssl_ecdh_callback(SSL* s, int is_export, int key_le
 #endif
 
 template <class L4Proto>
-std::string baseSSLCom<L4Proto>::ssl_error_details() {
+std::string baseSSLCom<L4Proto>::ssl_error_details() const {
     std::stringstream info;
     info << "Target certificate: \r\n";
     info << SSLFactory::print_cert(sslcom_target_cert) << "\r\n";

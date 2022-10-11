@@ -504,7 +504,7 @@ public:
     [[maybe_unused]] static int certificate_status_oob_check(baseSSLCom* com, int required);
 
     // helper event functions
-    virtual std::string ssl_error_details();
+    virtual std::string ssl_error_details() const;
 
     verify_origin_t verify_origin_ {verify_origin_t::NONE};
     [[nodiscard]] verify_origin_t verify_origin() const { return verify_origin_; }
@@ -575,6 +575,8 @@ public:
                                         const unsigned char *in, unsigned int inlen,
                                         void *arg);
 
+    void report_certificate_problem(X509* err_cert, int err_code) const;
+
     TYPENAME_OVERRIDE("SSLCom")
     DECLARE_LOGGING(to_string)
 
@@ -593,7 +595,7 @@ using  DTLSCom = baseSSLCom<UDPCom>;
 
 namespace socle::com::ssl {
     const char* SCT_validation_status_str(sct_validation_status_t const& st);
-    std::string connection_name(baseCom *com, bool reverse);
+    std::string connection_name(baseCom const* com, bool reverse);
 }
 
 
