@@ -446,11 +446,39 @@ int baseSSLCom<L4Proto>::check_server_dh_size(SSL* ssl) {
 #endif
 }
 
+
+template<class L4Proto>
+void baseSSLCom<L4Proto>::report_certificate_problem(X509* err_cert, int err_code) const {
+    auto better_name = socle::com::ssl::connection_name(this, true);
+
+    _deb("[%s]: SSLCom::ssl_client_vrfy_callback: %d:%s",better_name.c_str(), err_code, X509_verify_cert_error_string(err_code));
+
+    auto event = log.event_block();
+
+    log.event(ERR, "[%s]: certificate verify problem: %d:%s", better_name.c_str(), err_code, X509_verify_cert_error_string(err_code));
+
+    if (err_cert) {
+        _dia("[%s]: SSLCom::ssl_client_vrfy_callback: '%s' issued by '%s'", better_name.c_str(),
+             SSLFactory::print_cn(err_cert).c_str(),
+             SSLFactory::print_issuer(err_cert).c_str());
+
+        log.event(ERR, "[%s]: certificate verify problem: '%s' issued by '%s'", better_name.c_str(),
+                  SSLFactory::print_cn(err_cert).c_str(),
+                  SSLFactory::print_issuer(err_cert).c_str());
+
+        log.event_details().emplace(event.eid, ssl_error_details());
+    }
+    else {
+        _dia("[%s]: SSLCom::ssl_client_vrfy_callback: no server certificate", better_name.c_str());
+        log.event(ERR, "%s: no server certificate", better_name.c_str());
+    }
+}
+
 template <class L4Proto>
 int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int lib_preverify, X509_STORE_CTX *ctx) {
 
     X509 * err_cert = X509_STORE_CTX_get_current_cert(ctx);
-    int err =   X509_STORE_CTX_get_error(ctx);
+    int err_code =   X509_STORE_CTX_get_error(ctx);
     int depth = X509_STORE_CTX_get_error_depth(ctx);
     int idx = SSL_get_ex_data_X509_STORE_CTX_idx();
     int callback_return = lib_preverify;
@@ -464,7 +492,9 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int lib_preverify, X509_STORE_
     std::string name = "unknown_cx";
 
     auto* com = static_cast<baseSSLCom*>(data);
-    if(com != nullptr) {
+
+    // update name via expensive dynamic cast only if we diagnose
+    _if_dia if(com != nullptr) {
         
         auto* pcom = dynamic_cast<baseSSLCom*>(com->peer());
         if(pcom != nullptr) {
@@ -518,46 +548,19 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int lib_preverify, X509_STORE_
         com->sslcom_target_issuer_issuer = X509_dup(xcert);
     }
 
-    auto report_cert_issue = [&log, &err, &err_cert, &name, &com]() {
-
-        auto better_name = socle::com::ssl::connection_name(com, true);
-
-        _deb("[%s]: SSLCom::ssl_client_vrfy_callback: %d:%s",better_name.c_str(), err, X509_verify_cert_error_string(err));
-
-        auto event = log.event_block();
-
-        log.event(ERR, "[%s]: certificate verify problem: %d:%s", better_name.c_str(), err, X509_verify_cert_error_string(err));
-
-        if (err_cert) {
-            _dia("[%s]: SSLCom::ssl_client_vrfy_callback: '%s' issued by '%s'", better_name.c_str(),
-                 SSLFactory::print_cn(err_cert).c_str(),
-                 SSLFactory::print_issuer(err_cert).c_str());
-
-            log.event(ERR, "[%s]: certificate verify problem: '%s' issued by '%s'", better_name.c_str(),
-                 SSLFactory::print_cn(err_cert).c_str(),
-                 SSLFactory::print_issuer(err_cert).c_str());
-
-            log.event_details().emplace(event.eid, com->ssl_error_details());
-        }
-        else {
-            _dia("[%s]: SSLCom::ssl_client_vrfy_callback: no server certificate", better_name.c_str());
-            log.event(ERR, "%s: no server certificate", better_name.c_str());
-        }
-    };
-
     if (!lib_preverify) {
-        report_cert_issue();
+        com->report_certificate_problem(err_cert, err_code);
     }
 
-    switch (err)  {
+    switch(err_code)  {
         case X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY:
         case X509_V_ERR_UNABLE_TO_VERIFY_LEAF_SIGNATURE:
         case X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT:
 
-            _dia("[%s]: SSLCom::ssl_client_vrfy_callback: unknown issuer: %d", name.c_str(), err);
+            _dia("[%s]: SSLCom::ssl_client_vrfy_callback: unknown issuer: %d", name.c_str(), err_code);
 
             com->verify_bitset(verify_status_t::VRF_UNKNOWN_ISSUER);
-            report_cert_issue();
+            com->report_certificate_problem(err_cert, err_code);
             if(com->opt.cert.allow_unknown_issuer || com->opt.cert.failed_check_replacement) {
                 callback_return = 1;
             }
@@ -567,10 +570,10 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int lib_preverify, X509_STORE_
         case X509_V_ERR_SELF_SIGNED_CERT_IN_CHAIN:
         case X509_V_ERR_CERT_UNTRUSTED:
 
-            _dia("[%s]: SSLCom::ssl_client_vrfy_callback: self-signed cert in the chain: %d", name.c_str(), err);
+            _dia("[%s]: SSLCom::ssl_client_vrfy_callback: self-signed cert in the chain: %d", name.c_str(), err_code);
 
             com->verify_bitset(verify_status_t::VRF_SELF_SIGNED_CHAIN);
-            report_cert_issue();
+            com->report_certificate_problem(err_cert, err_code);
             if(com->opt.cert.allow_self_signed_chain || com->opt.cert.failed_check_replacement) {
                 callback_return = 1;
             }
@@ -579,10 +582,10 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int lib_preverify, X509_STORE_
 
         case X509_V_ERR_DEPTH_ZERO_SELF_SIGNED_CERT:
 
-            _dia("[%s]: SSLCom::ssl_client_vrfy_callback: end-entity cert is self-signed: %d", name.c_str(), err);
+            _dia("[%s]: SSLCom::ssl_client_vrfy_callback: end-entity cert is self-signed: %d", name.c_str(), err_code);
 
             com->verify_bitset(verify_status_t::VRF_SELF_SIGNED);
-            report_cert_issue();
+            com->report_certificate_problem(err_cert, err_code);
             if(com->opt.cert.allow_self_signed || com->opt.cert.failed_check_replacement) {
                 callback_return = 1;
             }
@@ -595,7 +598,7 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int lib_preverify, X509_STORE_
                     SSLFactory::print_not_before(err_cert).c_str());
 
             com->verify_bitset(verify_status_t::VRF_INVALID);
-            report_cert_issue();
+            com->report_certificate_problem(err_cert, err_code);
             if(com->opt.cert.allow_not_valid || com->opt.cert.failed_check_replacement) {
                 callback_return = 1;
             }
@@ -608,7 +611,7 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int lib_preverify, X509_STORE_
                     SSLFactory::print_not_after(err_cert).c_str());
 
             com->verify_bitset(verify_status_t::VRF_INVALID);
-            report_cert_issue();
+            com->report_certificate_problem(err_cert, err_code);
             if(com->opt.cert.allow_not_valid || com->opt.cert.failed_check_replacement) {
                 callback_return = 1;
             }
@@ -617,24 +620,29 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int lib_preverify, X509_STORE_
         case X509_V_ERR_NO_EXPLICIT_POLICY:
             _dia("[%s]: SSLCom::ssl_client_vrfy_callback: no explicit policy", name.c_str());
             break;
-            
+
+        default:
+            _dia("[%s]: SSLCom::ssl_client_vrfy_callback: unknown verify status %d", name.c_str(), err_code);
     }
     
     
-    if (err == X509_V_OK && lib_preverify == 2) {
-        _dia("[%s]: SSLCom::ssl_client_vrfy_callback: explicit policy", name.c_str());
-    }
+    _if_dia {
+        if (err_code == X509_V_OK && lib_preverify == 2) {
+            _dia("[%s]: SSLCom::ssl_client_vrfy_callback: explicit policy", name.c_str());
+        }
 
-    std::string cn = "unknown";
-    if(xcert != nullptr) {   
-        cn = SSLFactory::print_cn(xcert) + ";"+ SSLFactory::fingerprint(xcert);
-    }
-    _dia("[%s]: SSLCom::ssl_client_vrfy_callback[%d:%s]: returning %s (pre-verify %d)", name.c_str(), depth,cn.c_str(),
-                     (callback_return > 0 ? "ok" : "failed" ), lib_preverify);
+        std::string cn = "unknown";
+        if (xcert != nullptr) {
+            cn = SSLFactory::print_cn(xcert) + ";" + SSLFactory::fingerprint(xcert);
+        }
+        _dia("[%s]: SSLCom::ssl_client_vrfy_callback[%d:%s]: returning %s (pre-verify %d)", name.c_str(), depth,
+             cn.c_str(),
+             (callback_return > 0 ? "ok" : "failed"), lib_preverify);
 
-    if(callback_return <= 0) {
-        _not("[%s]: target server ssl certificate check failed:%d: %s", name.c_str(), err,
-                X509_verify_cert_error_string(err));
+        if (callback_return <= 0) {
+            _not("[%s]: target server ssl certificate check failed:%d: %s", name.c_str(), err_code,
+                 X509_verify_cert_error_string(err_code));
+        }
     }
 
 
@@ -1482,7 +1490,8 @@ int baseSSLCom<L4Proto>::ct_verify_callback(const CT_POLICY_EVAL_CTX *ctx, const
 
                 _dia("ct: sct#%d - ret:%d,%s", i, ret_validate, socle::com::ssl::SCT_validation_status_str(res_validate));
 
-                if(*log.level() > DIA) {
+                // eliminate in Release
+                _if_deb {
                     const CTLOG_STORE *log_store = SSL_CTX_get0_ctlog_store(SSLFactory::factory().default_tls_client_cx());
 
                     BioMemory bm;
@@ -1514,10 +1523,10 @@ int baseSSLCom<L4Proto>::ct_verify_callback(const CT_POLICY_EVAL_CTX *ctx, const
                         case SCT_VALIDATION_STATUS_UNKNOWN_VERSION:
                         default:
                             res_failed++;
-                            continue;
                     }
                 } else {
-                    continue;
+                    // 0 or -1 is failed verification
+                    res_failed++;
                 }
             }
 
@@ -2542,7 +2551,7 @@ bool baseSSLCom<L4Proto>::load_session_if_needed() {
         std::string current_sni;
 
         if(is_server()) {
-            auto* peerscom = dynamic_cast<SSLCom*>(peer());
+            auto const* peerscom = dynamic_cast<SSLCom*>(peer());
             if(peerscom) {
                 // this is actually mine SNI :)
                 current_sni = peerscom->get_sni();
@@ -2703,37 +2712,35 @@ bool baseSSLCom<L4Proto>::waiting_peer_hello() {
 
 template <class L4Proto>
 bool baseSSLCom<L4Proto>::enforce_peer_cert_from_cache(std::string & subj) {
-    if(peer() != nullptr) {
 
-        if(peer()->owner_cx() != nullptr) {
-            _dia("SSLCom::enforce_peer_cert_from_cache: about to force peer's side to use cached certificate");
+    if(peer() and peer()->owner_cx()) {
+        _dia("SSLCom::enforce_peer_cert_from_cache: about to force peer's side to use cached certificate");
 
-            auto lc_ = std::scoped_lock(factory()->lock());
+        auto lc_ = std::scoped_lock(factory()->lock());
 
-            auto parek = factory()->find(subj);
-            if (parek.has_value()) {
-                _dia("Found cached certificate %s based on fqdn search.",subj.c_str());
-                auto* p = dynamic_cast<baseSSLCom*>(peer());
-                if(p != nullptr) {
+        auto parek = factory()->find(subj);
+        if (parek.has_value()) {
+            _dia("Found cached certificate %s based on fqdn search.",subj.c_str());
+            auto* p = dynamic_cast<baseSSLCom*>(peer());
+            if(p != nullptr) {
 
-                    if(p->sslcom_waiting) {
-                        p->sslcom_pref_cert = parek.value().second;
-                        p->sslcom_pref_key = parek.value().first;
-                        //p->init_server(); this will be done automatically, peer was waiting_for_peercom
-                        p->owner_cx()->waiting_for_peercom(false);
-                        _dia("SSLCom::enforce_peer_cert_from_cache: peer certs replaced by SNI lookup, peer was unpaused.");
-                        sslcom_peer_sni_shortcut = true;
+                if(p->sslcom_waiting) {
+                    p->sslcom_pref_cert = parek.value().second;
+                    p->sslcom_pref_key = parek.value().first;
+                    //p->init_server(); this will be done automatically, peer was waiting_for_peercom
+                    p->owner_cx()->waiting_for_peercom(false);
+                    _dia("SSLCom::enforce_peer_cert_from_cache: peer certs replaced by SNI lookup, peer was unpaused.");
+                    sslcom_peer_sni_shortcut = true;
 
-                        return true;
-                    } else {
-                        _dia("SSLCom::enforce_peer_cert_from_cache: cannot modify non-waiting peer!");
-                    }
+                    return true;
                 } else {
-                    _dia("SSLCom::enforce_peer_cert_from_cache: failed to update peer:  it's not SSLCom* type!");
+                    _dia("SSLCom::enforce_peer_cert_from_cache: cannot modify non-waiting peer!");
                 }
             } else {
-                _dia("SSLCom::enforce_peer_cert_from_cache: failed to update initiator with cached certificate: certificate was not found.!");
+                _dia("SSLCom::enforce_peer_cert_from_cache: failed to update peer:  it's not SSLCom* type!");
             }
+        } else {
+            _dia("SSLCom::enforce_peer_cert_from_cache: failed to update initiator with cached certificate: certificate was not found.!");
         }
     }
 
