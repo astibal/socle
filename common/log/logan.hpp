@@ -51,20 +51,39 @@ using namespace log::level;
 #define  _ext  if(false) log.ext
 #define  _dum  if(false) log.dum
 #define  _deb  if(false) log.deb
+#define  _if_ext  if(false)
+#define  _if_dum  if(false)
 #define  _if_deb  if(false)
 #else
 #define  _ext  if(*log.level() >= EXT) log.ext
+#define  _if_ext  if(*log.level() >= EXT)
+
 #define  _dum  if(*log.level() >= DUM) log.dum
+#define  _if_dum  if(*log.level() >= DUM)
+
 #define  _deb  if(*log.level() >= DEB) log.deb
 #define  _if_deb  if(*log.level() >= DEB)
 #endif
 #define  _dia  if(*log.level() >= DIA) log.dia
+#define  _if_dia  if(*log.level() >= DIA)
+
 #define  _inf  if(*log.level() >= INF) log.inf
+#define  _if_inf  if(*log.level() >= INF)
+
 #define  _not  if(*log.level() >= NOT) log.noti
+#define  _if_not  if(*log.level() >= NOT)
+
 #define  _war  if(*log.level() >= WAR) log.war
+#define  _if_war  if(*log.level() >= WAR)
+
 #define  _err  if(*log.level() >= ERR) log.err
+#define  _if_err  if(*log.level() >= ERR)
+
 #define  _cri  if(*log.level() >= CRI) log.cri
+#define  _if_cri  if(*log.level() >= CRI)
+
 #define  _fat  if(*log.level() >= FAT) log.fat
+#define  _if_fat  if(*log.level() >= FAT)
 
 #define  _cons  Log::get()->log_simple
 
@@ -72,9 +91,10 @@ class baseLoganMate {
 public:
     [[nodiscard]] virtual  std::string& class_name() const = 0;
     [[nodiscard]] virtual std::string hr() const = 0;
+    virtual ~baseLoganMate() = default;
 };
 
-class LoganMate : virtual public baseLoganMate {
+class LoganMate : public baseLoganMate {
 private:
     // this object logging
     loglevel  this_log_level_{NON};
