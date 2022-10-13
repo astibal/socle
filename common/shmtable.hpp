@@ -73,17 +73,10 @@ public:
             }
             seen_version(header_version());
 
-
-//             printf("new table version available: %d\n",header_version());
-//             printf("\"successfully authenticated users\" table:\n");
-//             printf("my row_size is %d\n",(int)sizeof(struct logon_info));
-//             printf("version %d: entries %d row_size: %d\n",header_version(), header_entries(),header_rowsize());
-
             unsigned char* records = &data()[sizeof(struct shared_table_header)];
             for (unsigned int n = 0 ; n < header_entries() ; n++) {
                 RowType rec;
                 int sz = rec.load(records);
-                //printf("%s: %16s \t groups: %s\n",inet_ntoa(*(in_addr*)rec->ip),rec->username,rec->groups);
 
                 if(on_new_entry(&rec)) {
                     entries().push_back(rec);
@@ -94,8 +87,6 @@ public:
 
             on_new_finished();
             return entries().size();
-        } else {
-//             printf("same version %d:%d\n",seen_version_,header_version());
         }
 
         return -1;
