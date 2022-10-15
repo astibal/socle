@@ -130,6 +130,13 @@ public:
         constexpr static const char* CA_CERTF = "ca-cert.pem";
         constexpr static const char* CA_KEYF =  "ca-key.pem";
 
+        std::string def_ca_cert_str;
+        std::string def_ca_key_str;
+        std::string def_sr_cert_str;
+        std::string def_sr_key_str;
+        std::string def_cl_cert_str;
+        std::string def_cl_key_str;
+
         constexpr static size_t SSLCERTSTORE_BUFSIZE = 512;
 
         constexpr static size_t CERTSTORE_CACHE_SIZE = socle::size::base_table * cert_multi;
@@ -138,7 +145,7 @@ public:
         constexpr static size_t CRL_CACHE_SIZE = socle::size::base_table * crl_multi;
     };
 
-    static SSLFactory::config_t config;
+    SSLFactory::config_t config;
 
     using X509_PAIR = CertCacheEntry::X509_PAIR;
     using X509_CACHE = ptr_cache<std::string, CertCacheEntry>;
@@ -226,7 +233,7 @@ public:
     }
 
     // creates static instance and calls load() and creates default values
-    static SSLFactory& init();
+    SSLFactory& init();
 
     SSL_CTX* client_ctx_setup(const char* ciphers = nullptr);
     SSL_CTX* server_ctx_setup(EVP_PKEY* priv = nullptr, X509* cert = nullptr, const char* ciphers = nullptr);
@@ -239,6 +246,7 @@ public:
 
     //always use locking when using this class!
     std::recursive_mutex& lock() const { return mutex_cache_write_; };
+    std::atomic_bool is_initialized = false;
 
 
     // get spoofed certificate cache, based on cert's subject

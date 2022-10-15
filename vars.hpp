@@ -50,6 +50,26 @@ namespace socle {
     }
 
     namespace raw {
+
+        struct guard {
+            guard() = delete;
+            guard(std::function<void()> dter): deleter(dter) {}
+            ~guard() {
+                deleter();
+            }
+
+            guard(guard const& r) {
+                if(&r != this) {
+                    deleter = r.deleter;
+                }
+            }
+            void operator=(guard const& v) {
+                deleter = v.deleter;
+            }
+
+            std::function<void()> deleter;
+        };
+
         template <class T>
         struct lax {
             lax() = delete;

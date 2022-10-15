@@ -35,6 +35,23 @@
 #pragma GCC diagnostic pop
 
 
+std::string FILE_to_string(FILE* file) {
+    std::stringstream ss;
+    if(file) {
+        int c = EOF;
+        do {
+            c = fgetc(file);
+            if(feof(file)) break;
+
+            ss << (unsigned char) c;
+        } while(true);
+
+        rewind(file);
+    }
+
+    return ss.str();
+}
+
 bool SSLFactory::load() {
 
     auto lc_ = std::scoped_lock(lock());
@@ -104,6 +121,9 @@ bool SSLFactory::load_ca_cert() {
             EVP_PKEY_free(ca_key);
         }
 
+        config.def_ca_cert_str = FILE_to_string(fp_crt);
+        config.def_ca_key_str = FILE_to_string(fp_key);
+
         ca_cert = PEM_read_X509(fp_crt, nullptr, nullptr, nullptr);
         ca_key = PEM_read_PrivateKey(fp_key, nullptr, nullptr, (void *) certs_password().c_str());
     }();
@@ -146,6 +166,8 @@ bool SSLFactory::load_def_cl_cert() {
             EVP_PKEY_free(def_cl_key);
         }
 
+        config.def_cl_cert_str = FILE_to_string(fp_crt);
+        config.def_cl_key_str = FILE_to_string(fp_key);
         def_cl_cert = PEM_read_X509(fp_crt, nullptr, nullptr, nullptr);
         def_cl_key = PEM_read_PrivateKey(fp_key, nullptr, nullptr, (void *) certs_password().c_str());
     }();
@@ -187,6 +209,8 @@ bool SSLFactory::load_def_sr_cert() {
         if (def_sr_key) {
             EVP_PKEY_free(def_sr_key);
         }
+        config.def_sr_cert_str = FILE_to_string(fp_crt);
+        config.def_sr_key_str = FILE_to_string(fp_key);
 
         def_sr_cert = PEM_read_X509(fp_crt, nullptr, nullptr, nullptr);
         def_sr_key = PEM_read_PrivateKey(fp_key, nullptr, nullptr, (void *) certs_password().c_str());
@@ -341,6 +365,10 @@ SSLFactory& SSLFactory::init () {
     SSLFactory& fac = SSLFactory::factory();
 
     auto lc_ = std::scoped_lock(fac.lock());
+
+    // don't run again if done
+    if(fac.is_initialized) return fac;
+    auto make_initized = raw::guard([&](){ fac.is_initialized = true; });
 
     bool ret = fac.load();
 
