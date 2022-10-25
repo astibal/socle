@@ -134,7 +134,7 @@ namespace raw {
         static_assert(std::is_integral_v<T>, "integral type required.");
         static_assert(std::is_integral_v<U>, "integral type required.");
         static_assert(std::is_signed_v<U>, "sign-cast not needed, converting only signed integrals");
-        static_assert(sizeof(T) == sizeof(U), "converting signed to unsigned for only for same-size types");
+        static_assert(sizeof(T) >= sizeof(U), "converting signed to unsigned for only for same, or larger size types");
 
         if(u >= static_cast<U>(0)) {
             return static_cast<T>(u);
@@ -143,7 +143,6 @@ namespace raw {
             throw cast_overflow("bad_cast: casting negative to unsigned value");
         }
     }
-
 }
 
 #endif
