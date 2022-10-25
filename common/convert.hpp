@@ -9,30 +9,38 @@
 
 namespace raw {
 
+    // get max value of given template parameter type
     template<typename T>
     std::size_t max_of() noexcept {
         static_assert(std::is_integral_v<T>, "integral type required.");
 
         return std::numeric_limits<T>::max();
     }
+
+    // get max value of given argument type - use with target variable to deduce type automatically
     template<typename T>
-    std::size_t max_of(T const& t) noexcept {
+    std::size_t max_of([[maybe_unused]] T const& t) noexcept {
         static_assert(std::is_integral_v<T>, "integral type required.");
 
         return std::numeric_limits<T>::max();
     }
 
+    // `cast_overflow` thrown only from try_* functions
     class cast_overflow : public std::runtime_error {
     public:
         using std::runtime_error::runtime_error;
         explicit cast_overflow() noexcept : std::runtime_error("cast overflow") {};
-        explicit cast_overflow(const char* what) noexcept : std::runtime_error(what) {};
     };
 
+
+    // down_cast larger size parameter value into smaller-size returned value.
     template<typename T, typename U>
     inline std::optional<T> down_cast(std::optional<U> u) noexcept {
-        static_assert(std::is_integral_v<T>, "integral type required.");
-        static_assert(std::is_integral_v<U>, "integral type required.");
+        static_assert(std::is_integral_v<T> and std::is_integral_v<U>, "integral type required.");
+        static_assert(
+                      (std::is_signed_v<T> and std::is_signed_v<U>) or
+                      (not std::is_signed_v<T> and not std::is_signed_v<U>)
+                      , "converted values must have the same sign-ness");
 
         if(not u.has_value()) {
             return std::nullopt;
@@ -66,8 +74,7 @@ namespace raw {
 
     template<typename T, typename U>
     inline std::optional<T> to_signed_cast(std::optional<U> u) {
-        static_assert(std::is_integral_v<T>, "integral type required.");
-        static_assert(std::is_integral_v<U>, "integral type required.");
+        static_assert(std::is_integral_v<T> and std::is_integral_v<U>, "integral types required.");
 
         if(not u.has_value()) {
             return std::nullopt;
@@ -90,8 +97,7 @@ namespace raw {
 
     template<typename T, typename U>
     inline T try_to_signed_cast(U u) {
-        static_assert(std::is_integral_v<T>, "integral type required.");
-        static_assert(std::is_integral_v<U>, "integral type required.");
+        static_assert(std::is_integral_v<T> and std::is_integral_v<U>, "integral types required.");
 
         if(u <= std::numeric_limits<T>::max()) {
             return static_cast<T>(u.value());
@@ -106,9 +112,8 @@ namespace raw {
 
     template<typename T, typename U>
     inline std::optional<T> from_signed_cast(std::optional<U> u) {
-        static_assert(std::is_integral_v<T>, "integral type required.");
-        static_assert(std::is_integral_v<U>, "signed integral type required.");
-        static_assert(std::is_signed_v<U>, "sign-cast not needed, converting only signed integrals");
+        static_assert(std::is_integral_v<T> and std::is_integral_v<U>, "integral types required.");
+        static_assert(std::is_signed_v<U>, "converting only signed integrals");
         static_assert(sizeof(T) >= sizeof(U), "converting signed to unsigned for only for same, or larger size types");
 
         if(not u.has_value()) {
@@ -143,6 +148,32 @@ namespace raw {
             throw cast_overflow("bad_cast: casting negative to unsigned value");
         }
     }
+
+
+    template <typename U>
+    inline auto sign_remove(U u) -> std::optional<std::make_unsigned_t<U>> {
+        static_assert(std::is_integral_v<U> and std::is_signed_v<U>);
+        return from_signed_cast<std::make_unsigned_t<U>>(u);
+    }
+
+    template <typename U>
+    inline auto try_sign_remove(U u) -> std::optional<std::make_unsigned_t<U>> {
+        static_assert(std::is_integral_v<U> and std::is_signed_v<U>);
+        return try_from_signed_cast<std::make_unsigned_t<U>>(u);
+    }
+
+    template <typename U>
+    inline auto sign_add(U u) -> std::optional<std::make_signed_t<U>> {
+        static_assert(std::is_integral_v<U> and std::is_unsigned_v<U>);
+        return to_signed_cast<std::make_signed_t<U>>(u);
+    }
+
+    template <typename U>
+    inline auto try_sign_add(U u) -> std::optional<std::make_signed_t<U>> {
+        static_assert(std::is_integral_v<U> and std::is_unsigned_v<U>);
+        return try_to_signed_cast<std::make_signed_t<U>>(u);
+    }
+
 }
 
 #endif

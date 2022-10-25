@@ -47,11 +47,11 @@ TEST(DownCast, SimpleFail) {
 
 TEST(DownCast, SimpleFail_Signed) {
     uint16_t a = 127;
-    int8_t d = down_cast<int8_t>(a).value_or(0);
+    int8_t d = down_cast<int8_t>(to_signed_cast<int16_t>(a)).value_or(0);
     std::cout << string_format("%d\n", (int)d);
     ASSERT_TRUE(d == 127);
 
-    ASSERT_NO_THROW(down_cast<int8_t>(a));
+    ASSERT_NO_THROW(down_cast<int8_t>(to_signed_cast<int16_t>(a)));
 
     a = 128;
     ASSERT_THROW(try_down_cast<int8_t>(a), cast_overflow);
@@ -118,11 +118,10 @@ TEST(Overflow, test1) {
 TEST(Combine, test1) {
     long port = -345;
 
-    // this statically assert
-    // unsigned short target = from_signed_cast<unsigned short>(port);
-
     // down-cast will succeed, we will fit in the range of signed short
     ASSERT_TRUE(down_cast<short>(port).value_or(-1) == -345);
+
+    //value is however negative, from_signed_cast fails
     ASSERT_TRUE(from_signed_cast<unsigned short>(down_cast<short>(port)).value_or(0) == 0);
 
     // max-value of unsigned short is 65535
@@ -141,4 +140,17 @@ TEST(Combine, test3) {
     int32_t x;
     ASSERT_NO_THROW(x = try_down_cast<int32_t>(difference));  // hehe, this might fail to throw on platforms with huge `int` :)
     ASSERT_THROW(try_down_cast<int16_t>(x), cast_overflow);
+}
+
+TEST(Combine, test4) {
+
+    std::vector<int64_t> val_vec = { 24000, -24000, 1149999647, -1149999647, 2149999647, -2149999647, INT64_MAX, UINT32_MAX, INT32_MAX, INT64_MIN, INT32_MIN };
+
+    for(auto const& v: val_vec) {
+        using my_type = uint32_t;
+
+        my_type x;
+        x = down_cast<my_type>(sign_remove(v)).value_or(0);
+        std::cout << "int64:" << v << " -> " << "uint32:" << x << "\n";
+    }
 }
