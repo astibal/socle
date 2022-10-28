@@ -53,6 +53,22 @@ namespace socle::raw {
         }
     }
 
+    namespace predicates {
+
+        template<typename T>
+        bool is_negative(number<T> const& value) {
+            if constexpr (std::is_signed_v<T>)
+            {
+                if (value.valid())
+                {
+                    return value.value() < 0;
+                }
+                return false;
+            }
+            return false;
+        }
+    }
+
     namespace operators {
 
         template<typename T>
@@ -81,11 +97,7 @@ namespace socle::raw {
             if(not a.valid() or not b.valid()) {
                 return number<T>::nan;
             }
-            else if(traits::same_signness<T,U>::value and traits::same_size<T,U>::value)
-            {
-                return safe_add_(a.value(), static_cast<T>(b.value()));
-            }
-            else if constexpr(traits::can_upcast<T,U>::value)
+            if constexpr(traits::can_static_cast<T,U>::value)
             {
                 return safe_add_(a.value(), static_cast<T>(b.value()));
             }
@@ -98,6 +110,38 @@ namespace socle::raw {
             {
                 auto downcasted = down_cast<T>(b.value());
                 return downcasted.has_value() ? safe_add_(a.value(),downcasted.value()) : number<T>();
+            }
+        }
+
+        template<typename T, typename U,
+                typename = std::enable_if_t<std::is_arithmetic_v<T>>,
+                typename = std::enable_if_t<std::is_arithmetic_v<U>>>
+
+        number<T> operator-(number<T> a, number<U> b) {
+            if(a.is_nan() or b.is_nan()) {
+                return number<T>::nan;
+            }
+            else if(predicates::is_negative(b)) {
+                auto compat_b = number<T>::create(b.value());
+                if(compat_b.is_nan()) return number<T>::nan;
+
+                if(a.value() <= std::numeric_limits<T>::max() - b.value()) {
+                    return number<T>(a.value() - b.value());
+                }
+                else {
+                    return number<T>::nan;
+                }
+            }
+            else {
+                auto compat_b = number<T>::create(b.value());
+                if(compat_b.is_nan()) return number<T>::nan;
+
+                if(a.value() >= std::numeric_limits<T>::min() + compat_b.value()) {
+                    return number<T>(a.value() - b.value());
+                }
+                else {
+                    return number<T>::nan;
+                }
             }
         }
     }

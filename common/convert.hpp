@@ -120,7 +120,7 @@ namespace socle::raw {
             return std::nullopt;
         }
         // if u is non-negative, we can convert or static-upcast
-        else if(u >= static_cast<U>(0)) {
+        else if(u.value() >= static_cast<U>(0)) {
             return static_cast<T>(u.value());
         }
         else {

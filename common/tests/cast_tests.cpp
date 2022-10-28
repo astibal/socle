@@ -178,9 +178,9 @@ TEST(Numops, Add2) {
     using namespace socle::raw;
     using namespace socle::raw::operators;
 
-    number<uint16_t> a = UINT16_MAX - 100;
-    auto b = n8(50);
-    auto val1 = a + b + n16(50);
+    n16_t a = UINT16_MAX - 100;
+    auto b = n8_t(50u);
+    auto val1 = a + b + n16_t(50u);
     ASSERT_TRUE(val1.value() == UINT16_MAX);
 }
 
@@ -189,9 +189,9 @@ TEST(Numops, Add3) {
     using namespace socle::raw;
     using namespace socle::raw::operators;
 
-    n16 a = 1000;
-    n16 b = 50;
-    auto val1 = a + b + n8(50);
+    n16_t a = 1000;
+    n16_t b = 50;
+    auto val1 = a + b + n8_t(50);
     ASSERT_TRUE(val1.is(1100));
 }
 
@@ -201,9 +201,9 @@ TEST(Numops, Add4) {
     using namespace socle::raw::operators;
 
     //number<uint16_t> a = 100000;
-    number<uint16_t> a((int)100000);
+    n16_t a((int)100000);
     number<uint16_t> b = 50;
-    auto val1 = a + b + n8(50);
+    auto val1 = a + b + n8_t(50);
     ASSERT_TRUE(not val1.has_value());
 }
 
@@ -213,15 +213,61 @@ TEST(Numops, Add5) {
     using namespace socle::raw::operators;
 
 
-    n64 a = UINT64_MAX;
-    a = a + n8(1);
+    n64_t a = UINT64_MAX;
+    a = a + n8_t(1);
 
     ASSERT_TRUE(a.is_nan());
 
     a = 0xff00;
-    sn16 b = 0xff;
+    sn16_t b = 0xff;
     a = a + b;
     ASSERT_TRUE(a.value_or(0) == 0xffff);
 
-    a = a - sn16(-15);
+    a = a - sn16_t(-15);
+}
+
+TEST(Numpos, Sub1) {
+    using namespace socle::raw;
+    using namespace socle::raw::operators;
+
+
+    n32_t a = 45;
+    n8_t b = 3;
+    auto c = a - b;
+    ASSERT_TRUE(c.is(42));
+}
+
+
+TEST(Numpos, Sub2) {
+    using namespace socle::raw;
+    using namespace socle::raw::operators;
+
+    n32_t a = 45;
+    n8_t b(-3); // this won't assign
+    auto c = a - b;
+    ASSERT_TRUE(c.is_nan());
+
+    ASSERT_FALSE((traits::can_static_cast<uint32_t, uint64_t>::value));
+    ASSERT_TRUE((traits::can_static_cast<uint64_t, uint32_t>::value));
+
+    sn16_t x = -30;
+    sn32_t y = 20;
+    sn32_t z = x - y;
+
+    ASSERT_TRUE(z.is(-50));
+
+    sn16_t xx = -30000;
+    n16_t yy = 28000;
+    sn64_t zz = xx.promote<sn64_t::type>() - yy.to_signed<sn32_t::type>().promote<sn64_t::type>();
+
+    ASSERT_TRUE(zz.is(-58000));
+
+    n32_t len = 256;
+    int rd = 345;
+
+    auto left = len - n32_t(rd);
+    ASSERT_TRUE(left.is_nan());
+
+    left = len - sn64_t(10);
+    ASSERT_TRUE(left.is(246));
 }
