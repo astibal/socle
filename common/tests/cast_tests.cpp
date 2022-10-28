@@ -179,9 +179,9 @@ TEST(Numops, Add2) {
     using namespace socle::raw::operators;
 
     number<uint16_t> a = UINT16_MAX - 100;
-    number<uint16_t> b = 50;
-    auto val1 = a + b + 50;
-    ASSERT_TRUE(val1 == UINT16_MAX);
+    auto b = n8(50);
+    auto val1 = a + b + n16(50);
+    ASSERT_TRUE(val1.value() == UINT16_MAX);
 }
 
 TEST(Numops, Add3) {
@@ -189,10 +189,10 @@ TEST(Numops, Add3) {
     using namespace socle::raw;
     using namespace socle::raw::operators;
 
-    number<uint16_t> a = 1000;
-    number<uint16_t> b = 50;
-    auto val1 = a + b + 50;
-    ASSERT_TRUE(val1 == 1100);
+    n16 a = 1000;
+    n16 b = 50;
+    auto val1 = a + b + n8(50);
+    ASSERT_TRUE(val1.is(1100));
 }
 
 TEST(Numops, Add4) {
@@ -203,7 +203,25 @@ TEST(Numops, Add4) {
     //number<uint16_t> a = 100000;
     number<uint16_t> a((int)100000);
     number<uint16_t> b = 50;
-    auto val1 = a + b + 50;
+    auto val1 = a + b + n8(50);
     ASSERT_TRUE(not val1.has_value());
 }
 
+
+TEST(Numops, Add5) {
+    using namespace socle::raw;
+    using namespace socle::raw::operators;
+
+
+    n64 a = UINT64_MAX;
+    a = a + n8(1);
+
+    ASSERT_TRUE(a.is_nan());
+
+    a = 0xff00;
+    sn16 b = 0xff;
+    a = a + b;
+    ASSERT_TRUE(a.value_or(0) == 0xffff);
+
+    a = a - sn16(-15);
+}

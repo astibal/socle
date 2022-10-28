@@ -47,7 +47,7 @@ namespace socle::raw {
             return safe_add_(t, vals...);
         } else {
             auto r = safe_add(vals...);
-            if(not r) return number<T>();
+            if(not r.has_value()) return number<T>();
 
             return safe_add_(t, r.value());
         }
@@ -74,30 +74,29 @@ namespace socle::raw {
             }
         }
 
-
-
-
-        template<typename T, typename U>
-        number<T> operator+(number<T> a, U b) {
-            if(not a.has_value()) {
-                return number<T>();
+        template<typename T, typename U,
+                typename = std::enable_if_t<std::is_arithmetic_v<T>>,
+                typename = std::enable_if_t<std::is_arithmetic_v<U>>>
+        number<T> operator+(number<T> a, number<U> b) {
+            if(not a.valid() or not b.valid()) {
+                return number<T>::nan;
             }
             else if(traits::same_signness<T,U>::value and traits::same_size<T,U>::value)
             {
-                return safe_add_(a.value(), static_cast<T>(b));
+                return safe_add_(a.value(), static_cast<T>(b.value()));
             }
             else if constexpr(traits::can_upcast<T,U>::value)
             {
-                return safe_add_(a.value(), static_cast<T>(b));
+                return safe_add_(a.value(), static_cast<T>(b.value()));
             }
             else if constexpr(std::is_unsigned_v<T> and std::is_signed_v<U>)
             {
-                auto downcasted = down_cast<T>(sign_remove(b));
+                auto downcasted = down_cast<T>(sign_remove(b.value()));
                 return downcasted.has_value() ?  safe_add_(a.value(), downcasted.value()) : number<T>();
             }
             else
             {
-                auto downcasted = down_cast<T>(b);
+                auto downcasted = down_cast<T>(b.value());
                 return downcasted.has_value() ? safe_add_(a.value(),downcasted.value()) : number<T>();
             }
         }

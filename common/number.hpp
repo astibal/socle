@@ -71,6 +71,7 @@ namespace socle::raw {
         number() = default;
 
         auto& opt() { return value_; }
+        auto const& opt() const { return value_; }
 
         T value() const { return value_.value(); }
 
@@ -103,11 +104,30 @@ namespace socle::raw {
         }
 
 
-        operator T() { return value(); }
+        operator std::optional<T> () { return value_; }
 
+        bool valid() const { return opt().has_value(); }
+        bool is_nan() const { return not opt().has_value(); }
+
+        bool is(T const& compare_to) const noexcept { if(valid()) return (opt().value() == compare_to); return false;  }
+        bool is(number<T> const& compare_to) const noexcept { if(valid() and compare_to.valid()) return (opt().value() == compare_to.value()); return false;  }
+
+        static inline number<T> nan = number<T>();
     private:
         std::optional <T> value_;
     };
+
+    using n8 = number<uint8_t>;
+    using sn8 = number<int8_t>;
+
+    using n16 = number<uint16_t>;
+    using sn16 = number<int16_t>;
+
+    using n32 = number<uint32_t>;
+    using sn32 = number<int32_t>;
+
+    using n64 = number<uint64_t>;
+    using sn64 = number<int64_t>;
 }
 
 #endif
