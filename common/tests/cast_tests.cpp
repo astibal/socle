@@ -1,9 +1,10 @@
 #include <socle/common/convert.hpp>
+#include <socle/common/numops.hpp>
 #include <socle/common/display.hpp>
 #include <gtest/gtest.h>
 
 
-using namespace raw;
+using namespace socle::raw;
 
 #define print_size(x) \
     std::cout << #x"::max = " << (long long) std::numeric_limits<x>::max() << "\n"; \
@@ -26,7 +27,7 @@ TEST(DownCast, SimpleOk) {
     std::cout << string_format("%d\n", (int)b);
     ASSERT_TRUE(b == 0xff);
 
-    int8_t c = down_cast<int8_t>(a).value_or(0);
+    int8_t c = down_cast<int8_t>(to_signed_cast<int16_t>(a)).value_or(0);
     std::cout << string_format("%d\n", (int)c);
     ASSERT_TRUE(c == 0);
 }
@@ -107,7 +108,7 @@ TEST(FromSigned, Ok) {
 
 TEST(Overflow, test1) {
     uint64_t big = 0xffffffff;
-    uint16_t x = down_cast<uint16_t>(big).value_or(max_of(x));
+    uint16_t x = down_cast<uint16_t>(big).value_or(max_of<uint16_t>());
     uint16_t xx = down_cast<uint16_t>(big).value_or(max_of<uint16_t>());
 
     ASSERT_TRUE(x == std::numeric_limits<uint16_t>::max());
@@ -125,7 +126,7 @@ TEST(Combine, test1) {
     ASSERT_TRUE(from_signed_cast<unsigned short>(down_cast<short>(port)).value_or(0) == 0);
 
     // max-value of unsigned short is 65535
-    unsigned short target = from_signed_cast<unsigned short>(down_cast<short>(port)).value_or(max_of(target));
+    unsigned short target = from_signed_cast<unsigned short>(down_cast<short>(port)).value_or(max_of<unsigned short>());
     std::cout << target << "\n";
     ASSERT_TRUE(target == 65535);
 }
@@ -154,3 +155,55 @@ TEST(Combine, test4) {
         std::cout << "int64:" << v << " -> " << "uint32:" << x << "\n";
     }
 }
+
+
+TEST(Numops, Add) {
+
+    uint16_t a = UINT16_MAX - 100;
+    auto val1 = safe_add(a, (uint16_t)50, (uint16_t)50).value();
+    ASSERT_TRUE(val1 == UINT16_MAX);
+
+    uint16_t inc = 45;
+    uint8_t inc2= 42;
+    auto val2 = safe_add(a, inc, inc, inc, up_cast<uint16_t>(inc2));
+    ASSERT_TRUE(not val2.has_value());
+
+    // this won't compile, s is not arithmetic type
+    //    std::string s("some non-integral");
+    //    auto val2 = safe_add(a, s, s, s, s);
+}
+
+TEST(Numops, Add2) {
+
+    using namespace socle::raw;
+    using namespace socle::raw::operators;
+
+    number<uint16_t> a = UINT16_MAX - 100;
+    number<uint16_t> b = 50;
+    auto val1 = a + b + 50;
+    ASSERT_TRUE(val1 == UINT16_MAX);
+}
+
+TEST(Numops, Add3) {
+
+    using namespace socle::raw;
+    using namespace socle::raw::operators;
+
+    number<uint16_t> a = 1000;
+    number<uint16_t> b = 50;
+    auto val1 = a + b + 50;
+    ASSERT_TRUE(val1 == 1100);
+}
+
+TEST(Numops, Add4) {
+
+    using namespace socle::raw;
+    using namespace socle::raw::operators;
+
+    //number<uint16_t> a = 100000;
+    number<uint16_t> a((int)100000);
+    number<uint16_t> b = 50;
+    auto val1 = a + b + 50;
+    ASSERT_TRUE(not val1.has_value());
+}
+

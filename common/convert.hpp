@@ -7,7 +7,7 @@
 #include <typeinfo>
 #include <type_traits>
 
-namespace raw {
+namespace socle::raw {
 
     // get max value of given template parameter type
     template<typename T>
@@ -73,7 +73,7 @@ namespace raw {
     }
 
     template<typename T, typename U>
-    inline std::optional<T> to_signed_cast(std::optional<U> u) {
+    inline std::optional<T> to_signed_cast(std::optional<U> u) noexcept {
         static_assert(std::is_integral_v<T> and std::is_integral_v<U>, "integral types required.");
 
         if(not u.has_value()) {
@@ -91,7 +91,7 @@ namespace raw {
     }
 
     template<typename T, typename U>
-    inline std::optional<T> to_signed_cast(U u) {
+    inline std::optional<T> to_signed_cast(U u) noexcept {
         return to_signed_cast<T>(std::make_optional<U>(u));
     }
 
@@ -111,7 +111,7 @@ namespace raw {
     }
 
     template<typename T, typename U>
-    inline std::optional<T> from_signed_cast(std::optional<U> u) {
+    inline std::optional<T> from_signed_cast(std::optional<U> u) noexcept {
         static_assert(std::is_integral_v<T> and std::is_integral_v<U>, "integral types required.");
         static_assert(std::is_signed_v<U>, "converting only signed integrals");
         static_assert(sizeof(T) >= sizeof(U), "converting signed to unsigned for only for same, or larger size types");
@@ -129,7 +129,7 @@ namespace raw {
     }
 
     template<typename T, typename U>
-    inline std::optional<T> from_signed_cast(U u) {
+    inline std::optional<T> from_signed_cast(U u) noexcept {
         return from_signed_cast<T>(std::make_optional<U>(u));
     }
 
@@ -151,7 +151,7 @@ namespace raw {
 
 
     template <typename U>
-    inline auto sign_remove(U u) -> std::optional<std::make_unsigned_t<U>> {
+    inline auto sign_remove(U u) noexcept -> std::optional<std::make_unsigned_t<U>> {
         static_assert(std::is_integral_v<U> and std::is_signed_v<U>);
         return from_signed_cast<std::make_unsigned_t<U>>(u);
     }
@@ -163,7 +163,7 @@ namespace raw {
     }
 
     template <typename U>
-    inline auto sign_add(U u) -> std::optional<std::make_signed_t<U>> {
+    inline auto sign_add(U u) noexcept -> std::optional<std::make_signed_t<U>> {
         static_assert(std::is_integral_v<U> and std::is_unsigned_v<U>);
         return to_signed_cast<std::make_signed_t<U>>(u);
     }
@@ -174,6 +174,36 @@ namespace raw {
         return try_to_signed_cast<std::make_signed_t<U>>(u);
     }
 
+    template <typename T, typename U>
+    inline auto down_cast_signed(U u) noexcept -> std::optional<T> {
+        return down_cast<T>(sign_remove(u));
+    }
+
+    template <typename T, typename U>
+    inline auto down_cast_signed(std::optional<U> u) noexcept -> std::optional<T> {
+        return down_cast<T>(sign_remove(u));
+    }
+
+    template <typename T, typename U>
+    inline auto try_down_cast_signed(std::optional<U> u) -> std::optional<T> {
+        return try_down_cast<T>(sign_remove(u));
+    }
+
+
+    template <typename T, typename U>
+    struct greater_trait {
+            constexpr static bool value = sizeof(T) > sizeof(U);
+    };
+
+    template <
+            typename T, typename U,
+            typename = std::enable_if<greater_trait<T,U>::value>,
+            typename = std::enable_if<std::is_arithmetic_v<T>>,
+            typename = std::enable_if<std::is_arithmetic_v<U>>
+    >
+    T up_cast(U u) {
+        return static_cast<T>(u);
+    }
 }
 
 #endif
