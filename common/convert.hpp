@@ -195,9 +195,17 @@ namespace socle::raw {
             constexpr static bool value = sizeof(T) > sizeof(U);
     };
 
+    template <typename T, typename U>
+    struct signness_trait {
+        constexpr static bool value = (std::is_signed_v<T> and std::is_signed_v<U>) or
+                                      (std::is_unsigned_v<T> and std::is_unsigned_v<U>);
+    };
+
+
     template <
             typename T, typename U,
             typename = std::enable_if<greater_trait<T,U>::value>,
+            typename = std::enable_if<signness_trait<T,U>::value>,
             typename = std::enable_if<std::is_arithmetic_v<T>>,
             typename = std::enable_if<std::is_arithmetic_v<U>>
     >

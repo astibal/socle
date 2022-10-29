@@ -18,21 +18,21 @@ namespace socle::raw {
         if constexpr (std::is_signed_v<T>) {
             if(a < 0 and b < 0) {
                 if (std::abs(b) > (std::numeric_limits<T>::max() - abs(a))) {
-                    return number<T>();
+                    return number<T>::nan;
                 }
             }
             else if (a > 0 and b > 0) {
                 // treat positive values separately to avoid unwanted promotions
                 if (b > (std::numeric_limits<T>::max() - a)) {
-                    return number<T>();
+                    return number<T>::nan;
                 }
             }
         }
         else if (b > (std::numeric_limits<T>::max() - a)) {
-            return number<T>();
+            return number<T>::nan;
         }
 
-        return number<T>(a + b);
+        return number<T>(static_cast<T>(a + b));
     }
 
     template<typename T, typename... Ts>
@@ -126,7 +126,8 @@ namespace socle::raw {
                 if(compat_b.is_nan()) return number<T>::nan;
 
                 if(a.value() <= std::numeric_limits<T>::max() - b.value()) {
-                    return number<T>(a.value() - b.value());
+                    // we are in limits, static cast is safe
+                    return number<T>(static_cast<T>(a.value() - b.value()));
                 }
                 else {
                     return number<T>::nan;
@@ -137,7 +138,8 @@ namespace socle::raw {
                 if(compat_b.is_nan()) return number<T>::nan;
 
                 if(a.value() >= std::numeric_limits<T>::min() + compat_b.value()) {
-                    return number<T>(a.value() - b.value());
+                    // we are in limits, static cast is safe
+                    return number<T>(static_cast<T>(a.value() - b.value()));
                 }
                 else {
                     return number<T>::nan;

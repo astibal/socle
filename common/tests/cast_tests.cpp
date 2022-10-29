@@ -160,7 +160,8 @@ TEST(Combine, test4) {
 TEST(Numops, Add) {
 
     uint16_t a = UINT16_MAX - 100;
-    auto val1 = safe_add(a, (uint16_t)50, (uint16_t)50).value();
+    auto val1 = safe_add(a, (uint16_t)50u, (uint16_t)50u).value();
+
     ASSERT_TRUE(val1 == UINT16_MAX);
 
     uint16_t inc = 45;
@@ -178,7 +179,7 @@ TEST(Numops, Add2) {
     using namespace socle::raw;
     using namespace socle::raw::operators;
 
-    n16_t a = UINT16_MAX - 100;
+    n16_t a = UINT16_MAX - 100u;
     auto b = n8_t(50u);
     auto val1 = a + b + n16_t(50u);
     ASSERT_TRUE(val1.value() == UINT16_MAX);
@@ -189,9 +190,9 @@ TEST(Numops, Add3) {
     using namespace socle::raw;
     using namespace socle::raw::operators;
 
-    n16_t a = 1000;
-    n16_t b = 50;
-    auto val1 = a + b + n8_t(50);
+    n16_t a = 1000u;
+    n16_t b = 50u;
+    auto val1 = a + b + n8_t(50u);
     ASSERT_TRUE(val1.is(1100));
 }
 
@@ -201,9 +202,9 @@ TEST(Numops, Add4) {
     using namespace socle::raw::operators;
 
     //number<uint16_t> a = 100000;
-    n16_t a((int)100000);
-    number<uint16_t> b = 50;
-    auto val1 = a + b + n8_t(50);
+    n16_t a(100000u);
+    number<uint16_t> b = 50u;
+    auto val1 = a + b + n8_t(50u);
     ASSERT_TRUE(not val1.has_value());
 }
 
@@ -214,11 +215,11 @@ TEST(Numops, Add5) {
 
 
     n64_t a = UINT64_MAX;
-    a = a + n8_t(1);
+    a = a + n8_t(1u);
 
     ASSERT_TRUE(a.is_nan());
 
-    a = 0xff00;
+    a = 0xff00u;
     sn16_t b = 0xff;
     a = a + b;
     ASSERT_TRUE(a.value_or(0) == 0xffff);
@@ -231,8 +232,8 @@ TEST(Numpos, Sub1) {
     using namespace socle::raw::operators;
 
 
-    n32_t a = 45;
-    n8_t b = 3;
+    n32_t a = 45u;
+    n8_t b = 3u;
     auto c = a - b;
     ASSERT_TRUE(c.is(42));
 }
@@ -242,8 +243,16 @@ TEST(Numpos, Sub2) {
     using namespace socle::raw;
     using namespace socle::raw::operators;
 
-    n32_t a = 45;
-    n8_t b(-3); // this won't assign
+    n32_t a = 45u;
+    // n8_t b(-3); // this won't assign
+
+    n8_t b(0u); // this won't assign
+    b = b - n8_t(3u);
+
+    n16_t bb(0u); // this won't assign
+    bb = bb - n16_t(3u);
+
+
     auto c = a - b;
     ASSERT_TRUE(c.is_nan());
 
@@ -257,17 +266,20 @@ TEST(Numpos, Sub2) {
     ASSERT_TRUE(z.is(-50));
 
     sn16_t xx = -30000;
-    n16_t yy = 28000;
+    n16_t yy = 28000u;
     sn64_t zz = xx.promote<sn64_t::type>() - yy.to_signed<sn32_t::type>().promote<sn64_t::type>();
 
     ASSERT_TRUE(zz.is(-58000));
 
-    n32_t len = 256;
-    int rd = 345;
+    n32_t len = 256u;
+    unsigned int rd = 345;
 
     auto left = len - n32_t(rd);
     ASSERT_TRUE(left.is_nan());
 
-    left = len - sn64_t(10);
+    auto ten = sn64_t(10);
+    left = len - n64_t::numeric_cast(ten);
+    ASSERT_TRUE(left.is(246));
+    left = len - ten.numeric_cast<n64_t>();
     ASSERT_TRUE(left.is(246));
 }

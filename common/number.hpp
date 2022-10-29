@@ -45,7 +45,9 @@ namespace socle::raw {
         using type = T;
 
         template<typename U,
-                std::enable_if_t<std::is_arithmetic_v<U>, bool> = true>
+                std::enable_if_t<std::is_arithmetic_v<U>, bool> = true
+                ,std::enable_if_t<traits::same_signness<T,U>::value, bool> = true
+                >
         number(U u) noexcept {
             if constexpr (traits::can_static_cast<T, U>::value == true) {
                 value_ = u;
@@ -56,7 +58,7 @@ namespace socle::raw {
         }
 
         template<typename U
-                //std::enable_if_t<traits::same_signness<T,U>::value, bool> = true
+                ,std::enable_if_t<traits::same_signness<T,U>::value, bool> = true
                 >
         number(number<U> n) {
             if (n.has_value()) {
@@ -94,13 +96,14 @@ namespace socle::raw {
         }
 
         template<typename U, typename = std::enable_if_t<std::is_arithmetic_v<U>>>
-        static number<T> create(number<U> b) {
+        static number<T> create(number<U> const& b) {
             return b.valid() ? create(b.value()) : number<T>::nan;
         }
 
+        // static creating from U to type T
         template<typename U, typename = std::enable_if_t<std::is_arithmetic_v<U>>>
         static number<T> create(U b) {
-            if (traits::same_signness<T, U>::value and traits::same_size<T, U>::value) {
+            if constexpr (traits::same_signness<T, U>::value and traits::same_size<T, U>::value) {
                 return number<T>(static_cast<T>(b));
             } else if constexpr (traits::can_static_cast<T, U>::value) {
                 return number<T>(static_cast<T>(b));
@@ -111,6 +114,16 @@ namespace socle::raw {
                 auto temp_optional = down_cast<T>(b);
                 return temp_optional.has_value() ? number<T>(temp_optional.value()) : number<T>();
             }
+        }
+
+        // notice swapped template names compared to create.
+        template<typename U, typename = std::enable_if_t<std::is_arithmetic_v<U>>>
+        static number<T> numeric_cast(number<U> const& b) {
+            return b.value() ? create<T>(static_cast<T>(b.value())) : number<T>::nan;
+        }
+        template<typename U>
+        [[nodiscard]] number<typename U::type> numeric_cast() const {
+            return number<typename U::type>::numeric_cast(*this);
         }
 
         template<typename U, typename = std::enable_if_t<std::is_arithmetic_v<U>>>
@@ -134,6 +147,11 @@ namespace socle::raw {
                 return number<U>::nan;
             }
         }
+        template<typename U = std::make_unsigned<T>, typename = std::enable_if_t<std::is_arithmetic_v<U>>>
+        number<U> to_unsigned() const {
+            return numeric_cast<U>();
+        }
+
 
 
         operator std::optional<T> () { return value_; }
