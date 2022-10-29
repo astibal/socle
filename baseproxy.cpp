@@ -151,11 +151,11 @@ void baseProxy::rdaadd(baseHostCX* cs) {
 
 
 void baseProxy::left_shutdown() {
-	int lb = left_bind_sockets.size();
-	int ls = left_sockets.size();
-	int lp = left_pc_cx.size();
+	auto lb = left_bind_sockets.size();
+	auto ls = left_sockets.size();
+	auto lp = left_pc_cx.size();
 	
-	int ld = left_delayed_accepts.size();
+	auto ld = left_delayed_accepts.size();
 	
 	for(auto* ii: left_bind_sockets) { ii->shutdown(); }
 	for(auto* ii: left_sockets)       { ii->shutdown(); }
@@ -178,16 +178,16 @@ void baseProxy::left_shutdown() {
 
     std::for_each(delit.begin(), delit.end(), [](auto i) {delete i;});
 
- 	_deb("baseProxy::left_shutdown: bind=%d(delayed=%d), sock=%d, perm=%d", lb, ld, ls, lp);
+ 	_deb("baseProxy::left_shutdown: bind=%z(delayed=%z), sock=%z, perm=%z", lb, ld, ls, lp);
 }
 
 
 void baseProxy::right_shutdown() {
-	int rb = right_bind_sockets.size();
-	int rs = right_sockets.size();
-	int rp = right_pc_cx.size();
+	auto rb = right_bind_sockets.size();
+	auto rs = right_sockets.size();
+	auto rp = right_pc_cx.size();
     
-    int rd = right_delayed_accepts.size();
+    auto rd = right_delayed_accepts.size();
 	
 	for(auto ii: right_bind_sockets) { ii->shutdown(); }
 	for(auto ii: right_sockets)       { ii->shutdown(); }
@@ -214,7 +214,7 @@ void baseProxy::right_shutdown() {
     std::for_each(delit.begin(), delit.end(), [](auto i) {delete i;});
 
     
-	_deb("baseProxy::right_shutdown: bind=%d(delayed=%d), sock=%d, perm=%d", rb, rd, rs, rp);
+	_deb("baseProxy::right_shutdown: bind=%z(delayed=%z), sock=%z, perm=%z", rb, rd, rs, rp);
 }
 
 

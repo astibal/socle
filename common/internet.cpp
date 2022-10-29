@@ -61,7 +61,7 @@ namespace inet {
         return inet_pton(AF_INET, str.c_str(), &(sa.sin_addr)) != 0;
     }
 
-    int socket_connect (std::string const& ip_address, int port) {
+    int socket_connect (std::string const& ip_address, unsigned short port) {
 
         auto const& log = Factory::log();
 

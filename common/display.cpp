@@ -259,7 +259,7 @@ std::string bt(bool add_r) {
     char **strings;
 
     size    = backtrace( trace, 64 );
-    strings = backtrace_symbols( trace, size );
+    strings = backtrace_symbols( trace, (int) size );
 
     if (strings == nullptr) {
         s += "\n" + maybe_r + " failure: backtrace_symbols";

@@ -169,7 +169,7 @@ struct epoll {
     void process_pre_wait_idles();
 
     /// @brief wait on poll results from epoll_wait with 'timeout' passed to it: zero: return immediately, negative: block indefinitely
-    virtual int wait(int timeout);
+    virtual int wait(long timeout);
 
     /// @brief add enforced sockets to in_set
     void enforced_to_inset();
@@ -252,7 +252,7 @@ struct epoller {
 
     virtual bool click_timer_now (); // return true if we should add them back to in_set (scan their readability again). If yes, reset timer.
     
-    virtual int wait(int timeout);
+    virtual int wait(long timeout);
     virtual bool hint_socket(int socket); // this is the socket which will be additionally monitored for EPOLLIN; each time it's readable, single byte is read from it.
 
     // handler hints is a map of socket->handler. We will allow to grow it as needed. No purges. 

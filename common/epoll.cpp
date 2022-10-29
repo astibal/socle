@@ -185,7 +185,7 @@ void epoll::clear() {
     err_set.clear();
 }
 
-int epoll::wait(int timeout) {
+int epoll::wait(long timeout) {
 
     _deb("epoll::wait: == begin, timeout %dms %s", timeout, enforce_in_set.empty() ? "" : "+ enforced sockets");
 
@@ -298,10 +298,6 @@ bool epoll::del(int socket) {
     
     if (::epoll_ctl(fd, EPOLL_CTL_DEL, socket, &ev) == -1) {
 
-        //_err("epoll:del:%x: epoll_ctl(%d): cannot delete socket %d: %s",this, fd, socket, string_error().c_str());
-        //std::string str_bt = bt();
-        //_err(str_bt.c_str());
-        
         return false;
     } else {
         _dia("epoll:del:%x: epoll_ctl(%d): socket deleted %d",this, fd, socket);
@@ -316,8 +312,6 @@ bool epoll::in_read_set(int check) {
 }
 
 bool epoll::in_write_set(int check) {
-//     auto f = out_set.find(check);
-//     return (f != out_set.end());
     return true;
 }
 
@@ -619,7 +613,7 @@ bool epoller::in_idle_set(int check)
 }
 
 
-int epoller::wait(int timeout) {
+int epoller::wait(long timeout) {
     init_if_null();
     if(poller) return poller->wait(timeout);
     

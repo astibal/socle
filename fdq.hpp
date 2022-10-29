@@ -40,7 +40,7 @@ public:
     // there is something in the queue to pick-up.
 
     int close_all();
-    int push_all(int s);
+    std::size_t push_all(int s);
     int pop(uint32_t worker_id);
     template <typename UnaryPredicate>
     std::optional<int> pop_if(UnaryPredicate);
@@ -98,7 +98,7 @@ struct FdQueueHandler {
         throw fdqueue_error("handler: no fdqueue");
     }
 
-    int hint_push_all(int s) const {
+    std::size_t hint_push_all(int s) const {
         if(fdqueue)
             return fdqueue->push_all(s);
 

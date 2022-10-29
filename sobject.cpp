@@ -141,9 +141,9 @@ std::string sobjectDB::str_stats(const char* criteria) {
     std::stringstream ret;
     unsigned long object_counter = 0;
     
-    unsigned int youngest_age = 0;
-    unsigned int oldest_age = 0;
-    float sum_age = 0.0;
+    std::time_t youngest_age = 0L;
+    std::time_t oldest_age = 0L;
+    std::time_t sum_age = 0L;
 
     {
         std::scoped_lock<std::recursive_mutex> l_(getlock());
@@ -159,11 +159,11 @@ std::string sobjectDB::str_stats(const char* criteria) {
                 object_counter++;
 
                 if (si != nullptr) {
-                    unsigned int a = si->age();
-                    sum_age += static_cast<float>(a);
+                    auto age = si->age();
+                    sum_age += age;
 
-                    if (a > oldest_age) oldest_age = a;
-                    if (a < youngest_age) youngest_age = a;
+                    if (age > oldest_age) oldest_age = age;
+                    if (age < youngest_age) youngest_age = age;
                 }
 
             }
@@ -172,7 +172,7 @@ std::string sobjectDB::str_stats(const char* criteria) {
 
     float avg_age = 0;
     if (object_counter > 0) 
-        avg_age = sum_age/static_cast<float>(object_counter);
+        avg_age = static_cast<float>(sum_age)/static_cast<float>(object_counter);
     
     ret << "Performance: " << socle::sobject::mtr_created().get() << " new objects per second, "
                            << socle::sobject::mtr_deleted().get() << " deleted objects per second.\n";
@@ -223,7 +223,7 @@ long unsigned int meter::update(unsigned long val) {
 
         if( now - last_update_copy >= std::chrono::seconds(2 * interval_)) {
 
-            unsigned int missed_scores = (now - last_update_copy) / std::chrono::seconds(interval_) - 1;
+            auto missed_scores = (now - last_update_copy) / std::chrono::seconds(interval_) - 1;
 
             if (missed_scores > scoreboard_sz) missed_scores = scoreboard_sz;
 

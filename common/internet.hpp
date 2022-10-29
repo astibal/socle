@@ -73,7 +73,7 @@ namespace inet {
     bool is_ipv4_address(const std::string& str);
     /// @brief is it IPv6?
     bool is_ipv6_address(const std::string& str);
-    int socket_connect(std::string const& ip_address, int port);
+    int socket_connect(std::string const& ip_address, unsigned short port);
 
     /// @brief convert conveniently sockaddr_storage pointer to sockaddr_in pointer
     inline sockaddr_in* to_sockaddr_in(sockaddr_storage* st) { return reinterpret_cast<sockaddr_in*>(st); }

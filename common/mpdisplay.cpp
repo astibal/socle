@@ -19,10 +19,10 @@
 #include <mpdisplay.hpp>
 
 namespace mp {
-    mp::string hex_dump(buffer* b, unsigned int ltrim, unsigned char prefix) { return hex_dump((unsigned char*)b->data(),b->size(),ltrim,prefix); }
-    mp::string hex_dump(buffer& b, unsigned int ltrim, unsigned char prefix) { return hex_dump((unsigned char*)b.data(),b.size(),ltrim,prefix); }
+    mp::string hex_dump(buffer* b, unsigned int ltrim, char prefix) { return hex_dump((unsigned char*)b->data(),b->size(),ltrim,prefix); }
+    mp::string hex_dump(buffer& b, unsigned int ltrim, char prefix) { return hex_dump((unsigned char*)b.data(),b.size(),ltrim,prefix); }
 
-    mp::string hex_dump(unsigned char *data, int size,unsigned int ltrim, unsigned char prefix)
+    mp::string hex_dump(unsigned char *data, std::size_t size,unsigned int ltrim, char prefix)
     {
         /* dumps size bytes of *data to stdout. Looks like:
          * [0000] 75 6E 6B 6E 6F 77 6E 20
@@ -35,7 +35,7 @@ namespace mp {
 
         unsigned char *p = data;
 
-        int n;
+        unsigned int n;
         char bytestr[4] = {0};
         char addrstr[10] = {0};
         char hexstr[ 16*3 + 5] = {0};
@@ -43,7 +43,7 @@ namespace mp {
 
         mp::stringstream ret;
 
-        int tr = 0;
+        unsigned int tr = 0;
         if (ltrim > 0) {
             tr = ltrim + 4;
         }
@@ -54,7 +54,7 @@ namespace mp {
             if (tr > 1) tr--;
         }
 
-        for (int i=0; i<tr; i++) { pref += ' ';}
+        for (unsigned int i = 0; i < tr; i++) { pref += ' ';}
 
         if (prefix != 0) {
             pref += prefix;

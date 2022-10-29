@@ -33,9 +33,9 @@ namespace mp {
 
     mp::string string_csv(const mp::vector<mp::string> &str_list_ref, const char delim = ',');
 
-    mp::string hex_dump(unsigned char *data, int size,unsigned int ltrim, unsigned char prefix);
-    mp::string hex_dump(buffer* b, unsigned int ltrim, unsigned char prefix);
-    mp::string hex_dump(buffer& b, unsigned int ltrim, unsigned char prefix);
+    mp::string hex_dump(unsigned char *data, std::size_t size, unsigned int ltrim, char prefix);
+    mp::string hex_dump(buffer* b, unsigned int ltrim, char prefix);
+    mp::string hex_dump(buffer& b, unsigned int ltrim, char prefix);
 
 
     template <class ... Args>

@@ -163,7 +163,7 @@ void memPool::allocate(std::size_t n_sz256, std::size_t n_sz1k, std::size_t n_sz
 
 
 
-    auto stockpile = [] (unsigned char* ptr, unsigned int ptr_len, unsigned chunk_len, std::vector<mem_chunk>& storage) {
+    auto stockpile = [] (unsigned char* ptr, std::size_t ptr_len, unsigned chunk_len, std::vector<mem_chunk>& storage) {
 
 
 

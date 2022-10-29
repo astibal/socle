@@ -76,12 +76,13 @@ const char* FdQueue::sq_type_str() const {
     return "unknown";
 }
 
-int FdQueue::push_all(int s) {
-    std::lock_guard<std::mutex> lck(sq_lock_);
+std::size_t FdQueue::push_all(int s) {
+
+    auto lc_ = std::scoped_lock(sq_lock_);
     sq_.push_front(s);
 
     for(auto [ key, pair ]: hint_pairs_) {
-        int wr = ::write(pair.second, "A", 1);
+        auto wr = ::write(pair.second, "A", 1);
         if (wr <= 0) {
             _err("FdQueue::push: failed to write hint byte - error[%d]: %s", wr, string_error().c_str());
         }
