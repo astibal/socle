@@ -39,7 +39,7 @@ std::pair<int, int> FdQueue::new_pair(uint32_t id) {
 #endif
 
     auto pa = std::make_pair(hint_pair[0], hint_pair[1]);
-    hint_pairs_[id] = pa;
+    hint_pairs_[id] = WorkerPipe(pa);
 
     return pa;
 }
@@ -51,12 +51,12 @@ FdQueue::~FdQueue() {
 int FdQueue::close_all() {
 
     int s = 0;
-    std::for_each(hint_pairs_.begin(), hint_pairs_.end(), [&](auto& tup) {
+    std::for_each(hint_pairs_.begin(), hint_pairs_.end(), [&](auto const& pair) {
 
-        auto const& [ key, p ] = tup;
+        auto const& worker_pipe = pair.second;
 
-        ::close(p.first);
-        ::close(p.second);
+       ::close(worker_pipe.pipe_to_scheduler());
+        ::close(worker_pipe.pipe_to_worker());
 
         s++;
     });
@@ -81,10 +81,12 @@ std::size_t FdQueue::push_all(int s) {
     auto lc_ = std::scoped_lock(sq_lock_);
     sq_.push_front(s);
 
-    for(auto [ key, pair ]: hint_pairs_) {
-        auto wr = ::write(pair.second, "A", 1);
+    for(auto const& [ key, pipes ]: hint_pairs_) {
+
+        auto socket = pipes.pipe_to_worker();
+        auto wr = ::write(socket, "A", 1);
         if (wr <= 0) {
-            _err("FdQueue::push: failed to write hint byte - error[%d]: %s", wr, string_error().c_str());
+            _err("FdQueue::push: failed to write hint byte - socket[%d] error[%d]: %s", socket, wr, string_error().c_str());
         }
     }
 
@@ -93,7 +95,7 @@ std::size_t FdQueue::push_all(int s) {
 
 int FdQueue::pop(uint32_t worker_id) {
 
-    int red = 0;
+    ssize_t red = 0;
     char dummy_buffer[1];
 
     int returned_socket = 0;
@@ -103,12 +105,12 @@ int FdQueue::pop(uint32_t worker_id) {
         // if we have hint-pair for each worker, we should read out hint message to not make a loop
         // because nobody else than us won't.
         try {
-            red = ::read(hint_pairs_[worker_id].first, dummy_buffer, 1);
-        } catch (std::out_of_range const& e) {
+            red = ::read(hint_pairs_[worker_id].pipe_to_scheduler(), dummy_buffer, 1);
+        } catch (std::out_of_range const&) {
             throw fdqueue_error("hints out of bounds");
         }
 
-        std::lock_guard<std::mutex> lck(sq_lock_);
+        auto lc_ = std::scoped_lock(sq_lock_);
 
         if (sq_.empty()) {
             return 0;
@@ -128,5 +130,5 @@ int FdQueue::pop(uint32_t worker_id) {
 }
 
 std::pair<int,int> FdQueue::hint_pair(uint32_t id) const {
-    return hint_pairs_.at(id);
+    return hint_pairs_.at(id).pipe;
 }

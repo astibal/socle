@@ -25,6 +25,23 @@
 #include <log/logan.hpp>
 #include <mpstd.hpp>
 
+
+struct WorkerPipe {
+
+    using fd_pair_t = std::pair<int,int>;
+
+    explicit WorkerPipe(fd_pair_t const& p): pipe(p){};
+    WorkerPipe() = default;
+
+    // pair of sockets used to talk between scheduler and worker.
+    // scheduler sends one byte whenever wants to wake up worker to pick from task queue.
+    fd_pair_t pipe = { -1, -1 };
+    inline int pipe_to_scheduler() const noexcept { return  pipe.first; }
+    inline int pipe_to_worker() const noexcept { return pipe.second; }
+
+    uint32_t seen_worker_load = 0;
+};
+
 class FdQueue {
 
 public:
@@ -49,13 +66,16 @@ public:
     std::pair<int,int> hint_pair(uint32_t index) const;
     std::mutex& get_lock() const { return sq_lock_; }
     std::atomic_uint32_t& worker_id_max() { return worker_id_max_; }
-protected:
+
+
+private:
     mutable std::mutex sq_lock_;
     mp::deque<int> sq_;
 
     std::atomic_uint32_t worker_id_max_ = 0;
+
     using worker_id_t = unsigned int;
-    std::map<worker_id_t, std::pair<int,int>> hint_pairs_;
+    mp::map<worker_id_t, WorkerPipe> hint_pairs_;
 
     logan_lite log;
 
@@ -130,13 +150,6 @@ struct FdQueueHandler {
     [[nodiscard]] std::pair<int,int> hint_pair(int index) const {
         if(fdqueue)
             return fdqueue->hint_pair(index);
-
-        throw fdqueue_error("handler: no fdqueue");
-    }
-
-    [[nodiscard]] int hint_close_all() {
-        if(fdqueue)
-            return fdqueue->close_all();
 
         throw fdqueue_error("handler: no fdqueue");
     }
