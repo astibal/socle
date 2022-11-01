@@ -236,7 +236,7 @@ private:
 	                            /// Note: while there is process_out() called by write(), all written bytes to socket are flushed from the buffer,
 	                            ///       therefore no similar mechanic is needed when sending data out.
     std::size_t processed_out_ = 0L;
-	int next_read_limit_ = 0L;  // limit next read() operation to this number. Zero means no restrictions.
+	int64_t next_read_limit_ = 0L;  // limit next read() operation to this number. Zero means no restrictions.
 	                            // <0 means don't read at all
 	
 	/*! 
@@ -413,12 +413,18 @@ public:
     [[maybe_unused]] inline lockbuffer const* writebuf() const { return &readbuf_; }
 	
 	inline void send(buffer& b) { writebuf_.append(b); }
-	inline int  peek(buffer& b) const { auto r = com()->peek(this->socket(),b.data(),b.capacity(),0); if (r > 0) { b.size(r); } return r; }
+	inline std::size_t peek(buffer& b) const
+    {
+        auto r = com()->peek(this->socket(), b.data(), b.capacity(), 0);
+        if (r > 0)
+        {
+            b.size(r);
+        }
+        return r;
+    }
 	
-	inline int next_read_limit() const { return next_read_limit_; }
-	inline void next_read_limit(int s) { next_read_limit_ = s; }
-
-
+	inline int64_t next_read_limit() const noexcept { return next_read_limit_; }
+	inline void next_read_limit(int64_t  s) noexcept { next_read_limit_ = s; }
 
 	inline bool io_disabled() const {
 	    if(io_disabled_)
@@ -431,7 +437,9 @@ public:
 	}
 
 	int read();
+	void grow_buffer();
 	ssize_t io_read(void* where, size_t len, int flags) const;
+	void after_read(std::size_t bytes);
 
 	std::size_t process_in_();
     std::size_t process_out_();
@@ -451,7 +459,7 @@ public:
 	inline void close_after_write(bool b) { close_after_write_ = b; };
 	
 	virtual buffer& to_read();
-	virtual ssize_t finish();
+	virtual std::size_t finish();
 	
 	// pre- and post- functions/hooks called as the very first or last command in the read() function
 	virtual void pre_read();

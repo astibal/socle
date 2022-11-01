@@ -23,6 +23,9 @@
 #include "iproxy.hpp"
 
 
+#include <number.hpp>
+using namespace socle::raw;
+
 namespace std
 {
     size_t hash<Host>::operator()(const Host& h) const
@@ -333,6 +336,65 @@ ssize_t baseHostCX::io_read(void* where, size_t len, int flags = 0) const {
     return com()->read(socket(), where, len, flags);
 }
 
+
+void baseHostCX::grow_buffer() {
+    _dia("baseHostCX::read[%s]: read buffer reached it's current capacity %d/%d bytes", c_type(),
+         readbuf_.size(), readbuf_.capacity());
+
+    if(readbuf_.capacity() * 2  <= get_max_buffsize()) {
+
+        if (readbuf_.capacity(readbuf_.capacity() * 2)) {
+            _dia("baseHostCX::read[%s]: read buffer resized capacity %d/%d bytes", c_type(),
+                 readbuf_.size(), readbuf_.capacity());
+
+        } else {
+            _not("baseHostCX::read[%s]: memory tension: read buffer cannot be resized!", c_type());
+        }
+    }
+    else {
+        _dia("baseHostCX::read[%s]: buffer already reached it's maximum capacity.", c_type());
+    }
+}
+
+void baseHostCX::after_read(std::size_t buffer_written_len) {
+    meter_read_bytes += buffer_written_len;
+    meter_read_count++;
+    r_activity = time(nullptr);
+
+    // claim opening socket already opened
+    if (opening()) {
+        _dia("baseHostCX::read[%s]: connection established", c_type());
+        opening(false);
+    }
+
+
+
+    _ext("baseHostCX::read[%s]: readbuf_ read %d bytes", c_type(), buffer_written_len);
+
+    processed_in_ = 0L;
+
+    if(meter_read_bytes > processed_in_total_) {
+        processed_in_ = process_in_();
+        processed_in_total_ += processed_in_;
+    }
+
+    _deb("baseHostCX::read[%s]: readbuf_ read %l bytes, process()-ed %l bytes, incomplete readbuf_ %l bytes",
+         c_type(), buffer_written_len, processed_in_, buffer_written_len - processed_in_);
+
+
+    // data are already processed
+    _deb("baseHostCX::read[%s]: calling post_read",c_type());
+    post_read();
+
+    _if_deb {
+        if (baseCom::debug_log_data_crc) {
+            _deb("baseHostCX::read[%s]: after: buffer crc = %X", c_type(),
+                 socle::tools::crc32::compute(0, readbuf()->data(), readbuf()->size()));
+        }
+    }
+
+}
+
 int baseHostCX::read() {
 
     if(io_disabled()) {
@@ -350,7 +412,7 @@ int baseHostCX::read() {
         return -1;
     }
 
-    buffer_guard bg(readbuf());
+    auto lc_ = std::scoped_lock(readbuf()->lock_);
 
 
     _dum("HostCX::read[%s]: calling pre_read",c_type());
@@ -368,7 +430,8 @@ int baseHostCX::read() {
         finish();
     }
 
-    ssize_t l = 0;
+    ssize_t buffer_written_len = 0;
+    auto this_read_op_limit = static_cast<std::size_t>(next_read_limit());
 
     while(true) {
 
@@ -376,74 +439,59 @@ int baseHostCX::read() {
         void *cur_read_ptr = &(readbuf_.data()[readbuf_.size()]);
 
         // read only amount of bytes fitting the buffer capacity
-        auto cur_read_max = static_cast<ssize_t>(readbuf_.capacity()-readbuf_.size());
+        auto max_bytes_left = readbuf()->capacity() - readbuf()->size();
 
-        if (cur_read_max + l > next_read_limit() && next_read_limit() > 0) {
-            _deb("HostCX::read[%s]: read buffer limiter: %d",c_type(), next_read_limit() - l);
-            cur_read_max = next_read_limit() - l;
+        if (this_read_op_limit > 0 and max_bytes_left > this_read_op_limit)
+        {
+            max_bytes_left = this_read_op_limit; // next read limit is checked to be positive
+            _deb("HostCX::read[%s]: read buffer limiter: %lB (%lB space in buffer)", c_type(), max_bytes_left, readbuf()->capacity() - readbuf()->size());
         }
 
         _ext("HostCX::read[%s]: readbuf_ base=%x, wr at=%x, maximum to write=%d", c_type(),
-                readbuf_.data(), cur_read_ptr,cur_read_max);
+             readbuf_.data(), cur_read_ptr, max_bytes_left);
 
 
         //read on last position in buffer
-        int cur_l = io_read(cur_read_ptr, cur_read_max);
+        auto cur_io_len = io_read(cur_read_ptr, max_bytes_left);
 
         // no data to read!
-        if(cur_l < 0) {
+        if(cur_io_len < 0) {
 
-            // if this is first attempt, l is still zero. Fix it.
-            if(l == 0) {
-                l = -1;
+            // if this is first attempt read Fix it.
+            if(buffer_written_len == 0) {
+                buffer_written_len = -1;
             }
             break;
         }
-        else if(cur_l == 0) {
-            _dia("baseHostCX::read[%s]: error while reading. %d bytes read.", c_type(), l);
+        else if(cur_io_len == 0) {
+            _dia("baseHostCX::read[%s]: error while reading. %d bytes read into buffer.", c_type(), buffer_written_len);
             error(true);
 
             break;
         }
 
+        auto cur_io_len_bytes = static_cast<std::size_t>(cur_io_len);
 
-        // change size of the buffer accordingly
-        readbuf_.size(readbuf_.size()+cur_l);
+        // change size of the buffer accordingly (negative cur_io_len is handled previously
+        readbuf_.size(readbuf_.size() + cur_io_len_bytes);
 
         //increment read counter
-        l += cur_l;
+        buffer_written_len += cur_io_len_bytes;
 
-        if(next_read_limit_ > 0 &&  l >= next_read_limit_) {
-            _dia("baseHostCX::read[%s]: read limiter hit on %d bytes.", c_type(), l);
+        if(this_read_op_limit > 0 and buffer_written_len >= static_cast<ssize_t>(this_read_op_limit))
+        {
+            _dia("baseHostCX::read[%s]: read limiter hit on %l bytes.", c_type(), buffer_written_len);
             break;
         }
 
         // in case next_read_limit_ is large and we read less bytes than it, we need to decrement also next_read_limit_
 
-        next_read_limit_ -= cur_l;
+        this_read_op_limit -= cur_io_len_bytes;
 
         // if buffer is full, let's reallocate it and try read again (to save system resources)
 
-        // testing break
-        // break;
-
         if(readbuf_.size() >= readbuf_.capacity()) {
-            _dia("baseHostCX::read[%s]: read buffer reached it's current capacity %d/%d bytes", c_type(),
-                    readbuf_.size(), readbuf_.capacity());
-
-            if(readbuf_.capacity() * 2  <= get_max_buffsize()) {
-
-                if (readbuf_.capacity(readbuf_.capacity() * 2)) {
-                    _dia("baseHostCX::read[%s]: read buffer resized capacity %d/%d bytes", c_type(),
-                            readbuf_.size(), readbuf_.capacity());
-
-                } else {
-                    _not("baseHostCX::read[%s]: memory tension: read buffer cannot be resized!", c_type());
-                }
-            }
-            else {
-                _dia("baseHostCX::read[%s]: buffer already reached it's maximum capacity.", c_type());
-            }
+            grow_buffer();
         }
 
         // reaching code here means that we don't want other iterations
@@ -451,45 +499,11 @@ int baseHostCX::read() {
 
     }
 
-    if (l > 0) {
+    if (buffer_written_len > 0) {
 
-        meter_read_bytes += l;
-        meter_read_count++;
-        r_activity = time(nullptr);
+        after_read(static_cast<std::size_t>(buffer_written_len));
 
-        // claim opening socket already opened
-        if (opening()) {
-            _dia("baseHostCX::read[%s]: connection established", c_type());
-            opening(false);
-        }
-
-
-
-        _ext("baseHostCX::read[%s]: readbuf_ read %d bytes", c_type(), l);
-
-        processed_in_ = 0L;
-
-        if(meter_read_bytes > processed_in_total_) {
-            processed_in_ = process_in_();
-            processed_in_total_ += processed_in_;
-        }
-
-        _deb("baseHostCX::read[%s]: readbuf_ read %d bytes, process()-ed %d bytes, incomplete readbuf_ %d bytes",
-             c_type(), l, processed_in_, l - processed_in_);
-
-
-        // data are already processed
-        _deb("baseHostCX::read[%s]: calling post_read",c_type());
-        post_read();
-
-        _if_deb {
-            if (baseCom::debug_log_data_crc) {
-                _deb("baseHostCX::read[%s]: after: buffer crc = %X", c_type(),
-                     socle::tools::crc32::compute(0, readbuf()->data(), readbuf()->size()));
-            }
-        }
-
-    } else if (l == 0) {
+    } else if (buffer_written_len == 0) {
         _dia("baseHostCX::read[%s]: error while reading", c_type());
         error(true);
     } else {
@@ -497,15 +511,17 @@ int baseHostCX::read() {
     }
 
     // before return, don't forget to reset read limiter
-    next_read_limit_ = 0;
+    next_read_limit(0);
 
-    return static_cast<int>(l);
+    return down_cast<int>(buffer_written_len).value_or(max_of<int>());
 }
 
 void baseHostCX::pre_read() {
+    // this is intentionally empty
 }
 
 void baseHostCX::post_read() {
+    // this is intentionally empty
 }
 
 std::size_t baseHostCX::process_in_() {
@@ -572,14 +588,14 @@ int baseHostCX::write() {
         if(processed_out_ != tx_size) {
             _deb("baseHostCX::write[%s]: process_out processed %d of %d bytes in writebuf", c_type(), tx_size_orig, processed_out_);
         }
-    };
+    }
 
 
 
     ssize_t l = io_write(writebuf_.data(), std::min(tx_size, processed_out_), MSG_NOSIGNAL);
 
     if (l > 0) {
-        meter_write_bytes += l;
+        meter_write_bytes += static_cast<std::size_t>(l);
         meter_write_count++;
         w_activity = time(nullptr);
 
@@ -602,7 +618,6 @@ int baseHostCX::write() {
             // we need to check once more when socket is fully writable
 
             com()->set_write_monitor(socket());
-            //com()->rescan_write(socket());
             rescan_out_flag_ = true;
 
         } else {
@@ -615,7 +630,7 @@ int baseHostCX::write() {
             }
         }
 
-        writebuf_.flush(l);
+        writebuf_.flush(static_cast<std::size_t>(l));
 
         if(baseCom::debug_log_data_crc) {
             _deb("baseHostCX::write[%s]: after: buffer crc = %X", c_type(),
@@ -630,7 +645,6 @@ int baseHostCX::write() {
         // write unsuccessful, we have to try immediately socket is writable!
         _dia("baseHostCX::write[%s]: %d bytes written out of %d -> setting socket write monitor",
                 c_type(), l, writebuf_.size());
-        //com()->set_write_monitor(socket());
 
         // write was not successful, wait a while
         com()->rescan_write(socket());
@@ -640,7 +654,7 @@ int baseHostCX::write() {
         _dia("baseHostCX::write[%s] write failed: %s, unrecoverable.", c_type(), string_error().c_str());
     }
 
-    return l;
+    return down_cast<int>(l).value_or(max_of<int>());
 }
 
 
@@ -660,15 +674,21 @@ std::size_t baseHostCX::process_out() {
 }
 
 
-ssize_t baseHostCX::finish() {
-    if( readbuf()->size() >= (unsigned int)processed_in_ && processed_in_ > 0) {
+std::size_t baseHostCX::finish() {
+    if( readbuf()->size() >= (unsigned int)processed_in_ && processed_in_ > 0)
+    {
         _deb("baseHostCX::finish[%s]: flushing %d bytes in readbuf_ size %d", c_type(), processed_in_, readbuf()->size());
         readbuf()->flush(processed_in_);
         return processed_in_;
-    } else if (readbuf()->empty()) {
+
+    }
+    else if (readbuf()->empty())
+    {
         _dum("baseHostCX::finish[%s]: already flushed",c_type());
         return 0;
-    } else {
+    }
+    else
+    {
         _war("baseHostCX::finish[%s]: attempt to flush more data than in buffer", c_type());
         _war("baseHostCX::finish[%s]: best-effort recovery: flushing all", c_type());
         auto s = readbuf()->size();
