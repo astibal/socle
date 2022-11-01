@@ -41,7 +41,7 @@ LTVEntry::LTVEntry(unsigned char id, unsigned char type, const char* str) {
 	set_str(id,type,str);
 }
 
-LTVEntry::LTVEntry(unsigned char id, unsigned char type, unsigned long l) {
+LTVEntry::LTVEntry(unsigned char id, unsigned char type, uint32_t l) {
 	set_num(id,type,l);
 }
 

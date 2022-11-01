@@ -160,4 +160,4 @@ private:
 };
 
 
-#endif //_FDQUEUE_HPP_
+#endif //FDQUEUE_HPP

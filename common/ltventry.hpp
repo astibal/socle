@@ -60,7 +60,7 @@ public:
 	enum typ { auth=1, num=3, ip=3, str=5, cont=6 };	
 	LTVEntry();
     LTVEntry(unsigned char id, unsigned char type, const char*);
-	LTVEntry(unsigned char id, unsigned char type, unsigned long);
+	LTVEntry(unsigned char id, unsigned char type, uint32_t l);
 	
 	virtual ~LTVEntry();
 	

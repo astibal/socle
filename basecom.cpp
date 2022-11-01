@@ -26,6 +26,15 @@
 #include <linux/in6.h>
 #include <linux/netfilter_ipv4.h>
 #include <linux/netfilter_ipv6.h>
+#include <numops.hpp>
+
+#ifndef IP6T_SO_ORIGINAL_DST
+
+    // including netfilter includes produce compile error, so this is the only working possibility.
+    // yes, I am aware this may (and probably will) break one day. :/
+
+    #define IP6T_SO_ORIGINAL_DST            80
+#endif
 
 using namespace socle;
 
@@ -122,10 +131,6 @@ bool baseCom::resolve_redirected(int s, std::string* target_host, std::string* t
 
     int ret =  getsockopt( s, SOL_IP, SO_ORIGINAL_DST, ptr_peer_info, &addrlen );
     if ( ret != 0) {
-        // including netfilter includes produce compile error, so this is the only working possibility.
-        // yes, I am aware this may (and probably will) break one day. :/
-        #define IP6T_SO_ORIGINAL_DST            80
-
         ret = getsockopt( s, SOL_IPV6, IP6T_SO_ORIGINAL_DST, ptr_peer_info, &addrlen );
     }
 
@@ -246,7 +251,7 @@ bool baseCom::resolve_nonlocal_dst_socket(int sock) {
     nonlocal_dst_resolved_ = resolve_socket_dst(sock, &h, &p, &s);
     if(nonlocal_dst_resolved()) {
         nonlocal_dst_host_ = h;
-        nonlocal_dst_port_ = std::stoi(p);
+        nonlocal_dst_port_ = raw::down_cast_signed<unsigned short>(std::stoi(p)).value_or(0);
         nonlocal_dst_peer_info_ = s;
     }
     _dia("baseCom::resolve_nonlocal_dst_socket: nonlocal dst: %s:%s", h.c_str(), p.c_str());
@@ -263,7 +268,7 @@ bool baseCom::resolve_redirected_dst_socket(int sock) {
 
     if(nonlocal_dst_resolved()) {
         nonlocal_dst_host_ = h;
-        nonlocal_dst_port_ = std::stoi(p);
+        nonlocal_dst_port_ = raw::down_cast_signed<unsigned short>(std::stoi(p)).value_or(0);
         nonlocal_dst_peer_info_ = s;
     }
 
@@ -313,7 +318,7 @@ std::string baseCom::full_flags_str() {
 
 void baseCom::err_errno(const char* fn, const char* params, int rv) const {
     _err("%s: error: %d params: %s: %s", fn, rv, params, string_error().c_str());
-};
+}
 
 
 

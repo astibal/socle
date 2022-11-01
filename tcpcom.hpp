@@ -88,9 +88,9 @@ public:
     std::string to_string(int verbosity) const override { return c_type(); };
 
 protected:
-    int connect_sock_family = AF_UNSPEC;
+    sa_family_t  connect_sock_family = AF_UNSPEC;
     int connect_sock_type = SOCK_STREAM;
-    int bind_sock_family = AF_INET6;
+    sa_family_t bind_sock_family = AF_INET6;
     int bind_sock_type = SOCK_STREAM;
     int bind_sock_protocol = IPPROTO_TCP;
 
