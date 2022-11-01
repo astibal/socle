@@ -418,8 +418,8 @@ int baseHostCX::read() {
     _dum("HostCX::read[%s]: calling pre_read",c_type());
     pre_read();
 
-    if(next_read_limit_ < 0) {
-        next_read_limit_ = 0;
+    if(read_eagain()) {
+        read_unlimited();
         return -1;
     }
 
@@ -431,7 +431,7 @@ int baseHostCX::read() {
     }
 
     ssize_t buffer_written_len = 0;
-    auto this_read_op_limit = static_cast<std::size_t>(next_read_limit());
+    auto this_read_op_limit = read_limit().value_or(0);
 
     while(true) {
 
@@ -511,7 +511,7 @@ int baseHostCX::read() {
     }
 
     // before return, don't forget to reset read limiter
-    next_read_limit(0);
+    read_unlimited();
 
     return down_cast<int>(buffer_written_len).value_or(max_of<int>());
 }

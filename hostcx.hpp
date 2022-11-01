@@ -236,8 +236,10 @@ private:
 	                            /// Note: while there is process_out() called by write(), all written bytes to socket are flushed from the buffer,
 	                            ///       therefore no similar mechanic is needed when sending data out.
     std::size_t processed_out_ = 0L;
-	int64_t next_read_limit_ = 0L;  // limit next read() operation to this number. Zero means no restrictions.
-	                            // <0 means don't read at all
+	std::optional<std::size_t> read_limit_ = 0L;  // limit next read() operation to this number.
+                                // empty means no restrictions.
+	                            // 0 means return with -1 (simulate EAGAIN)
+                                // >0 ... read at max specified amount of bytes
 	
 	/*! 
 	 ! If you are not attempting to do something really special, you want it to keep it as true (default). See [HostCX::auto_finish()](@ref HostCX::auto_finish) */
@@ -423,8 +425,12 @@ public:
         return r;
     }
 	
-	inline int64_t next_read_limit() const noexcept { return next_read_limit_; }
-	inline void next_read_limit(int64_t  s) noexcept { next_read_limit_ = s; }
+	inline std::optional<std::size_t> const& read_limit() const noexcept { return read_limit_; }
+    [[nodiscard]] inline bool read_eagain() const noexcept { return ( read_limit_ == 0 ); }
+
+    inline void read_limit(std::size_t  s) noexcept { s == 0 ? read_limit_ = std::nullopt :read_limit_ = s;  }
+    inline void read_unlimited() noexcept { read_limit_ = std::nullopt; }
+    inline void read_force_eagain() noexcept { read_limit_ = 0; }
 
 	inline bool io_disabled() const {
 	    if(io_disabled_)

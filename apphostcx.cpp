@@ -318,7 +318,7 @@ void AppHostCX::pre_read() {
             if(l < 0) {
                 // if peek (it's a read without moving out data from OS buffer) returns -1
                 // simulate EAGAIN behaviour
-                next_read_limit(-1);
+                read_force_eagain();
                 _deb("AppHostCX::pre_read[%s]: peek() returned %d", c_type(), l);
 
             } else if(l > 0) {
@@ -327,13 +327,13 @@ void AppHostCX::pre_read() {
 
                 _deb("AppHostCX::pre_read[%s]: Appended to flow %d bytes (allocated buffer size %d): \r\n%s",c_type(),b.size(),b.capacity(),
                             hex_dump(b.data(),b.size(), 4, ' ', true).c_str());
-                next_read_limit(l);
+                read_limit(l);
 
                 updated = true;
 
                 if(com()->l4_proto() == SOCK_DGRAM) {
                     // don't limit reads, packets are dropped in case of tension, so flow could be incorrect a bit (it will be fixed on read).
-                    this->next_read_limit(0);
+                    read_unlimited();
                 }
                 // TCP
                 if(l >= (int)b.capacity()) {
