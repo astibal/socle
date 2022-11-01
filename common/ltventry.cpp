@@ -26,6 +26,8 @@
 #include "buffer.hpp"
 
 #include <vars.hpp>
+#include <convert.hpp>
+
 using namespace socle;
 
 LTVEntry::LTVEntry() {
@@ -112,15 +114,17 @@ int LTVEntry::unpack(uint8_t* buffer, unsigned int buflen) {
 			_ext("LTVEntry::unpack: Allocating: shadow buffer[%u] in %x", len_, buffer);
 			data_ = buffer;
 		}
-		
-		if (type_ == typ::cont) {
+
+
+        auto hdr_size = raw::down_cast<uint32_t>(ltv_header_size()).value_or(raw::max_of<uint32_t>());
+		if (type_ == typ::cont and len() > hdr_size) {
 			// some stats
 			unsigned int subentries=0;
 		
 			// start to dig all data inside
 			unsigned int data_index = 0;
-			unsigned int payload_len = len() -ltv_header_size();
-			
+			unsigned int payload_len = len() - hdr_size;
+
 			do {
 				// all sub-entries should not allocate a single byte of memory => owner(false) will ensure this
 				auto* l = new LTVEntry();
@@ -149,6 +153,9 @@ int LTVEntry::unpack(uint8_t* buffer, unsigned int buflen) {
 				
 			} while (true);
 		}
+        else {
+            _deb("LTVEntry::unpack: invalid header size");
+        }
 	}
 
 	_dia("LTVEntry::unpack: finished buffer 0x%x[%u]", buffer, (long)buflen);

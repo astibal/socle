@@ -20,6 +20,7 @@
 #include <internet.hpp>
 
 #include <vars.hpp>
+#include <convert.hpp>
 
 using namespace socle;
 
@@ -31,7 +32,8 @@ void TCPCom::init(baseHostCX* owner) {
 
 bool TCPCom::make_transparent(int sfd) {
 
-    int bind_status = namesocket(sfd, nonlocal_src_host(), nonlocal_src_port(), l3_proto());
+    int bind_status = namesocket(sfd, nonlocal_src_host(), nonlocal_src_port(),
+                                 raw::down_cast_signed<sa_family_t>(l3_proto()).value_or(AF_INET));
     if (bind_status != 0) {
         _war("cannot bind this %s socket to %s:%d: %s", SocketInfo::inet_family_str(l3_proto()).c_str(),
              nonlocal_src_host().c_str(), nonlocal_src_port(), string_error(bind_status).c_str());

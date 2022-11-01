@@ -7,16 +7,19 @@
 #include <cstring>
 
 #include <socle_common.hpp>
+#include <convert.hpp>
 #include <openssl/buffer.h>
 
 namespace {
+    using namespace socle;
+
     int bio_string_write(BIO* bio, const char* data, int len) {
 
 #ifdef USE_OPENSSL11
         BUF_MEM* ptr;
         BIO_get_mem_ptr(bio,&ptr);
 
-        reinterpret_cast<std::string*>((void*)ptr)->append(data, len);
+        reinterpret_cast<std::string*>((void*)ptr)->append(data,raw::down_cast_signed<std::string::size_type>(len).value_or(0));
 #else
         reinterpret_cast<std::string*>(bio->ptr)->append(data, len);
 #endif // USE_OPENSSL11
@@ -25,7 +28,7 @@ namespace {
 
     int bio_string_puts(BIO* bio, const char* data) {
         // Note: unlike puts(), BIO_puts does not add a newline.
-        return bio_string_write(bio, data, strlen(data));
+        return bio_string_write(bio, data, raw::to_signed_cast<int>(strlen(data)).value_or(0));
     }
 
     long bio_string_ctrl(BIO* bio, int cmd, long num, void* ptr) {
