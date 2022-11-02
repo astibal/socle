@@ -28,19 +28,6 @@
 
 namespace mp {
 
-    struct mp_guard {
-        explicit mp_guard(void* ptr) : ptr_(ptr) {};
-        void operator=(mp_guard const&) = delete;
-        mp_guard(mp_guard const&) = delete;
-
-        ~mp_guard() {
-            mempool_free(ptr_);
-        };
-    private:
-        void* ptr_;
-    };
-
-
     template<
             class CharT,
             class Traits = std::char_traits<CharT>,
@@ -49,10 +36,6 @@ namespace mp {
     class basic_string : public std::basic_string<CharT, Traits, Allocator> {
     public:
         using size_type = typename std::basic_string<CharT, Traits, Allocator>::size_type;
-
-        //basic_string() : std::basic_string<CharT, Traits, Allocator>() {};
-
-        //explicit basic_string(const Allocator& alloc ): std::basic_string<CharT, Traits, Allocator>(alloc) {};
 
         explicit basic_string( const Allocator& alloc ) noexcept
                 : std::basic_string<CharT, Traits, Allocator>(alloc) {}
@@ -74,12 +57,6 @@ namespace mp {
                       size_type pos,
                       const Allocator& alloc = Allocator() )
               : std::basic_string<CharT, Traits, Allocator>(other, pos, alloc ) {}
-
-//        basic_string( const basic_string& other,
-//                      size_type pos,
-//                      size_type count,
-//                      const Allocator& alloc = Allocator() )
-//              : std::basic_string<CharT, Traits, Allocator>(other, pos, count, alloc) {};
 
         basic_string( const CharT* s,
                       size_type count,
@@ -166,22 +143,6 @@ namespace mp {
         return ret;
     }
 
-//    template<
-//            class CharT,
-//            class Traits = std::char_traits<CharT>,
-//            class Allocator = mp_allocator<CharT>
-//    >
-//    std::basic_string<CharT, Traits, Allocator>
-//        operator+(
-//            std::basic_string<CharT, Traits, Allocator> const& a,
-//            mp::basic_string<CharT, Traits, Allocator> const& b) {
-//
-//        std::basic_string<CharT, Traits, Allocator> ret;
-//        ret.append(a);
-//        ret.append(b);
-//        return ret;
-//    }
-
 
     using string    = mp::basic_string<char>;
     using wstring 	= mp::basic_string<wchar_t>;
@@ -246,6 +207,12 @@ namespace mp {
             class Allocator = mp_allocator<std::pair<const Key, T> >
     > class map : public std::map<Key, T, Compare, Allocator> {};
 
+    template<
+            class Key,
+            class T,
+            class Compare = std::less<Key>,
+            class Allocator = mp_allocator<std::pair<const Key, T> >
+    > class multimap : public std::multimap<Key, T, Compare, Allocator> {};
 
     template<
             class T,
