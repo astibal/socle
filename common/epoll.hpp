@@ -183,6 +183,7 @@ struct epoll {
     virtual bool rescan_out(int socket);
     virtual unsigned long cancel_rescan_in(int socket);
     virtual unsigned long cancel_rescan_out(int socket);
+    bool rescans_empty() const;
 
     virtual bool click_timer_now (); // return true if we should add them back to in_set (scan their readability again). If yes, reset timer.
 
@@ -249,6 +250,7 @@ struct epoller {
     unsigned long cancel_rescan_in(int socket);
     unsigned long cancel_rescan_out(int socket);
 
+    bool rescans_empty();
 
     virtual bool click_timer_now (); // return true if we should add them back to in_set (scan their readability again). If yes, reset timer.
     

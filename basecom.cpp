@@ -281,7 +281,13 @@ int baseCom::poll() {
     
     _ext("baseCom::poll: called");
 
-    int r = poller.wait(poll_msec);
+    auto wait_time = poll_msec;
+    if(not poller.rescans_empty()) {
+        _dia("baseCom::poll: rescans not empty, shorter poll cycle!");
+        wait_time = rescan_msec;
+    }
+
+    int r = poller.wait(wait_time);
     _ext("baseCom::poll: poller returned %d",r);
     if (r < 0) {
         _dia("baseCom::poll: returned by poll: %s",string_error().c_str());

@@ -352,6 +352,10 @@ bool epoll::hint_socket(int socket) {
 }
 
 
+bool epoll::rescans_empty() const {
+    return ( rescan_set_in.empty() and rescan_set_out.empty() );
+}
+
 bool epoll::rescan_in(int socket) {
     if(socket > 0) {
 
@@ -419,7 +423,7 @@ bool epoll::click_timer_now () {
 
     
     auto ms_diff = std::chrono::duration_cast<std::chrono::milliseconds>(now - rescan_timer).count();
-    if(ms_diff > baseCom::rescan_poll_multiplier*baseCom::poll_msec) {
+    if(ms_diff > baseCom::rescan_msec) {
         rescan_timer = now;
         _ext("epoll::click_timer_now: diff = %d",ms_diff);
 
@@ -509,6 +513,19 @@ bool epoller::del(int socket)
     clear_handler(socket);
     
     return false;
+}
+
+bool epoller::rescans_empty() {
+
+    init_if_null();
+
+    if(poller != nullptr) {
+        return poller->rescans_empty();
+    }
+
+    // return true if there is no poller!
+    return true;
+
 }
 
 bool epoller::rescan_in(int socket)

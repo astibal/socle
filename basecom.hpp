@@ -50,8 +50,8 @@ public:
     static inline const char str_getsockname[] = "getsockname-tproxy";
     static inline const char str_getpeername[] = "getpeername-tproxy";
 
-    static inline long poll_msec = 100;
-    static inline long rescan_poll_multiplier = 2;
+    static inline long poll_msec = 1000;
+    static inline long rescan_msec = 100;
 
     int     poll_result = 0;
     baseHostCX* owner_cx_ = nullptr;
