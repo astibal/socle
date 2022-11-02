@@ -39,7 +39,8 @@ add_library(
         biomem.hpp
 		socle_size.hpp
 		epoll.cpp
-		xorshift.hpp)
+		xorshift.hpp
+		numops.hpp)
 
 if(UNIX)
 	IF(NOT CMAKE_BUILD_TYPE)

@@ -40,6 +40,7 @@ struct WorkerPipe {
     inline int pipe_to_worker() const noexcept { return pipe.second; }
 
     uint32_t seen_worker_load = 0;
+    static inline std::atomic_bool feedback_queue_empty = false;
 };
 
 class FdQueue {
@@ -48,16 +49,14 @@ public:
     FdQueue();
     virtual ~FdQueue();
 
-    enum  class sq_type_t { SQ_PIPE = 0, SQ_SOCKETPAIR = 1 } sq_type_ = sq_type_t::SQ_SOCKETPAIR;
+    enum  class sq_type_t { SQ_PIPE = 0, SQ_SOCKETPAIR = 1 };
     sq_type_t sq_type() const { return sq_type_; }
     const char* sq_type_str() const;
 
-
-    // pipe created to be monitored by Workers with poll. If pipe is filled with *some* data
-    // there is something in the queue to pick-up.
-
     int close_all();
     std::size_t push_all(int s);
+
+    void update_load(uint32_t worker_id, uint32_t load);
     int pop(uint32_t worker_id);
     template <typename UnaryPredicate>
     std::optional<int> pop_if(UnaryPredicate);
@@ -67,8 +66,14 @@ public:
     std::mutex& get_lock() const { return sq_lock_; }
     std::atomic_uint32_t& worker_id_max() { return worker_id_max_; }
 
-
 private:
+
+    // pipe created to be monitored by Workers with poll. If pipe is filled with *some* data
+    // there is something in the queue to pick-up.
+
+
+    sq_type_t sq_type_ = sq_type_t::SQ_SOCKETPAIR;
+
     mutable std::mutex sq_lock_;
     mp::deque<int> sq_;
 
@@ -104,7 +109,7 @@ std::optional<int> FdQueue::pop_if(UnaryPredicate check_true) {
 // proxy and wrapper class for FdQueue
 class fdqueue_error : public std::runtime_error {
 public:
-    explicit fdqueue_error(const char* what) : std::runtime_error(what) {};
+    using std::runtime_error::runtime_error;
 };
 
 struct FdQueueHandler {
@@ -114,6 +119,15 @@ struct FdQueueHandler {
     [[nodiscard]] int pop(int worker_id) const {
         if(fdqueue)
             return fdqueue->pop(worker_id);
+
+        throw fdqueue_error("handler: no fdqueue");
+    }
+
+    void update_load(uint32_t worker_id, uint32_t load) const {
+        if(fdqueue) {
+            fdqueue->update_load(worker_id, load);
+            return;
+        }
 
         throw fdqueue_error("handler: no fdqueue");
     }
@@ -154,7 +168,7 @@ struct FdQueueHandler {
         throw fdqueue_error("handler: no fdqueue");
     }
 
-    [[nodiscard]] std::pair<int,int> hint_new_pair(uint32_t id) {
+    [[nodiscard]] std::pair<int,int> hint_new_pair(uint32_t id) const {
         if(fdqueue)
             return fdqueue->new_pair(id);
 

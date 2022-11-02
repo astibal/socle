@@ -78,19 +78,59 @@ const char* FdQueue::sq_type_str() const {
 
 std::size_t FdQueue::push_all(int s) {
 
-    auto lc_ = std::scoped_lock(sq_lock_);
-    sq_.push_front(s);
+    {
+        auto lc_ = std::scoped_lock(sq_lock_);
+        sq_.push_front(s);
+    }
+
+    uint64_t entry_count = 0;
+    uint64_t written_sum = 0;
+
+    auto write_to_socket = [this](auto sock) {
+        auto wr = ::write(sock, "A", 1);
+        if (wr <= 0) {
+            _err("FdQueue::push: failed to write hint byte - socket[%d] error[%d]: %s", sock, wr,
+                 string_error().c_str());
+            return 0;
+        } else {
+            return 1;
+        }
+    };
+
+    std::multimap<uint64_t, WorkerPipe const*> candidates;
 
     for(auto const& [ key, pipes ]: hint_pairs_) {
+        ++entry_count;
+        candidates.insert(std::pair(pipes.seen_worker_load, &pipes));
 
-        auto socket = pipes.pipe_to_worker();
-        auto wr = ::write(socket, "A", 1);
-        if (wr <= 0) {
-            _err("FdQueue::push: failed to write hint byte - socket[%d] error[%d]: %s", socket, wr, string_error().c_str());
+        _deb("FdQueue::push: candidate with load %d inserted", pipes.seen_worker_load);
+    }
+
+    for(auto const& candy: candidates) {
+        ++written_sum;
+        if(written_sum > entry_count/2) break;
+
+        _deb("FdQueue::push: candidate with load %d summoned", candy.second->seen_worker_load);
+        auto sock = candy.second->pipe_to_worker();
+        written_sum += write_to_socket(sock);
+
+        // mechanism to help further avoid spurious wake-ups.
+        // if reported from worker, we stop notifying the rest.
+        if(WorkerPipe::feedback_queue_empty) {
+            _deb("FdQueue::push: feedback - queue is already empty");
+            WorkerPipe::feedback_queue_empty = false;
+            break;
         }
     }
 
-    return sq_.size();
+    return entry_count;
+}
+
+void FdQueue::update_load(uint32_t worker_id, uint32_t load) {
+     auto it = hint_pairs_.find(worker_id);
+     if(it != hint_pairs_.end()) {
+         it->second.seen_worker_load = load;
+     }
 }
 
 int FdQueue::pop(uint32_t worker_id) {
@@ -113,12 +153,21 @@ int FdQueue::pop(uint32_t worker_id) {
         auto lc_ = std::scoped_lock(sq_lock_);
 
         if (sq_.empty()) {
+
+            // report to scheduler queue is empty. It's not required, but it's nice from us.
+            WorkerPipe::feedback_queue_empty = true;
             return 0;
         }
+        else {
 
-        returned_socket = sq_.back();
-        sq_.pop_back();
+            returned_socket = sq_.back();
+            sq_.pop_back();
 
+            // do another check and report to scheduler
+            if (sq_.empty()) {
+                WorkerPipe::feedback_queue_empty = true;
+            }
+        }
     }
 
     if(red > 0) {

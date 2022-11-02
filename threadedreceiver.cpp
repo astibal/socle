@@ -390,6 +390,8 @@ int ThreadedReceiverProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
         return -1;
     }
 
+    p->update_load(worker_id_, proxies().size());
+
     uint32_t virtual_socket = p->pop_for_worker(worker_id_);
 
     if (virtual_socket == 0) {

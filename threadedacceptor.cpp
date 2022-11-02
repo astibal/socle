@@ -99,6 +99,8 @@ int ThreadedAcceptorProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
             this->state().dead(true);
         }
 
+        p->update_load(worker_id_, proxies().size());
+
         int s = p->pop(worker_id_);
         if (s > 0) {
             _dia("ThreadedAcceptorProxy::run: removed from queue: 0x%016llx (socket %d)", s, s);
