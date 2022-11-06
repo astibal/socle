@@ -524,8 +524,8 @@ bool baseProxy::handle_cx_read_once(unsigned char side, baseCom* xcom, baseHostC
     // on failure, skip all operations and go here
     failure:
     
-    // errors are proucts of operations above. Act on them.
-    if(! handle_cx_events(side,cx))
+    // errors are products of operations above. Act on them.
+    if(not handle_cx_events(side, cx))
         ret = false;    
     
     return ret;

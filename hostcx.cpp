@@ -246,7 +246,7 @@ void baseHostCX::shutdown() {
             _deb("baseHostCX::shutdown[%s]: socket shutdown on com", c_type());
 
             unhandle();
-            _deb("baseHostCX::shutdown[%s]: socket unhandled on com", c_type());
+            _deb("baseHostCX::shutdown[%s]: handler removed, com halted", c_type());
         }
         fds_ = 0;
     } else {
@@ -538,11 +538,16 @@ ssize_t baseHostCX::io_write(unsigned char* data, size_t tx_size, int flags = 0)
 int baseHostCX::write() {
 
     auto _debug_tx_size = [this](auto tx_size_orig, auto tx_size, const char* fname) {
-        if (tx_size != tx_size_orig) {
-            _deb("baseHostCX::write[%s]: calling %s modified data, size %d -> %d",c_type(), fname, tx_size_orig,tx_size);
-        }
 
-        _deb("baseHostCX::write[%s]: writebuf_ %d bytes pending %s", c_type(), tx_size, opening() ? "(opening)" : "");
+        if(tx_size > 0) {
+            if (tx_size != tx_size_orig) {
+                _deb("baseHostCX::write[%s]: calling %s modified data, size %d -> %d", c_type(), fname, tx_size_orig,
+                     tx_size);
+            }
+
+            _deb("baseHostCX::write[%s]: writebuf_ %d bytes pending %s", c_type(), tx_size,
+                 opening() ? "(opening)" : "");
+        }
     };
 
     if(io_disabled()) {

@@ -57,7 +57,7 @@ public:
         _dia("acknowledged continuous mode for next %ldB", continuous_data_left);
     }
 
-    // check data size and keep/unset continous mode
+    // check data size and keep/unset continuous mode
     void continuous_mode_keeper(buffer const& data);
 
     [[nodiscard]]
