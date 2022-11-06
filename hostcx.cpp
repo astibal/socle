@@ -486,7 +486,7 @@ int baseHostCX::read() {
 
         // in case next_read_limit_ is large and we read less bytes than it, we need to decrement also next_read_limit_
 
-        this_read_op_limit -= cur_io_len_bytes;
+        if(this_read_op_limit != 0L) this_read_op_limit -= cur_io_len_bytes;
 
         // if buffer is full, let's reallocate it and try read again (to save system resources)
 
@@ -595,9 +595,8 @@ int baseHostCX::write() {
         }
     }
 
-
-
-    ssize_t l = io_write(writebuf_.data(), std::min(tx_size, processed_out_), MSG_NOSIGNAL);
+    // process_out can actually extend bytes, so we cannot rely on tx_size
+    ssize_t l = io_write(writebuf_.data(), std::min(writebuf_.size(), processed_out_), MSG_NOSIGNAL);
 
     if (l > 0) {
         meter_write_bytes += static_cast<std::size_t>(l);
