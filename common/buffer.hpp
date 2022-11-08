@@ -120,11 +120,15 @@ public:
   void attach (void* data, size_type size); // take ownership
   void assign (void* data, size_type size, size_type capacity, bool own);
 
-  void append (buffer*);
+  void append (const buffer*);
   void append (const buffer&);
   void append (const void* data, size_type size);
 
-  template<typename T>
+  template<typename T,
+          typename = std::enable_if_t<std::negation_v<std::is_pointer<T>>>,
+          typename = std::enable_if_t<std::negation_v<std::is_base_of<buffer,std::remove_reference<T>>>>,
+          typename = std::enable_if_t<std::is_trivially_copyable_v<std::remove_reference<T>>>
+          >
   void append (T const& r) { append(&r, sizeof(T)); };
 
   void fill (unsigned char value = 0);

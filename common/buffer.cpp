@@ -316,7 +316,7 @@ void buffer::attach(void* d, size_type s) {
 }
 
 
-void buffer::append (buffer* b)
+void buffer::append (const buffer* b)
 {
     append (b->data (), b->size ());
 }
