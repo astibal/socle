@@ -59,6 +59,7 @@ struct expiring_ptr {
 
     expiring_ptr() = delete;
     expiring_ptr(T* v, unsigned int in_seconds): value_(v), expired_at_(::time(nullptr) + in_seconds) {}
+    virtual ~expiring_ptr() = default;
 
     T* value() { return value_.get(); };
     time_t& expired_at() { return expired_at_; };
