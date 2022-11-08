@@ -553,6 +553,9 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int lib_preverify, X509_STORE_
     }
 
     switch(err_code)  {
+        case X509_V_OK:
+            break;
+
         case X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY:
         case X509_V_ERR_UNABLE_TO_VERIFY_LEAF_SIGNATURE:
         case X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT:
@@ -622,6 +625,17 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int lib_preverify, X509_STORE_
             break;
 
         default:
+
+            // if not OK and no specific handling was treated by switch-case above, mark connection
+            // as erroneous, according to "invalid certificate" settings.
+            if(err_code > X509_V_OK) {
+                com->verify_bitset(verify_status_t::VRF_INVALID);
+                com->report_certificate_problem(err_cert, err_code);
+                if(com->opt.cert.allow_not_valid || com->opt.cert.failed_check_replacement) {
+                    callback_return = 1;
+                }
+            }
+
             _dia("[%s]: SSLCom::ssl_client_vrfy_callback: unknown verify status %d", name.c_str(), err_code);
     }
     
