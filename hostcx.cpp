@@ -306,7 +306,7 @@ const char* baseHostCX::c_type() const {
     return name_.c_str();
 }
 
-bool baseHostCX::reconnect(int delay) {
+bool baseHostCX::reconnect() {
 
     if (should_reconnect_now() and permanent()) {
         shutdown();
@@ -378,7 +378,7 @@ void baseHostCX::after_read(std::size_t buffer_written_len) {
         processed_in_total_ += processed_in_;
     }
 
-    _deb("baseHostCX::read[%s]: readbuf_ read %l bytes, process()-ed %l bytes, incomplete readbuf_ %l bytes",
+    _deb("baseHostCX::read[%s]: readbuf_ read %d bytes, process()-ed %d bytes, incomplete readbuf_ %d bytes",
          c_type(), buffer_written_len, processed_in_, buffer_written_len - processed_in_);
 
 
@@ -444,7 +444,7 @@ int baseHostCX::read() {
         if (this_read_op_limit > 0 and max_bytes_left > this_read_op_limit)
         {
             max_bytes_left = this_read_op_limit; // next read limit is checked to be positive
-            _deb("HostCX::read[%s]: read buffer limiter: %lB (%lB space in buffer)", c_type(), max_bytes_left, readbuf()->capacity() - readbuf()->size());
+            _deb("HostCX::read[%s]: read buffer limiter: %dB (%dB space in buffer)", c_type(), max_bytes_left, readbuf()->capacity() - readbuf()->size());
         }
 
         _ext("HostCX::read[%s]: readbuf_ base=%x, wr at=%x, maximum to write=%d", c_type(),
@@ -480,7 +480,7 @@ int baseHostCX::read() {
 
         if(this_read_op_limit > 0 and buffer_written_len >= static_cast<ssize_t>(this_read_op_limit))
         {
-            _dia("baseHostCX::read[%s]: read limiter hit on %l bytes.", c_type(), buffer_written_len);
+            _dia("baseHostCX::read[%s]: read limiter hit on %d bytes.", c_type(), buffer_written_len);
             break;
         }
 
@@ -702,7 +702,6 @@ std::size_t baseHostCX::finish() {
 }
 
 buffer & baseHostCX::to_read() {
-    _deb("baseHostCX::to_read[%s]: returning buffer::view for %d bytes", c_type(), processed_in_);
     return *readbuf();
 }
 

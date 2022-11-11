@@ -2998,6 +2998,7 @@ ssize_t baseSSLCom<L4Proto>::read (int _fd, void* _buf, size_t _n, int _flags ) 
     int rounds = 0;
 
     if(opt.bypass) {
+        _deb("SSLCom::read[%d]: called: bypassed - to write %d bytes", _fd, _n);
         return L4Proto::read(_fd, _buf, _n, _flags);
     }
 
@@ -3242,6 +3243,7 @@ ssize_t baseSSLCom<L4Proto>::write (int _fd, const void* _buf, size_t _n, int _f
 
 
     if(opt.bypass) {
+        _deb("SSLCom::write[%d]: called: bypassed - to write %d bytes", _fd, _n);
         return L4Proto::write(_fd, _buf, _n, _flags);
     }
 
@@ -3266,7 +3268,7 @@ ssize_t baseSSLCom<L4Proto>::write (int _fd, const void* _buf, size_t _n, int _f
             return -1;
         }
         else if (c == ret_handshake::FATAL) {
-            _dia("SSLCom::write[%d]: ssl_waiting() returned %d: unexpedted termination!", _fd, c);
+            _dia("SSLCom::write[%d]: ssl_waiting() returned %d: unexpected termination!", _fd, c);
             sslcom_fatal = true;
             return -1;
         }

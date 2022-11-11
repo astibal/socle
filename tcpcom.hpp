@@ -68,7 +68,7 @@ public:
                 return 0;
             }
         }
-        return static_cast<int>(r);
+        return r;
     };
     void shutdown(int _fd) override {
         int r = ::shutdown(_fd, SHUT_RDWR);

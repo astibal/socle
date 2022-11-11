@@ -401,7 +401,7 @@ public:
 
     [[nodiscard]] bool reduced() const { return host_.empty() && port_.empty() ; }
 	int connect();
-	bool reconnect(int delay=5);
+	bool reconnect();
 	inline int reconnect_delay() const { return reconnect_delay_; }
 	inline int idle_delay() const { return idle_delay_; };
     inline void idle_delay(unsigned short d) { idle_delay_ = d; };
