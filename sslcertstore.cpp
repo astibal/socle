@@ -27,14 +27,6 @@
 #include <openssl/ssl.h>
 #include <openssl/ct.h>
 
-
-
-#pragma GCC diagnostic ignored "-Wwrite-strings"
-#pragma GCC diagnostic push
-
-#pragma GCC diagnostic pop
-
-
 std::string FILE_to_string(FILE* file) {
     std::stringstream ss;
     if(file) {

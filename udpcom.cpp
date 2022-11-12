@@ -517,7 +517,7 @@ ssize_t UDPCom::read(int _fd, void* _buf, size_t _n, int _flags) {
 
 int UDPCom::read_from_pool(int _fd, void* _buf, size_t _n, int _flags) {
 
-    std::lock_guard<std::recursive_mutex> l(datagram_com()->lock);
+    auto lc_ =  std::scoped_lock(datagram_com()->lock);
     
     auto it_record = datagram_com()->datagrams_received.find((unsigned int)_fd);
     if(it_record != datagram_com()->datagrams_received.end()) {
@@ -617,8 +617,7 @@ ssize_t UDPCom::write(int _fd, const void* _buf, size_t _n, int _flags)
     if(_fd < 0) {
         return write_to_pool(_fd, _buf, _n, _flags);
     } else {
-        
-        
+
         std::string rps;
         unsigned short port;
         int fa = SocketInfo::inet_ss_address_unpack(&udpcom_addr, &rps, &port);
@@ -631,7 +630,6 @@ ssize_t UDPCom::write(int _fd, const void* _buf, size_t _n, int _flags)
         }
         
         return ret;
-        //return ::send(__fd,__buf, __n, __flags);
     }
     return -1;
 }
