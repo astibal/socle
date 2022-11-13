@@ -178,7 +178,7 @@ void baseProxy::left_shutdown() {
 
     std::for_each(delit.begin(), delit.end(), [](auto i) {delete i;});
 
- 	_deb("baseProxy::left_shutdown: bind=%z(delayed=%z), sock=%z, perm=%z", lb, ld, ls, lp);
+ 	_deb("baseProxy::left_shutdown: bind=%d(delayed=%d), sock=%d, perm=%d", lb, ld, ls, lp);
 }
 
 
@@ -214,7 +214,7 @@ void baseProxy::right_shutdown() {
     std::for_each(delit.begin(), delit.end(), [](auto i) {delete i;});
 
     
-	_deb("baseProxy::right_shutdown: bind=%z(delayed=%z), sock=%z, perm=%z", rb, rd, rs, rp);
+	_deb("baseProxy::right_shutdown: bind=%d(delayed=%d), sock=%d, perm=%d", rb, rd, rs, rp);
 }
 
 
