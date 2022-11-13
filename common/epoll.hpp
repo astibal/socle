@@ -92,6 +92,11 @@ struct protected_set {
         return set_;
     }
 
+    inline T const& get_ul() const {
+        return set_;
+    }
+
+
     protected_set() = default;
     protected_set(protected_set const& r) : set_(r.set_) {}
 

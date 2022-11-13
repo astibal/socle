@@ -168,13 +168,27 @@ protected:
     vector_type<baseHostCX*> left_delayed_accepts;
     vector_type<baseHostCX*> right_delayed_accepts;
 
+
     struct metering {
+        struct poll {
+            std::size_t handled_count = 0L;
+            std::size_t generic_count = 0L;
+            std::size_t hint_count = 0L;
+            std::size_t null_count = 0L;
+
+            poll operator+(poll const&) = delete;
+            void operator+=(poll const& b) {
+                handled_count += b.handled_count;
+                generic_count += b.generic_count;
+                hint_count += b.hint_count;
+                null_count += b.null_count;
+            }
+        };
+
         int last_read = 0;
         int last_write = 0;
-        int counter_proxy_handler = 0;
-        int counter_generic_handler = 0;
-        int counter_back_handler = 0;
-        int counter_hint_handler = 0;
+
+        poll polls;
 
         // opt-out metering feature
         bool do_rate_meter = true;
@@ -265,9 +279,17 @@ public:
     virtual void right_shutdown();
     void shutdown() override;
 
+
     int run() override;
+
+    using socket_set_type = enum name_id { INSET=0, OUTSET=1, IDLESET=2, ERRSET=3, VIRTSET=4 };
     int run_poll();                           // handle proxy after poll(), so it's only called if proxy is pollroot.
                                               // Returns non-zero if it should be immediately re-run.
+
+
+
+    metering::poll run_poll_socket(int cur_socket, epoll::set_type &real_set, socket_set_type set_type);          // do actual work with the socket
+    metering::poll run_poll_socket_null_handler(int cur_socket, epoll::set_type& real_set, socket_set_type set_type);          // treat specifically sockets without hnadlers set (maybe legit, ie. hint sockets)
 
     int prepare_sockets(baseCom*) override;   // which Com should be set: typically it should be the parent's proxy's Com
     
