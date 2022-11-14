@@ -488,8 +488,15 @@ int ThreadedReceiverProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
 
 
             if (proxy_type().is_transparent()) {
+                _dia("ThreadedReceiverProxy::handle_sockets_once[%d]: type=transparent CX created", virtual_socket);
+
                 cx_bcom->resolve_nonlocal_dst_socket(virtual_socket);
-            } else {
+
+            }
+            else if(proxy_type().is_proxy()) {
+                _dia("ThreadedReceiverProxy::handle_sockets_once[%d]: type=proxy CX created", virtual_socket);
+            }
+            else if (proxy_type().is_redirect()) {
 
                 // get REDIR port needed for destination lookup
                 cx_bcom->resolve_nonlocal_dst_socket(virtual_socket);
@@ -508,7 +515,7 @@ int ThreadedReceiverProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
                     _deb("redir map host: %s:%d", target.first.c_str(), target.second);
                 } else {
 
-                    _dia("ThreadedReceiverProxy::handle_sockets_once[%d]: CX created, bound socket %d: no redirection target",
+                    _dia("ThreadedReceiverProxy::handle_sockets_once[%d]: type=redirect CX created, bound socket %d: no redirection target",
                          virtual_socket, _record_socket_left);
 
                     delete cx;

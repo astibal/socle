@@ -111,7 +111,7 @@ public:
         if(rmap_.find(redir_port) != rmap_.end()) {
             return  rmap_[redir_port];
         }
-        return std::make_optional(std::make_pair("8.8.8.8", 53));
+        return std::nullopt;
     };
 
     static ReceiverRedirectMap& instance() {
