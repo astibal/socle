@@ -701,7 +701,7 @@ std::size_t baseHostCX::finish() {
     }
 }
 
-buffer & baseHostCX::to_read() {
+lockbuffer& baseHostCX::to_read() {
     return *readbuf();
 }
 
