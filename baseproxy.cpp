@@ -1162,6 +1162,8 @@ auto baseProxy::run_poll_socket(int cur_socket, epoll::set_type& real_set, socke
         ret += nh;
     }
 
+    // locked, erase currently handled socket from the set
+    real_set.erase(cur_socket);
     return ret;
 }
 
