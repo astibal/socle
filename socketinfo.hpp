@@ -78,6 +78,16 @@ struct SocketInfo {
     [[nodiscard]] in6_addr dst_ss_in6() const { constexpr in6_addr def{}; return dst_ss.has_value() ? *((in6_addr*)&dst_ss.value()) : def; }
 
 
+
+    static sockaddr_in* as_v4(struct sockaddr_storage* what) { return reinterpret_cast<sockaddr_in*>(what); }
+    static sockaddr_in6* as_v6(struct sockaddr_storage* what) { return reinterpret_cast<sockaddr_in6*>(what); }
+
+    sockaddr_in* src_as_v4() { return as_v4(&src_ss.value()); }
+    sockaddr_in* dst_as_v4() { return as_v4(&dst_ss.value()); }
+
+    sockaddr_in6* src_as_v6() { return as_v6(&src_ss.value()); }
+    sockaddr_in6* dst_as_v6() { return as_v6(&dst_ss.value()); }
+
     // data are packed into optionals, or unpacked from them -- depending on particular use case.
     // data members - source info
     std::optional<struct sockaddr_storage> src_ss;
