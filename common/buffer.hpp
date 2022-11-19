@@ -152,6 +152,15 @@ public:
   template <typename T> T get_at(unsigned int idx) const;
   template <typename T> static T get_at_ptr(unsigned char const* data);
 
+  template <std::size_t SZ>
+  std::array<uint8_t, SZ> copy_from(std::size_t start) const {
+      if(start + SZ > size()) throw std::out_of_range("out of range");
+
+      std::array<uint8_t, SZ> ret;
+      std::memcpy(ret.data(), data() + start, SZ);
+      return ret;
+  }
+
   [[nodiscard]] size_type find (unsigned char, size_type pos = 0) const;
   [[maybe_unused]] [[nodiscard]] size_type rfind (unsigned char, size_type pos = npos) const;
 
