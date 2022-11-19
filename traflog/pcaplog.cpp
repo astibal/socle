@@ -76,32 +76,32 @@ namespace socle::traflog {
         }
 
         SocketInfo s;
-        s.str_src_host = ls[0]->host();
-        s.str_dst_host = rs[0]->host();
-        s.sport = safe_val(ls[0]->port(), 0);
-        s.dport = safe_val(rs[0]->port(), 0);
-        s.src_family = ls.at(0)->com()->l3_proto();
-        s.dst_family = rs.at(0)->com()->l3_proto();
-        s.pack_dst_ss();
-        s.pack_src_ss();
+        s.src.str_host = ls[0]->host();
+        s.dst.str_host = rs[0]->host();
+        s.src.port = safe_val(ls[0]->port(), 0);
+        s.dst.port = safe_val(rs[0]->port(), 0);
+        s.src.family = ls.at(0)->com()->l3_proto();
+        s.dst.family = rs.at(0)->com()->l3_proto();
+        s.dst.pack();
+        s.src.pack();
 
-        if(not s.src_ss.has_value()) {
+        if(not s.src) {
             _war("pcaplog::ctor: src info not created");
             return;
         } else {
-            details.source = s.src_ss.value();
+            details.source = s.src.ss.value();
             _deb("pcaplog::ctor: src info: %s", s.src_ss_str().c_str());
         }
 
 
 
-        if(not s.src_ss.has_value()) {
+        if(not s.src) {
             _war("pcaplog::ctor: dst info not created");
             return;
         }
         else {
             _deb("pcaplog::ctor: dst info: %s", s.dst_ss_str().c_str());
-            details.destination = s.dst_ss.value();
+            details.destination = s.dst.ss.value();
         }
 
         // this could become more complex in the (probably far) future

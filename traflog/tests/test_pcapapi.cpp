@@ -13,21 +13,21 @@ using namespace socle::pcap;
 TEST(PcapTest, BasicHttp) {
 
     SocketInfo s;
-    s.str_src_host = "1.1.1.1";
-    s.str_dst_host = "8.8.8.8";
-    s.sport = 63333;
-    s.dport = 80;
-    s.pack_dst_ss();
-    s.pack_src_ss();
+    s.src.str_host = "1.1.1.1";
+    s.dst.str_host = "8.8.8.8";
+    s.src.port = 63333;
+    s.dst.port = 80;
+    s.dst.pack();
+    s.src.pack();
 
-    ASSERT_TRUE(s.src_ss.has_value());
-    ASSERT_TRUE(s.dst_ss.has_value());
+    ASSERT_TRUE(s.src.ss.has_value());
+    ASSERT_TRUE(s.dst.ss.has_value());
 
     tcp_details d{};
     d.seq_in =  11111L;
     d.seq_out = 22222L;
-    d.source = s.src_ss.value();
-    d.destination = s.dst_ss.value();
+    d.source = s.src.ss.value();
+    d.destination = s.dst.ss.value();
 
     auto f = fopen("/tmp/ipv4_tcp.pcap", "w");
 
@@ -63,23 +63,23 @@ TEST(PcapTest, BasicHttp) {
 TEST(PcapTest, BasicHttp_v6) {
 
     SocketInfo s;
-    s.str_src_host = "fe80::7f65:f37c:5f6:965d";
-    s.str_dst_host = "2001:67c:68::76";
-    s.src_family = AF_INET6;
-    s.dst_family = AF_INET6;
-    s.sport = 63333;
-    s.dport = 80;
-    s.pack_dst_ss();
-    s.pack_src_ss();
+    s.src.str_host = "fe80::7f65:f37c:5f6:965d";
+    s.dst.str_host = "2001:67c:68::76";
+    s.src.family = AF_INET6;
+    s.dst.family = AF_INET6;
+    s.src.port = 63333;
+    s.dst.port = 80;
+    s.dst.pack();
+    s.src.pack();
 
-    ASSERT_TRUE(s.src_ss.has_value());
-    ASSERT_TRUE(s.dst_ss.has_value());
+    ASSERT_TRUE(s.src.ss.has_value());
+    ASSERT_TRUE(s.dst.ss.has_value());
 
     tcp_details d{};
     d.seq_in =  11111L;
     d.seq_out = 22222L;
-    d.source = s.src_ss.value();
-    d.destination = s.dst_ss.value();
+    d.source = s.src.ss.value();
+    d.destination = s.dst.ss.value();
     d.ip_version = 6;
 
     auto f = fopen("/tmp/ipv6_tcp.pcap", "w");
@@ -116,21 +116,21 @@ TEST(PcapTest, BasicHttp_v6) {
 TEST(PcapTest, BasicUDP) {
 
     SocketInfo s;
-    s.str_src_host = "1.1.1.1";
-    s.str_dst_host = "8.8.8.8";
-    s.sport = 63333;
-    s.dport = 514;
+    s.src.str_host = "1.1.1.1";
+    s.dst.str_host = "8.8.8.8";
+    s.src.port = 63333;
+    s.dst.port = 514;
 
-    s.pack_dst_ss();
-    s.pack_src_ss();
+    s.dst.pack();
+    s.src.pack();
 
-    ASSERT_TRUE(s.src_ss.has_value());
-    ASSERT_TRUE(s.dst_ss.has_value());
+    ASSERT_TRUE(s.src.ss.has_value());
+    ASSERT_TRUE(s.dst.ss.has_value());
 
     connection_details d{};
     d.next_proto = connection_details::UDP;
-    d.source = s.src_ss.value();
-    d.destination = s.dst_ss.value();
+    d.source = s.src.ss.value();
+    d.destination = s.dst.ss.value();
 
     auto f = fopen("/tmp/ipv4_udp.pcap", "w");
 
@@ -158,23 +158,23 @@ TEST(PcapTest, BasicUDP) {
 TEST(PcapTest, BasicUDP_v6) {
 
     SocketInfo s;
-    s.str_src_host = "fe80::7f65:f37c:5f6:965d";
-    s.str_dst_host = "2001:67c:68::76";
-    s.src_family = AF_INET6;
-    s.dst_family = AF_INET6;
-    s.sport = 63333;
-    s.dport = 514;
+    s.src.str_host = "fe80::7f65:f37c:5f6:965d";
+    s.dst.str_host = "2001:67c:68::76";
+    s.src.family = AF_INET6;
+    s.dst.family = AF_INET6;
+    s.src.port = 63333;
+    s.dst.port = 514;
 
-    s.pack_dst_ss();
-    s.pack_src_ss();
+    s.dst.pack();
+    s.src.pack();
 
-    ASSERT_TRUE(s.src_ss.has_value());
-    ASSERT_TRUE(s.dst_ss.has_value());
+    ASSERT_TRUE(s.src.ss.has_value());
+    ASSERT_TRUE(s.dst.ss.has_value());
 
     connection_details d{};
     d.next_proto = connection_details::UDP;
-    d.source = s.src_ss.value();
-    d.destination = s.dst_ss.value();
+    d.source = s.src.ss.value();
+    d.destination = s.dst.ss.value();
     d.ip_version = 6;
 
     auto f = fopen("/tmp/ipv6_udp.pcap", "w");
@@ -225,21 +225,21 @@ const unsigned char dns_req[] = {
 
 TEST(PcapTest, L4_chksum) {
     SocketInfo s;
-    s.str_src_host = "192.168.254.100";
-    s.str_dst_host = "8.8.8.8";
+    s.src.str_host = "192.168.254.100";
+    s.dst.str_host = "8.8.8.8";
 
-    s.src_family = AF_INET;
-    s.dst_family = AF_INET;
+    s.src.family = AF_INET;
+    s.dst.family = AF_INET;
 
-    s.sport = 56579;
-    s.dport = 53;
+    s.src.port = 56579;
+    s.dst.port = 53;
 
-    s.pack_dst_ss();
-    s.pack_src_ss();
+    s.dst.pack();
+    s.src.pack();
 
     tcp_details d;
-    d.source = s.src_ss.value();
-    d.destination = s.dst_ss.value();
+    d.source = s.src.ss.value();
+    d.destination = s.dst.ss.value();
     d.next_proto = connection_details::UDP;
     d.ip_version = 4;
 

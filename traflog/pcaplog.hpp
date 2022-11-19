@@ -93,9 +93,9 @@ namespace socle::traflog {
     struct GreExporter : public pcapng::IP_Hook {
         bool execute(pcap::connection_details const& det, buffer const& buf) override {
 
-            if(sock < 0) sock = traflog::raw_socket_gre(target.dst_family, tun_ttl);
+            if(sock < 0) sock = traflog::raw_socket_gre(target.dst.family, tun_ttl);
 
-            if(not target.dst_ss) return false;
+            if(not target.dst.ss) return false;
             if(sock < 0) return false;
 
             buffer send_data(buf.size() + sizeof(pcap::grehdr));
@@ -103,7 +103,7 @@ namespace socle::traflog {
 
             send_data.append(buf);
 
-            int r = sendto(sock, send_data.data(), send_data.size(), 0, (sockaddr*)&target.dst_ss.value(), sizeof(sockaddr_storage));
+            int r = sendto(sock, send_data.data(), send_data.size(), 0, (sockaddr*) target.dst.as_ss(), sizeof(sockaddr_storage));
             if(r <= 0) {
                 return false;
             }
@@ -112,9 +112,9 @@ namespace socle::traflog {
         }
 
         GreExporter(int family, std::string_view host) {
-            target.dst_family = family;
-            target.str_dst_host = host;
-            target.pack_dst_ss();
+            target.dst.family = family;
+            target.dst.str_host = host;
+            target.dst.pack();
         }
         GreExporter(GreExporter const& other) : target(other.target), sock(-1), tun_ttl(other.tun_ttl) {};
         GreExporter(GreExporter&& other) noexcept : target(std::move(other.target)), sock(other.sock), tun_ttl(other.tun_ttl) { other.sock = -1; };

@@ -22,20 +22,13 @@
 #include <socketinfo.hpp>
 #include <common/internet.hpp>
 
+sockaddr_storage pack_ss(int family, const char* host, unsigned short port);
 
-void SocketInfo::unpack_src_ss() {
+void AddressInfo::unpack() {
 
-    if(! src_ss.has_value()) throw socket_info_error("cannot obtain source details");
+    if(! ss.has_value()) throw socket_info_error("cannot obtain source details");
 
-    src_family = inet_ss_address_unpack(& src_ss.value(), &str_src_host, &sport);
-}
-
-
-void SocketInfo::unpack_dst_ss() {
-
-    if(! dst_ss.has_value()) throw socket_info_error("cannot obtain destination details");
-
-    dst_family = inet_ss_address_unpack(& dst_ss.value(), &str_dst_host, &dport);
+    family = SockOps::ss_address_unpack(& ss.value(), &str_host, &port);
 }
 
 
@@ -61,12 +54,20 @@ sockaddr_storage pack_ss(int family, const char* host, unsigned short port) {
     return ss;
 }
 
-void SocketInfo::pack_dst_ss () {
-    dst_ss = std::make_optional(pack_ss(dst_family, str_dst_host.c_str(), dport));
+void AddressInfo::pack() {
+    ss = std::make_optional(pack_ss(family, str_host.c_str(), port));
 }
 
-void SocketInfo::pack_src_ss () {
-    src_ss = std::make_optional(pack_ss(src_family, str_src_host.c_str(), sport));
+std::string SockOps::family_str(int fa) {
+    switch(fa) {
+        case AF_INET:
+            return std::string("ip4");
+        case AF_INET6:
+            return std::string("ip6");
+
+        default:
+            return string_format("p%d",fa);
+    }
 }
 
 
@@ -74,19 +75,19 @@ void SocketInfo::pack_src_ss () {
 uint32_t SocketInfo::create_session_key(bool negative) {
 
 
-    if(! src_ss.has_value()) {
-        pack_src_ss();
+    if(not src) {
+        src.pack();
     }
 
-    if(! dst_ss.has_value()) {
-        pack_dst_ss();
+    if(not dst) {
+        dst.pack();
     }
 
-    switch (src_family) {
+    switch (src.family) {
         case AF_INET6:
-            return create_session_key6(&src_ss.value(), &dst_ss.value(), negative);
+            return create_session_key6(&src.ss.value(), &dst.ss.value(), negative);
         default:
-            return create_session_key4(&src_ss.value(), &dst_ss.value(), negative);
+            return create_session_key4(&src.ss.value(), &dst.ss.value(), negative);
     }
 }
 
@@ -142,7 +143,7 @@ uint32_t SocketInfo::create_session_key6(sockaddr_storage* from, sockaddr_storag
     return mirand; // however we return it as the key, therefore cast to unsigned int
 }
 
-int SocketInfo::socket_create(int family ,int l4proto, int protocol) {
+int SockOps::socket_create(int family ,int l4proto, int protocol) {
     int fd = socket(family, l4proto, protocol);
 
     if (fd < 0) {
@@ -174,7 +175,7 @@ int SocketInfo::socket_create(int family ,int l4proto, int protocol) {
     return fd;
 }
 
-void SocketInfo::socket_transparent(int fd, int family) {
+void SockOps::socket_transparent(int fd, int family) {
 
     int n = 1;
 
@@ -195,11 +196,11 @@ void SocketInfo::socket_transparent(int fd, int family) {
 
 int SocketInfo::create_socket_left(int l4_proto) {
 
-    int fd_left = socket_create(src_family, l4_proto, 0);
-    socket_transparent(fd_left, src_family);
+    int fd_left = SockOps::socket_create(src.family, l4_proto, 0);
+    SockOps::socket_transparent(fd_left, src.family);
 
-    pack_src_ss();
-    pack_dst_ss();
+    src.pack();
+    dst.pack();
 
     auto plug_socket = [&](int fd, sockaddr* bind_ss, sockaddr* connect_ss) {
 
@@ -225,13 +226,13 @@ int SocketInfo::create_socket_left(int l4_proto) {
             auto l_ = std::scoped_lock(like_a_barrier);
             if (::bind(fd, bind_ss, sizeof(struct sockaddr_storage))) {
                 throw socket_info_error(
-                        string_format("cannot bind socket %d to %s:%d - %s", fd, str_dst_host.c_str(), dport,
+                        string_format("cannot bind socket %d to %s:%d - %s", fd, dst.str_host.c_str(), dst.port,
                                       string_error().c_str()).c_str());
             }
 
             if (::connect(fd, connect_ss, sizeof(struct sockaddr_storage))) {
                 throw socket_info_error(
-                        string_format("cannot connect socket %d to %s:%d - %s", fd, str_src_host.c_str(), sport,
+                        string_format("cannot connect socket %d to %s:%d - %s", fd, src.str_host.c_str(), src.port,
                                       string_error().c_str()).c_str());
             }
         }
@@ -243,25 +244,14 @@ int SocketInfo::create_socket_left(int l4_proto) {
         }
     };
 
-    plug_socket(fd_left, (sockaddr *) &dst_ss.value(), (sockaddr *) &src_ss.value());
+    plug_socket(fd_left, (sockaddr *) &dst.ss.value(), (sockaddr *) &src.ss.value());
 
     return fd_left;
 }
 
-std::string SocketInfo::inet_family_str(int fa) {
-    switch(fa) {
-        case AF_INET:
-            return std::string("ip4");
-        case AF_INET6:
-            return std::string("ip6");
-
-        default:
-            return string_format("p%d",fa);
-    }
-}
 
 
-int SocketInfo::inet_ss_address_unpack(const sockaddr_storage *ptr, std::string* dst, unsigned short* port) {
+int SockOps::ss_address_unpack(const sockaddr_storage *ptr, std::string* dst, unsigned short* port) {
 
     constexpr size_t buf_sz = 64;
 
@@ -295,11 +285,11 @@ int SocketInfo::inet_ss_address_unpack(const sockaddr_storage *ptr, std::string*
 }
 
 
-int SocketInfo::inet_ss_address_remap(const sockaddr_storage *orig, sockaddr_storage* mapped) {
+int SockOps::ss_address_remap(const sockaddr_storage *orig, sockaddr_storage* mapped) {
     std::string ip_part;
     unsigned short port_part;
 
-    int fa = inet_ss_address_unpack(orig,&ip_part,&port_part);
+    int fa = ss_address_unpack(orig,&ip_part,&port_part);
 
     if(fa == AF_INET) {
         inet_pton(fa,ip_part.c_str(),&((struct sockaddr_in*)mapped)->sin_addr);
@@ -315,11 +305,11 @@ int SocketInfo::inet_ss_address_remap(const sockaddr_storage *orig, sockaddr_sto
     return fa;
 }
 
-std::string SocketInfo::inet_ss_str(const sockaddr_storage *s) {
+std::string SockOps::ss_str(const sockaddr_storage *s) {
     std::string ip;
     unsigned short port;
 
-    int fa = inet_ss_address_unpack(s,&ip,&port);
+    int fa = ss_address_unpack(s,&ip,&port);
 
-    return string_format("%s/%s:%d", inet_family_str(fa).c_str(),ip.c_str(),port);
+    return string_format("%s/%s:%d", SockOps::family_str(fa).c_str(),ip.c_str(),port);
 }

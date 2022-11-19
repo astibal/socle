@@ -109,30 +109,30 @@ std::optional<SocketInfo> ThreadedReceiver<Worker>::process_anc_data(int sock, m
 
             try {
                 if (proxy_type().is_redirect()) {
-                    ret.src_ss = std::make_optional(*static_cast<sockaddr_storage *>(msg->msg_name));
-                    ret.unpack_src_ss();
+                    ret.src.ss = std::make_optional(*static_cast<sockaddr_storage *>(msg->msg_name));
+                    ret.src.unpack();
 
                     // there are no dst info data in CMSG in redirect case
                     sockaddr_storage orig{};
                     memcpy(&orig, (struct sockaddr_storage *) CMSG_DATA(cmsg), sizeof(struct sockaddr_storage));
 
-                    ret.dst_ss = std::make_optional(orig);
-                    ret.unpack_dst_ss();
+                    ret.dst.ss = std::make_optional(orig);
+                    ret.dst.unpack();
 
                 } else {
-                    ret.src_ss = std::make_optional(*static_cast<sockaddr_storage *>(msg->msg_name));
-                    ret.unpack_src_ss();
+                    ret.src.ss = std::make_optional(*static_cast<sockaddr_storage *>(msg->msg_name));
+                    ret.src.unpack();
 
                     sockaddr_storage orig{};
                     memcpy(&orig, (struct sockaddr_storage *) CMSG_DATA(cmsg), sizeof(struct sockaddr_storage));
 
-                    ret.dst_ss = std::make_optional(orig);
-                    ret.unpack_dst_ss();
+                    ret.dst.ss = std::make_optional(orig);
+                    ret.dst.unpack();
                 }
                 _dia("ThreadedReceiver::on_left_new_raw[%d]: datagram from: %s/%s:%u to %s/%s:%u",
                         sock,
-                        SocketInfo::inet_family_str(ret.src_family).c_str(), ret.str_src_host.c_str(), ret.sport,
-                        SocketInfo::inet_family_str(ret.dst_family).c_str(), ret.str_dst_host.c_str(), ret.dport
+                        SockOps::family_str(ret.src.family).c_str(), ret.src.str_host.c_str(), ret.src.port,
+                        SockOps::family_str(ret.dst.family).c_str(), ret.dst.str_host.c_str(), ret.dst.port
                 );
 
             }
@@ -161,8 +161,8 @@ bool ThreadedReceiver<Worker>::add_first_datagrams(int sock, SocketInfo& pinfo) 
     auto create_new_entry = [](int sock, SocketInfo& pinfo) -> std::shared_ptr<Datagram> {
         auto entry = std::make_shared<Datagram>();
 
-        entry->src = pinfo.src_ss.value();
-        entry->dst = pinfo.dst_ss.value();
+        entry->src = pinfo.src.ss.value();
+        entry->dst = pinfo.dst.ss.value();
         entry->reuse = false;
 
         return entry;
@@ -434,8 +434,8 @@ int ThreadedReceiverProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
         cx = nullptr;
 
         _deb("Record dump: cx=0x%x dst=%s real_socket=%d reuse=%d rx_size=0x%x socket_l=%d src=%s",
-             record->cx, SocketInfo::inet_ss_str(&record->dst).c_str(), record->socket_left.has_value() ? record->socket_left : -1,
-             record->reuse, record->queue_bytes_l(), record->socket_left, SocketInfo::inet_ss_str(&record->src).c_str());
+             record->cx, SockOps::ss_str(&record->dst).c_str(), record->socket_left.has_value() ? record->socket_left : -1,
+             record->reuse, record->queue_bytes_l(), record->socket_left, SockOps::ss_str(&record->src).c_str());
 
         try {
             cx = this->new_cx(virtual_socket);
@@ -537,7 +537,7 @@ int ThreadedReceiverProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
         }
     }
 
-    } // datagram lock release - prevent mutex dead-lock races in generic handler
+    } // datagram lock release - prevent mutex deadlock races in generic handler
 
 
     // ready signals on_left_new shound be called - outside of datagramCom::lock!

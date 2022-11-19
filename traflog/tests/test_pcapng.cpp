@@ -27,21 +27,21 @@ TEST(NgTest, Empty_Ipb) {
 TEST(NgTest, BasicHttp) {
 
     SocketInfo s;
-    s.str_src_host = "1.1.1.1";
-    s.str_dst_host = "8.8.8.8";
-    s.sport = 63333;
-    s.dport = 80;
-    s.pack_dst_ss();
-    s.pack_src_ss();
+    s.src.str_host = "1.1.1.1";
+    s.dst.str_host = "8.8.8.8";
+    s.src.port = 63333;
+    s.dst.port = 80;
+    s.dst.pack();
+    s.src.pack();
 
-    ASSERT_TRUE(s.src_ss.has_value());
-    ASSERT_TRUE(s.dst_ss.has_value());
+    ASSERT_TRUE(s.src.ss.has_value());
+    ASSERT_TRUE(s.dst.ss.has_value());
 
     tcp_details d{};
     d.seq_in = 11111L;
     d.seq_out = 22222L;
-    d.source = s.src_ss.value();
-    d.destination = s.dst_ss.value();
+    d.source = s.src.ss.value();
+    d.destination = s.dst.ss.value();
 
     auto f = fopen("/tmp/ng_ipv4_tcp.pcapng", "w");
 
@@ -103,21 +103,21 @@ TEST(NgTest, BasicHttp) {
 TEST(NgTest, BasicUDP) {
 
     SocketInfo s;
-    s.str_src_host = "1.1.1.1";
-    s.str_dst_host = "8.8.8.8";
-    s.sport = 63333;
-    s.dport = 514;
+    s.src.str_host = "1.1.1.1";
+    s.dst.str_host = "8.8.8.8";
+    s.src.port = 63333;
+    s.dst.port = 514;
 
-    s.pack_dst_ss();
-    s.pack_src_ss();
+    s.dst.pack();
+    s.src.pack();
 
-    ASSERT_TRUE(s.src_ss.has_value());
-    ASSERT_TRUE(s.dst_ss.has_value());
+    ASSERT_TRUE(s.src.ss.has_value());
+    ASSERT_TRUE(s.dst.ss.has_value());
 
     connection_details d{};
     d.next_proto = connection_details::UDP;
-    d.source = s.src_ss.value();
-    d.destination = s.dst_ss.value();
+    d.source = s.src.ss.value();
+    d.destination = s.dst.ss.value();
 
     auto f = fopen("/tmp/ng_ipv4_udp.pcapng", "w");
 
@@ -150,23 +150,23 @@ TEST(NgTest, BasicUDP) {
 TEST(NgTest, BasicUDP_v6) {
 
     SocketInfo s;
-    s.str_src_host = "fe80::7f65:f37c:5f6:965d";
-    s.str_dst_host = "2001:67c:68::76";
-    s.src_family = AF_INET6;
-    s.dst_family = AF_INET6;
-    s.sport = 63333;
-    s.dport = 514;
+    s.src.str_host = "fe80::7f65:f37c:5f6:965d";
+    s.dst.str_host = "2001:67c:68::76";
+    s.src.family = AF_INET6;
+    s.dst.family = AF_INET6;
+    s.src.port = 63333;
+    s.dst.port = 514;
 
-    s.pack_dst_ss();
-    s.pack_src_ss();
+    s.dst.pack();
+    s.src.pack();
 
-    ASSERT_TRUE(s.src_ss.has_value());
-    ASSERT_TRUE(s.dst_ss.has_value());
+    ASSERT_TRUE(s.src.ss.has_value());
+    ASSERT_TRUE(s.dst.ss.has_value());
 
     connection_details d{};
     d.next_proto = connection_details::UDP;
-    d.source = s.src_ss.value();
-    d.destination = s.dst_ss.value();
+    d.source = s.src.ss.value();
+    d.destination = s.dst.ss.value();
     d.ip_version = 6;
 
     auto f = fopen("/tmp/ng_ipv6_udp.pcapng", "w");
@@ -261,21 +261,21 @@ std::optional<DevInfo> tun_alloc(std::string const& dev)
 TEST(PcapExperiments, Tun4) {
 
     SocketInfo s;
-    s.str_src_host = "1.1.1.1";
-    s.str_dst_host = "8.8.8.8";
-    s.sport = 63333;
-    s.dport = 514;
+    s.src.str_host = "1.1.1.1";
+    s.dst.str_host = "8.8.8.8";
+    s.src.port = 63333;
+    s.dst.port = 514;
 
-    s.pack_dst_ss();
-    s.pack_src_ss();
+    s.dst.pack();
+    s.src.pack();
 
-    ASSERT_TRUE(s.src_ss.has_value());
-    ASSERT_TRUE(s.dst_ss.has_value());
+    ASSERT_TRUE(s.src.ss.has_value());
+    ASSERT_TRUE(s.dst.ss.has_value());
 
     connection_details d{};
     d.next_proto = connection_details::UDP;
-    d.source = s.src_ss.value();
-    d.destination = s.dst_ss.value();
+    d.source = s.src.ss.value();
+    d.destination = s.dst.ss.value();
 
     d.tun_proto = IPPROTO_GRE;
 
@@ -339,38 +339,38 @@ int raw_socket() {
 
 TEST(PcapExperiments, Tun6) {
     SocketInfo s;
-    s.str_src_host = "fe80::7f65:f37c:5f6:965d";
-    s.str_dst_host = "2001:67c:68::76";
-    s.src_family = AF_INET6;
-    s.dst_family = AF_INET6;
-    s.sport = 63333;
-    s.dport = 514;
+    s.src.str_host = "fe80::7f65:f37c:5f6:965d";
+    s.dst.str_host = "2001:67c:68::76";
+    s.src.family = AF_INET6;
+    s.dst.family = AF_INET6;
+    s.src.port = 63333;
+    s.dst.port = 514;
 
-    s.pack_dst_ss();
-    s.pack_src_ss();
+    s.dst.pack();
+    s.src.pack();
 
-    ASSERT_TRUE(s.src_ss.has_value());
-    ASSERT_TRUE(s.dst_ss.has_value());
+    ASSERT_TRUE(s.src.ss.has_value());
+    ASSERT_TRUE(s.dst.ss.has_value());
 
     connection_details d{};
     d.next_proto = connection_details::UDP;
-    d.source = s.src_ss.value();
-    d.destination = s.dst_ss.value();
+    d.source = s.src.ss.value();
+    d.destination = s.dst.ss.value();
     d.ip_version = 6;
 
     d.tun_proto = IPPROTO_GRE;
     d.tun_ttl = 3;
 
     SocketInfo tun;
-//    tun.str_src_host = "fe11::11";
-//    tun.str_dst_host = "fe11::88";
-//    tun.src_family = AF_INET6;
-//    tun.dst_family = AF_INET6;
+//    tun.src.str_host = "fe11::11";
+//    tun.dst.str_host = "fe11::88";
+//    tun.src.family = AF_INET6;
+//    tun.dst.family = AF_INET6;
 
-    tun.str_src_host = "172.30.1.1";
-    tun.str_dst_host = "172.30.255.1";
-    tun.src_family = AF_INET;
-    tun.dst_family = AF_INET;
+    tun.src.str_host = "172.30.1.1";
+    tun.dst.str_host = "172.30.255.1";
+    tun.src.family = AF_INET;
+    tun.dst.family = AF_INET;
 
 
     d.tun_details = &tun;
@@ -400,9 +400,9 @@ TEST(PcapExperiments, Tun6) {
     [&] {
         auto r = raw_socket();
         if(r) {
-            sendto(r, a.data(), a.size(), 0, (sockaddr*) &d.tun_details->dst_ss.value(),
+            sendto(r, a.data(), a.size(), 0, (sockaddr*) &d.tun_details->dst.ss.value(),
                    sizeof(sockaddr_storage));
-            sendto(r, b.data(), b.size(), 0, (sockaddr*) &d.tun_details->dst_ss.value(),
+            sendto(r, b.data(), b.size(), 0, (sockaddr*) &d.tun_details->dst.ss.value(),
                    sizeof(sockaddr_storage));
 
         } else {

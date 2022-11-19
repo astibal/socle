@@ -222,7 +222,7 @@ int UDPCom::connect(const char* host, const char* port) {
 
                 } else {
 
-                    sfd = SocketInfo::socket_create(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+                    sfd = SockOps::socket_create(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
 
                     if (so_transparent(sfd) != 0) {
                         _err("UDPCom::connect[%s:%s]: nonlocal socket[%d] transparency failed", host, port, sfd);
@@ -245,14 +245,14 @@ int UDPCom::connect(const char* host, const char* port) {
                         _err("UDPCom::connect[%s:%s]: socket[%d] transparency for %s/%s:%d failed, cannot bind, not cached.",
                              host, port,
                              sfd,
-                             SocketInfo::inet_family_str(l3_proto()).c_str(), nonlocal_src_host().c_str(),
+                             SockOps::family_str(l3_proto()).c_str(), nonlocal_src_host().c_str(),
                              nonlocal_src_port());
                         continue;
                     }
                 }
 
             } else {
-                sfd = SocketInfo::socket_create(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+                sfd = SockOps::socket_create(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
             }
         }
         catch(socket_info_error const& e) {
@@ -270,19 +270,19 @@ int UDPCom::connect(const char* host, const char* port) {
             std::string rps;
             unsigned short rp_port;
 
-            int fa = SocketInfo::inet_ss_address_unpack(((sockaddr_storage *) &udpcom_addr), &rps, &rp_port);
+            int fa = SockOps::ss_address_unpack(((sockaddr_storage *) &udpcom_addr), &rps, &rp_port);
 
             int con_ret = 0;
             if(l3_proto() != AF_INET6) {
                 con_ret = ::connect(sfd, (sockaddr *) &udpcom_addr, sizeof(sockaddr));
             } else {
-                _dia("connect[%d]: not attempted to %s/%s:%d", sfd, SocketInfo::inet_family_str(fa).c_str(),
+                _dia("connect[%d]: not attempted to %s/%s:%d", sfd, SockOps::family_str(fa).c_str(),
                      rps.c_str(), rp_port);
             }
 
 
             if (con_ret != 0) {
-                _err("connect[%d]: failed to %s/%s:%d : %s ", sfd, SocketInfo::inet_family_str(fa).c_str(),
+                _err("connect[%d]: failed to %s/%s:%d : %s ", sfd, SockOps::family_str(fa).c_str(),
                      rps.c_str(), rp_port,
                      string_error().c_str());
 
@@ -620,13 +620,13 @@ ssize_t UDPCom::write(int _fd, const void* _buf, size_t _n, int _flags)
 
         std::string rps;
         unsigned short port;
-        int fa = SocketInfo::inet_ss_address_unpack(&udpcom_addr, &rps, &port);
+        int fa = SockOps::ss_address_unpack(&udpcom_addr, &rps, &port);
         
         ssize_t ret =  ::sendto(_fd, _buf, _n, _flags, (sockaddr*)&udpcom_addr, sizeof(sockaddr_storage));
-        _deb("write[%d]: sendto %s/%s:%d returned %d", _fd, SocketInfo::inet_family_str(fa).c_str(), rps.c_str(), port, ret);
+        _deb("write[%d]: sendto %s/%s:%d returned %d", _fd, SockOps::family_str(fa).c_str(), rps.c_str(), port, ret);
         
         if(ret < 0) {
-            _err("write[%d]: sendto %s/%s:%d returned %d: %s", _fd, SocketInfo::inet_family_str(fa).c_str(), rps.c_str(), port, ret, string_error().c_str());
+            _err("write[%d]: sendto %s/%s:%d returned %d: %s", _fd, SockOps::family_str(fa).c_str(), rps.c_str(), port, ret, string_error().c_str());
         }
         
         return ret;
@@ -664,13 +664,13 @@ ssize_t UDPCom::write_to_pool(int _fd, const void* _buf, size_t _n, int _flags) 
         unsigned short port_src;
         unsigned short port_dst;
 
-        SocketInfo::inet_ss_address_unpack(&record->src, &ip_src, &port_src);
+        SockOps::ss_address_unpack(&record->src, &ip_src, &port_src);
         
         sockaddr_storage record_src_4fix{};
 
-        SocketInfo::inet_ss_address_unpack(&record->dst, &ip_dst, &port_dst);
-        std::string af_src = SocketInfo::inet_family_str(record->src_family());
-        std::string af_dst = SocketInfo::inet_family_str(record->dst_family());
+        SockOps::ss_address_unpack(&record->dst, &ip_dst, &port_dst);
+        std::string af_src = SockOps::family_str(record->src_family());
+        std::string af_dst = SockOps::family_str(record->dst_family());
 
         if(record->socket_left.has_value()) {
             _dia("UDPCom::write_to_pool[%d]: about to write %d bytes into socket %d", _fd, _n, record->socket_left.value());
@@ -753,8 +753,8 @@ ssize_t UDPCom::write_to_pool(int _fd, const void* _buf, size_t _n, int _flags) 
 
         sockaddr_storage ss_s {};
         sockaddr_storage ss_d {};
-        SocketInfo::inet_ss_address_remap(&record->dst, &ss_d);
-        SocketInfo::inet_ss_address_remap(&record->src, &ss_s);
+        SockOps::ss_address_remap(&record->dst, &ss_d);
+        SockOps::ss_address_remap(&record->src, &ss_s);
 
         if(log_level() >= DIA) {
             if (record->socket_left.has_value()) {

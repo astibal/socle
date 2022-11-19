@@ -195,13 +195,13 @@ namespace socle::pcap {
         if(details.tun_details) {
             details.tun_details->pack();
 
-            if(details.tun_details->src_family == AF_INET and details.tun_details->src_ss) {
-                auto ss = details.tun_details->src_ss.value();
+            if(details.tun_details->src.family == AF_INET and details.tun_details->src) {
+                auto ss = details.tun_details->src.ss.value();
                 auto* ip = (sockaddr_in*)(&ss);
                 tun_hdr.saddr = *(uint32_t*)&ip->sin_addr;
             }
-            if(details.tun_details->dst_family == AF_INET and details.tun_details->dst_ss) {
-                auto ss = details.tun_details->dst_ss.value();
+            if(details.tun_details->dst.family == AF_INET and details.tun_details->dst) {
+                auto ss = details.tun_details->dst.ss.value();
                 auto* ip = (sockaddr_in*)(&ss);
                 tun_hdr.daddr = *(uint32_t*)&ip->sin_addr;
             }
@@ -225,13 +225,13 @@ namespace socle::pcap {
         if(details.tun_details) {
             details.tun_details->pack();
 
-            if (details.tun_details->src_family == AF_INET6 and details.tun_details->src_ss) {
-                auto ss = details.tun_details->src_ss.value();
+            if (details.tun_details->src.family == AF_INET6 and details.tun_details->src.ss) {
+                auto ss = details.tun_details->src.ss.value();
                 auto const *ip = (sockaddr_in6 *) (&ss);
                 tun_hdr.ip6_src = ip->sin6_addr;
             }
-            if (details.tun_details->dst_family == AF_INET6 and details.tun_details->dst_ss) {
-                auto ss = details.tun_details->dst_ss.value();
+            if (details.tun_details->dst.family == AF_INET6 and details.tun_details->dst.ss) {
+                auto ss = details.tun_details->dst.ss.value();
                 auto const *ip = (sockaddr_in6 *) (&ss);
                 tun_hdr.ip6_dst = ip->sin6_addr;
             }
@@ -311,16 +311,16 @@ namespace socle::pcap {
 
             if(direction > 1 and details.tun_details) {
                 details.tun_details->pack();
-                ip_header.saddr = details.tun_details->dst_ss_in().s_addr;
-                ip_header.daddr = details.tun_details->src_ss_in().s_addr;
+                ip_header.saddr = details.tun_details->dst.as_v4()->sin_addr.s_addr;
+                ip_header.daddr = details.tun_details->src.as_v4()->sin_addr.s_addr;
             } else {
                 ip_header.saddr = target_sockaddr->sin_addr.s_addr;
                 ip_header.daddr = client_sockaddr->sin_addr.s_addr;
             }
         } else {
             if(direction > 1 and details.tun_details) {
-                ip_header.saddr = details.tun_details->src_ss_in().s_addr;
-                ip_header.daddr = details.tun_details->dst_ss_in().s_addr;
+                ip_header.saddr = details.tun_details->src.as_v4()->sin_addr.s_addr;
+                ip_header.daddr = details.tun_details->dst.as_v4()->sin_addr.s_addr;
             }
             else {
                 ip_header.saddr = client_sockaddr->sin_addr.s_addr;
@@ -364,16 +364,16 @@ namespace socle::pcap {
 
             if(direction > 1 and details.tun_details) {
                 details.tun_details->pack();
-                ip_header.ip6_src = details.tun_details->dst_ss_in6();
-                ip_header.ip6_dst = details.tun_details->src_ss_in6();
+                ip_header.ip6_src = details.tun_details->dst.as_v6()->sin6_addr;
+                ip_header.ip6_dst = details.tun_details->src.as_v6()->sin6_addr;
             } else {
                 ip_header.ip6_src = target_sockaddr->sin6_addr;
                 ip_header.ip6_dst = client_sockaddr->sin6_addr;
             }
         } else {
             if(direction > 1 and details.tun_details) {
-                ip_header.ip6_src = details.tun_details->src_ss_in6();
-                ip_header.ip6_dst = details.tun_details->dst_ss_in6();
+                ip_header.ip6_src = details.tun_details->src.as_v6()->sin6_addr;
+                ip_header.ip6_dst = details.tun_details->dst.as_v6()->sin6_addr;
             }
             else {
                 ip_header.ip6_src = client_sockaddr->sin6_addr;
@@ -391,7 +391,7 @@ namespace socle::pcap {
 
         if(details.tun_proto == connection_details::GRE) {
 
-            if(details.tun_details and details.tun_details->src_family == AF_INET6)
+            if(details.tun_details and details.tun_details->src.family == AF_INET6)
                 encapsulate_gre_v6(out_buffer, details, direction, payload_size);
             else
                 encapulate_gre_v4(out_buffer, details, direction, payload_size);
@@ -410,7 +410,7 @@ namespace socle::pcap {
 
         if(details.tun_proto == connection_details::GRE) {
 
-            if(details.tun_details and details.tun_details->src_family == AF_INET6)
+            if(details.tun_details and details.tun_details->src.family == AF_INET6)
                 encapsulate_gre_v6(out_buffer, details, direction, payload_size);
             else
                 encapulate_gre_v4(out_buffer, details, direction, payload_size);
