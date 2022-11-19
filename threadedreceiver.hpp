@@ -40,8 +40,6 @@ template<class Worker>
 class ThreadedReceiver : public baseProxy, public FdQueueHandler, public hasWorkers<Worker> {
 public:
 
-    using buffer_guard = locked_guard<lockbuffer>;
-
     ThreadedReceiver(std::shared_ptr<FdQueue> fdq, baseCom* c, proxyType t);
     ~ThreadedReceiver() override;
     

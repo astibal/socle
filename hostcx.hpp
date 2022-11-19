@@ -198,8 +198,6 @@ private:
 		uint16_t com_not_ready_counter = 0;
 	} peer_stats;
 
-    using buffer_guard = locked_guard<lockbuffer>;
-
 	/* Basic elements */
 	
 	mutable std::string name_;      //!< human friendly name
@@ -412,7 +410,7 @@ public:
 	inline lockbuffer const* readbuf() const { return &readbuf_; }
 
 	inline lockbuffer* writebuf() { return &writebuf_; }
-    [[maybe_unused]] inline lockbuffer const* writebuf() const { return &readbuf_; }
+    inline lockbuffer const* writebuf() const { return &readbuf_; }
 	
 	inline void send(buffer& b) { writebuf_.append(b); }
 	inline std::size_t peek(buffer& b) const

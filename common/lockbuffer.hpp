@@ -27,7 +27,6 @@
 class lockbuffer : public buffer, public lockable
 {
 public:
-    using buffer_guard = locked_guard<lockbuffer>;
 
     explicit lockbuffer (size_type size = 0) : buffer(size) {};
     lockbuffer (size_type s, size_type c) : buffer(s,c) {};

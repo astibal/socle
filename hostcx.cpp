@@ -560,8 +560,7 @@ int baseHostCX::write() {
         return 0;
     }
 
-    buffer_guard bg(writebuf());
-
+    auto acc = locked_(writebuf());
 
     // pre-write operation
 
