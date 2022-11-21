@@ -54,8 +54,9 @@ sockaddr_storage pack_ss(int family, const char* host, unsigned short port) {
     return ss;
 }
 
-void AddressInfo::pack() {
+bool AddressInfo::pack() {
     ss = std::make_optional(pack_ss(family, str_host.c_str(), port));
+    return ss.has_value();
 }
 
 std::string SockOps::family_str(int fa) {

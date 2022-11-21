@@ -52,6 +52,10 @@ struct SockOps {
 };
 
 struct AddressInfo {
+
+    AddressInfo() = default;
+    AddressInfo(int fam, std::string_view h, unsigned short port): family(fam), str_host(h), port(port) { pack(); };
+    AddressInfo(sockaddr_storage* from) { ss.emplace(*from); unpack(); }
     std::optional<struct sockaddr_storage> ss;
 
     int family = AF_INET;
@@ -59,11 +63,12 @@ struct AddressInfo {
     unsigned short port = 0;
 
     void unpack();
-    void pack();
+    bool pack();
 
     sockaddr_in* as_v4() { return SockOps::ss_v4(&ss.value()); }
     sockaddr_in6* as_v6() { return SockOps::ss_v6(&ss.value()); }
     sockaddr_storage* as_ss() { return &ss.value(); }
+    sockaddr_storage const* as_ss() const { return &ss.value(); }
 
     explicit operator bool() const { return ss.has_value(); };
 
