@@ -150,7 +150,8 @@ public:
   [[nodiscard]] unsigned char at (size_type) const;
   
   template <typename T> T get_at(unsigned int idx) const;
-  template <typename T> static T get_at_ptr(unsigned char const* data);
+  template <typename T> void set_at(unsigned int idx, T val);
+  template <typename T> static T get_at_ptr(uint8_t const* data);
 
   template <std::size_t SZ>
   std::array<uint8_t, SZ> copy_from(std::size_t start) const {
@@ -252,7 +253,16 @@ inline T buffer::get_at(unsigned int idx) const
 }
 
 template <typename T>
-inline T buffer::get_at_ptr(unsigned char const* data) {
+inline void buffer::set_at(unsigned int idx, T val)
+{
+    if(idx + sizeof(T) > size_)
+        throw std::out_of_range ("buffer: index out of range: " + std::to_string((int)idx) + " of " + std::to_string(size_));
+
+    *((T*)(&data()[idx])) = val;
+}
+
+template <typename T>
+inline T buffer::get_at_ptr(uint8_t const* data) {
     return *((T*)(data));
 }
 
