@@ -19,6 +19,7 @@
 #include <cstdio>
 #include <ctime>
 #include <regex>
+#include <array>
 
 #include <display.hpp>
 #include <sslcertstore.hpp>
@@ -360,7 +361,7 @@ SSLFactory& SSLFactory::init () {
 
     // don't run again if done
     if(fac.is_initialized) return fac;
-    auto make_initized = raw::guard([&](){ fac.is_initialized = true; });
+    auto make_initized = raw::guard([&fac](){ fac.is_initialized = true; });
 
     bool ret = fac.load();
 
@@ -460,7 +461,7 @@ bool SSLFactory::add(std::string const& store_key, X509_PAIR parek) {
     bool op_status = true;
 
     if (parek.first == nullptr || parek.second == nullptr) {
-        _dia("SSLFactory::add[%x]: one of about to be stored components is nullptr", this);
+        _dia("SSLFactory::add[%X]: one of about to be stored components is nullptr", serial);
 
         return false;
     }
@@ -472,24 +473,24 @@ bool SSLFactory::add(std::string const& store_key, X509_PAIR parek) {
         // free underlying keypair
         auto it = cache().get(store_key);
         if(it) {
-            _err("SSLFactory::add[%x] keypair associated with store_key '%s' already exists (keeping it there)",this,store_key.c_str());
+            _err("SSLFactory::add: keypair associated with store_key '%s' already exists (keeping it there)", store_key.c_str());
 
-            _deb("SSLFactory::add[%x]         existing pointers:  keyptr=0x%x certptr=0x%x", this, it->keypair()->first, it->keypair()->second);
-            _deb("SSLFactory::add[%x]         offending pointers: keyptr=0x%x certptr=0x%x",this, parek.first, parek.second);
+            _deb("SSLFactory::add:         existing pointers:  keyptr=0x%x certptr=0x%x", it->keypair()->first, it->keypair()->second);
+            _deb("SSLFactory::add:         offending pointers: keyptr=0x%x certptr=0x%x", parek.first, parek.second);
 
             op_status = false;
         } else {
 
             cache().set(store_key, std::make_shared<CertCacheEntry>(parek));
-            _dia("SSLFactory::add[%x] new cert '%s' successfully added to cache", this, store_key.c_str());
+            _dia("SSLFactory::add: new cert '%s' successfully added to cache", store_key.c_str());
         }
     }
-    catch (std::exception& e) {
+    catch (std::exception const& e) {
         op_status = false;
-        _dia("SSLFactory::add[%x] - exception caught: %s",this,e.what());
+        _dia("SSLFactory::add - exception caught: %s", e.what());
     }
 
-    if(!op_status) {
+    if(not op_status) {
         _err("Error to add certificate '%s' into memory cache!",store_key.c_str());
         return false;
     }
@@ -624,26 +625,20 @@ std::optional<std::string> SSLFactory::find_subject_by_fqdn(std::string const& f
 
 bool SSLFactory::erase(const std::string &subject) {
 
-    bool op_status = true;
     auto const& log = get_log();
 
     try {
-        auto lc_ = std::scoped_lock(lock());
-
-        if(find(subject).has_value()) {
-            cache().erase(subject);
-        }
+        _dia("SSLFactory::erase - %s", subject.c_str());
+        cache().erase(subject);
     }
 
-    catch(std::exception& e) {
-        op_status = false;
-        _dia("SSLFactory::erase[x] - exception caught: %s", this, e.what());
+    catch(std::exception const& e) {
+
+        _dia("SSLFactory::erase - exception caught: %s", e.what());
+        return false;
     }
-    if(!op_status) {
-        _err("failed removing certificate '%s' from cache", subject.c_str());
-    }
-    
-    return op_status;
+
+    return true;
 }
 
 int add_ext(STACK_OF(X509_EXTENSION) *sk, int nid, char *value) {
@@ -670,80 +665,80 @@ std::vector<std::string> SSLFactory::get_sans(X509* x) {
     STACK_OF(X509_EXTENSION) *exts = x->cert_info->extensions;
 #endif
 
-    int num_of_exts;
+    if(not exts) return ret;
 
-    if (exts) {   
-        num_of_exts = sk_X509_EXTENSION_num(exts);    
-        if(num_of_exts > 0) {
-            for (int i=0; i < num_of_exts; i++) {
-                X509_EXTENSION *ex = sk_X509_EXTENSION_value(exts, i);
-                if(!ex) {
-                    _err("SSLFactory::get_sans: error obtaining certificate extension [%d] value ",i);
-                    continue;
-                }
-                ASN1_OBJECT *obj = X509_EXTENSION_get_object(ex);
-                if(!obj) {
-                    _err("SSLFactory::get_sans: unable to extract ASN1 object from extension [%d]",i);
-                    continue;
-                }
-                
-                unsigned nid = OBJ_obj2nid(obj); 
-                if(nid == NID_subject_alt_name) {
-                    _deb("SSLFactory::get_sans: adding subjAltName to extensions");
+    const auto num_of_exts = sk_X509_EXTENSION_num(exts);
+
+    for (int i=0; i < num_of_exts; i++) {
+        auto* ex = sk_X509_EXTENSION_value(exts, i);
+        if(not ex) {
+            _err("SSLFactory::get_sans: error obtaining certificate extension [%d] value ",i);
+            continue;
+        }
+        auto* obj = X509_EXTENSION_get_object(ex);
+        if(not obj) {
+            _err("SSLFactory::get_sans: unable to extract ASN1 object from extension [%d]",i);
+            continue;
+        }
+
+        const auto nid = OBJ_obj2nid(obj);
+        if(nid == NID_subject_alt_name) {
+            _deb("SSLFactory::get_sans: adding subjAltName to extensions");
 #ifdef USE_OPENSSL11
 
-                    auto* alt = (STACK_OF(GENERAL_NAME)*)X509V3_EXT_d2i(ex);
-                    if(alt) {
+            auto* alt = (STACK_OF(GENERAL_NAME)*)X509V3_EXT_d2i(ex);
+            if(not alt) continue;
+            auto g_alt = raw::guard([&alt]{ if(alt) GENERAL_NAMES_free(alt); });
 
-                        int alt_len = sk_GENERAL_NAME_num(alt);
-                        for (int gn_i = 0; gn_i < alt_len; gn_i++) {
-                            GENERAL_NAME *gn = sk_GENERAL_NAME_value(alt, gn_i);
 
-                            int name_type = 0;
+            auto alt_len = sk_GENERAL_NAME_num(alt);
+            for (int gn_i = 0; gn_i < alt_len; gn_i++) {
+                auto const* gn = sk_GENERAL_NAME_value(alt, gn_i);
+                if(not gn) continue;
 
-                            // GENERAL_NAME_get0_value returns mostly ASN1STRING, with exceptions
-                            // of othername and maybe others ...
-                            // arg1 is original GENERAL_NAME, arg2 where to write type of returned name
-                            // learned from: https://github.com/openssl/openssl/issues/8973
+                int name_type = 0;
 
-                            void* name_ptr = GENERAL_NAME_get0_value(gn, &name_type);
-                            if(name_type == GEN_DNS) {
-                                auto* dns_name = (ASN1_STRING *) name_ptr; //in ASN1 we trust
+                void* name_ptr = GENERAL_NAME_get0_value(gn, &name_type);
+                if(name_type == GEN_DNS) {
+                    auto* dns_name = static_cast<ASN1_STRING*>(name_ptr); //in ASN1 we trust
 
-                                std::string san((const char *) ASN1_STRING_get0_data(dns_name),
-                                                (unsigned long) ASN1_STRING_length(dns_name));
-                                ret.push_back("DNS:"+san);
+                    std::string san((const char *) ASN1_STRING_get0_data(dns_name),
+                                    (unsigned long) ASN1_STRING_length(dns_name));
+                    ret.emplace_back("DNS:"+san);
 
-                                _deb("SSLFactory::get_sans: adding GEN_DNS: %s", san.c_str());
-                            } else {
-                              // pass ... # ehm
-                            }
+                    _deb("SSLFactory::get_sans: adding GEN_DNS: %s", san.c_str());
+                }
+                else if(name_type == GEN_IPADD) {
+                    auto* ip = static_cast<ASN1_STRING*>(name_ptr);
+                    std::string str_ip((const char *) ASN1_STRING_get0_data(ip),
+                                    (unsigned long) ASN1_STRING_length(ip));
+                    ret.emplace_back("IP:"+str_ip);
 
-                        }
-                    }
-                    GENERAL_NAMES_free(alt);
+                    _deb("SSLFactory::get_sans: adding GEN_IP: %s", str_ip.c_str());
+
+                }
+
+            }
 
 #else
-                    BIO *ext_bio = BIO_new(BIO_s_mem());
-                    if (!X509V3_EXT_print(ext_bio, ex, 0, 0)) {
-                        M_ASN1_OCTET_STRING_print(ext_bio, ex->value);
-                    }
-                    BUF_MEM *bptr;
-                    BIO_get_mem_ptr(ext_bio, &bptr);
-                    int sc = BIO_set_close(ext_bio, BIO_NOCLOSE);
-                    
-                    
-                    std::string san(bptr->data,bptr->length);
-                    BIO_free(ext_bio);
-                    BUF_MEM_free(bptr);
-
-                    ret.push_back(san);
-#endif
-                }
+            BIO *ext_bio = BIO_new(BIO_s_mem());
+            if (!X509V3_EXT_print(ext_bio, ex, 0, 0)) {
+                M_ASN1_OCTET_STRING_print(ext_bio, ex->value);
             }
+            BUF_MEM *bptr;
+            BIO_get_mem_ptr(ext_bio, &bptr);
+            int sc = BIO_set_close(ext_bio, BIO_NOCLOSE);
+
+
+            std::string san(bptr->data,bptr->length);
+            BIO_free(ext_bio);
+            BUF_MEM_free(bptr);
+
+            ret.push_back(san);
+#endif
         }
-    }   
-    
+    }
+
     return ret;
 }
 
@@ -753,60 +748,87 @@ std::string SSLFactory::get_sans_csv(X509 *x) {
     return string_csv(sans_vec);
 }
 
-std::optional<SSLFactory::X509_PAIR> SSLFactory::spoof(X509* cert_orig, bool self_sign, std::vector<std::string>* additional_sans) {
+
+std::optional<X509_REQ*> SSLFactory::sign_csr(X509_REQ*&& corpus) const {
+
+    auto* own_corpus = std::move(corpus);
+    auto const& log = get_log();
+
+    EVP_PKEY *pkey = def_sr_key;
+
+    EVP_MD const* digest = EVP_sha256();
+
+    if (!(X509_REQ_sign( own_corpus, pkey, digest))) {
+        _err("SSLFactory::spoof[%X]: error signing request", serial);
+        return std::nullopt;
+    }
+
+    return own_corpus;
+}
+
+std::optional<X509_REQ*> SSLFactory::create_csr_from(X509* cert_orig, bool self_sign, std::vector<std::string>* additional_sans) {
 
     auto const& log = get_log();
 
-    char tmp[2048];
-    _deb("SSLFactory::spoof[%x]: about to spoof certificate!",this);
-    
+    auto a_tmp = std::array<char,2048>();
+    auto* tmp = a_tmp.data();
+
+
+    _deb("SSLFactory::spoof[%X]: about to spoof certificate!", serial);
+
     if(self_sign) {
-      _dia("SSLFactory::spoof[%x]: about to spoof certificate (self-signed)!",this);
+        _dia("SSLFactory::spoof[%X]: about to spoof certificate (self-signed)!", serial);
     }
     if(additional_sans != nullptr && ! additional_sans->empty()) {
-        _dia("SSLFactory::spoof[%x]: about to spoof certificate (+sans):",this);
+        _dia("SSLFactory::spoof[%X]: about to spoof certificate (+sans):", serial);
         std::vector<std::string>& sans = *additional_sans;
         for (auto const& san: sans) {
-            _dia("SSLFactory::spoof[%x]:  SAN: %s",this, san.c_str());
+            _dia("SSLFactory::spoof[%X]:  SAN: %s", serial, san.c_str());
         }
     }
-    
+
     // get info from the peer certificate
     X509_NAME_get_text_by_NID(X509_get_subject_name(cert_orig),NID_commonName, tmp,2048);
     std::string cn(tmp);
-    
+
     X509_NAME_oneline(X509_get_subject_name(cert_orig), tmp, 2048);
     std::string subject(tmp);
-          
-    
-    _deb("SSLFactory::spoof[%x]: generating CSR for '%s'",this,subject.c_str());
-        
-    X509_REQ* copy = X509_REQ_new();
-    X509_NAME* copy_subj = nullptr;
-    EVP_PKEY *pkey = def_sr_key;
-    const EVP_MD *digest;
 
-    
-    if(!copy) {
-        _err("SSLFactory::spoof[%x]: cannot init request",this);
-        return std::nullopt;
-    }
-    
+
+    _deb("SSLFactory::spoof[%X]: generating CSR for '%s'", serial, subject.c_str());
+
+    auto* copy = X509_REQ_new();
+    X509_NAME* copy_subj = X509_NAME_new();
+
+
     EVP_PKEY* pub_sr_cert = X509_get_pubkey(def_sr_cert);
-    X509_REQ_set_pubkey(copy,pub_sr_cert);
+    X509_REQ_set_pubkey(copy, pub_sr_cert);
     EVP_PKEY_free(pub_sr_cert);
 
-    if (!(copy_subj = X509_NAME_new())) {
-        _err("SSLFactory::spoof[%x]: cannot init subject for request",this);
+    if( not copy) {
+        _err("SSLFactory::spoof[%X]: cannot init request", serial);
         return std::nullopt;
     }
 
-    X509_NAME* n_dup = X509_NAME_dup(X509_get_subject_name(cert_orig));
-    if (X509_REQ_set_subject_name(copy,n_dup) != 1) {
-        _err("SSLFactory::spoof[%x]: error copying subject to request",this);
+    if (not copy_subj) {
+        _err("SSLFactory::spoof[%X]: cannot init subject for request", serial);
         return std::nullopt;
     }
-    
+
+    auto g_copy_sub = raw::guard([&copy_subj]{
+        if(copy_subj) X509_NAME_free(copy_subj);
+    });
+
+    X509_NAME* n_dup = X509_NAME_dup(X509_get_subject_name(cert_orig));
+    auto g_n_dup = raw::guard([&n_dup]{
+        if(n_dup) X509_NAME_free(n_dup);
+    });
+
+    if (X509_REQ_set_subject_name(copy, n_dup) != 1) {
+        _err("SSLFactory::spoof[%X]: error copying subject to request", serial);
+        return std::nullopt;
+    }
+
     // Copy extensions
 #ifdef USE_OPENSSL11
     const STACK_OF(X509_EXTENSION) *exts = X509_get0_extensions(cert_orig);
@@ -816,42 +838,41 @@ std::optional<SSLFactory::X509_PAIR> SSLFactory::spoof(X509* cert_orig, bool sel
 
     int num_of_exts;
 
-    
+
     // prepare additional SANs
     std::string san_add;
-    if(additional_sans != nullptr) {
-        std::vector<std::string>& as = *additional_sans;
-        if(! as.empty()) {
-            san_add = string_csv(as);
-            _dia("SSLFactory::spoof[%x]: additional sans = '%s'",this,san_add.c_str());
-        }
-    }    
-    
+    if(additional_sans != nullptr and not additional_sans->empty()) {
+        san_add = string_csv(*additional_sans);
+        _dia("SSLFactory::spoof[%X]: additional sans = '%s'", serial, san_add.c_str());
+    }
+
     bool san_added = false;
-    if (exts) {   
-        STACK_OF(X509_EXTENSION) *s = sk_X509_EXTENSION_new_null();
-        num_of_exts = sk_X509_EXTENSION_num(exts);    
+    if (exts) {
+        auto *ext_stack = sk_X509_EXTENSION_new_null();
+        auto g_ext_stack = raw::guard([&ext_stack]{ if(ext_stack) sk_X509_EXTENSION_pop_free(ext_stack, X509_EXTENSION_free); });
+
+        num_of_exts = sk_X509_EXTENSION_num(exts);
         if(num_of_exts > 0) {
             for (int i=0; i < num_of_exts; i++) {
                 X509_EXTENSION *ex = sk_X509_EXTENSION_value(exts, i);
                 if(!ex) {
-                    _err("SSLFactory::spoof[%x]: error obtaining certificate extension [%d] value ",this,i);
+                    _err("SSLFactory::spoof[%X]: error obtaining certificate extension [%d] value ", serial, i);
                     continue;
                 }
                 ASN1_OBJECT *obj = X509_EXTENSION_get_object(ex);
                 if(!obj) {
-                    _err("SSLFactory::spoof[%x]: unable to extract ASN1 object from extension [%d]",this,i);
+                    _err("SSLFactory::spoof[%X]: unable to extract ASN1 object from extension [%d]", serial, i);
                     continue;
                 }
-                
-                unsigned nid = OBJ_obj2nid(obj); 
+
+                unsigned nid = OBJ_obj2nid(obj);
                 if(nid == NID_subject_alt_name) {
-                    _deb("SSLFactory::spoof[%x]: adding subjAltName to extensions",this);
+                    _deb("SSLFactory::spoof[%X]: adding subjAltName to extensions", serial);
 
 #ifdef USE_OPENSSL11
-                    // it's easier to get san list with different call, instead of diging it out from here.
+                    // it'ext_stack easier to get san list with different call, instead of diging it out from here.
                     std::string san = get_sans_csv(cert_orig);
-                    _deb("SSLFactory::spoof[%x]: original cert sans to be added: %s",this, san.c_str());
+                    _deb("SSLFactory::spoof[%X]: original cert sans to be added: %ext_stack", serial, san.c_str());
 
 #else
 
@@ -863,183 +884,176 @@ std::optional<SSLFactory::X509_PAIR> SSLFactory::spoof(X509* cert_orig, bool sel
                     BUF_MEM *bptr;
                     BIO_get_mem_ptr(ext_bio, &bptr);
                     int sc = BIO_set_close(ext_bio, BIO_NOCLOSE);
-                    
-                    
+
+
                     std::string san(bptr->data,bptr->length);
-                    
+
                     BIO_free(ext_bio);
                     BUF_MEM_free(bptr);
 #endif
-                    
+
                     // we have SAN now in san string
 
                     if(! san_add.empty()) {
                         san += "," + san_add;
                     }
-            
-                    int a_r = add_ext(s,NID_subject_alt_name, (char*) san.c_str());
-                    _deb("SSLFactory::spoof[%x]: add_ext returned %d",this,a_r);
+
+                    int a_r = add_ext(ext_stack, NID_subject_alt_name, san.data());
+                    _deb("SSLFactory::spoof[%X]: add_ext returned %d", serial, a_r);
 
                     san_added = true;
                 }
             }
-            
+        }
+
+        if(not san_added) {
+
+            int a_r = add_ext(ext_stack, NID_subject_alt_name, san_add.data());
+            _dum("SSLFactory::spoof[%X]: add_ext returned %d", serial, a_r);
 
         }
-        
-        if(!san_added) {
-            
-            int a_r = add_ext(s,NID_subject_alt_name, (char*) san_add.c_str());
-            _dum("SSLFactory::spoof[%x]: add_ext returned %d",this,a_r);
-                        
-        }
-        
-        int r = X509_REQ_add_extensions(copy,s);
-        _dum("SSLFactory::spoof[%x]: X509_REQ_add_extensions returned %d",this,r);
-        
-        sk_X509_EXTENSION_pop_free(s,X509_EXTENSION_free);
+
+        int r = X509_REQ_add_extensions(copy, ext_stack);
+        _dum("SSLFactory::spoof[%X]: X509_REQ_add_extensions returned %d", serial, r);
     }
 
-#ifdef USE_OPENSSL11
-    // don't bother selecting digest alg, sha2-256 is well settled.
-    // Selection can be further improved by checking signature mechanism in the real certificate,
-    // but it's hardly worth it.
-    digest = EVP_sha256();
-#else
-    // pick the correct digest and sign the request 
-    if (EVP_PKEY_type(pkey->type) == EVP_PKEY_DSA) {
-        digest = EVP_dss1();
-    }
-    else if (EVP_PKEY_type(pkey->type) == EVP_PKEY_RSA) {
-        digest = EVP_sha256();
-    }
-    else if (EVP_PKEY_type(pkey->type) == EVP_PKEY_EC) {
-        digest = EVP_sha256();
-    }
-    else {
-        _err("SSLFactory::spoof[%x]: error checking public key for a valid digest",this);
-        return nullptr;
-    }
-#endif //USE_OPENSSL11
-    
-    if (!(X509_REQ_sign( copy, pkey, digest))) {
-        _err("SSLFactory::spoof[%x]: error signing request",this);
-    }
-    
-    _deb("SSLFactory::spoof[%x]: generating CSR finished",this);
+    _deb("SSLFactory::spoof[%X]: generating CSR finished", serial);
 
-    //------------------------------------------------------------------------------------------
+    return sign_csr(std::move(copy));
+}
 
-    _dia("SSLFactory::spoof[%x]: faking certificate '%s'",this,subject.c_str());
-    
-
-    X509 *cert = nullptr;
-    X509_NAME *name = nullptr;
-
+bool SSLFactory::validate_spoof_requirements(X509 const* cert, X509_NAME const* cert_name, X509_NAME const* issuer_name, EVP_PKEY const* pkey) const {
+    auto const& log = get_log();
 
     // init new certificate
-    if (!(cert = X509_new( ))) {
-        _err("SSLFactory::spoof[%x]: error creating X509 object",this);
+    if (not cert) {
+        _err("SSLFactory::spoof[%X]: validate - error creating X509 object", serial);
+        return false;
+    }
+    if (not cert_name) {
+        _err("SSLFactory::spoof[%X]: validate - subjectName cannot be extracted from CSR", serial);
+        return false;
+    }
+    if (not issuer_name) {
+        _cri("SSLFactory::spoof[%X]: validate - subjectName cannot be extracted from CA!",  serial);
+        return false;
+    }
+    if (not pkey) {
+        _err("SSLFactory::spoof[%X]: validate - error getting public key from request", serial);
+        return false;
+    }
+
+    return true;
+}
+
+std::optional<SSLFactory::X509_PAIR> SSLFactory::spoof(X509* cert_orig, bool self_sign, std::vector<std::string>* additional_sans) {
+
+    auto const& log = get_log();
+
+    ++serial;
+    auto copy = create_csr_from(cert_orig, self_sign, additional_sans);
+    if(not copy) {
+
+        _err("SSLFactory::spoof[%X]: no CSR generated", serial);
         return std::nullopt;
     }
+
+    auto* cert = X509_new();
+    auto* name = X509_REQ_get_subject_name(copy.value());
+    auto* issuer_name = X509_get_subject_name(ca_cert);
+    EVP_PKEY* pkey = X509_REQ_get_pubkey(copy.value());
+
+
+    if(not validate_spoof_requirements(cert, name, issuer_name, pkey)) {
+        return std::nullopt;
+    }
+    auto g_pkey = raw::guard([&pkey]{
+        if(pkey) EVP_PKEY_free(pkey);
+    });
+    auto g_copy = raw::guard([&copy]{
+            X509_REQ_free(copy.value());
+    });
+
 
     // set version number for the certificate (X509v3) and then serial #
     if (X509_set_version (cert, 2L) != 1) {
-        _err("SSLFactory::spoof[%x]: cannot set X509 version!",this);
+        _err("SSLFactory::spoof[%X]: cannot set X509 version!", serial);
         return std::nullopt;
     }
 
-    ASN1_INTEGER_set(X509_get_serialNumber(cert), serial++);
-    
-    // get public key from request
-    if (!(pkey = X509_REQ_get_pubkey(copy))) {
-        _err("SSLFactory::spoof[%x]: error getting public key from request",this);
-        return std::nullopt;
-    }
+    ASN1_INTEGER_set(X509_get_serialNumber(cert), serial);
 
-    // Setting subject name
-    if (!(name = X509_REQ_get_subject_name(copy))) {
-        _err("SSLFactory::spoof[%x]: error getting subject name from request",this);
-        return std::nullopt;
-    }
     if (X509_set_subject_name(cert, name) != 1) {
-        _err("SSLFactory::spoof[%x]: error setting subject name of certificate",this);
+        _err("SSLFactory::spoof[%X]: error setting subject name of certificate", serial);
         return std::nullopt;
     }     
 
     int subjAltName_pos = -1;
     X509_EXTENSION* subjAltName = nullptr;
     
-    STACK_OF(X509_EXTENSION) *req_exts = nullptr;
-    if (!(req_exts = X509_REQ_get_extensions(copy))) {
-        _inf("SSLFactory::spoof[%x]: error getting the request's extension",this);
+    auto req_exts = X509_REQ_get_extensions(copy.value());
+    auto g_req_exts = raw::guard([&req_exts]{
+        sk_X509_EXTENSION_pop_free(req_exts, X509_EXTENSION_free);
+    });
+
+    if (not req_exts) {
+        _inf("SSLFactory::spoof[%X]: error getting the request's extension", serial);
     } else {
         subjAltName_pos = X509v3_get_ext_by_NID(req_exts,OBJ_sn2nid("subjectAltName"),-1);
         subjAltName = X509v3_get_ext(req_exts, subjAltName_pos);
     }
 
-    
-    // Setting issuer
-    if (!(name = X509_get_subject_name(ca_cert))) {
-        _err("SSLFactory::spoof[%x]: error getting subject name from CA certificate",this);
-        return std::nullopt;
-    }
-    if (X509_set_issuer_name(cert, name) != 1) {
-        _err("SSLFactory::spoof[%x]: error setting issuer name of certificate",this);
+    if (X509_set_issuer_name(cert, issuer_name) != 1) {
+        _err("SSLFactory::spoof[%X]: error setting issuer name of certificate", serial);
         return std::nullopt;
         
     }
     // set public key in the certificate 
     if ((X509_set_pubkey( cert, pkey)) != 1) {
-        _err("SSLFactory::spoof[%x]: error setting public key of the certificate",this);
+        _err("SSLFactory::spoof[%X]: error setting public key of the certificate", serial);
         return std::nullopt;
     }
     
-    #define EXPIRE_START (-60*60*24)
-    
+    constexpr long const EXPIRE_START = -60L*60*24;
+    constexpr long const DAYS_TILL_EXPIRE = 364L;
+    constexpr long const EXPIRE_SECS = 60L* 60*24*DAYS_TILL_EXPIRE;
+
     // set duration for the certificate
     if (!(X509_gmtime_adj(X509_get_notBefore(cert), EXPIRE_START))) {
-        _err("SSLFactory::spoof[%x]: error setting beginning time of the certificate",this);
+        _err("SSLFactory::spoof[%X]: error setting beginning time of the certificate", serial);
         return std::nullopt;
     }
-    
-    #define DAYS_TILL_EXPIRE 364
-    #define EXPIRE_SECS (60* 60*24*DAYS_TILL_EXPIRE)
 
     if (!(X509_gmtime_adj(X509_get_notAfter(cert), EXPIRE_SECS))) {
-        _err("SSLFactory::spoof[%x]: error setting ending time of the certificate",this);
+        _err("SSLFactory::spoof[%X]: error setting ending time of the certificate", serial);
         return std::nullopt;
     }
 
     X509V3_CTX ctx;
 
-    
     // add x509v3 extensions as specified 
     X509V3_set_ctx(&ctx, ca_cert, cert, nullptr, nullptr, 0);
     for (auto const& [ext_name, ext_value]: extensions()) {
 
-        X509_EXTENSION * ext;
-        if (!(ext = X509V3_EXT_conf(nullptr, &ctx, ext_name.c_str(), ext_value.c_str()))) {
-            _war("SSLFactory::spoof[%x]: error on \"%s = %s\"", this, ext_name.c_str(), ext_value.c_str());
-            _war("SSLFactory::spoof[%x]: error creating X509 extension object", this);
+        X509_EXTENSION* ext = X509V3_EXT_conf(nullptr, &ctx, ext_name.c_str(), ext_value.c_str());
+        auto ga_ = raw::guard([&ext]{ if(ext) X509_EXTENSION_free(ext); });
 
-            X509_EXTENSION_free(ext);
+        if (not ext) {
+            _war("SSLFactory::spoof[%X]: error on \"%s = %s\"", serial, ext_name.c_str(), ext_value.c_str());
+            _war("SSLFactory::spoof[%X]: error creating X509 extension object", serial);
             continue;
         }
-        if (!X509_add_ext(cert, ext, -1)) {
-            _err("SSLFactory::spoof[%x]: error on \"%s = %s\"", this, ext_name.c_str(), ext_value.c_str());
-            _err("SSLFactory::spoof[%x]: error adding X509 extension into certificate", this);
-        }
-        X509_EXTENSION_free(ext);
-    }
-    
-    if(subjAltName != nullptr) {
-        if (!X509_add_ext(cert, subjAltName, -1)) {
-            _err("SSLFactory::spoof[%x]: error adding subjectAltName to certificate",this);
-            return std::nullopt;
+        if (not X509_add_ext(cert, ext, -1)) {
+            _err("SSLFactory::spoof[%X]: error on \"%s = %s\"", serial, ext_name.c_str(), ext_value.c_str());
+            _err("SSLFactory::spoof[%X]: error adding X509 extension into certificate", serial);
         }
     }
-    
+
+    if(subjAltName != nullptr and not X509_add_ext(cert, subjAltName, -1)) {
+        _err("SSLFactory::spoof[%X]: error adding subjectAltName to certificate", serial);
+        return std::nullopt;
+    }
+
     EVP_PKEY* sign_key = ca_key;
     if(self_sign) {
       X509_set_issuer_name(cert, X509_get_subject_name(cert));
@@ -1047,39 +1061,13 @@ std::optional<SSLFactory::X509_PAIR> SSLFactory::spoof(X509* cert_orig, bool sel
     }
 
 
-#ifdef USE_OPENSSL11
-    // same as few lines above. Don't really bother, and select sha2-256.
-    digest = EVP_sha256();
-#else
-    // sign the certific ate with the CA private key 
-    if (EVP_PKEY_type(sign_key->type) == EVP_PKEY_DSA) {
-        digest = EVP_dss1();
-    }
-    else if (EVP_PKEY_type(sign_key->type) == EVP_PKEY_RSA ) {
-        digest = EVP_sha256();
-    }
-    else if (EVP_PKEY_type(sign_key->type) == EVP_PKEY_EC) {
-        digest = EVP_sha256();
-    }
-    else {
-        _err("SSLFactory::spoof[%x]: error checking CA private key for a valid digest",this);
-        return nullptr;
-    }
-#endif
-
+    const EVP_MD* digest = EVP_sha256();
     if (!(X509_sign(cert, sign_key, digest))) {
-        _err("SSLFactory::spoof[%x]: error signing certificate",this);
+        _err("SSLFactory::spoof[%X]: error signing certificate", serial);
         return std::nullopt;
     }
 
-    EVP_PKEY_free(pkey);  
-    X509_REQ_free(copy);  
-    X509_NAME_free(n_dup);   
-    X509_NAME_free(copy_subj);
-    sk_X509_EXTENSION_pop_free(req_exts,X509_EXTENSION_free);
-
-    
-    return X509_PAIR(def_sr_key,cert);
+    return X509_PAIR(def_sr_key, cert);
 }
 
 
@@ -1102,7 +1090,9 @@ int SSLFactory::convert_ASN1TIME(ASN1_TIME *t, char* buf, size_t len) {
 
 
 std::string SSLFactory::print_cn(X509* x) {
-    char tmp[config_t::SSLCERTSTORE_BUFSIZE];
+    auto a_tmp = std::array<char,config_t::SSLCERTSTORE_BUFSIZE>();
+    auto* tmp = a_tmp.data();
+
     std::string s;
 
     // get info from the peer certificate
@@ -1113,7 +1103,8 @@ std::string SSLFactory::print_cn(X509* x) {
 }
 
 std::string SSLFactory::print_issuer(X509* x) {
-    char tmp[config_t::SSLCERTSTORE_BUFSIZE];
+    auto a_tmp = std::array<char,config_t::SSLCERTSTORE_BUFSIZE>();
+    auto* tmp = a_tmp.data();
     std::string s;
 
     // get info from the peer certificate
@@ -1124,7 +1115,8 @@ std::string SSLFactory::print_issuer(X509* x) {
 }
 
 std::string SSLFactory::print_not_before(X509* x) {
-    char tmp[config_t::SSLCERTSTORE_BUFSIZE];
+    auto a_tmp = std::array<char,config_t::SSLCERTSTORE_BUFSIZE>();
+    auto* tmp = a_tmp.data();
     std::string s;
     ASN1_TIME *not_before = X509_get_notBefore(x);
     
@@ -1136,7 +1128,8 @@ std::string SSLFactory::print_not_before(X509* x) {
 
 
 std::string SSLFactory::print_not_after(X509* x) {
-    char tmp[config_t::SSLCERTSTORE_BUFSIZE];
+    auto a_tmp = std::array<char,config_t::SSLCERTSTORE_BUFSIZE>();
+    auto* tmp = a_tmp.data();
     std::string s;
     ASN1_TIME *not_after = X509_get_notAfter(x);
     
@@ -1155,7 +1148,8 @@ std::string SSLFactory::print_cert(X509* x, int indent, bool add_cr) {
         if(add_cr) s << '\r';
     };
 
-    char tmp[config_t::SSLCERTSTORE_BUFSIZE];
+    auto a_tmp = std::array<char,config_t::SSLCERTSTORE_BUFSIZE>();
+    auto* tmp = a_tmp.data();
 
     std::string pref;
     for(int i = 0; i < indent; i++) {

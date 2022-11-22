@@ -44,12 +44,20 @@ struct session_holder;
 
 struct crl_holder {
     X509_CRL* ptr = nullptr;
+
+    crl_holder(crl_holder const&) = delete;
+    crl_holder& operator=(crl_holder const&) = delete;
+
     explicit crl_holder(X509_CRL* c): ptr(c) {};
     virtual ~crl_holder() { if(ptr) X509_CRL_free(ptr); }
 };
 
 struct session_holder {
     SSL_SESSION* ptr = nullptr;
+
+    session_holder(session_holder const&) = delete;
+    session_holder& operator=(session_holder const&) = delete;
+
     explicit session_holder(SSL_SESSION* p): ptr(p) {};
     virtual ~session_holder() { if(ptr) SSL_SESSION_free(ptr); }
     
@@ -272,9 +280,15 @@ public:
     [[nodiscard]] inline SSL_CTX* default_dtls_client_cx() const  { return def_dtls_cl_ctx; }
 
 
+    // sign the CSR. CSR is consumed - if operation fails, CSR is destroyed.
+    std::optional<X509_REQ*> sign_csr(X509_REQ*&& corpus) const;
+    // create CSR from original certificate
+    std::optional<X509_REQ*> create_csr_from(X509* cert_orig, bool self_sign=false, std::vector<std::string>* additional_sans=nullptr);
+
     // our killer feature here
     [[nodiscard]] // discarding result will leak memory
     std::optional<X509_PAIR> spoof(X509* cert_orig, bool self_sign=false, std::vector<std::string>* additional_sans=nullptr);
+    bool validate_spoof_requirements(X509 const* cert, X509_NAME const* cert_name, X509_NAME const* issuer_name, EVP_PKEY const* pkey) const;
      
     static int convert_ASN1TIME(ASN1_TIME*, char*, size_t);
     static std::string print_cert(X509* cert, int indent=4, bool add_cr=false);

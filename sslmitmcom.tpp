@@ -196,7 +196,7 @@ template <class SSLProto>
 bool baseSSLMitmCom<SSLProto>::spoof_cert(X509* cert_orig, SpoofOptions& spo) {
     auto const& log = log::mitm();
 
-    _deb("SSLMitmCom::spoof_cert[%x]: about to spoof certificate!",this);
+    _deb("SSLMitmCom::spoof_cert: about to spoof certificate!");
 
     auto lc_ = std::scoped_lock(this->factory()->lock());
 
@@ -204,7 +204,7 @@ bool baseSSLMitmCom<SSLProto>::spoof_cert(X509* cert_orig, SpoofOptions& spo) {
 
     auto parek = this->factory()->find(store_key);
     if (parek.has_value()) {
-        _dia("SSLMitmCom::spoof_cert[%x]: factory hit for '%s'", this, store_key.c_str());
+        _dia("SSLMitmCom::spoof_cert: factory found '%s'", store_key.c_str());
         this->sslcom_pref_cert = parek.value().second;
         this->sslcom_pref_key = parek.value().first;
         
@@ -212,11 +212,11 @@ bool baseSSLMitmCom<SSLProto>::spoof_cert(X509* cert_orig, SpoofOptions& spo) {
     } 
     else {
     
-        _dia("SSLMitmCom::spoof_cert[%x]: NOT in my factory '%s'", this, store_key.c_str());
+        _dia("SSLMitmCom::spoof_cert: NOT found '%s'", store_key.c_str());
         
         auto spoof_ret = this->factory()->spoof(cert_orig, spo.self_signed, &spo.sans);
         if(not spoof_ret.has_value()) {
-            _war("SSLMitmCom::spoof_cert[%x]: factory failed to spoof '%d' - default will be used", this, store_key.c_str());
+            _war("SSLMitmCom::spoof_cert: factory failed to spoof '%s' - default will be used", store_key.c_str());
             return false;
         } 
         else {
@@ -231,7 +231,7 @@ bool baseSSLMitmCom<SSLProto>::spoof_cert(X509* cert_orig, SpoofOptions& spo) {
 #endif //USE_OPENSSL11
 
             if (! this->factory()->add(store_key, spoof_ret.value())) {
-                _dia("SSLMitmCom::spoof_cert[%x]: spoof was successful, but cache add failed for %s", this, store_key.c_str());
+                _dia("SSLMitmCom::spoof_cert: spoofed, but cache failed to update with %s", store_key.c_str());
                 return true;
             }
         }
