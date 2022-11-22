@@ -28,7 +28,7 @@ namespace socle {
             inline void mp_free(void* ptr) { mempool_free(ptr); }
         }
 
-        using memvar = var<void*>;
+        using memvar = unique<void*>;
 
         memvar temp_buffer(std::size_t size) {
             return { mempool_alloc(size), deleters::mp_free };

@@ -86,9 +86,11 @@ namespace socle {
                     value = r.value;
                 }
             }
-            void operator=(lax const& v) {
+            lax& operator=(lax const& v) {
                 deleter(value);
                 value = v;
+
+                return *this;
             }
 
             T value;
@@ -103,6 +105,7 @@ namespace socle {
             ~var() {
                 deleter(value);
             }
+            explicit operator T() { return value; }
 
             T value;
             std::function<void(T&)> deleter;
@@ -111,14 +114,18 @@ namespace socle {
         template <typename T>
         struct unique {
             unique(T&& v, std::function<void(T&)> dter): value(std::move(v)), deleter(dter) {}
-
-            unique& operator=(unique const&) = delete;
             unique(unique &) = delete;
 
             ~unique() {
-                deleter(value);
+                if(own) deleter(value);
             }
 
+            unique& operator=(unique const&) = delete;
+
+            explicit operator T() { return value; }
+            T release() { own = false; return value; }
+
+            bool own = true;
             T value;
             std::function<void(T&)> deleter;
         };
