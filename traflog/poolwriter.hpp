@@ -47,7 +47,7 @@ namespace socle {
             return &w;
         }
 
-        std::recursive_mutex& ofstream_lock() { return ofstream_pool.getlock(); }
+        auto& ofstream_lock() { return ofstream_pool.getlock(); }
         pool_t & ofstream_cache() { return ofstream_pool; };
 
         std::size_t write(std::string const& fnm,std::string const& str) override;

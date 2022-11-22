@@ -737,7 +737,7 @@ void baseHostCX::to_write(buffer& b) {
 
 void baseHostCX::to_write(const std::string& s) {
 
-    writebuf_.append((unsigned char*)s.data(), s.size());
+    writebuf_.append(s.data(), s.size());
     com()->set_write_monitor(socket());
     _deb("baseHostCX::to_write(ptr)[%s]: appending %d bytes, buffer size now %d bytes", c_type(), s.size(), writebuf_.size());
 

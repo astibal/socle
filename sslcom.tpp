@@ -2495,7 +2495,7 @@ bool baseSSLCom<L4Proto>::store_session_if_needed() {
 
                         factory()->session_cache().set(key, ns);
                         _dia("right ticketing: key %s: keying material stored, cache size = %d", key.c_str(),
-                             factory()->session_cache().cache().size());
+                             factory()->session_cache().size());
                     } else {
 
                         std::string ext_str;

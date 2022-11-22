@@ -217,6 +217,11 @@ public:
         return set(k, p);
     }
 
+    std::size_t size() const {
+        auto lc_ = std::scoped_lock(lock_);
+        return cache().size();
+    }
+
     // set the key->value. Return true if other value had been replaced.
     bool set(const K k, std::shared_ptr<T> v) {
         auto lc_ = std::scoped_lock(lock_);
@@ -225,6 +230,8 @@ public:
         
         auto it = cache().find(k);
         if(it != cache().end()) {
+            ret = true;
+
             _dia("ptr_cache::set[%s]: replacing existing entry '%s'", c_type(), k2str(k).c_str());
             cache()[k] = std::make_unique<DataBlock>(dbs_, v);
         } else {
@@ -261,8 +268,8 @@ public:
     bool lru_reoder();
 
     void expiration_check(std::function<bool(std::shared_ptr<T>)> const& fn_expired_check_arg) { fn_expired_check = fn_expired_check_arg; };
-    std::recursive_mutex& getlock() const { return lock_; }
 
+    auto& getlock() const { return lock_; }
 private:
     bool auto_delete_ = true;
     unsigned int max_size_ = 0;
