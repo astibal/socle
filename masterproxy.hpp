@@ -48,7 +48,8 @@ public:
     }
     vector_type <proxy_entry>& proxies() { return proxies_; };
     inline void add_proxy(baseProxy* p) { proxies_.emplace_back(p, nullptr); }
-	
+    inline void add_proxy(std::unique_ptr<baseProxy> upx) { proxies_.emplace_back(std::move(upx), nullptr); }
+
     int prepare_sockets(baseCom*) override;
 	int handle_sockets_once(baseCom*) override;
 	void shutdown() override;
