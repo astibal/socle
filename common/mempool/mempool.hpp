@@ -21,6 +21,7 @@
 
 #include <cstddef>
 #include <vector>
+#include <stack>
 #include <mutex>
 #include <unordered_map>
 #include <atomic>
@@ -28,6 +29,7 @@
 #include <execinfo.h>
 
 #include <display.hpp>
+#include <lockable.hpp>
 #include <log/logger.hpp>
 
 #include <mempool/canary.hpp>
@@ -45,8 +47,6 @@ class buffer;
 
 struct mem_chunk
 {
-    mem_chunk(): ptr(nullptr), capacity(0) {};
-
 #ifdef MEMPOOL_ALL
     // mempool should avoid using new() operator - in MEMPOOL_ALL mode it will recurse and dies
     explicit mem_chunk(std::size_t s): capacity(s) { ptr = (unsigned char*)::malloc(s); pool_type = type::HEAP; };   // lgtm[cpp/resource-not-released-in-destructor]
@@ -63,8 +63,8 @@ struct mem_chunk
     //mem_chunk(mem_chunk const& ref) = delete;
     //mem_chunk& operator=(mem_chunk const& ref) = delete;
 
-    unsigned char* ptr;
-    std::size_t  capacity;
+    unsigned char* ptr = nullptr;
+    std::size_t  capacity = 0L;
     bool in_pool = false; // set this flag to indicate if the allocation is in pool => allocated, but not used.
 
     enum class pool_type_t { POOL, HEAP };
@@ -136,62 +136,95 @@ using mem_chunk_t = mem_chunk;
 
 class memPool {
 
-    std::size_t sz32;
+    std::size_t sz32  = 0L;
     constexpr static unsigned int m32 = 16;
-    std::size_t sz64;
+    std::size_t sz64  = 0L;
     constexpr static unsigned int m64 = 8;
-    std::size_t sz128;
+    std::size_t sz128 = 0L;
     constexpr static unsigned int m128 = 4;
-    std::size_t sz256;
-    std::size_t sz1k;
-    std::size_t sz5k;
-    std::size_t sz10k;
-    std::size_t sz20k;
-    std::size_t sz35k;
-    std::size_t sz50k;
+    std::size_t sz256 = 0L;
+    std::size_t sz1k  = 0L;
+    std::size_t sz5k  = 0L;
+    std::size_t sz10k = 0L;
+    std::size_t sz20k = 0L;
+    std::size_t sz35k = 0L;
+    std::size_t sz50k = 0L;
 
-    std::vector<mem_chunk_t>* pick_acq_set(size_t s);
-    std::vector<mem_chunk_t>* pick_ret_set(size_t s);
+    class Bucket : public lockable {
+    public:
+        Bucket() = delete;
+        explicit Bucket(std::size_t SZ): sz(SZ) {};
 
-    std::vector<mem_chunk_t> available_32;
-    std::size_t alloc32 = 0;
-    unsigned char* bigptr_32 = nullptr;
+        ~Bucket() override {
+            auto lc_ = locked_(this);
+            ::free(bigptr);
+        }
 
-    std::vector<mem_chunk_t> available_64;
-    std::size_t alloc64 = 0;
-    unsigned char* bigptr_64 = nullptr;
+        /// @return get available chunks in the bucket
+        std::size_t size() const;
 
-    std::vector<mem_chunk_t> available_128;
-    std::size_t alloc128 = 0;
-    unsigned char* bigptr_128 = nullptr;
+        /// @return get a chunk if available
+        std::optional<mem_chunk> acquire();
 
-    std::vector<mem_chunk_t> available_256;
-    std::size_t alloc256 = 0;
-    unsigned char* bigptr_256 = nullptr;
+        /// return back @param mch to the bucket
+        void release(mem_chunk mch);
 
-    std::vector<mem_chunk_t> available_1k;
-    std::size_t alloc1k = 0;
-    unsigned char* bigptr_1k = nullptr;
+        /// @return true, if pointer @param ptr is (acquired or not) in the bucket memory.
+        bool is_mine(uint8_t const* ptr) const noexcept;
 
-    std::vector<mem_chunk_t> available_5k;
-    std::size_t alloc5k = 0;
-    unsigned char* bigptr_5k = nullptr;
+        /// @return true, if pointer @param ptr is aligned with the start of the memory pool
+        bool is_aligned(uint8_t const* ptr) const noexcept;
 
-    std::vector<mem_chunk_t> available_10k;
-    std::size_t alloc10k = 0;
-    unsigned char* bigptr_10k = nullptr;
+        /// @return of total number elements in the bucket (if none is acquired)
+        std::size_t total_count() const noexcept { return count; }
 
-    std::vector<mem_chunk_t> available_20k;
-    std::size_t alloc20k = 0;
-    unsigned char* bigptr_20k = nullptr;
+        /// @return size of the single chunk
+        std::size_t chunk_size() const noexcept { return sz; }
 
-    std::vector<mem_chunk_t> available_35k;
-    std::size_t alloc35k = 0;
-    unsigned char* bigptr_35k = nullptr;
+    private:
+        uint64_t ptr_address() const { return reinterpret_cast<uint64_t>(bigptr); }
+        void init_memory(std::size_t cnt);
 
-    std::vector<mem_chunk_t> available_50k;
-    std::size_t alloc50k = 0;
-    unsigned char* bigptr_50k = nullptr;
+        std::size_t sz = 0L;
+        std::stack<mem_chunk_t> bucket;
+
+        std::size_t allocated = 0;
+        uint8_t* bigptr = nullptr;
+        uint8_t* _endptr = nullptr;
+        std::size_t count;
+        std::size_t canary_sz;
+
+        friend class memPool;
+    };
+
+    /// @return the right bucket for the required size @param s. If none is available,
+    /// `nullptr` is returned.
+    Bucket* pick_bucket(size_t s);
+
+    /// Iterate all buckets to find available memory chunk and returns first suitable `mem_chunk` for required size of
+    /// @param s.
+    /// @note: should be used if @ref pick_bucket()->acquire() fails.
+    std::optional<mem_chunk> tryhard_available(size_t s);
+
+    /// Allocate `mem_chunk` from the heap, don't bother with buckets at all.
+    /// @return mem_chunk with heap origin indication
+    mem_chunk from_heap(std::size_t s);
+
+    /// Free heap-allocated memory
+    void free_heap(mem_chunk const& mch);
+
+    Bucket bucket_32 {32};
+    Bucket bucket_64 {64};
+    Bucket bucket_128 {128};
+    Bucket bucket_256 {256};
+    Bucket bucket_1k {1024};
+    Bucket bucket_5k {5L*1024};
+    Bucket bucket_10k {10L*1024};
+    Bucket bucket_20k {20L*1024};
+    Bucket bucket_35k {35L*1024};
+    Bucket bucket_50k {50L*1024};
+
+    std::set<Bucket*> buckets;
 
     using canary_t = mp_canary;
 
@@ -200,18 +233,18 @@ class memPool {
         return c;
     };
 
-
     memPool(std::size_t sz256, std::size_t sz1k, std::size_t sz5k, std::size_t sz10k, std::size_t sz20k);
-    ~memPool() noexcept;
 
 public:
+    std::set<Bucket*> const& get_buckets() const { return buckets; };
+    std::set<Bucket*>& get_buckets() { return buckets; };
 
     // indicate to not use any allocation functions which are not safe!
     // resource requests will fail and releases do nothing.
     static inline bool bailing = false;
 
     static memPool& pool() {
-        static memPool m = memPool(100,50,50,10,8);
+        static auto m = memPool(100,50,50,10,8);
         return m;
     }
 
@@ -226,52 +259,30 @@ public:
 
     mem_chunk_t acquire(std::size_t sz);
     void release(mem_chunk_t to_ret);
+
+    Bucket* find_by_address(void* ptr);
     std::size_t find_ptr_size(void* ptr);
 
-    std::atomic<unsigned long long> stat_acq{0};
-    std::atomic<unsigned long long> stat_acq_size{0};
+    struct stats_t {
+        std::atomic<unsigned long long> acq{0};
+        std::atomic<unsigned long long> acq_size{0};
 
-    std::atomic<unsigned long long> stat_ret{0};
-    std::atomic<unsigned long long> stat_ret_size{0};
+        std::atomic<unsigned long long> ret{0};
+        std::atomic<unsigned long long> ret_size{0};
 
-    std::atomic<unsigned long long> stat_alloc{0};
-    std::atomic<unsigned long long> stat_alloc_size{0};
+        std::atomic<unsigned long long> heap_alloc{0};
+        std::atomic<unsigned long long> heap_alloc_size{0};
 
-    std::atomic<unsigned long long> stat_free{0};
-    std::atomic<unsigned long long> stat_free_size{0};
+        std::atomic<unsigned long long> heap_free{0};
+        std::atomic<unsigned long long> heap_free_size{0};
 
-    std::atomic<unsigned long long> stat_out_free{0};
-    std::atomic<unsigned long long> stat_out_free_size{0};
+        std::atomic<unsigned long long> out_free{0};
+        std::atomic<unsigned long long> out_free_size{0};
 
-    std::atomic<unsigned long long> stat_out_pool_miss{0};
-    std::atomic<unsigned long long> stat_out_pool_miss_size{0};
-
-
-    long unsigned int mem_32_av() const { return static_cast<long unsigned int>(available_32.size()); };
-    long unsigned int mem_64_av() const { return static_cast<long unsigned int>(available_64.size()); };
-    long unsigned int mem_128_av() const { return static_cast<long unsigned int>(available_128.size()); };
-    long unsigned int mem_256_av() const { return static_cast<long unsigned int>(available_256.size()); };
-    long unsigned int mem_1k_av() const { return static_cast<long unsigned int>(available_1k.size()); };
-    long unsigned int mem_5k_av() const { return static_cast<long unsigned int>(available_5k.size()); };
-    long unsigned int mem_10k_av() const { return static_cast<long unsigned int>(available_10k.size()); };
-    long unsigned int mem_20k_av() const { return static_cast<long unsigned int>(available_20k.size()); };
-    long unsigned int mem_35k_av() const { return static_cast<long unsigned int>(available_35k.size()); };
-    long unsigned int mem_50k_av() const { return static_cast<long unsigned int>(available_50k.size()); };
-
-
-    long unsigned int mem_32_sz() const { return static_cast<long unsigned int>(sz32); };
-    long unsigned int mem_64_sz() const { return static_cast<long unsigned int>(sz64); };
-    long unsigned int mem_128_sz() const { return static_cast<long unsigned int>(sz128); };
-    long unsigned int mem_256_sz() const { return static_cast<long unsigned int>(sz256); };
-    long unsigned int mem_1k_sz() const { return static_cast<long unsigned int>(sz1k); };
-    long unsigned int mem_5k_sz() const { return static_cast<long unsigned int>(sz5k); };
-    long unsigned int mem_10k_sz() const { return static_cast<long unsigned int>(sz10k); };
-    long unsigned int mem_20k_sz() const { return static_cast<long unsigned int>(sz20k); };
-    long unsigned int mem_35k_sz() const { return static_cast<long unsigned int>(sz35k); };
-    long unsigned int mem_50k_sz() const { return static_cast<long unsigned int>(sz50k); };
-
-
-    std::mutex lock;
+        std::atomic<unsigned long long> out_pool_miss{0};
+        std::atomic<unsigned long long> out_pool_miss_size{0};
+    };
+    stats_t stats;
 };
 
 
