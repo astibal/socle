@@ -187,15 +187,15 @@ mem_chunk_t memPool::acquire(std::size_t sz) {
 
     auto* mem_bucket = pick_bucket(sz);
 
-    stats.acq++;
-
     // mempool is not available, or is empty, use heap
     if(not mem_bucket) {
 
 #ifndef MEMPOOL_DISABLE
         auto try_hard_effort_pays_of = tryhard_available(sz);
         if(try_hard_effort_pays_of) {
+            stats.acq++;
             stats.acq_size += try_hard_effort_pays_of.value().capacity;
+
             return try_hard_effort_pays_of.value();
         }
 #endif
@@ -208,9 +208,9 @@ mem_chunk_t memPool::acquire(std::size_t sz) {
 
             free_entry->in_pool = false;
             free_entry->pool_type = mem_chunk::type::POOL;
+
+            stats.acq++;
             stats.acq_size += free_entry->capacity;
-
-
 
 #ifdef MEMPOOL_DEBUG
             if(mem_chunk::trace_enabled) {
@@ -222,7 +222,7 @@ mem_chunk_t memPool::acquire(std::size_t sz) {
                     mpdata::trace_map()[(unsigned long)free_entry->ptr] = free_entry.value();
                 }
             }
-            #endif
+#endif
 
             return free_entry.value();
         }
@@ -233,12 +233,9 @@ mem_chunk_t memPool::acquire(std::size_t sz) {
 }
 
 
-void memPool::release(mem_chunk_t xto_ret){
+void memPool::release(mem_chunk_t to_ret){
 
-    // copy it
-    auto to_ret = xto_ret;
-
-    if (!to_ret.ptr) {
+    if (not to_ret.ptr) {
 
         #ifdef MEMPOOL_DEBUG
         //std::cerr << "attempt to release nullptr (no-op)" << std::endl;
@@ -248,7 +245,6 @@ void memPool::release(mem_chunk_t xto_ret){
     }
 
     if(bailing) return;
-
 
     if(to_ret.pool_type == mem_chunk::type::HEAP) {
         free_heap(to_ret);
@@ -272,7 +268,7 @@ void memPool::release(mem_chunk_t xto_ret){
     }
     else {
         stats.ret++;
-        stats.ret_size += to_ret.capacity;
+        stats.ret_size += mem_pool->chunk_size();
 
         mem_pool->release(to_ret);
 
@@ -323,6 +319,7 @@ std::optional<mem_chunk> memPool::tryhard_available(size_t s) {
 
 mem_chunk memPool::from_heap(std::size_t s) {
     mem_chunk new_entry(s);
+
     stats.heap_alloc++;
     stats.heap_alloc_size += s;
 
