@@ -304,15 +304,25 @@ void memPool::release(mem_chunk_t to_ret){
 }
 
 std::optional<mem_chunk> memPool::tryhard_available(size_t s) {
+
+    unsigned short overkill_level = 1;
+
     for(auto& buck: buckets) {
-        if(buck->sz >= s) {
+
+        // don't allow ridiculously large over-allocations
+        if(overkill_level > 3) { break; }
+
+        if(buck->chunk_size() >= s) {
+
             auto lc_ = locked_(buck);
+
             if(not buck->bucket.empty()) {
                 auto mem = buck->bucket.top();
                 buck->bucket.pop();
                 return mem;
             }
         }
+        ++overkill_level;
     }
     return std::nullopt;
 }
