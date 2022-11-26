@@ -101,16 +101,16 @@ std::size_t FdQueue::push_all(int s) {
 
     for(auto const& [ key, pipes ]: hint_pairs_) {
         ++entry_count;
-        candidates.insert(std::pair(pipes.seen_worker_load, &pipes));
+        candidates.insert(std::pair(pipes.seen_worker_load.load(), &pipes));
 
-        _deb("FdQueue::push: candidate with load %d inserted", pipes.seen_worker_load);
+        _deb("FdQueue::push: candidate with load %d inserted", pipes.seen_worker_load.load());
     }
 
     for(auto const& candy: candidates) {
         ++written_sum;
         if(written_sum > entry_count/2) break;
 
-        _deb("FdQueue::push: candidate with load %d summoned", candy.second->seen_worker_load);
+        _deb("FdQueue::push: candidate with load %d summoned", candy.second->seen_worker_load.load());
         auto sock = candy.second->pipe_to_worker();
         written_sum += write_to_socket(sock);
 

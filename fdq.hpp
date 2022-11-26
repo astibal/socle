@@ -33,13 +33,25 @@ struct WorkerPipe {
     explicit WorkerPipe(fd_pair_t const& p): pipe(p){};
     WorkerPipe() = default;
 
+    WorkerPipe(WorkerPipe const& other) : pipe(other.pipe), seen_worker_load(other.seen_worker_load.load()) {};
+    WorkerPipe& operator=(WorkerPipe& ref) noexcept {
+        pipe = ref.pipe;
+        seen_worker_load = ref.seen_worker_load.load();
+        return *this;
+    }
+    WorkerPipe& operator=(WorkerPipe&& ref) noexcept {
+        pipe = ref.pipe;
+        seen_worker_load = ref.seen_worker_load.load();
+        return *this;
+    }
+
     // pair of sockets used to talk between scheduler and worker.
     // scheduler sends one byte whenever wants to wake up worker to pick from task queue.
     fd_pair_t pipe = { -1, -1 };
     inline int pipe_to_scheduler() const noexcept { return  pipe.first; }
     inline int pipe_to_worker() const noexcept { return pipe.second; }
 
-    uint32_t seen_worker_load = 0;
+    std::atomic_uint32_t seen_worker_load = 0;
     static inline std::atomic_bool feedback_queue_empty = false;
 };
 
