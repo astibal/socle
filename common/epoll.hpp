@@ -263,7 +263,7 @@ struct epoller {
     virtual bool hint_socket(int socket); // this is the socket which will be additionally monitored for EPOLLIN; each time it's readable, single byte is read from it.
 
     // handler hints is a map of socket->handler. We will allow to grow it as needed. No purges. 
-    std::map<int,handler_info_t> handler_db;
+    mp::map<int,handler_info_t> handler_db;
     epoll_handler* get_handler(int check);
     void clear_handler(int check);
     void set_handler(int check, epoll_handler*);
@@ -274,7 +274,7 @@ struct epoller {
     virtual ~epoller();
 
     logan_lite log = logan_lite("com.epoll");
-    mutable std::mutex lock_;
+    mutable std::shared_mutex lock_;
 };
 
 class epoll_handler {
@@ -298,7 +298,8 @@ public:
     }
 
     friend struct epoller;
-protected:
+
+private:
     epoller* registrant = nullptr;
     epoll::set_type registered_sockets;
     std::mutex lock_;

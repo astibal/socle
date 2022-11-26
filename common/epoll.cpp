@@ -653,6 +653,9 @@ void epoller::clear_idle_watch(int check){
 }
 
 epoll_handler* epoller::get_handler(int check) {
+
+    auto lc_ = std::shared_lock(lock_);
+
     auto it = handler_db.find(check);
     
     if(it == handler_db.end()) {
@@ -665,13 +668,14 @@ epoll_handler* epoller::get_handler(int check) {
     return nullptr;
 }
 void epoller::clear_handler(int check) {
-    std::scoped_lock<std::mutex> l(lock_);
 
-    auto it = handler_db.find(check);
+    {
+        auto lc_ = std::unique_lock(lock_);
 
-    if(it != handler_db.end()) {
-        handler_db.erase(it);
-        _deb("epoller::clear_handler %d -> 0x%x -> nullptr", check, it->second.handler);
+        auto n_removed = handler_db.erase(check);
+        if(n_removed > 0) {
+            _deb("epoller::clear_handler %d", check);
+        }
     }
 
     if(poller) {
@@ -688,11 +692,15 @@ void epoller::set_handler(int check, epoll_handler* h) {
 
     if(h != nullptr) {
 
-        auto l_ = std::scoped_lock(h->registered_sockets.get_lock());
-
-        handler_info_t& href = handler_db[check];
-        href.handler = h;
+        {
+            auto lc_ = std::unique_lock(lock_);
+            handler_info_t &href = handler_db[check];
+            href.handler = h;
+        }
         _deb("epoller::set_handler %d -> 0x%x",check,h);
+
+
+        auto l_ = std::scoped_lock(h->registered_sockets.get_lock());
 
         if(h->registrant && h->registrant != this) {
             _err("epoller::set_handler: setting handler over already existing, different handler. This should not happen!");
@@ -701,6 +709,7 @@ void epoller::set_handler(int check, epoll_handler* h) {
             for(auto cur_socket: h->registered_sockets.get_ul()) {
                 _err("epoller::set_handler:  moving old socket %d handler to new one", cur_socket);
 
+                auto lc_ = std::unique_lock(lock_);
                 // new is created if it doesn't exist yet
                 handler_info_t& curhref  = handler_db[cur_socket];
                 curhref.handler = h;
