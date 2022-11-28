@@ -693,7 +693,7 @@ std::vector<std::string> SSLFactory::get_sans(X509* x) {
 
             auto alt_len = sk_GENERAL_NAME_num(alt);
             for (int gn_i = 0; gn_i < alt_len; gn_i++) {
-                auto const* gn = sk_GENERAL_NAME_value(alt, gn_i);
+                auto* gn = sk_GENERAL_NAME_value(alt, gn_i);
                 if(not gn) continue;
 
                 int name_type = 0;
@@ -781,7 +781,7 @@ std::optional<X509_REQ*> SSLFactory::create_csr_from(X509* cert_orig, bool self_
     }
     if(additional_sans != nullptr && ! additional_sans->empty()) {
         _dia("SSLFactory::spoof[%X]: about to spoof certificate (+sans):", serial);
-        std::vector<std::string>& sans = *additional_sans;
+        std::vector<std::string>const & sans = *additional_sans;
         for (auto const& san: sans) {
             _dia("SSLFactory::spoof[%X]:  SAN: %s", serial, san.c_str());
         }
