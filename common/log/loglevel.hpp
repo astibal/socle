@@ -21,6 +21,7 @@
 
 #include <string>
 #include <mutex>
+#include <atomic>
 
 #include <display.hpp>
 #include <log/loggermac.hpp>
@@ -36,17 +37,37 @@ typedef logger_adv_info loglevelmore;
 class loglevel {
 
 public:
+    void copy(loglevel const& other) noexcept {
+        level_ = other.level_.load();
+        topic_ = other.topic_.load();
+        adv_ = other.adv_;
+        flags_ = other.flags_;
+
+        subject_ = other.subject_;
+        area_ = other.area_;
+    }
+
+
     explicit loglevel(unsigned int l) noexcept: level_(l), topic_(0) {}
     loglevel(unsigned int l, unsigned int t) noexcept: level_(l), topic_(t) {}
-    loglevel(loglevel const& l, unsigned int t)  noexcept: level_(l.level_), topic_(t) {}
-    loglevel(loglevel const& l, unsigned int t, unsigned int f)  noexcept: level_(l.level_), topic_(t), flags_(f) {}
     loglevel(unsigned int l, unsigned int t, loglevelmore const* a)  noexcept: level_(l), topic_(t), adv_(a) {}
-    loglevel(loglevel const& l, unsigned int t, loglevelmore const* a)  noexcept: level_(l.level_), topic_(t), adv_(a) {}
-    loglevel(loglevel const& l, unsigned int t, loglevelmore const* a, unsigned int f)  noexcept: level_(l.level_), topic_(t), adv_(a), flags_(f) {}
 
+    loglevel(loglevel const& other)  { copy(other); }
+    loglevel(loglevel const& l, unsigned int t)  noexcept { copy(l); topic_ = t; }
+    loglevel(loglevel const& l, unsigned int t, unsigned int f)  noexcept { copy(l); topic_ = t; flags_ = f; }
+    loglevel(loglevel const& l, unsigned int t, loglevelmore const* a)  noexcept { copy(l); topic_ = t; adv_ = a; }
+    loglevel(loglevel const& l, unsigned int t, loglevelmore const* a, unsigned int f)  noexcept { copy(l); topic_ = t; adv_ = a; flags_ = f; }
+
+
+    loglevel& operator=(loglevel const& other) {
+        if(this != &other) {
+            copy(other);
+        }
+        return *this;
+    }
 
     [[nodiscard]] inline unsigned int level() const { return level_; }
-    [[nodiscard]] inline unsigned int& level_ref() { return level_; }
+    [[nodiscard]] auto& level_ref() { return level_; }
 
     [[nodiscard]] inline unsigned int topic() const { return topic_; }
     [[nodiscard]] inline loglevelmore const* more() const { return adv_; }
@@ -63,11 +84,11 @@ public:
     void area(std::string const& str) { area_ = str; }
 
     [[nodiscard]] inline std::string str() const { return to_string(iINF); }
-    [[nodiscard]] std::string to_string(int verbosity) const { return string_format("level:%d topic:%d",level_,topic_); };
+    [[nodiscard]] std::string to_string(int verbosity) const { return string_format("level:%d topic:%d",level_.load(), topic_.load()); };
 
 private:
-    unsigned int level_ {iINF};
-    unsigned int topic_ {iNON};
+    std::atomic_uint level_ {iINF};
+    std::atomic_uint topic_ {iNON};
     loglevelmore const* adv_{nullptr};
 
     unsigned int flags_{LOG_FLNONE};
@@ -141,7 +162,7 @@ struct logdata_t {
     std::optional<std::string> optional() const { return hr_; }  \
 
     mutable std::optional<std::string> hr_;
-    static inline loglevel lg_ {socle::log::level::NON};
+    static inline loglevel lg_ {socle::log::level::NON };
 };
 
 #endif
