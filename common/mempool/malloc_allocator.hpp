@@ -80,13 +80,13 @@ namespace mp::malloc {
         template<class U>
         allocator &operator= (const allocator<U> &) { return *this; }
 
-        bool operator!= (allocator const &ref) {
+        bool operator!= (allocator const &ref) const {
             // there is currently only one mempool, therefore there can't be any other
             // mp_allocator out there.
             return false;
         }
 
-        bool operator== (allocator const &ref) {
+        bool operator== (allocator const &ref) const {
             // see reasons for operator !=
             return true;
         }
@@ -242,7 +242,7 @@ namespace mp::malloc {
     using wstring = mp::malloc::basic_string<wchar_t>;
 
 #ifdef    __cpp_char8_t
-    using u8string  = mp::basic_string<char8_t>;
+    using u8string  = basic_string<char8_t>;
 #endif
     using u16string = mp::malloc::basic_string<char16_t>;
     using u32string = mp::malloc::basic_string<char32_t>;

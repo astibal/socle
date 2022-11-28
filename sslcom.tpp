@@ -1084,7 +1084,6 @@ std::pair<typename baseSSLCom<L4Proto>::staple_code_t, int> baseSSLCom<L4Proto>:
     auto const& log = log_ocsp();
 
     const unsigned char *stapling_body = nullptr;
-    int stapling_len = 0;
 
     auto proc_status = staple_code_t::NOT_PROCESSED;
     int  ocsp_status = -1;
@@ -1102,7 +1101,7 @@ std::pair<typename baseSSLCom<L4Proto>::staple_code_t, int> baseSSLCom<L4Proto>:
     bool opt_ocsp_strict = (com->opt.ocsp.stapling_mode >= 1);
     bool opt_ocsp_require = (com->opt.ocsp.stapling_mode >= 2);
 
-    stapling_len = SSL_get_tlsext_status_ocsp_resp(ssl, &stapling_body);
+    auto stapling_len = SSL_get_tlsext_status_ocsp_resp(ssl, &stapling_body);
     if (!stapling_body) {
         if(opt_ocsp_strict)
             _dia("[%s]: no OCSP stapling status response", name.c_str());

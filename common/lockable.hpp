@@ -31,7 +31,7 @@ public:
     locked_(locked_ const&) = delete;
     locked_(locked_&& other) = delete;
 
-    ~locked_<T>() { if(ref_) ref_->_unlock(); };
+    ~locked_() { if(ref_) ref_->_unlock(); };
 
     T* operator->() {
         return ref_;
@@ -54,7 +54,7 @@ public:
     share_locked_(share_locked_ const&) = delete;
     share_locked_(share_locked_&& other) = delete;
 
-    ~share_locked_<T>() { if(ref_) ref_->_unlock_shared(); };
+    ~share_locked_() { if(ref_) ref_->_unlock_shared(); };
 
     T* operator->() {
         return ref_;
