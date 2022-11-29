@@ -36,7 +36,7 @@ public:
 
     virtual ~baseSSLMitmCom() = default;
 
-    virtual bool check_cert(const char*);
+    bool check_cert(const char*) override;
     virtual bool spoof_cert(X509* cert_orig, SpoofOptions& spo);
 
     baseCom* replicate() override { return new baseSSLMitmCom(); };

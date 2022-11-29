@@ -103,7 +103,7 @@ namespace socle::traflog {
 
             send_data.append(buf);
 
-            int r = sendto(sock, send_data.data(), send_data.size(), 0, (sockaddr*) target.dst.as_ss(), sizeof(sockaddr_storage));
+            auto r = sendto(sock, send_data.data(), send_data.size(), 0, (sockaddr*) target.dst.as_ss(), sizeof(sockaddr_storage));
             if(r <= 0) {
                 return false;
             }
@@ -141,7 +141,7 @@ namespace socle::traflog {
         };
 
 
-        ~GreExporter() { if(sock > 0) ::close(sock); }
+        virtual ~GreExporter() { if(sock > 0) ::close(sock); }
 
         void ttl(uint8_t ttl) { tun_ttl = ttl; }
     private:
