@@ -204,7 +204,7 @@ bool ThreadedReceiver<Worker>::add_first_datagrams(int sock, SocketInfo& pinfo) 
     unsigned char buff[buff_sz];
     memset(buff, 0, buff_sz);
 
-    int red = com()->read(sock, buff, buff_sz, 0);
+    auto red = com()->read(sock, buff, buff_sz, 0);
 
     _dia("red: %d bytes from socket %d", red, sock);
 

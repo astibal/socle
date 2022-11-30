@@ -85,7 +85,7 @@ if(UNIX)
             set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-stringop-truncation -funroll-loops --param  max-unrolled-insns=4")
         endif()
     elseif(CMAKE_CXX_COMPILER_ID STREQUAL "Clang")
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-string-concatenation -Wno-overloaded-virtual")
+        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wno-string-concatenation -Wno-overloaded-virtual -Wno-unused-command-line-argument")
     endif()
 
     IF (CMAKE_BUILD_TYPE STREQUAL "Coverity")
