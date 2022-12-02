@@ -89,47 +89,49 @@ int ThreadedAcceptor<Worker>::run() {
 template<class SubWorker>
 int ThreadedAcceptorProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
 	
-	auto *p = (ThreadedAcceptor<ThreadedAcceptorProxy<SubWorker>> *)MasterProxy::parent();
-	if(p == nullptr) {
+	if(parent() == nullptr) {
 		_fat("PARENT is NULL");
-	} else {
+	}
 
-        if (p->state().dead()) {
-            // set myself dead too!
-            this->state().dead(true);
-        }
+    if (parent()->state().dead()) {
+        // set myself dead too!
+        this->state().dead(true);
+    }
 
-        p->update_load(worker_id_, proxies().size());
+    int s = 0;
+    if(auto parent_fd_handler = parent_as_handler.cast(parent()); parent_fd_handler) {
+        parent_fd_handler->update_load(worker_id_, proxies().size());
+        s = parent_fd_handler->pop(worker_id_);
+    }
 
-        int s = p->pop(worker_id_);
-        if (s > 0) {
-            _dia("ThreadedAcceptorProxy::run: removed from queue: 0x%016llx (socket %d)", s, s);
+    if (s > 0) {
+        _dia("ThreadedAcceptorProxy::run: removed from queue: 0x%016llx (socket %d)", s, s);
 
-            try {
-                auto cx = std::unique_ptr<baseHostCX>(this->new_cx(s));
-                if (!cx->read_waiting_for_peercom()) {
-                    cx->on_accept_socket(s);
-                } else {
-                    cx->on_delay_socket(s);
-                }
-
-                cx->com()->nonlocal_dst(this->com()->nonlocal_dst());
-
-                if (proxy_type().is_transparent()) {
-                    cx->com()->resolve_nonlocal_dst_socket(s);
-                } else
-                    if (proxy_type().is_redirect()) {
-                    cx->com()->resolve_redirected_dst_socket(s);
-                }
-
-                this->on_left_new(cx.release());
-
-            } catch (socle::com_error const& e) {
-                _err("cannot handover cx to proxy: %s", e.what());
+        try {
+            auto cx = std::unique_ptr<baseHostCX>(this->new_cx(s));
+            if (!cx->read_waiting_for_peercom()) {
+                cx->on_accept_socket(s);
+            } else {
+                cx->on_delay_socket(s);
             }
 
+            cx->com()->nonlocal_dst(this->com()->nonlocal_dst());
+
+            if (proxy_type().is_transparent()) {
+                cx->com()->resolve_nonlocal_dst_socket(s);
+            } else
+                if (proxy_type().is_redirect()) {
+                cx->com()->resolve_redirected_dst_socket(s);
+            }
+
+            this->on_left_new(cx.release());
+
+        } catch (socle::com_error const& e) {
+            _err("cannot handover cx to proxy: %s", e.what());
         }
+
     }
+
 	return MasterProxy::handle_sockets_once(com());
 }
 

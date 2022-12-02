@@ -66,6 +66,7 @@ public:
         return workers_total_;
     };
 private:
+    raw::dynamic_cast_cache<baseProxy,FdQueueHandler> parent_as_handler;
     logan_lite log {"com.tcp.worker"};
 };
 

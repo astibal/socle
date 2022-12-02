@@ -143,6 +143,7 @@ public:
     };
 
 private:
+    raw::dynamic_cast_cache<baseProxy,FdQueueHandler> parent_as_handler;
     logan_lite log {"com.udp.worker"};
 };
 

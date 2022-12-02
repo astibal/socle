@@ -379,25 +379,29 @@ int ThreadedReceiver<Worker>::pop_for_worker(int id) {
 template<class SubWorker>
 int ThreadedReceiverProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
     
-    auto *p = (ThreadedReceiver<ThreadedReceiverProxy<SubWorker> > *)MasterProxy::parent();
-    if(p == nullptr) {
+    if(parent() == nullptr) {
         throw proxy_error("PARENT is NULL");
     }
 
-    if (p->state().dead()) {
+    if (parent()->state().dead()) {
         // set myself dead too!
         this->state().dead(true);
         return -1;
     }
 
-    p->update_load(worker_id_, proxies().size());
+    uint32_t virtual_socket = 0;
 
-    uint32_t virtual_socket = p->pop_for_worker(worker_id_);
+    if(auto parent_fd_handler = parent_as_handler.cast(parent()); parent_fd_handler) {
 
-    if (virtual_socket == 0) {
-        _dia("ThreadedReceiverProxy::handle_sockets_once: somebody was faster, nothing to pop");
-        return -1;
+        parent_fd_handler->update_load(worker_id_, proxies().size());
+        virtual_socket = parent_fd_handler->pop(worker_id_);
+
+        if (virtual_socket == 0) {
+            _dia("ThreadedReceiverProxy::handle_sockets_once: somebody was faster, nothing to pop");
+            return -1;
+        }
     }
+
 
     // this session key is for us!
     _dia("ThreadedReceiverProxy::handle_sockets_once: new data notification for %d", virtual_socket);
