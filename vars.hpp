@@ -173,6 +173,21 @@ namespace socle {
         template<typename T> inline var<T> allocated(T ptr) {
             return var<T>(std::move(ptr), deleter::free<T>);
         }
+
+
+        template<typename From, typename To>
+        struct dynamic_cast_cache {
+
+            // mutable to not break const for owners; cache actually doesn't change any state!
+            mutable std::pair<From*, To*> cached_cast = {nullptr, nullptr };
+            To* cast(From* p) const {
+                if(p != cached_cast.first) {
+                    cached_cast.first = p;
+                    cached_cast.second = dynamic_cast<To*>(p);
+                }
+                return cached_cast.second;
+            }
+        };
     }
 
     namespace tainted {
