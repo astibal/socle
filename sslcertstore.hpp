@@ -152,8 +152,13 @@ public:
         constexpr static size_t SESSION_CACHE_SIZE = socle::size::base_table * session_multi;
         constexpr static size_t CRL_CACHE_SIZE = socle::size::base_table * crl_multi;
     };
-
     SSLFactory::config_t config;
+
+    struct stats_t  {
+        bool ca_verify_use_file = false;
+        bool ca_store_use_file = false;
+    };
+    SSLFactory::stats_t stats;
 
     using X509_PAIR = CertCacheEntry::X509_PAIR;
     using X509_CACHE = ptr_cache<std::string, CertCacheEntry>;
@@ -174,6 +179,8 @@ public:
     // default path for CA trust-store. It's marked as CL, since CL side will use it (sx -> real server)
     std::string ca_path_;
     std::string& ca_path() { return ca_path_; };
+    std::string ca_file_;
+    std::string& ca_file() { return ca_file_; };
 
     // path for smithproxy own PKI authority and certificates
     std::string certs_path_ = "./certs/";
@@ -249,8 +256,15 @@ public:
     SSL_CTX* client_dtls_ctx_setup(const char* ciphers = nullptr);
     SSL_CTX* server_dtls_ctx_setup(EVP_PKEY* priv = nullptr, X509* cert = nullptr, const char* ciphers = nullptr);
 
-    // load certs, initialize stores and cache structures (all you need to use this Factory)
-    bool load();
+    // load file paths and certificates
+    bool load_from_files();
+
+    // initialize trusted store for ie. OCSP checking
+    bool load_trust_store();
+
+    // set context verify location
+    bool set_verify_locations(SSL_CTX *ctx);
+    bool reset_caches();
 
     //always use locking when using this class!
     std::recursive_mutex& lock() const { return mutex_cache_write_; };

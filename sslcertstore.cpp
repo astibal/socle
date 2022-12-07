@@ -45,7 +45,7 @@ std::string FILE_to_string(FILE* file) {
     return ss.str();
 }
 
-bool SSLFactory::load() {
+bool SSLFactory::load_from_files() {
 
     auto lc_ = std::scoped_lock(lock());
 
@@ -65,18 +65,6 @@ bool SSLFactory::load() {
         return false;
     }
 
-    // initialize trust store
-    if(trust_store_) {
-        X509_STORE_free(trust_store_);
-    }
-    trust_store_ = X509_STORE_new();
-    if(X509_STORE_load_locations(trust_store_, nullptr, ca_path().c_str()) == 0)  {
-        _err("cannot load trusted store.");
-    }
-
-    verify_cache().clear();
-    verify_cache().expiration_check(expiring_verify_result::is_expired);
-    
     return ret;
 }
 
@@ -227,6 +215,10 @@ SSL_CTX* SSLFactory::client_ctx_setup(const char* ciphers) {
         _err("SSLCom::client_ctx_setup: Error creating SSL context!");
         exit(2);
     }
+    if (not set_verify_locations(ctx)) {
+        _err("SSLFactory::init: cannot load CA locations!");
+        exit(3);
+    }
 
     ciphers == nullptr ? SSL_CTX_set_cipher_list(ctx,"ALL:!ADH:!LOW:!aNULL:!EXP:!MD5:@STRENGTH") : SSL_CTX_set_cipher_list(ctx,ciphers);
 
@@ -264,6 +256,10 @@ SSL_CTX* SSLFactory::client_dtls_ctx_setup(const char* ciphers) {
     if (!ctx) {
         _err("SSLCom::client_ctx_setup: Error creating SSL context!");
         exit(2);
+    }
+    if (not set_verify_locations(ctx)) {
+        _err("SSLFactory::init: cannot load CA locations!");
+        exit(3);
     }
 
     ciphers == nullptr ? SSL_CTX_set_cipher_list(ctx,"ALL:!ADH:!LOW:!aNULL:!EXP:!MD5:@STRENGTH") : SSL_CTX_set_cipher_list(ctx,ciphers);
@@ -350,6 +346,94 @@ SSL_CTX* SSLFactory::server_dtls_ctx_setup(EVP_PKEY* priv, X509* cert, const cha
 }
 
 
+bool SSLFactory::load_trust_store() {
+    auto const& log = SSLFactory::get_log();
+
+    // initialize trust store
+    if(trust_store_) {
+        X509_STORE_free(trust_store_);
+    }
+    trust_store_ = X509_STORE_new();
+
+    bool bundle_loaded = false;
+    bool ca_path_loaded = false;
+
+    if (not ca_file().empty()) {
+        const int r = X509_STORE_load_locations(trust_store_, ca_file().c_str(), nullptr);
+        _deb("SSLFactory::load_trust_store: loading certificate bundle file: %s", r > 0 ? "ok" : "failed");
+
+        if(r <= 0) {
+            _err("SSLFactory::load_trust_store: failed to load certificate bundle file: %d", r);
+        }
+        else {
+            stats.ca_store_use_file = true;
+            bundle_loaded = true;
+        }
+    }
+
+    if(not bundle_loaded and not ca_path().empty()) {
+        const int r = X509_STORE_load_locations(trust_store_, nullptr, ca_path().c_str());
+        _deb("SSLFactory::load_trust_store: loading default certificate store from directory: %s", r > 0 ? "ok" : "failed");
+
+        if(r <= 0) {
+            _err("SSLFactory::load_trust_store: failed to load verify location: %d", r);
+        }
+        else {
+            ca_path_loaded = true;
+        }
+    }
+    else {
+        _war("SSLFactory::load_trust_store: loading default certification store: path not set!");
+    }
+
+    return ( ca_path_loaded or bundle_loaded );
+
+}
+bool SSLFactory::set_verify_locations(SSL_CTX *ctx) {
+
+    auto const& log = SSLFactory::get_log();
+
+    bool bundle_loaded = false;
+    bool ca_path_loaded = false;
+
+    if (not ca_file().empty()) {
+        const int r = SSL_CTX_load_verify_locations(ctx, ca_file().c_str(), nullptr);
+        _deb("SSLFactory::set_verify_locations: loading certificate bundle file: %s", r > 0 ? "ok" : "failed");
+
+        if(r <= 0) {
+            _err("SSLFactory::set_verify_locations: failed to load certificate bundle file: %d", r);
+        }
+        else {
+            stats.ca_verify_use_file = true;
+            bundle_loaded = true;
+        }
+    }
+
+    if(not bundle_loaded and not ca_path().empty()) {
+        const int r = SSL_CTX_load_verify_locations(ctx, nullptr, ca_path().c_str());
+        _deb("SSLFactory::set_verify_locations: loading default certificate store: %s", r > 0 ? "ok" : "failed");
+
+        if(r <= 0) {
+            _err("SSLFactory::set_verify_locations: failed to load verify location: %d", r);
+        }
+        else {
+            ca_path_loaded = true;
+        }
+    }
+    else {
+        _war("SSLFactory::set_verify_locations: loading default certification store: path not set!");
+    }
+
+    return ( ca_path_loaded or bundle_loaded );
+}
+
+bool SSLFactory::reset_caches() {
+    verify_cache().clear();
+    verify_cache().expiration_check(expiring_verify_result::is_expired);
+
+    return true;
+}
+
 SSLFactory& SSLFactory::init () {
     auto const& log = get_log();
 
@@ -363,11 +447,16 @@ SSLFactory& SSLFactory::init () {
     if(fac.is_initialized) return fac;
     auto make_initized = raw::guard([&fac](){ fac.is_initialized = true; });
 
-    bool ret = fac.load();
 
-    if(! ret) {
+    bool ret_files = fac.load_from_files();
+    if(! ret_files) {
         _fat("SSLFactory::init: failure loading certificates, bailing out.");
-        exit(2);
+        exit(3);
+    }
+    bool ret_store = fac.load_trust_store();
+    if(! ret_store) {
+        _fat("SSLFactory::init: failure loading trust store, bailing out.");
+        exit(3);
     }
 
     fac.def_cl_ctx = fac.client_ctx_setup();
@@ -375,22 +464,12 @@ SSLFactory& SSLFactory::init () {
 
     _dia("SSLFactory::init: default ssl client context: ok");
 
-    if(! fac.ca_path().empty()) {
-        int r = SSL_CTX_load_verify_locations(fac.def_cl_ctx, nullptr, fac.ca_path().c_str());
-        _deb("SSLFactory::init: loading default certification store: %s", r > 0 ? "ok" : "failed");
-
-        if(r <= 0) {
-            _err("SSLFactory::init: failed to load verify location: %d", r);
-        }
-    } else {
-        _war("SSLFactory::init: loading default certification store: path not set!");
-    }
-
-
     fac.def_sr_ctx = fac.server_ctx_setup();
     fac.def_dtls_sr_ctx = fac.server_dtls_ctx_setup();
 
     _dia("SSLFactory::init: default ssl server context: ok");
+
+    reset_caches();
 
     return fac;
 }
