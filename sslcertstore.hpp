@@ -174,7 +174,7 @@ public:
 
 
     static expiring_crl* make_expiring_crl(X509_CRL* crl)
-                                { return new SSLFactory::expiring_crl(new crl_holder(crl), ssl_crl_status_ttl); }
+                                { return new SSLFactory::expiring_crl(new crl_holder(crl), SSLFactory::options::crl_status_ttl); }
 
     // default path for CA trust-store. It's marked as CL, since CL side will use it (sx -> real server)
     std::string ca_path_;
@@ -213,8 +213,9 @@ private:
     SSL_CTX*  def_cl_ctx = nullptr;   // default client ctx
     SSL_CTX*  def_dtls_cl_ctx = nullptr;   // default client ctx for DTLS
 
-    static inline unsigned long def_cl_options = SSL_OP_NO_SSLv3+SSL_OP_NO_SSLv2;
-    static inline unsigned long def_sr_options = SSL_OP_NO_SSLv3+SSL_OP_NO_SSLv2;
+    // SSL options are internally uint64_t
+    static inline uint64_t def_cl_options = SSL_OP_NO_SSLv3+SSL_OP_NO_SSLv2;
+    static inline uint64_t def_sr_options = SSL_OP_NO_SSLv3+SSL_OP_NO_SSLv2;
 
     bool load_ca_cert();
     bool load_def_cl_cert();
@@ -326,9 +327,12 @@ public:
     bool erase(const std::string &subject);
      
 
-    // static members must be public
-    static inline int ssl_ocsp_status_ttl = 1800;
-    static inline int ssl_crl_status_ttl = 86400;
+    struct options {
+        static inline int ocsp_status_ttl = 1800;
+        static inline int crl_status_ttl = 86400;
+        static inline bool ktls = true;
+    };
+    static inline SSLFactory::options options_;
 
     void destroy();
     virtual ~SSLFactory();

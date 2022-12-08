@@ -216,13 +216,24 @@ SSL_CTX* SSLFactory::client_ctx_setup(const char* ciphers) {
         exit(2);
     }
     if (not set_verify_locations(ctx)) {
-        _err("SSLFactory::init: cannot load CA locations!");
+        _err("SSLFactory::client_ctx_setup: cannot load CA locations!");
         exit(3);
     }
 
     ciphers == nullptr ? SSL_CTX_set_cipher_list(ctx,"ALL:!ADH:!LOW:!aNULL:!EXP:!MD5:@STRENGTH") : SSL_CTX_set_cipher_list(ctx,ciphers);
 
-    SSL_CTX_set_options(ctx, def_cl_options); //used to be also SSL_OP_NO_TICKET+
+    auto ctx_options = def_cl_options;
+#ifdef USE_OPENSSL300
+    if (options::ktls) {
+        _dia("SSLFactory::client_ctx_setup: KTLS on");
+        ctx_options += SSL_OP_ENABLE_KTLS;
+    }
+    else {
+        _dia("SSLFactory::client_ctx_setup: KTLS off");
+    }
+#endif
+
+    SSL_CTX_set_options(ctx, ctx_options); //used to be also SSL_OP_NO_TICKET+
     SSL_CTX_set_session_cache_mode(ctx, SSL_SESS_CACHE_NO_INTERNAL);
 
     SSL_CTX_sess_set_new_cb(ctx, SSLCom::new_session_callback);
@@ -284,7 +295,19 @@ SSL_CTX* SSLFactory::server_ctx_setup(EVP_PKEY* priv, X509* cert, const char* ci
     }
 
     ciphers == nullptr ? SSL_CTX_set_cipher_list(ctx,"ALL:!ADH:!LOW:!EXP:!MD5:@STRENGTH") : SSL_CTX_set_cipher_list(ctx,ciphers);
-    SSL_CTX_set_options(ctx, def_sr_options);
+
+    auto ctx_options = def_sr_options;
+#ifdef USE_OPENSSL300
+    if (options::ktls) {
+        _dia("SSLFactory::server_ctx_setup: KTLS on");
+        ctx_options += SSL_OP_ENABLE_KTLS;
+    }
+    else {
+        _dia("SSLFactory::server_ctx_setup: KTLS off");
+    }
+#endif
+
+    SSL_CTX_set_options(ctx, ctx_options); //used to be also SSL_OP_NO_TICKET+
     SSL_CTX_set_session_cache_mode(ctx, SSL_SESS_CACHE_NO_INTERNAL);
 
     SSL_CTX_sess_set_new_cb(ctx, SSLCom::new_session_callback);
