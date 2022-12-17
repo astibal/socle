@@ -120,6 +120,10 @@ int MasterProxy::handle_sockets_once(baseCom* xcom) {
     std::size_t proxy_idx = 0;
     for(auto& [ proxy, thr ] : proxies()) {
 
+        if(state().dead()) {
+            proxy->state().dead(true);
+        }
+
         // don't mess with running threaded proxy
         if(proxy->state().in_progress()) continue;
                 
