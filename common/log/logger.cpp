@@ -34,10 +34,10 @@ std::shared_ptr<LogMux> Log::default_logger() {
     return r;
 }
 
-std::string Log::level_name(int l) {
+std::string Log::level_name(unsigned int l) {
 
-    if (l > (int) sizeof(Log::Log::levels) - 1) {
-        return string_format("%d", l);
+    if (l > Log::Log::levels.size() - 1) {
+        return string_format("loglev-%d", l);
     } else {
         return Log::levels[l];
     }
@@ -54,7 +54,7 @@ std::string ESC_ (const std::string &s) {
     return t;
 }
 
-logger_profile::~logger_profile() { 
+logger_profile::~logger_profile() {
     for(auto& [ optr, mptr ]: targets_) {
         if(optr) {
             optr->flush();
@@ -101,10 +101,10 @@ bool LogMux::periodic_end() {
 	if (last_period_status) {
 		time_t now = time(nullptr);
 		last_period = now;
-		
+
 		return true;
 	}
-	
+
 	return false;
 }
 
@@ -113,7 +113,7 @@ bool LogMux::should_log_topic(loglevel& writer, loglevel& msg) {
 
     // writer loglevel
     unsigned int t = writer.topic();
-    
+
     // if msg has set topic, we need to check what to do
     if(msg.topic() != 0) {
         if(msg.more() != nullptr) {
@@ -122,11 +122,11 @@ bool LogMux::should_log_topic(loglevel& writer, loglevel& msg) {
                     return false;
                 }
             }
-            
+
             // Exclusive topic
             if (msg.more()->exclusive_topic) {
                 if(t == iNON) return false;
-                
+
                 unsigned int l_area = 0xffff0000 | msg.topic();
                 unsigned int t_area = 0xffff0000 | t;
                 if(l_area != t_area) {
@@ -137,12 +137,12 @@ bool LogMux::should_log_topic(loglevel& writer, loglevel& msg) {
     } else {
         // msg doesn't have any topic (== 0)
         if(t > 0) {
-            
+
             // we don't want to write generic messages into specialized writer
             return false;
         }
     }
-    
+
     return true;
 }
 
@@ -157,7 +157,7 @@ size_t LogMux::write_log(loglevel level, std::string& sss) {
         if(target_profiles().find((uint64_t) target.get()) != target_profiles().end()) {
             if(target_profiles()[(uint64_t)  target.get()]->level_ < level) { continue; }
         }
-        
+
         if (!should_log_topic(target_profiles()[(uint64_t) target.get()]->level_,level)) continue;
 
         auto l_ = std::scoped_lock(*mut);
@@ -165,27 +165,27 @@ size_t LogMux::write_log(loglevel level, std::string& sss) {
     }
 
     for(auto const& [ rem_target, mut ]: remote_targets()) {
-        
+
         if(target_profiles().find((uint64_t) rem_target) != target_profiles().end()) {
             if(target_profiles()[(uint64_t) rem_target]->level_ < level ) { continue; }
         }
-        
+
         if (!should_log_topic(target_profiles()[(uint64_t) rem_target]->level_,level)) continue;
-            
+
         std::stringstream  s;
 
         // prefixes
         if(target_profiles()[(uint64_t) rem_target]->logger_type == REMOTE_SYSLOG) {
             s <<  string_format("<%d> ",target_profiles()[(uint64_t) rem_target]->syslog_settings.prival());
-        } 
-        
+        }
+
         s << sss ;
-        
+
         // suffixes
         if(target_profiles()[(uint64_t) rem_target]->logger_type != REMOTE_SYSLOG) {
             s <<  "\r\n";
-        } 
-        
+        }
+
         std::string a = s.str();
 
         auto l_ = std::scoped_lock(*mut);
@@ -212,72 +212,43 @@ size_t LogMux::write_log(loglevel level, std::string& sss) {
 
 
 bool LogMux::click_timer (const std::string &xname, int interval) {
-	
+
 	std::lock_guard<std::mutex> lck(mtx_timers);
-	
+
 	std::string name;
 	auto myid = std::this_thread::get_id();
 	std::stringstream ss;
 	ss << myid;
 
 	name += xname + "_th" + ss.str();
-	
+
 	auto r = timers.find(name);
 	if (r != timers.end()) {
 		// we found entry
 		time_t l = r->second.last;
 		int i = r->second.timeout;
-		
+
 		time_t now = ::time(nullptr);
-		
+
 		if( now > l + i) {
 			(*r).second.last = now;
 			return true;
-		} 
+		}
 		else {
 			return false;
 		}
-	
+
 	} else {
 		// we should establish a new timer
 		time_t now = ::time(nullptr);
 		timer_tt tt;
 		tt.last = now;
 		tt.timeout = interval;
-		
+
 		timers[name] = tt;
-		
+
 		return true;
 	}
-}
-
-// DEPRECATED: we don't need adjusting internal logging based on profiles anymore.
-[[maybe_unused]]
-loglevel LogMux::adjust_level() {
-
-    loglevel curr_level = level();
-    loglevel max_common_level = log::level::NON;
-    
-    for( auto const& [ rem_target, mut ]: remote_targets() ) {
-        loglevel this_level = target_profiles()[(uint64_t)rem_target]->level_;
-        if ( this_level > max_common_level ) {
-            max_common_level = this_level;
-        }
-    }
-    for(auto const& [ optr, mut ]: targets()) {
-        loglevel this_level = target_profiles()[(uint64_t)optr.get()]->level_;
-        if ( this_level > max_common_level ) {
-            max_common_level = this_level;
-        }
-    }
-    
-    // if we detect necessity
-    if(max_common_level != curr_level) {
-        level(max_common_level);
-    } 
-    
-    // return log level difference, therefore negative if we decreased logging level, zero if unchanged, positive if log level is raised.
-    return max_common_level - curr_level;
 }
 
 
