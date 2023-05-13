@@ -148,7 +148,10 @@ void baseProxy::rdaadd(baseHostCX* cs) {
     _dia("baseProxy::rdaadd: added delayed socket: %s", cs->c_type());
 }
 
-
+void baseProxy::drop_cx(baseHostCX* cx) {
+    cx->peer(nullptr);
+    trashcan.emplace_back(cx);
+}
 
 void baseProxy::left_shutdown() {
 	auto lb = left_bind_sockets.size();
@@ -162,21 +165,18 @@ void baseProxy::left_shutdown() {
 	for(auto* ii: left_pc_cx)          { ii->shutdown(); }
     for(auto* ii: left_delayed_accepts) { ii->shutdown(); }
 
-    std::vector<baseHostCX*> delit(2);
 
-    for(auto* ii: left_bind_sockets) { delit.push_back(ii); }
+    for(auto* ii: left_bind_sockets) { drop_cx(ii); }
     left_bind_sockets.clear();
 
-    for(auto* ii: left_sockets) {  delit.push_back(ii); }
+    for(auto* ii: left_sockets) {  drop_cx(ii); }
     left_sockets.clear();
 
-    for(auto* ii: left_pc_cx) {  delit.push_back(ii); }
+    for(auto* ii: left_pc_cx) {  drop_cx(ii); }
     left_pc_cx.clear();
 
-    for(auto* ii: left_delayed_accepts) { delit.push_back(ii); }
+    for(auto* ii: left_delayed_accepts) { drop_cx(ii); }
     left_delayed_accepts.clear();
-
-    std::for_each(delit.begin(), delit.end(), [](auto i) {delete i;});
 
  	_deb("baseProxy::left_shutdown: bind=%d(delayed=%d), sock=%d, perm=%d", lb, ld, ls, lp);
 }
@@ -195,25 +195,18 @@ void baseProxy::right_shutdown() {
     for(auto ii: right_delayed_accepts) { ii->shutdown(); }
 
 
-
-    std::vector<baseHostCX*> delit(2);
-
-    for(auto ii: right_bind_sockets) { delit.push_back(ii); }
+    for(auto ii: right_bind_sockets) { drop_cx(ii); }
     right_bind_sockets.clear();
 
-    for(auto ii: right_sockets) {  delit.push_back(ii); }
+    for(auto ii: right_sockets) {  drop_cx(ii); }
     right_sockets.clear();
 
-    for(auto ii: right_pc_cx) { delit.push_back(ii); }
+    for(auto ii: right_pc_cx) { drop_cx(ii); }
     right_pc_cx.clear();
 
-    for(auto ii: right_delayed_accepts) {  delit.push_back(ii); }
+    for(auto ii: right_delayed_accepts) {  drop_cx(ii); }
     right_delayed_accepts.clear();      
 
-
-    std::for_each(delit.begin(), delit.end(), [](auto i) {delete i;});
-
-    
 	_deb("baseProxy::right_shutdown: bind=%d(delayed=%d), sock=%d, perm=%d", rb, rd, rs, rp);
 }
 

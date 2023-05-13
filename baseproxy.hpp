@@ -112,6 +112,8 @@ public:
 
 class baseProxy : public epoll_handler, public Proxy
 {
+    std::vector<std::unique_ptr<baseHostCX>> trashcan {2};
+
 public:
     template<class T>
     using vector_type = mp::vector<T>;
@@ -274,6 +276,7 @@ public:
     int connect(const char*, const char*,char);
 
 
+    void drop_cx(baseHostCX* cx);
     // shutdown utils, deletes HostCX
     virtual void left_shutdown();
     virtual void right_shutdown();
