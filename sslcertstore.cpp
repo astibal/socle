@@ -20,6 +20,7 @@
 #include <ctime>
 #include <regex>
 #include <array>
+#include <filesystem>
 
 #include <display.hpp>
 #include <sslcertstore.hpp>
@@ -65,7 +66,70 @@ bool SSLFactory::load_from_files() {
         return false;
     }
 
+    if (not load_sni_certs()) {
+        _dia("some sni certificates not loaded");
+    }
+
     return ret;
+}
+
+std::optional<std::pair<EVP_PKEY*,X509*>> load_cert_pair(std::string_view fnm_key, std::string_view fnm_cert, const char* password = nullptr) {
+
+    FILE *fp_crt = fopen(fnm_cert.data(), "r");
+    FILE *fp_key = nullptr;
+
+    if (!fp_crt) {
+        return std::nullopt;
+    }
+
+    fp_key = fopen(fnm_key.data(), "r");
+
+    if (!fp_key) {
+        fclose(fp_crt);
+        return std::nullopt;
+    }
+
+
+    auto ossl_cert = PEM_read_X509(fp_crt, nullptr, nullptr, nullptr);
+    auto ossl_key = PEM_read_PrivateKey(fp_key, nullptr, nullptr, (void *) password);
+
+    fclose(fp_crt);
+    fclose(fp_key);
+
+    return std::make_optional<std::pair<EVP_PKEY*,X509*>>(ossl_key, ossl_cert);
+}
+
+
+bool SSLFactory::load_sni_certs() {
+    auto const& log = get_log();
+    std::string const sni_path = certs_path() + config_t::SNI_DIR;
+
+    try {
+
+        auto d = std::filesystem::directory_entry(sni_path);
+        if(not d.exists()) {
+            log.event(INF, "sni-based certificates directory created: %s", d.path().string().c_str());
+            std::filesystem::create_directories(d);
+        }
+
+        for (const auto &entry: std::filesystem::directory_iterator(sni_path)) {
+            // directory is also SNI match
+
+            auto path = entry.path().string();
+            auto cert_pair = load_cert_pair(path + "/key.pem", path + "/cert.pem", nullptr);
+            if (cert_pair) {
+                std::string key = "sni:";
+                key += entry.path().filename();
+                add(key, cert_pair.value());
+            }
+        }
+    }
+    catch (std::filesystem::filesystem_error const& e) {
+        log.event(ERR, "load_sni_certs: error %s", e.what());
+        _dia("load_sni_certs: error %s", e.what());
+    }
+
+    return true;
 }
 
 bool SSLFactory::load_ca_cert() {
@@ -636,7 +700,7 @@ std::string SSLFactory::make_store_key(X509* cert_orig, const SpoofOptions& spo)
 
 std::string SSLFactory::make_store_key(X509* cert_orig, const SpoofOptions& spo) {
 
-    char tmp[512]; memset(tmp, 0, 512);
+    std::array<char, 512> tmp {};
 
     const ASN1_BIT_STRING* bs = nullptr;
     const X509_ALGOR* pal = nullptr;
@@ -645,18 +709,18 @@ std::string SSLFactory::make_store_key(X509* cert_orig, const SpoofOptions& spo)
 
     //TODO: add signature as part of the key, to cover new orig certificates with also new spoofed ones
 
-    X509_NAME_oneline( X509_get_subject_name(cert_orig) , tmp, 512);
-    std::string subject(tmp);
+    X509_NAME_oneline( X509_get_subject_name(cert_orig) , tmp.data(), 512);
+    std::string const subject(tmp.data());
 
     std::stringstream store_key_ss;
 
-    store_key_ss << subject;
+    store_key_ss << "subj:" << subject;
 
     if(spo.self_signed) {
         store_key_ss << "+self_signed";
     }
 
-    std::vector<std::string> cert_sans = SSLFactory::get_sans(cert_orig);
+    std::vector<std::string> const cert_sans = SSLFactory::get_sans(cert_orig);
     for(auto const& s1: cert_sans) {
         store_key_ss << string_format("+san:%s",s1.c_str());
     }

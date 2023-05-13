@@ -24,8 +24,9 @@
 
 
 struct SpoofOptions {
-  bool self_signed = false; // set to true if we should deliberately make a mistake
-  std::vector<std::string> sans;
+    std::string sni;
+    bool self_signed = false; // set to true if we should deliberately make a mistake
+    std::vector<std::string> sans;
 };
 
 
@@ -49,19 +50,19 @@ public:
 
     struct log {
         static logan_lite &ca() {
-            static logan_lite l("com.ssl.ca");
+            static logan_lite l("com.tls.ca");
             return l;
         }
         static logan_lite &mitm () {
-            static logan_lite l("com.ssl.mitm");
+            static logan_lite l("com.tls.mitm");
             return l;
         }
 
     };
 };
 
-typedef baseSSLMitmCom<SSLCom> SSLMitmCom;
-typedef baseSSLMitmCom<DTLSCom> DTLSMitmCom;
+using SSLMitmCom = baseSSLMitmCom<SSLCom> ;
+using DTLSMitmCom = baseSSLMitmCom<DTLSCom>;
 
 #endif // __SSLMITMCOM_HPP__
 

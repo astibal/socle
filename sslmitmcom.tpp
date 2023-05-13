@@ -40,6 +40,8 @@ bool baseSSLMitmCom<SSLProto>::check_cert(const char* peer_name) {
         remote->sslcom_server_ = true;
         
         SpoofOptions spo;
+        spo.sni = this->sslcom_sni();
+
         if (this->verify_get() != verify_status_t::VRF_OK) {
             if(not this->opt.cert.failed_check_replacement) {
                 spo.self_signed = true;
@@ -76,7 +78,7 @@ bool baseSSLMitmCom<SSLProto>::check_cert(const char* peer_name) {
                     std::string item = string_trim(can_dns_item);
                     _dia("           SAN/CN entry: '%s'",item.c_str());
 
-                    if(this->sslcom_sni().size() > 0) {
+                    if(not this->sslcom_sni().empty()) {
                         if(item.size() > 4 && item.find("DNS:") == 0) {
                             item = item.substr(4);
                             std::transform(item.begin(), item.end(), item.begin(), ::tolower);
@@ -146,12 +148,11 @@ bool baseSSLMitmCom<SSLProto>::check_cert(const char* peer_name) {
                     // if neither DNS nor IP could be added, fallback to self-signed cert
                     spo.self_signed = true;
 
-                    if(this->sslcom_sni().size()) {
+                    if(not this->sslcom_sni().empty()) {
                         spo.sans.push_back(string_format("DNS:%s", this->sslcom_sni().c_str()));
                         spo.self_signed = false;
                     }
-                    else
-                    if(this->owner_cx()) {
+                    else if(this->owner_cx()) {
                         // we WILL pretend target certificate is OK 
                         spo.sans.push_back(string_format("IP:%s",this->owner_cx()->host().c_str()));
                         spo.self_signed = false;
@@ -199,6 +200,20 @@ bool baseSSLMitmCom<SSLProto>::spoof_cert(X509* cert_orig, SpoofOptions& spo) {
     _deb("SSLMitmCom::spoof_cert: about to spoof certificate!");
 
     auto lc_ = std::scoped_lock(this->factory()->lock());
+
+    if(this->opt.cert.mitm_cert_sni_search) {
+        if (not spo.sni.empty()) {
+            auto parek = this->factory()->find("sni:" + spo.sni);
+            if (parek) {
+                _dia("SSLMitmCom::spoof_cert: factory found SNI match: '%s'", spo.sni.c_str());
+
+                this->sslcom_pref_cert = parek.value().second;
+                this->sslcom_pref_key = parek.value().first;
+
+                return true;
+            }
+        }
+    }
 
     std::string store_key = SSLFactory::make_store_key(cert_orig, spo);
 

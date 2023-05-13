@@ -138,6 +138,8 @@ public:
         constexpr static const char* CA_CERTF = "ca-cert.pem";
         constexpr static const char* CA_KEYF =  "ca-key.pem";
 
+        constexpr static const char* SNI_DIR =  "sni/";
+
         std::string def_ca_cert_str;
         std::string def_ca_key_str;
         std::string def_sr_cert_str;
@@ -220,6 +222,7 @@ private:
     bool load_ca_cert();
     bool load_def_cl_cert();
     bool load_def_sr_cert();
+    bool load_sni_certs();
 
     std::regex re_hostname = std::regex("^[a-zA-Z0-9-]+\\.");
 

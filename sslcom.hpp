@@ -112,6 +112,8 @@ struct SSLComOptionsCert {
     int client_cert_action = 1;                     // 0 - display a warning message and block, or drop the connection
     // 1 - pass, don't provide any certificate to server
     // 2 - bypass next connection
+
+    bool mitm_cert_sni_search = false;      // allow search based on SNI
 };
 
 struct SSLComOptionsOcsp {
