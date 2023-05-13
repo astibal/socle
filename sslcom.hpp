@@ -244,6 +244,9 @@ protected:
 	SSL_CTX* sslcom_ctx = nullptr;
 	SSL*     sslcom_ssl = nullptr;
 	BIO*	 sslcom_sbio = nullptr;
+    int      sslcom_ret = 0;  // return value of last SSL_get_error() capable calls:
+                              // SSL_connect, SSL_accept, SSL_do_handshake, SSL_read, SSL_peek,
+                              // SSL_shutdown, SSL_write - and their respective _ex variants.
     
     //SSL external data offset, used by openssl callbacks
     static inline int sslcom_ssl_extdata_index {-1};
