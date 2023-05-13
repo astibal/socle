@@ -178,18 +178,18 @@ int TCPCom::bind(unsigned short port) {
 int TCPCom::accept ( int sockfd, sockaddr* addr, socklen_t* addrlen_ ) {
     int news = ::accept(sockfd, addr, addrlen_);
 
-    if(news < 0) {
-        if(errno != EAGAIN) {
+    if (news < 0) {
+        if (errno != EAGAIN) {
             _err("accept[%d]: failed: %s", sockfd, string_error().c_str());
             return -1;
         } else {
             _dia("accept[%d]: not ready: %s", sockfd, string_error().c_str());
         }
     } else {
-        _deb("accept[%d->%d]: ok ", sockfd, news);
+        _dia("accept[%d->%d]: ok ", sockfd, news);
+        on_new_socket(news);
     }
 
-    on_new_socket(news);
     return news;
 }
 
