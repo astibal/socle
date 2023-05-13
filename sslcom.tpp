@@ -2666,21 +2666,6 @@ bool baseSSLCom<L4Proto>::waiting_peer_hello() {
                     sslcom_peer_hello_received(true);
                     set_monitor(socket());
 
-                    if(not sslcom_sni_.empty()) {
-
-                        auto lc_ = std::scoped_lock(factory()->lock());
-
-                        auto res_subj = factory()->find_subject_by_fqdn(sslcom_sni_);
-                        if(res_subj.has_value()) {
-                            _dia("SSLCom::waiting_peer_hello: peer's SNI found in subject cache: '%s'", res_subj.value().c_str());
-                            if(! enforce_peer_cert_from_cache(res_subj.value() )) {
-                                _dia("SSLCom::waiting_peer_hello: fallback to slow-path");
-                            }
-                        } else {
-                            _dia("Peer's SNI NOT found in factory, no shortcuts possible.");
-                        }
-                    }
-
                 } else {
                     _deb("SSLCom::waiting_peer_hello: peek returns %d, readbuf=%d", red, owner_cx() ? owner_cx()->readbuf()->size() : -1);
                     if(not owner_cx()) {
