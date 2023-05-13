@@ -294,7 +294,9 @@ public:
     // set both levels of peering: cx and com
     void peer(baseHostCX* p) {
         peer_ = p;
-        com()->peer(peer()->com());
+        if(com()) {
+            com()->peer(p ? peer()->com() : nullptr);
+        }
     }
 
     baseCom* peercom() const { if(peer()) { return peer()->com(); } return nullptr; }
