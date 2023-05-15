@@ -114,6 +114,7 @@ struct SSLComOptionsCert {
     // 2 - bypass next connection
 
     bool mitm_cert_sni_search = false;      // allow search based on SNI
+    bool mitm_cert_ip_search = false;      // allow search based on SNI
 };
 
 struct SSLComOptionsOcsp {

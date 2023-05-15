@@ -193,19 +193,41 @@ bool baseSSLMitmCom<SSLProto>::check_cert(const char* peer_name) {
     return r;
 }
 
+
 template <class SSLProto>
-bool baseSSLMitmCom<SSLProto>::spoof_cert(X509* cert_orig, SpoofOptions& spo) {
+bool baseSSLMitmCom<SSLProto>::use_cert_sni(SpoofOptions &spo) {
     auto const& log = log::mitm();
 
-    _deb("SSLMitmCom::spoof_cert: about to spoof certificate!");
+    if (not spo.sni.empty()) {
+        _dia("SSLMitmCom::use_cert_sni: looking for certificate bound to SNI '%s'", spo.sni.c_str());
 
-    auto lc_ = std::scoped_lock(this->factory()->lock());
+        auto parek = this->factory()->find("sni:" + spo.sni);
+        if (parek) {
+            _dia("SSLMitmCom::use_cert_sni: factory found SNI match: '%s'", spo.sni.c_str());
 
-    if(this->opt.cert.mitm_cert_sni_search) {
-        if (not spo.sni.empty()) {
-            auto parek = this->factory()->find("sni:" + spo.sni);
+            this->sslcom_pref_cert = parek.value().second;
+            this->sslcom_pref_key = parek.value().first;
+
+            return true;
+        }
+    }
+
+    return false;
+}
+
+template <class SSLProto>
+bool baseSSLMitmCom<SSLProto>::use_cert_ip(SpoofOptions &spo) {
+    auto const& log = log::mitm();
+
+
+    if (this->owner_cx() and this->owner_cx()->peer()) {
+        auto address = this->owner_cx()->peer()->host();
+        _dia("SSLMitmCom::use_cert_ip: looking for certificate bound to IP '%s'", address.c_str());
+
+        if(not address.empty()) {
+            auto parek = this->factory()->find("ip:" + address);
             if (parek) {
-                _dia("SSLMitmCom::spoof_cert: factory found SNI match: '%s'", spo.sni.c_str());
+                _dia("SSLMitmCom::use_cert_ip: factory found IP match: '%s'", address.c_str());
 
                 this->sslcom_pref_cert = parek.value().second;
                 this->sslcom_pref_key = parek.value().first;
@@ -215,25 +237,34 @@ bool baseSSLMitmCom<SSLProto>::spoof_cert(X509* cert_orig, SpoofOptions& spo) {
         }
     }
 
+    return false;
+}
+
+template <class SSLProto>
+bool baseSSLMitmCom<SSLProto>::use_cert_mitm(X509 *cert_orig, SpoofOptions &spo) {
+    auto const& log = log::mitm();
+
+    _deb("SSLMitmCom::use_cert_mitm: about to spoof certificate!");
+
     std::string store_key = SSLFactory::make_store_key(cert_orig, spo);
 
     auto parek = this->factory()->find(store_key);
     if (parek.has_value()) {
-        _dia("SSLMitmCom::spoof_cert: factory found '%s'", store_key.c_str());
+        _dia("SSLMitmCom::use_cert_mitm: factory found '%s'", store_key.c_str());
         this->sslcom_pref_cert = parek.value().second;
         this->sslcom_pref_key = parek.value().first;
-        
+
         return true;
-    } 
+    }
     else {
-    
-        _dia("SSLMitmCom::spoof_cert: NOT found '%s'", store_key.c_str());
-        
+
+        _dia("SSLMitmCom::use_cert_mitm: NOT found '%s'", store_key.c_str());
+
         auto spoof_ret = this->factory()->spoof(cert_orig, spo.self_signed, &spo.sans);
         if(not spoof_ret.has_value()) {
-            _war("SSLMitmCom::spoof_cert: factory failed to spoof '%s' - default will be used", store_key.c_str());
+            _war("SSLMitmCom::use_cert_mitm: factory failed to spoof '%s' - default will be used", store_key.c_str());
             return false;
-        } 
+        }
         else {
             this->sslcom_pref_cert = spoof_ret.value().second;
             this->sslcom_pref_key  = spoof_ret.value().first;
@@ -246,13 +277,27 @@ bool baseSSLMitmCom<SSLProto>::spoof_cert(X509* cert_orig, SpoofOptions& spo) {
 #endif //USE_OPENSSL11
 
             if (! this->factory()->add(store_key, spoof_ret.value())) {
-                _dia("SSLMitmCom::spoof_cert: spoofed, but cache failed to update with %s", store_key.c_str());
+                _dia("SSLMitmCom::use_cert_mitm: spoofed, but cache failed to update with %s", store_key.c_str());
                 return true;
             }
         }
     }
-        
+
     return true;
+}
+
+template <class SSLProto>
+bool baseSSLMitmCom<SSLProto>::spoof_cert(X509* cert_orig, SpoofOptions& spo) {
+    auto const& log = log::mitm();
+
+
+    auto lc_ = std::scoped_lock(this->factory()->lock());
+
+    if(this->opt.cert.mitm_cert_sni_search && this->use_cert_sni(spo)) return true;
+
+    if(this->opt.cert.mitm_cert_ip_search && this->use_cert_ip(spo)) return true;
+
+    return use_cert_mitm(cert_orig, spo);
 }
 
 

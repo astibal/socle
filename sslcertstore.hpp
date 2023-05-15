@@ -139,6 +139,7 @@ public:
         constexpr static const char* CA_KEYF =  "ca-key.pem";
 
         constexpr static const char* SNI_DIR =  "sni/";
+        constexpr static const char* IP_DIR =  "ip/";
 
         std::string def_ca_cert_str;
         std::string def_ca_key_str;
@@ -222,7 +223,7 @@ private:
     bool load_ca_cert();
     bool load_def_cl_cert();
     bool load_def_sr_cert();
-    bool load_sni_certs();
+    bool load_certs_from(const char* sub_dir, const char* cache_key_prefix);
 
     std::regex re_hostname = std::regex("^[a-zA-Z0-9-]+\\.");
 
@@ -262,6 +263,7 @@ public:
 
     // load file paths and certificates
     bool load_from_files();
+    bool load_custom_certificates();
 
     // initialize trusted store for ie. OCSP checking
     bool load_trust_store();

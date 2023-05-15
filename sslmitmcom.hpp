@@ -39,6 +39,9 @@ public:
 
     bool check_cert(const char*) override;
     virtual bool spoof_cert(X509* cert_orig, SpoofOptions& spo);
+    virtual bool use_cert_sni(SpoofOptions &spo);
+    virtual bool use_cert_ip(SpoofOptions &spo);
+    virtual bool use_cert_mitm(X509* cert_orig, SpoofOptions& spo);
 
     baseCom* replicate() override { return new baseSSLMitmCom(); };
 

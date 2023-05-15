@@ -46,6 +46,19 @@ std::string FILE_to_string(FILE* file) {
     return ss.str();
 }
 
+bool SSLFactory::load_custom_certificates() {
+    auto const& log = get_log();
+
+    if (not load_certs_from(config_t::SNI_DIR,"sni:")) {
+        _dia("some SNI certificates not loaded");
+    }
+    if (not load_certs_from(config_t::IP_DIR,"ip:")) {
+        _dia("some IP certificates not loaded");
+    }
+
+    return true;
+}
+
 bool SSLFactory::load_from_files() {
 
     auto lc_ = std::scoped_lock(lock());
@@ -66,9 +79,7 @@ bool SSLFactory::load_from_files() {
         return false;
     }
 
-    if (not load_sni_certs()) {
-        _dia("some sni certificates not loaded");
-    }
+    load_custom_certificates();
 
     return ret;
 }
@@ -99,34 +110,33 @@ std::optional<std::pair<EVP_PKEY*,X509*>> load_cert_pair(std::string_view fnm_ke
     return std::make_optional<std::pair<EVP_PKEY*,X509*>>(ossl_key, ossl_cert);
 }
 
-
-bool SSLFactory::load_sni_certs() {
+bool SSLFactory::load_certs_from(const char* sub_dir, const char* cache_key_prefix) {
     auto const& log = get_log();
-    std::string const sni_path = certs_path() + config_t::SNI_DIR;
+    std::string const sub_path = certs_path() + sub_dir;
 
     try {
 
-        auto d = std::filesystem::directory_entry(sni_path);
+        auto d = std::filesystem::directory_entry(sub_path);
         if(not d.exists()) {
-            log.event(INF, "sni-based certificates directory created: %s", d.path().string().c_str());
+            log.event(INF, "certificates directory created: %s", d.path().string().c_str());
             std::filesystem::create_directories(d);
         }
 
-        for (const auto &entry: std::filesystem::directory_iterator(sni_path)) {
-            // directory is also SNI match
+        for (const auto &entry: std::filesystem::directory_iterator(sub_path)) {
+            // directory is the match
 
             auto path = entry.path().string();
             auto cert_pair = load_cert_pair(path + "/key.pem", path + "/cert.pem", nullptr);
             if (cert_pair) {
-                std::string key = "sni:";
+                std::string key = cache_key_prefix;
                 key += entry.path().filename();
                 add(key, cert_pair.value());
             }
         }
     }
     catch (std::filesystem::filesystem_error const& e) {
-        log.event(ERR, "load_sni_certs: error %s", e.what());
-        _dia("load_sni_certs: error %s", e.what());
+        log.event(ERR, R"(load_certs_from( "%s", "%s"): error %s)", sub_dir, cache_key_prefix, e.what());
+        _dia(R"(load_certs_from( "%s", "%s"): error %s)", sub_dir, cache_key_prefix, e.what());
     }
 
     return true;
