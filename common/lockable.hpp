@@ -21,54 +21,6 @@
 
 #include <shared_mutex>
 
-
-template <class T>
-class locked_ {
-public:
-    explicit locked_(T const* ref): ref_(ref) { if(ref) ref_->_lock(); };
-
-    locked_() = delete;
-    locked_(locked_ const&) = delete;
-    locked_(locked_&& other) = delete;
-
-    ~locked_() { if(ref_) ref_->_unlock(); };
-
-    T* operator->() {
-        return ref_;
-    }
-    T const* operator->() const {
-        return ref_;
-    }
-
-protected:
-    T const* ref_;
-};
-
-template <class T>
-class share_locked_ {
-public:
-    explicit share_locked_(T const* ref): ref_(ref) { if(ref_) ref_->_lock_shared(); };
-    explicit share_locked_(T const& ref): ref_(&ref) { if(ref_) ref_->_lock_shared(); };
-
-    share_locked_() = delete;
-    share_locked_(share_locked_ const&) = delete;
-    share_locked_(share_locked_&& other) = delete;
-
-    ~share_locked_() { if(ref_) ref_->_unlock_shared(); };
-
-    T* operator->() {
-        return ref_;
-    }
-    T const* operator->() const {
-        return ref_;
-    }
-
-private:
-    T const* ref_{};
-};
-
-
-
 class lockable {
 public:
     virtual ~lockable() = default;
@@ -78,8 +30,15 @@ public:
     void _lock() const { lock_.lock(); }
     void _unlock() const { lock_.unlock(); }
 
-    friend class locked_<lockable>;
-    friend class share_locked_<lockable>;
+    // to make standard guards work
+    void lock() const { lock_.lock(); }
+    void unlock() const { lock_.unlock(); }
+    bool try_lock() const { return lock_.try_lock(); }
+
+    void lock_shared() const { lock_.lock_shared(); }
+    bool try_lock_shared() const { return lock_.try_lock_shared(); }
+    void unlock_shared() const { lock_.unlock_shared(); }
+
     mutable std::shared_mutex lock_;
 };
 

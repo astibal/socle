@@ -156,7 +156,7 @@ class memPool {
         explicit Bucket(std::size_t SZ): sz(SZ) {};
 
         ~Bucket() override {
-            auto lc_ = locked_(this);
+            auto lc_ = std::scoped_lock(*this);
             ::free(bigptr);
         }
 

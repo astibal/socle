@@ -560,7 +560,7 @@ int baseHostCX::write() {
         return 0;
     }
 
-    auto acc = locked_(writebuf());
+    auto acc = std::scoped_lock(*writebuf());
 
     // pre-write operation
 

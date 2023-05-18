@@ -23,7 +23,7 @@
 
 
 void memPool::Bucket::init_memory(std::size_t cnt) {
-    auto lc_ = locked_(this);
+    auto lc_ = std::scoped_lock(*this);
 
     count = cnt;
     canary_sz = get_canary().canary_sz;
@@ -45,7 +45,7 @@ void memPool::Bucket::init_memory(std::size_t cnt) {
 }
 
 std::size_t memPool::Bucket::size() const {
-    auto lc_ = share_locked_(this);
+    auto lc_ = std::shared_lock(*this);
     return bucket.size();
 }
 
@@ -53,13 +53,13 @@ void memPool::Bucket::release(mem_chunk mch) {
     if(is_mine(mch.ptr)) {
         mch.in_pool = true;
 
-        auto lc_ = locked_(this);
+        auto lc_ = std::scoped_lock(*this);
         bucket.push(mch);
     }
 }
 
 std::optional<mem_chunk> memPool::Bucket::acquire() {
-    auto lc_ = locked_(this);
+    auto lc_ = std::scoped_lock(*this);
 
     if(not bucket.empty()) {
         auto mem = bucket.top();
@@ -314,7 +314,7 @@ std::optional<mem_chunk> memPool::tryhard_available(size_t s) {
 
         if(buck->chunk_size() >= s) {
 
-            auto lc_ = locked_(buck);
+            auto lc_ = std::scoped_lock(*buck);
 
             if(not buck->bucket.empty()) {
                 auto mem = buck->bucket.top();
