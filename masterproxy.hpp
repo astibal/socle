@@ -59,7 +59,7 @@ public:
 	std::string hr();
 
 private:
-    logan_lite log {"com.proxy"};
+    logan_lite log {"proxy.master"};
 };
 
 #endif // MASTERPROXY_H

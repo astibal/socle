@@ -371,7 +371,7 @@ public:
     DECLARE_LOGGING(to_string)
 
 private:
-    logan_lite log {"com.proxy"};
+    logan_lite log {"proxy"};
 };
 
 #endif
