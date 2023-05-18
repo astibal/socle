@@ -27,7 +27,7 @@ std::mutex buffer::alloc_map_lock_;
 // On the contrary, it also seems that fewer bytes received than advertised is considered as transfer error.
 
 
-void buffer::release() noexcept {
+void buffer::dealloc() noexcept {
     if (free_ && capacity_ > 0) {
 
         if(use_pool) {
@@ -38,6 +38,11 @@ void buffer::release() noexcept {
             counter_free(capacity_);
         }
     }
+}
+
+void buffer::release() noexcept {
+
+    dealloc();
 
     capacity_ = 0L;
     size_ = 0L;
@@ -187,16 +192,7 @@ buffer& buffer::operator=(const buffer& x)
 
     if (x.size_ > capacity_ or not data_)
     {
-        if (free_ and data_ != nullptr ) {
-            if(use_pool) {
-
-                memPool::pool().release( { data_, capacity_} );
-            }
-            else {
-                delete[] data_;  // we HAD ownership
-                counter_free(capacity_);
-            }
-        }
+        dealloc();
 
         capacity_ = x.capacity_;
 
@@ -255,18 +251,15 @@ unsigned char* buffer::detach()
     return r;
 }
 
+void buffer::assign(std::string_view data) {
+    assign(data.data(), data.size());
+}
+
 void buffer::assign (const void* d, size_type s)
 {
     if (s > capacity_)
     {
-        if (free_ && data_ != nullptr) {
-            if(use_pool) {
-                memPool::pool().release( { data_, capacity_ } );
-            } else {
-                delete[] data_;
-                counter_free(capacity_);
-            }
-        }
+        dealloc();
 
         if(use_pool) {
             mem_chunk_t mch = memPool::pool().acquire(s);
@@ -291,16 +284,7 @@ void buffer::assign (const void* d, size_type s)
 
 void buffer::assign (void* d, size_type s, size_type c, bool own)
 {
-    if (free_ && data_ != nullptr) {
-
-        if(use_pool) {
-            memPool::pool().release( { data_, capacity_ } );
-        }
-        else {
-            delete[] data_;
-            counter_free(capacity_);
-        }
-    }
+    dealloc();
 
     data_ = static_cast<unsigned char*> (d);
     size_ = s;
@@ -399,15 +383,7 @@ bool buffer::capacity (size_type c)
     if (size_ != 0)
         std::memcpy (d, data_, size_);
 
-    if (free_ && data_ != nullptr)  {
-        if(use_pool) {
-            memPool::pool().release( { data_, capacity_ } );
-        }
-        else {
-            delete[] data_;
-            counter_free(capacity_);
-        }
-    }
+    dealloc();
 
     data_ = d;
 

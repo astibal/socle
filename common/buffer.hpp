@@ -60,6 +60,7 @@ public:
   static void counter_alloc(size_type s);
   static void counter_free(size_type s);
 
+  void dealloc() noexcept;
   void release() noexcept;
   virtual ~buffer ();
 
@@ -117,8 +118,9 @@ public:
   unsigned char* detach ();
 
   void assign (const void* data, size_type size); // copy
-  void attach (void* data, size_type size); // take ownership
+  void assign (std::string_view data); // copy
   void assign (void* data, size_type size, size_type capacity, bool own);
+  void attach (void* data, size_type size); // take ownership
 
   void append (const buffer*);
   void append (const buffer&);
