@@ -246,21 +246,21 @@ struct epoller {
     bool in_read_set(int check);
     bool in_write_set(int check);
     bool in_idle_set(int check);
-    virtual bool add(int socket, int mask);
-    virtual bool modify(int socket, int mask);
-    virtual bool del(int socket);
-    virtual bool rescan_in(int socket);
-    virtual bool enforce_in(int socket);
-    virtual bool rescan_out(int socket);
+    bool add(int socket, int mask);
+    bool modify(int socket, int mask);
+    bool del(int socket);
+    bool rescan_in(int socket);
+    bool enforce_in(int socket);
+    bool rescan_out(int socket);
     unsigned long cancel_rescan_in(int socket);
     unsigned long cancel_rescan_out(int socket);
 
     bool rescans_empty();
 
-    virtual bool click_timer_now (); // return true if we should add them back to in_set (scan their readability again). If yes, reset timer.
+    bool click_timer_now (); // return true if we should add them back to in_set (scan their readability again). If yes, reset timer.
     
-    virtual int wait(long timeout);
-    virtual bool hint_socket(int socket); // this is the socket which will be additionally monitored for EPOLLIN; each time it's readable, single byte is read from it.
+    int wait(long timeout);
+    bool hint_socket(int socket); // this is the socket which will be additionally monitored for EPOLLIN; each time it's readable, single byte is read from it.
 
     // handler hints is a map of socket->handler. We will allow to grow it as needed. No purges. 
     mp::map<int,handler_info_t> handler_db;
@@ -271,7 +271,7 @@ struct epoller {
     void set_idle_watch(int check);
     void clear_idle_watch(int check);
 
-    virtual ~epoller();
+    ~epoller();
 
     logan_lite log = logan_lite("com.epoll");
     mutable std::shared_mutex lock_;
