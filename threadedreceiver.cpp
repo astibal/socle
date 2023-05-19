@@ -207,6 +207,10 @@ bool ThreadedReceiver<Worker>::add_first_datagrams(int sock, SocketInfo& pinfo) 
     auto red = com()->read(sock, buff, buff_sz, 0);
 
     _dia("red: %d bytes from socket %d", red, sock);
+    if(red < 0) {
+        _err("read returned %d", red);
+        return false;
+    }
 
     int enk = 0;
 
@@ -318,7 +322,7 @@ void ThreadedReceiver<Worker>::on_left_new_raw(int sock) {
                 // ::send(fd2, "post2", 5, MSG_DONTWAIT);
 
 
-                add_first_datagrams(sock, creds.value());
+                if(not add_first_datagrams(sock, creds.value())) break;
 
             } else {
                 int l = dummy_read();
