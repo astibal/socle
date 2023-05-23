@@ -152,7 +152,7 @@ std::optional<SocketInfo> ThreadedReceiver<Worker>::process_anc_data(int sock, m
 
 
 template<class Worker>
-bool ThreadedReceiver<Worker>::add_first_datagrams(int sock, SocketInfo& pinfo) {
+int ThreadedReceiver<Worker>::add_first_datagrams(int sock, SocketInfo& pinfo) {
 
     auto session_key = pinfo.create_session_key(true);
 
@@ -177,7 +177,7 @@ bool ThreadedReceiver<Worker>::add_first_datagrams(int sock, SocketInfo& pinfo) 
 
     std::shared_ptr<Datagram> entry;
     auto it = udpc->datagrams_received.find(session_key);
-    bool new_entry = true;
+    bool new_entry = 1;
 
     if(it != udpc->datagrams_received.end()) {
 
@@ -188,7 +188,7 @@ bool ThreadedReceiver<Worker>::add_first_datagrams(int sock, SocketInfo& pinfo) 
             it->second = create_new_entry(sock, pinfo);
         }
         entry = it->second;
-        new_entry = false;
+        new_entry = 0;
     } else {
 
         _dia("new datagram");
@@ -209,7 +209,7 @@ bool ThreadedReceiver<Worker>::add_first_datagrams(int sock, SocketInfo& pinfo) 
     _dia("red: %d bytes from socket %d", red, sock);
     if(red < 0) {
         _err("read returned %d", red);
-        return false;
+        return -1;
     }
 
     int enk = 0;
@@ -322,7 +322,7 @@ void ThreadedReceiver<Worker>::on_left_new_raw(int sock) {
                 // ::send(fd2, "post2", 5, MSG_DONTWAIT);
 
 
-                if(not add_first_datagrams(sock, creds.value())) break;
+                if(add_first_datagrams(sock, creds.value()) < 0) break;
 
             } else {
                 int l = dummy_read();

@@ -54,7 +54,9 @@ public:
     // return  tuple:
     // 0: true if the session is new
     // 1: session key
-    bool add_first_datagrams(int sock, SocketInfo& pinfo);
+
+
+    int add_first_datagrams(int sock, SocketInfo& pinfo);
     void on_left_new_raw(int) override;
     void on_right_new_raw(int) override;
     
