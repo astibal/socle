@@ -1790,10 +1790,20 @@ void baseSSLCom<L4Proto>::init_server() {
     SSL_set_cipher_list(sslcom_ssl,my_filter.c_str());
 
     if (sslcom_pref_cert && sslcom_pref_key) {
-        _deb("SSLCom::init_server[%x]: loading preferred key/cert",this);
-        SSL_use_PrivateKey(sslcom_ssl,sslcom_pref_key);
-        SSL_use_certificate(sslcom_ssl,sslcom_pref_cert);
-        
+
+        _deb("SSLCom::init_server[%x]: loading preferred cert and key", this);
+
+        if(SSL_use_certificate(sslcom_ssl, sslcom_pref_cert) != 1) {
+            int err = static_cast<int>(ERR_get_error());
+            _dia("    certificate error: %s",ERR_error_string(err, nullptr));
+        }
+
+        if(SSL_use_PrivateKey(sslcom_ssl, sslcom_pref_key) != 1) {
+            int err = static_cast<int>(ERR_get_error());
+            _dia("    private key error: %s",ERR_error_string(err, nullptr));
+        }
+
+
         if(!sslcom_refcount_incremented_) {
 #ifdef USE_OPENSSL11
             EVP_PKEY_up_ref(sslcom_pref_key);
