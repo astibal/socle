@@ -205,8 +205,12 @@ bool baseSSLMitmCom<SSLProto>::use_cert_sni(SpoofOptions &spo) {
         if (parek) {
             _dia("SSLMitmCom::use_cert_sni: factory found SNI match: '%s'", spo.sni.c_str());
 
-            this->sslcom_pref_cert = parek.value().second;
-            this->sslcom_pref_key = parek.value().first;
+            this->sslcom_pref_cert = parek.value().chain.cert;
+            this->sslcom_pref_key = parek.value().chain.key;
+
+            auto custom_ctx = parek.value().ctx;
+            if(custom_ctx)
+                this->sslcom_pref_ctx = custom_ctx;
 
             return true;
         }
@@ -229,8 +233,12 @@ bool baseSSLMitmCom<SSLProto>::use_cert_ip(SpoofOptions &spo) {
             if (parek) {
                 _dia("SSLMitmCom::use_cert_ip: factory found IP match: '%s'", address.c_str());
 
-                this->sslcom_pref_cert = parek.value().second;
-                this->sslcom_pref_key = parek.value().first;
+                this->sslcom_pref_cert = parek.value().chain.cert;
+                this->sslcom_pref_key = parek.value().chain.key;
+
+                auto custom_ctx = parek.value().ctx;
+                if(custom_ctx)
+                    this->sslcom_pref_ctx = custom_ctx;
 
                 return true;
             }
@@ -251,8 +259,12 @@ bool baseSSLMitmCom<SSLProto>::use_cert_mitm(X509 *cert_orig, SpoofOptions &spo)
     auto parek = this->factory()->find(store_key);
     if (parek.has_value()) {
         _dia("SSLMitmCom::use_cert_mitm: factory found '%s'", store_key.c_str());
-        this->sslcom_pref_cert = parek.value().second;
-        this->sslcom_pref_key = parek.value().first;
+        this->sslcom_pref_cert = parek.value().chain.cert;
+        this->sslcom_pref_key = parek.value().chain.key;
+
+        auto custom_ctx = parek.value().ctx;
+        if(custom_ctx)
+            this->sslcom_pref_ctx = custom_ctx;
 
         return true;
     }
@@ -266,8 +278,12 @@ bool baseSSLMitmCom<SSLProto>::use_cert_mitm(X509 *cert_orig, SpoofOptions &spo)
             return false;
         }
         else {
-            this->sslcom_pref_cert = spoof_ret.value().second;
-            this->sslcom_pref_key  = spoof_ret.value().first;
+            this->sslcom_pref_cert = spoof_ret.value().chain.cert;
+            this->sslcom_pref_key  = spoof_ret.value().chain.key;
+
+            auto custom_ctx = spoof_ret.value().ctx;
+            if(custom_ctx)
+                this->sslcom_pref_ctx = custom_ctx;
 
 #ifdef USE_OPENSSL11
             EVP_PKEY_up_ref(this->sslcom_pref_key);

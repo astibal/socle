@@ -257,6 +257,7 @@ protected:
     //preferred key/cert pair to be loaded, instead of default one
     X509*     sslcom_pref_cert = nullptr;
     EVP_PKEY* sslcom_pref_key  = nullptr;
+    SSL_CTX * sslcom_pref_ctx  = nullptr;
 
 #ifndef USE_OPENSSL300
     //ECDH parameters

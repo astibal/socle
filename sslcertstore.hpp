@@ -68,11 +68,57 @@ struct SpoofOptions;
 
 using namespace inet::cert;
 
+struct CertificateChain {
+
+    CertificateChain() = default;
+    explicit CertificateChain(EVP_PKEY* k, X509* c, X509* i = nullptr, X509* i2 = nullptr) : key(k), cert(c), issuer(i), issuer2(i2) {}
+
+    EVP_PKEY* key = nullptr;
+    X509* cert    = nullptr;
+    X509* issuer  = nullptr;
+    X509* issuer2 = nullptr;
+
+    void nullify() noexcept {
+        key = nullptr;
+        cert    = nullptr;
+        issuer  = nullptr;
+        issuer2 = nullptr;
+    }
+    void release() noexcept {
+        EVP_PKEY_free(key);
+        X509_free(cert);
+        X509_free(issuer);
+        X509_free(issuer2);
+
+        nullify();
+    }
+};
+
+struct CertificateChainCtx {
+
+    CertificateChainCtx() {}
+    explicit CertificateChainCtx(EVP_PKEY* k, X509* c, X509* i = nullptr, X509* i2 = nullptr, SSL_CTX* cx = nullptr) : chain(k, c, i, i2), ctx(cx) {}
+    explicit CertificateChainCtx(CertificateChain const& ch, SSL_CTX* cx = nullptr) : chain(ch), ctx(cx) {}
+
+    CertificateChain chain {};
+    SSL_CTX* ctx = nullptr;
+
+    void nullify() noexcept {
+        chain.nullify();
+        ctx = nullptr;
+    }
+    void release() noexcept {
+        chain.release();
+        SSL_CTX_free(ctx);
+        ctx = nullptr;
+    }
+
+};
+
 class CertCacheEntry {
 public:
-    using X509_PAIR = std::pair<EVP_PKEY*,X509*>;
 
-    explicit CertCacheEntry(X509_PAIR v) : value(std::move(v)) { };
+    explicit CertCacheEntry(CertificateChainCtx v) : entry_(std::move(v)) { };
     CertCacheEntry(CertCacheEntry const& v) = delete;
     CertCacheEntry& operator=(CertCacheEntry const& v) = delete;
 
@@ -82,33 +128,36 @@ public:
     void assign(CertCacheEntry&& v) noexcept {
         reset();
 
-        value = v.value;
-        v.value = {nullptr, nullptr};
+        entry_ = v.entry_;
+        v.entry_.release();
     }
 
-    X509_PAIR release() noexcept {
-        auto ret = value;
-        value = {nullptr, nullptr};
+    CertificateChainCtx release() noexcept {
+        auto ret = entry_;
+        entry_.nullify();
         return ret;
     }
 
     inline void reset() noexcept {
-        EVP_PKEY_free(value.first);
-        X509_free(value.second);
-
-        release();
+        entry_.release();
     }
 
     ~CertCacheEntry() {
         reset();
     };
 
-    [[nodiscard]] X509_PAIR const* keypair() const { return &value; }
-    [[nodiscard]] EVP_PKEY const* key() const { return value.first; }
-    [[nodiscard]] X509 const* cert() const { return value.second; }
+    [[nodiscard]] EVP_PKEY const* key() const { return entry().chain.key; }
+    [[nodiscard]] X509 const* cert() const { return entry().chain.cert; }
+    [[nodiscard]] X509 const* issuer() const { return entry().chain.issuer; }
+    [[nodiscard]] X509 const* issuer2() const { return entry().chain.issuer; }
+
+    [[nodiscard]] SSL_CTX const* ctx() const { return entry().ctx; }
+
+    CertificateChainCtx& entry() { return entry_; }
+    CertificateChainCtx const& entry() const { return entry_; }
 
 private:
-    X509_PAIR value;
+    CertificateChainCtx entry_;
 };
 
 struct SSLFactorySizing {
@@ -163,7 +212,6 @@ public:
     };
     SSLFactory::stats_t stats;
 
-    using X509_PAIR = CertCacheEntry::X509_PAIR;
     using X509_CACHE = ptr_cache<std::string, CertCacheEntry>;
 
     using expiring_verify_result = expiring<VerifyStatus>;
@@ -307,7 +355,7 @@ public:
 
     // our killer feature here
     [[nodiscard]] // discarding result will leak memory
-    std::optional<X509_PAIR> spoof(X509* cert_orig, bool self_sign=false, std::vector<std::string>* additional_sans=nullptr);
+    std::optional<CertificateChainCtx> spoof(X509* cert_orig, bool self_sign=false, std::vector<std::string>* additional_sans=nullptr);
     bool validate_spoof_requirements(X509 const* cert, X509_NAME const* cert_name, X509_NAME const* issuer_name, EVP_PKEY const* pkey) const;
      
     static int convert_ASN1TIME(ASN1_TIME*, char*, size_t);
@@ -325,9 +373,9 @@ public:
 
     static std::string make_store_key(X509* cert_orig, const SpoofOptions& spo);
 
-    bool add(std::string const& store_key, X509_PAIR parek);
+    bool add(std::string const& store_key, CertificateChainCtx parek);
 
-    std::optional<const X509_PAIR> find(std::string const& subject);
+    std::optional<const CertificateChainCtx> find(std::string const& subject);
     std::optional<std::string> find_subject_by_fqdn(std::string const& fqdn);
     bool erase(const std::string &subject);
      

@@ -84,7 +84,7 @@ bool SSLFactory::load_from_files() {
     return ret;
 }
 
-std::optional<std::pair<EVP_PKEY*,X509*>> load_cert_pair(std::string_view fnm_key, std::string_view fnm_cert, const char* password = nullptr) {
+std::optional<CertificateChainCtx> load_cert_pair(std::string_view fnm_key, std::string_view fnm_cert, const char* password = nullptr) {
 
     FILE *fp_crt = fopen(fnm_cert.data(), "r");
     FILE *fp_key = nullptr;
@@ -107,7 +107,7 @@ std::optional<std::pair<EVP_PKEY*,X509*>> load_cert_pair(std::string_view fnm_ke
     fclose(fp_crt);
     fclose(fp_key);
 
-    return std::make_optional<std::pair<EVP_PKEY*,X509*>>(ossl_key, ossl_cert);
+    return CertificateChainCtx(ossl_key, ossl_cert) ;
 }
 
 bool SSLFactory::load_certs_from(const char* sub_dir, const char* cache_key_prefix) {
@@ -128,6 +128,7 @@ bool SSLFactory::load_certs_from(const char* sub_dir, const char* cache_key_pref
             auto path = entry.path().string();
             auto cert_pair = load_cert_pair(path + "/key.pem", path + "/cert.pem", nullptr);
             if (cert_pair) {
+                cert_pair.value().ctx = server_ctx_setup(cert_pair.value().chain.key, cert_pair.value().chain.cert);
                 std::string key = cache_key_prefix;
                 key += entry.path().filename();
                 add(key, cert_pair.value());
@@ -631,12 +632,12 @@ void SSLFactory::destroy() {
     _deb("SSLFactory::destroy: finished");
 }
 
-bool SSLFactory::add(std::string const& store_key, X509_PAIR parek) {
+bool SSLFactory::add(std::string const& store_key, CertificateChainCtx parek) {
 
     auto const& log = get_log();
     bool op_status = true;
 
-    if (parek.first == nullptr || parek.second == nullptr) {
+    if (parek.chain.key == nullptr || parek.chain.cert == nullptr) {
         _dia("SSLFactory::add[%X]: one of about to be stored components is nullptr", serial);
 
         return false;
@@ -651,8 +652,10 @@ bool SSLFactory::add(std::string const& store_key, X509_PAIR parek) {
         if(it) {
             _err("SSLFactory::add: keypair associated with store_key '%s' already exists (keeping it there)", store_key.c_str());
 
-            _deb("SSLFactory::add:         existing pointers:  keyptr=0x%x certptr=0x%x", it->keypair()->first, it->keypair()->second);
-            _deb("SSLFactory::add:         offending pointers: keyptr=0x%x certptr=0x%x", parek.first, parek.second);
+            _deb("SSLFactory::add:         existing pointers:  keyptr=0x%x certptr=0x%x ctxptr=0x%x",
+                                        it->entry().chain.key, it->entry().chain.cert, it->entry().ctx);
+            _deb("SSLFactory::add:         offending pointers: keyptr=0x%x certptr=0x%x ctxptr=0x%x",
+                                        parek.chain.key, parek.chain.cert, parek.ctx);
 
             op_status = false;
         } else {
@@ -747,18 +750,18 @@ std::string SSLFactory::make_store_key(X509* cert_orig, const SpoofOptions& spo)
 
 #endif
 
-std::optional<const SSLFactory::X509_PAIR> SSLFactory::find(std::string const& subject) {
+std::optional<const CertificateChainCtx> SSLFactory::find(std::string const& subject) {
 
     auto lc_ = std::scoped_lock(lock());
     auto const& log = get_log();
 
-    auto entry = cache().get(subject);
-    if (not entry) {
+    auto it = cache().get(subject);
+    if (not it) {
         _deb("SSLFactory::find[%x]: NOT cached '%s'",this,subject.c_str());
     } else {
         _deb("SSLFactory::find[%x]: found cached '%s'",this,subject.c_str());
         
-        return *entry->keypair();  //first is the map key (cert subject in our case)
+        return it->entry();  //first is the map key (cert subject in our case)
     }    
     
     return std::nullopt;
@@ -1122,7 +1125,7 @@ bool SSLFactory::validate_spoof_requirements(X509 const* cert, X509_NAME const* 
     return true;
 }
 
-std::optional<SSLFactory::X509_PAIR> SSLFactory::spoof(X509* cert_orig, bool self_sign, std::vector<std::string>* additional_sans) {
+std::optional<CertificateChainCtx> SSLFactory::spoof(X509* cert_orig, bool self_sign, std::vector<std::string>* additional_sans) {
 
     auto const& log = get_log();
 
@@ -1243,7 +1246,7 @@ std::optional<SSLFactory::X509_PAIR> SSLFactory::spoof(X509* cert_orig, bool sel
         return std::nullopt;
     }
 
-    return X509_PAIR(def_sr_key, cert);
+    return CertificateChainCtx(def_sr_key, cert);
 }
 
 

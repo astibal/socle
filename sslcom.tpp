@@ -1743,14 +1743,26 @@ void baseSSLCom<L4Proto>::init_server() {
 
         auto lc_ = std::scoped_lock(factory()->lock());
 
-        sslcom_ctx = factory()->default_tls_server_cx();
+        if(not sslcom_ctx) {
+            sslcom_ctx = factory()->default_tls_server_cx();
+        }
+        else {
+            _dia("SSLCom::init_server: using custom context 0x%x", sslcom_ctx);
+        }
+
         sslcom_ssl = SSL_new(sslcom_ctx);
     } else
     if(l4_proto() == SOCK_DGRAM) {
 
         auto lc_ = std::scoped_lock(factory()->lock());
 
-        sslcom_ctx = factory()->default_dtls_server_cx();
+        if(not sslcom_ctx) {
+            sslcom_ctx = factory()->default_dtls_server_cx();
+        }
+        else {
+            _dia("SSLCom::init_server: using custom context 0x%x", sslcom_ctx);
+        }
+
         sslcom_ssl = SSL_new(sslcom_ctx);
         SSL_set_options(sslcom_ssl, SSL_OP_COOKIE_EXCHANGE);
     }
@@ -2732,8 +2744,9 @@ bool baseSSLCom<L4Proto>::enforce_peer_cert_from_cache(std::string & subj) {
             if(p != nullptr) {
 
                 if(p->sslcom_waiting) {
-                    p->sslcom_pref_cert = parek.value().second;
-                    p->sslcom_pref_key = parek.value().first;
+                    p->sslcom_pref_cert = parek.value().chain.cert;
+                    p->sslcom_pref_key = parek.value().chain.key;
+
                     //p->init_server(); this will be done automatically, peer was waiting_for_peercom
                     p->owner_cx()->waiting_for_peercom(false);
                     _dia("SSLCom::enforce_peer_cert_from_cache: peer certs replaced by SNI lookup, peer was unpaused.");
