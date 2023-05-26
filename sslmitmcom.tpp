@@ -242,8 +242,10 @@ bool baseSSLMitmCom<SSLProto>::use_cert_ip(SpoofOptions &spo) {
                 this->sslcom_pref_key = parek.value().chain.key;
 
                 auto custom_ctx = parek.value().ctx;
-                if(custom_ctx)
+                if(custom_ctx) {
+                    _dia("SSLMitmCom::use_cert_ip: custom context set");
                     this->sslcom_pref_ctx = custom_ctx;
+                }
 
                 return true;
             }

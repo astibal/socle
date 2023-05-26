@@ -1738,17 +1738,19 @@ void baseSSLCom<L4Proto>::init_server() {
 
     
     _deb("baseSSLCom<L4Proto>::init_server: l4 proto = %d", l4_proto());
-    
+
     if(l4_proto() == SOCK_STREAM) {
 
         auto lc_ = std::scoped_lock(factory()->lock());
 
-        if(not sslcom_ctx) {
-            sslcom_ctx = factory()->default_tls_server_cx();
-        }
-        else {
+        if(sslcom_pref_ctx) {
+            sslcom_ctx = sslcom_pref_ctx;
             _dia("SSLCom::init_server: using custom context 0x%x", sslcom_ctx);
         }
+        else if(not sslcom_ctx) {
+            sslcom_ctx = factory()->default_tls_server_cx();
+        }
+
 
         sslcom_ssl = SSL_new(sslcom_ctx);
     } else
@@ -1756,11 +1758,12 @@ void baseSSLCom<L4Proto>::init_server() {
 
         auto lc_ = std::scoped_lock(factory()->lock());
 
-        if(not sslcom_ctx) {
-            sslcom_ctx = factory()->default_dtls_server_cx();
-        }
-        else {
+        if(sslcom_pref_ctx) {
+            sslcom_ctx = sslcom_pref_ctx;
             _dia("SSLCom::init_server: using custom context 0x%x", sslcom_ctx);
+        }
+        else if(not sslcom_ctx) {
+            sslcom_ctx = factory()->default_dtls_server_cx();
         }
 
         sslcom_ssl = SSL_new(sslcom_ctx);
@@ -1801,7 +1804,7 @@ void baseSSLCom<L4Proto>::init_server() {
     _dia("left ciphers: %s",my_filter.c_str());
     SSL_set_cipher_list(sslcom_ssl,my_filter.c_str());
 
-    if (sslcom_pref_cert && sslcom_pref_key) {
+    if (not sslcom_pref_ctx and (sslcom_pref_cert && sslcom_pref_key)) {
 
         _deb("SSLCom::init_server[%x]: loading preferred cert and key", this);
 
@@ -1826,6 +1829,8 @@ void baseSSLCom<L4Proto>::init_server() {
 #endif
             sslcom_refcount_incremented_ = true;
         }
+    } else {
+        _deb("SSLCom::init_server[%x]: using custom context", this);
     }
 
     is_server(true);

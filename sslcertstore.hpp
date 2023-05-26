@@ -77,18 +77,21 @@ struct CertificateChain {
     X509* cert    = nullptr;
     X509* issuer  = nullptr;
     X509* issuer2 = nullptr;
+    X509* issuer3 = nullptr;
 
     void nullify() noexcept {
         key = nullptr;
         cert    = nullptr;
         issuer  = nullptr;
         issuer2 = nullptr;
+        issuer3 = nullptr;
     }
     void release() noexcept {
         EVP_PKEY_free(key);
         X509_free(cert);
         X509_free(issuer);
         X509_free(issuer2);
+        X509_free(issuer3);
 
         nullify();
     }
@@ -272,6 +275,7 @@ private:
     bool load_def_cl_cert();
     bool load_def_sr_cert();
     bool load_certs_from(const char* sub_dir, const char* cache_key_prefix);
+    bool update_ssl_ctx(CertificateChainCtx& chain, std::string_view issuer1, std::string_view issuer2, std::string_view issuer3);
 
     std::regex re_hostname = std::regex("^[a-zA-Z0-9-]+\\.");
 

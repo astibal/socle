@@ -86,28 +86,85 @@ bool SSLFactory::load_from_files() {
 
 std::optional<CertificateChainCtx> load_cert_pair(std::string_view fnm_key, std::string_view fnm_cert, const char* password = nullptr) {
 
-    FILE *fp_crt = fopen(fnm_cert.data(), "r");
-    FILE *fp_key = nullptr;
 
-    if (!fp_crt) {
+    auto fp_crt = raw::file(fopen(fnm_cert.data(), "r"));
+    if (! fp_crt.value) {
         return std::nullopt;
     }
 
-    fp_key = fopen(fnm_key.data(), "r");
-
-    if (!fp_key) {
-        fclose(fp_crt);
+    auto fp_key = raw::file(fopen(fnm_key.data(), "r"));
+    if (!fp_key.value) {
         return std::nullopt;
     }
 
-
-    auto ossl_cert = PEM_read_X509(fp_crt, nullptr, nullptr, nullptr);
-    auto ossl_key = PEM_read_PrivateKey(fp_key, nullptr, nullptr, (void *) password);
-
-    fclose(fp_crt);
-    fclose(fp_key);
+    auto ossl_cert = PEM_read_X509(fp_crt.value, nullptr, nullptr, nullptr);
+    auto ossl_key = PEM_read_PrivateKey(fp_key.value, nullptr, nullptr, (void *) password);
 
     return CertificateChainCtx(ossl_key, ossl_cert) ;
+}
+
+bool SSLFactory::update_ssl_ctx(CertificateChainCtx& chain, std::string_view issuer1, std::string_view issuer2, std::string_view issuer3) {
+    auto const& log = get_log();
+
+    int build_chain = 0;
+
+    auto fp_issuer_3 = raw::file(fopen(issuer3.data(), "r"));
+    auto fp_issuer_2 = raw::file(fopen(issuer2.data(), "r"));
+    auto fp_issuer_1 = raw::file(fopen(issuer1.data(), "r"));
+
+    SSL_CTX_use_certificate(chain.ctx, chain.chain.cert);
+    SSL_CTX_use_PrivateKey(chain.ctx, chain.chain.key);
+
+    if(fp_issuer_1.value) {
+        chain.chain.issuer = PEM_read_X509(fp_issuer_1.value, nullptr, nullptr, nullptr);
+        if(chain.chain.issuer) ++build_chain;
+
+        if(chain.ctx) {
+            int ret = SSL_CTX_add1_chain_cert(chain.ctx, chain.chain.issuer);
+            if(ret != 1) {
+                _err("issuer not added to the chain");
+            }
+        }
+    }
+
+
+    if(fp_issuer_2.value) {
+        chain.chain.issuer2 = PEM_read_X509(fp_issuer_2.value, nullptr, nullptr, nullptr);
+        if(chain.chain.issuer2) ++build_chain;
+
+        if(chain.ctx) {
+            int ret = SSL_CTX_add1_chain_cert(chain.ctx, chain.chain.issuer2);
+            if(ret != 1) {
+                _err("issuer2 not added to the chain");
+            }
+        }
+    }
+
+    if(fp_issuer_3.value) {
+        chain.chain.issuer3 = PEM_read_X509(fp_issuer_3.value, nullptr, nullptr, nullptr);
+        if(chain.chain.issuer3) ++build_chain;
+
+        if(chain.ctx) {
+            int ret = SSL_CTX_add1_chain_cert(chain.ctx, chain.chain.issuer3);
+            if(ret != 1) {
+                _err("issuer3 not added to the chain");
+            }
+        }
+    }
+
+
+    if(build_chain > 0) {
+        int ret = SSL_CTX_build_cert_chain(chain.ctx, SSL_BUILD_CHAIN_FLAG_CHECK | SSL_BUILD_CHAIN_FLAG_NO_ROOT);
+        if(ret < 1) {
+            int err = ERR_get_error();
+
+            std::array<char, 128> buf {};
+            ERR_error_string_n(err, buf.data(), buf.size() - 1);
+            _err("chain not built: %s", buf.data());
+        }
+    }
+
+    return build_chain > 0;
 }
 
 bool SSLFactory::load_certs_from(const char* sub_dir, const char* cache_key_prefix) {
@@ -128,7 +185,10 @@ bool SSLFactory::load_certs_from(const char* sub_dir, const char* cache_key_pref
             auto path = entry.path().string();
             auto cert_pair = load_cert_pair(path + "/key.pem", path + "/cert.pem", nullptr);
             if (cert_pair) {
-                cert_pair.value().ctx = server_ctx_setup(cert_pair.value().chain.key, cert_pair.value().chain.cert);
+                cert_pair.value().ctx = server_ctx_setup(nullptr, nullptr);
+
+                update_ssl_ctx(cert_pair.value(), path + "/issuer.pem", path + "/issuer2.pem", path + "/issuer3.pem");
+
                 std::string key = cache_key_prefix;
                 key += entry.path().filename();
                 add(key, cert_pair.value());
