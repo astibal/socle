@@ -174,7 +174,8 @@ namespace socle {
             return var<T>(std::move(ptr), deleter::free<T>);
         }
 
-        template<typename T> inline var<T> file(T ptr) {
+        using file_var = var<FILE*>;
+        template<typename T> inline file_var file(T ptr) {
             return var<T>(std::move(ptr), deleter::fclose);
         }
 
