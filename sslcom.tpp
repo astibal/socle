@@ -2123,9 +2123,13 @@ int baseSSLCom<L4Proto>::upgrade_server_socket(int sockfd) {
         return sockfd;
     }
 
-    init_server();
+    if(not upgraded()) {
+        init_server();
+        upgraded(true);
+    } else {
+        _dia("already upgraded");
+    }
 
-    upgraded(true);
     return socket();
 }
 

@@ -174,7 +174,12 @@ bool baseSSLMitmCom<SSLProto>::check_cert(const char* peer_name) {
                     // more ...
                     // check if is waiting would help
                     if (remote->sslcom_waiting) {
-                        remote->init_server();
+                        if(not remote->upgraded()) {
+                            remote->init_server();
+                            remote->upgraded(true);
+                        } else {
+                            _dia("remote is already upgraded");
+                        }
                     } else {
                         _war("Trying to init SSL server while it's already running!");
                     } 
