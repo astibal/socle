@@ -165,13 +165,21 @@ namespace socle {
 
             template <typename PT>
             inline void free(PT const& ptr) {  ::free(ptr); }
-            inline void fclose(FILE* const& f) { ::fclose(f); }
+            inline void fclose(FILE* const& f) { if (f) ::fclose(f); }
             inline void close(int const& f) { ::close(f); }
 
         }
 
         template<typename T> inline var<T> allocated(T ptr) {
             return var<T>(std::move(ptr), deleter::free<T>);
+        }
+
+        template<typename T> inline var<T> file(T ptr) {
+            return var<T>(std::move(ptr), deleter::fclose);
+        }
+
+        inline lax<int> fd(int val) {
+            return lax<int>(val, deleter::close);
         }
 
 
