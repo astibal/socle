@@ -71,27 +71,27 @@ using namespace inet::cert;
 struct CertificateChain {
 
     CertificateChain() = default;
-    explicit CertificateChain(EVP_PKEY* k, X509* c, X509* i = nullptr, X509* i2 = nullptr) : key(k), cert(c), issuer(i), issuer2(i2) {}
+    explicit CertificateChain(EVP_PKEY* k, X509* c, X509* i = nullptr, X509* i2 = nullptr) : key(k), cert(c) {
+        issuers[0] = i;
+        issuers[1] = i2;
+    }
 
     EVP_PKEY* key = nullptr;
     X509* cert    = nullptr;
-    X509* issuer  = nullptr;
-    X509* issuer2 = nullptr;
-    X509* issuer3 = nullptr;
+
+    static constexpr inline std::size_t ISSUERS_SZ = 5;
+    using issuers_arrray = std::array<X509*, ISSUERS_SZ>;
+    issuers_arrray issuers;
 
     void nullify() noexcept {
         key = nullptr;
         cert    = nullptr;
-        issuer  = nullptr;
-        issuer2 = nullptr;
-        issuer3 = nullptr;
+        std::for_each(issuers.begin(), issuers.end(), [](auto &e) { e = nullptr; });
     }
     void release() noexcept {
         EVP_PKEY_free(key);
         X509_free(cert);
-        X509_free(issuer);
-        X509_free(issuer2);
-        X509_free(issuer3);
+        std::for_each(issuers.begin(), issuers.end(), [](auto const& e) { X509_free(e); });
 
         nullify();
     }
@@ -151,8 +151,9 @@ public:
 
     [[nodiscard]] EVP_PKEY const* key() const { return entry().chain.key; }
     [[nodiscard]] X509 const* cert() const { return entry().chain.cert; }
-    [[nodiscard]] X509 const* issuer() const { return entry().chain.issuer; }
-    [[nodiscard]] X509 const* issuer2() const { return entry().chain.issuer; }
+
+    [[nodiscard]] CertificateChain::issuers_arrray const& issuers() const { return entry().chain.issuers; }
+    [[nodiscard]] CertificateChain::issuers_arrray& issuers() { return entry().chain.issuers; }
 
     [[nodiscard]] SSL_CTX const* ctx() const { return entry().ctx; }
 

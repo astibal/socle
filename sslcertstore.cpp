@@ -108,50 +108,29 @@ bool SSLFactory::update_ssl_ctx(CertificateChainCtx& chain, std::string_view iss
 
     int build_chain = 0;
 
-    auto fp_issuer_3 = raw::file(fopen(issuer3.data(), "r"));
-    auto fp_issuer_2 = raw::file(fopen(issuer2.data(), "r"));
-    auto fp_issuer_1 = raw::file(fopen(issuer1.data(), "r"));
+    auto fp_files = std::array<raw::file_var,3> { raw::file(fopen(issuer3.data(), "r")),
+                                                  raw::file(fopen(issuer2.data(), "r")),
+                                                  raw::file(fopen(issuer1.data(), "r")) };
 
     SSL_CTX_use_certificate(chain.ctx, chain.chain.cert);
     SSL_CTX_use_PrivateKey(chain.ctx, chain.chain.key);
 
-    if(fp_issuer_1.value) {
-        chain.chain.issuer = PEM_read_X509(fp_issuer_1.value, nullptr, nullptr, nullptr);
-        if(chain.chain.issuer) ++build_chain;
 
-        if(chain.ctx) {
-            int ret = SSL_CTX_add1_chain_cert(chain.ctx, chain.chain.issuer);
-            if(ret != 1) {
-                _err("issuer not added to the chain");
+    std::size_t ix = 0;
+    for (auto const &fp: fp_files) {
+        if(fp.value) {
+            chain.chain.issuers[ix] = PEM_read_X509(fp.value, nullptr, nullptr, nullptr);
+            if(chain.chain.issuers[ix]) ++build_chain;
+
+            if(chain.ctx) {
+                int ret = SSL_CTX_add1_chain_cert(chain.ctx, chain.chain.issuers[ix]);
+                if(ret != 1) {
+                    _err("issuer[%d] not added to the chain", ix);
+                }
             }
         }
+        ++ix;
     }
-
-
-    if(fp_issuer_2.value) {
-        chain.chain.issuer2 = PEM_read_X509(fp_issuer_2.value, nullptr, nullptr, nullptr);
-        if(chain.chain.issuer2) ++build_chain;
-
-        if(chain.ctx) {
-            int ret = SSL_CTX_add1_chain_cert(chain.ctx, chain.chain.issuer2);
-            if(ret != 1) {
-                _err("issuer2 not added to the chain");
-            }
-        }
-    }
-
-    if(fp_issuer_3.value) {
-        chain.chain.issuer3 = PEM_read_X509(fp_issuer_3.value, nullptr, nullptr, nullptr);
-        if(chain.chain.issuer3) ++build_chain;
-
-        if(chain.ctx) {
-            int ret = SSL_CTX_add1_chain_cert(chain.ctx, chain.chain.issuer3);
-            if(ret != 1) {
-                _err("issuer3 not added to the chain");
-            }
-        }
-    }
-
 
     if(build_chain > 0) {
         int ret = SSL_CTX_build_cert_chain(chain.ctx, SSL_BUILD_CHAIN_FLAG_CHECK | SSL_BUILD_CHAIN_FLAG_NO_ROOT);
