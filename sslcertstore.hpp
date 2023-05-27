@@ -80,8 +80,8 @@ struct CertificateChain {
     X509* cert    = nullptr;
 
     static constexpr inline std::size_t ISSUERS_SZ = 5;
-    using issuers_arrray = std::array<X509*, ISSUERS_SZ>;
-    issuers_arrray issuers;
+    using array_issuers = std::array<X509*, ISSUERS_SZ>;
+    array_issuers issuers {};
 
     void nullify() noexcept {
         key = nullptr;
@@ -152,8 +152,8 @@ public:
     [[nodiscard]] EVP_PKEY const* key() const { return entry().chain.key; }
     [[nodiscard]] X509 const* cert() const { return entry().chain.cert; }
 
-    [[nodiscard]] CertificateChain::issuers_arrray const& issuers() const { return entry().chain.issuers; }
-    [[nodiscard]] CertificateChain::issuers_arrray& issuers() { return entry().chain.issuers; }
+    [[nodiscard]] CertificateChain::array_issuers const& issuers() const { return entry().chain.issuers; }
+    [[nodiscard]] CertificateChain::array_issuers& issuers() { return entry().chain.issuers; }
 
     [[nodiscard]] SSL_CTX const* ctx() const { return entry().ctx; }
 
