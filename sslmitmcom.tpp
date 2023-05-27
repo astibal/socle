@@ -206,7 +206,7 @@ bool baseSSLMitmCom<SSLProto>::use_cert_sni(SpoofOptions &spo) {
     if (not spo.sni.empty()) {
         _dia("SSLMitmCom::use_cert_sni: looking for certificate bound to SNI '%s'", spo.sni.c_str());
 
-        auto parek = this->factory()->find("sni:" + spo.sni);
+        auto parek = this->factory()->find_custom("sni:" + spo.sni);
         if (parek) {
             _dia("SSLMitmCom::use_cert_sni: factory found SNI match: '%s'", spo.sni.c_str());
 
@@ -234,7 +234,7 @@ bool baseSSLMitmCom<SSLProto>::use_cert_ip(SpoofOptions &spo) {
         _dia("SSLMitmCom::use_cert_ip: looking for certificate bound to IP '%s'", address.c_str());
 
         if(not address.empty()) {
-            auto parek = this->factory()->find("ip:" + address);
+            auto parek = this->factory()->find_custom("ip:" + address);
             if (parek) {
                 _dia("SSLMitmCom::use_cert_ip: factory found IP match: '%s'", address.c_str());
 
@@ -263,7 +263,7 @@ bool baseSSLMitmCom<SSLProto>::use_cert_mitm(X509 *cert_orig, SpoofOptions &spo)
 
     std::string store_key = SSLFactory::make_store_key(cert_orig, spo);
 
-    auto parek = this->factory()->find(store_key);
+    auto parek = this->factory()->find_mitm(store_key);
     if (parek.has_value()) {
         _dia("SSLMitmCom::use_cert_mitm: factory found '%s'", store_key.c_str());
         this->sslcom_pref_cert = parek.value().chain.cert;
@@ -299,7 +299,7 @@ bool baseSSLMitmCom<SSLProto>::use_cert_mitm(X509 *cert_orig, SpoofOptions &spo)
             CRYPTO_add(&this->sslcom_pref_key->references,+1,CRYPTO_LOCK_EVP_PKEY);
 #endif //USE_OPENSSL11
 
-            if (! this->factory()->add(store_key, spoof_ret.value())) {
+            if (!this->factory()->add_mitm(store_key, spoof_ret.value())) {
                 _dia("SSLMitmCom::use_cert_mitm: spoofed, but cache failed to update with %s", store_key.c_str());
                 return true;
             }

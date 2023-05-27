@@ -280,7 +280,8 @@ private:
 
     std::regex re_hostname = std::regex("^[a-zA-Z0-9-]+\\.");
 
-    X509_CACHE cert_cache_ = X509_CACHE("pki.cert", config_t::CERTSTORE_CACHE_SIZE, true);
+    X509_CACHE cert_mitm_cache_ = X509_CACHE("pki.cert.mitm", config_t::CERTSTORE_CACHE_SIZE, true);
+    X509_CACHE cert_custom_cache_ = X509_CACHE("pki.cert.custom", config_t::CERTSTORE_CACHE_SIZE, false);
 
     using verify_cache_t = ptr_cache<std::string,expiring_verify_result>;
     using crl_cache_t = ptr_cache<std::string,SSLFactory::expiring_crl>;
@@ -331,8 +332,13 @@ public:
 
 
     // get spoofed certificate cache, based on cert's subject
-    X509_CACHE& cache() { return cert_cache_; };
-    X509_CACHE const& cache() const { return cert_cache_; };
+    X509_CACHE& cache_mitm() { return cert_mitm_cache_; };
+    X509_CACHE const& cache_mitm() const { return cert_mitm_cache_; };
+
+    // custom certificate cache - note: it won't auto-delete!
+    X509_CACHE& cache_custom() { return cert_custom_cache_; };
+    X509_CACHE const& cache_custom() const { return cert_custom_cache_; };
+
     // trusted CA store
     X509_STORE* trust_store() { return trust_store_; };
     X509_STORE const* trust_store() const { return trust_store_; };
@@ -378,11 +384,18 @@ public:
 
     static std::string make_store_key(X509* cert_orig, const SpoofOptions& spo);
 
-    bool add(std::string const& store_key, CertificateChainCtx parek);
+    bool add_to_cache(X509_CACHE& cache, std::string const& store_key, CertificateChainCtx const& parek);
+    bool add_mitm(std::string const& store_key, CertificateChainCtx const& parek);
+    bool add_custom(std::string const& store_key, CertificateChainCtx const& parek);
 
-    std::optional<const CertificateChainCtx> find(std::string const& subject);
-    std::optional<std::string> find_subject_by_fqdn(std::string const& fqdn);
-    bool erase(const std::string &subject);
+    std::optional<const CertificateChainCtx> find(X509_CACHE& cache, std::string const& subject);
+    std::optional<const CertificateChainCtx> find_mitm(std::string const& subject);
+    std::optional<const CertificateChainCtx> find_custom(std::string const& subject);
+
+    [[deprecated("dead code")]] std::optional<std::string> _find_subject_by_fqdn(std::string const& fqdn);
+
+    bool erase(X509_CACHE& cache, const std::string &subject);
+    bool erase_mitm(const std::string &subject);
      
 
     struct options {

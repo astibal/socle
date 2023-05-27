@@ -2746,7 +2746,7 @@ bool baseSSLCom<L4Proto>::enforce_peer_cert_from_cache(std::string & subj) {
 
         auto lc_ = std::scoped_lock(factory()->lock());
 
-        auto parek = factory()->find(subj);
+        auto parek = factory()->find_mitm(subj);
         if (parek.has_value()) {
             _dia("Found cached certificate %s based on fqdn search.",subj.c_str());
             auto* p = dynamic_cast<baseSSLCom*>(peer());

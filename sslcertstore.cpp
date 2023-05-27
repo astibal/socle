@@ -49,10 +49,10 @@ std::string FILE_to_string(FILE* file) {
 bool SSLFactory::load_custom_certificates() {
     auto const& log = get_log();
 
-    if (not load_certs_from(config_t::SNI_DIR,"sni:")) {
+    if (not load_certs_from(config_t::SNI_DIR, "sni:")) {
         _dia("some SNI certificates not loaded");
     }
-    if (not load_certs_from(config_t::IP_DIR,"ip:")) {
+    if (not load_certs_from(config_t::IP_DIR, "ip:")) {
         _dia("some IP certificates not loaded");
     }
 
@@ -170,7 +170,7 @@ bool SSLFactory::load_certs_from(const char* sub_dir, const char* cache_key_pref
 
                 std::string key = cache_key_prefix;
                 key += entry.path().filename();
-                add(key, cert_pair.value());
+                add_custom(key, cert_pair.value());
             }
         }
     }
@@ -658,7 +658,8 @@ void SSLFactory::destroy() {
     }
 
     _deb("SSLFactory::destroy: cert_cache");
-    cert_cache_.clear();
+    cert_mitm_cache_.clear();
+    cert_custom_cache_.clear();
 
 
     if(trust_store_) {
@@ -671,45 +672,53 @@ void SSLFactory::destroy() {
     _deb("SSLFactory::destroy: finished");
 }
 
-bool SSLFactory::add(std::string const& store_key, CertificateChainCtx parek) {
+bool SSLFactory::add_mitm(std::string const& store_key, CertificateChainCtx const& parek) {
+    return add_to_cache(cert_mitm_cache_, store_key, parek);
+}
+
+bool SSLFactory::add_custom(std::string const& store_key, CertificateChainCtx const& parek) {
+    return add_to_cache(cert_custom_cache_, store_key, parek);
+}
+
+bool SSLFactory::add_to_cache(SSLFactory::X509_CACHE &cache, std::string const& store_key, CertificateChainCtx const& parek)  {
 
     auto const& log = get_log();
     bool op_status = true;
 
     if (parek.chain.key == nullptr || parek.chain.cert == nullptr) {
-        _dia("SSLFactory::add[%X]: one of about to be stored components is nullptr", serial);
+        _dia("SSLFactory::add_to_cache<%s>[%X]: one of about to be stored components is nullptr", cache.info.c_str() ,serial);
 
         return false;
     }
 
     try {
-        // lock, don't mess with cache_, I will write into it now
         auto lc_  = std::scoped_lock(lock());
 
         // free underlying keypair
-        auto it = cache().get(store_key);
+        auto it = cache.get(store_key);
         if(it) {
-            _err("SSLFactory::add: keypair associated with store_key '%s' already exists (keeping it there)", store_key.c_str());
+            _err("SSLFactory::add_to_cache<%s>: keypair associated with store_key '%s' already exists (keeping it there)",
+                    cache.info.c_str(), store_key.c_str());
 
-            _deb("SSLFactory::add:         existing pointers:  keyptr=0x%x certptr=0x%x ctxptr=0x%x",
-                                        it->entry().chain.key, it->entry().chain.cert, it->entry().ctx);
-            _deb("SSLFactory::add:         offending pointers: keyptr=0x%x certptr=0x%x ctxptr=0x%x",
-                                        parek.chain.key, parek.chain.cert, parek.ctx);
+            _deb("SSLFactory::add_to_cache<%s>:         existing pointers:  keyptr=0x%x certptr=0x%x ctxptr=0x%x",
+                 cache.info.c_str(), it->entry().chain.key, it->entry().chain.cert, it->entry().ctx);
+            _deb("SSLFactory::add_to_cache<%s>:         offending pointers: keyptr=0x%x certptr=0x%x ctxptr=0x%x",
+                 cache.info.c_str(), parek.chain.key, parek.chain.cert, parek.ctx);
 
             op_status = false;
         } else {
 
-            cache().set(store_key, std::make_shared<CertCacheEntry>(parek));
-            _dia("SSLFactory::add: new cert '%s' successfully added to cache", store_key.c_str());
+            cache.set(store_key, std::make_shared<CertCacheEntry>(parek));
+            _dia("SSLFactory::add_to_cache<%s>: new cert '%s' successfully added to cache", cache.info.c_str(), store_key.c_str());
         }
     }
     catch (std::exception const& e) {
         op_status = false;
-        _dia("SSLFactory::add - exception caught: %s", e.what());
+        _dia("SSLFactory::add_to_cache<%s> - exception caught: %s", cache.info.c_str(), e.what());
     }
 
     if(not op_status) {
-        _err("Error to add certificate '%s' into memory cache!",store_key.c_str());
+        _err("Error to add mitm certificate '%s' into memory '%s' cache!", store_key.c_str(), cache.info.c_str());
         return false;
     }
     
@@ -789,30 +798,39 @@ std::string SSLFactory::make_store_key(X509* cert_orig, const SpoofOptions& spo)
 
 #endif
 
-std::optional<const CertificateChainCtx> SSLFactory::find(std::string const& subject) {
+std::optional<const CertificateChainCtx> SSLFactory::find(X509_CACHE& cache, std::string const& subject) {
 
     auto lc_ = std::scoped_lock(lock());
     auto const& log = get_log();
 
-    auto it = cache().get(subject);
+    auto it = cache.get(subject);
     if (not it) {
-        _deb("SSLFactory::find[%x]: NOT cached '%s'",this,subject.c_str());
+        _deb("SSLFactory::find<%s>[%x]: NOT cached '%s'", cache.info.c_str(), this, subject.c_str());
     } else {
-        _deb("SSLFactory::find[%x]: found cached '%s'",this,subject.c_str());
-        
+        _deb("SSLFactory::find<%s>[%x]: found cached '%s'", cache.info.c_str(), this, subject.c_str());
+
         return it->entry();  //first is the map key (cert subject in our case)
-    }    
-    
+    }
+
     return std::nullopt;
 }
 
-std::optional<std::string> SSLFactory::find_subject_by_fqdn(std::string const& fqdn) {
+std::optional<const CertificateChainCtx> SSLFactory::find_mitm(std::string const& subject) {
+    return find(cache_mitm(), subject);
+}
+
+std::optional<const CertificateChainCtx> SSLFactory::find_custom(std::string const& subject) {
+    return find(cache_custom(), subject);
+}
+
+
+std::optional<std::string> SSLFactory::_find_subject_by_fqdn(std::string const& fqdn) {
 
     {
         auto lc_ = std::scoped_lock(lock());
         auto const& log = get_log();
 
-        auto entry = cache().get(fqdn);
+        auto entry = cache_mitm().get(fqdn);
         if (not entry) {
             _deb("SSLFactory::find_subject_by_fqdn[%x]: NOT cached '%s'", this, fqdn.c_str());
         } else {
@@ -829,7 +847,7 @@ std::optional<std::string> SSLFactory::find_subject_by_fqdn(std::string const& f
         auto lc_ = std::scoped_lock(lock());
         auto const& log = get_log();
 
-        auto entry = cache().get(wildcard_fqdn);
+        auto entry = cache_mitm().get(wildcard_fqdn);
         if (not entry) {
             _deb("SSLFactory::find_subject_by_fqdn[%x]: wildcard NOT cached '%s'", this, wildcard_fqdn.c_str());
         } else {
@@ -841,18 +859,21 @@ std::optional<std::string> SSLFactory::find_subject_by_fqdn(std::string const& f
     return std::nullopt;
 }
 
-bool SSLFactory::erase(const std::string &subject) {
+bool SSLFactory::erase_mitm(std::string const& subject) {
+    return erase(cache_mitm(), subject);
+}
+bool SSLFactory::erase(X509_CACHE& cache, std::string const& subject) {
 
     auto const& log = get_log();
 
     try {
-        _dia("SSLFactory::erase - %s", subject.c_str());
-        cache().erase(subject);
+        _dia("SSLFactory::erase<%s> - %s", cache.info.c_str(), subject.c_str());
+        cache.erase(subject);
     }
 
     catch(std::exception const& e) {
 
-        _dia("SSLFactory::erase - exception caught: %s", e.what());
+        _dia("SSLFactory::erase<%s> - exception caught: %s", cache.info.c_str(), e.what());
         return false;
     }
 

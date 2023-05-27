@@ -81,6 +81,7 @@ using expiring_string = expiring<std::string> ;
 template <class K, class T>
 class ptr_cache {
 public:
+    std::string info;
 
     struct DataBlockStats {
         uint32_t total_counter = 0;
@@ -123,6 +124,7 @@ public:
 
         std::string start("socle.ptrcache");
         log = logan::create(start + "." + name);
+        info = name;
     }
 
     ptr_cache(const char* name, unsigned int max_size, bool auto_delete, mode_t m): auto_delete_(auto_delete), max_size_(max_size) {
@@ -130,6 +132,7 @@ public:
 
         std::string start("socle.ptrcache");
         log = logan::create(start + "." + name);
+        info = name;
     }
 
 
