@@ -282,7 +282,21 @@ public:
             return lout->events().insert(level, fmt, args...);
         }
         else {
-            std::cerr << "no LogOutput target\n";
+            throw std::runtime_error("no logger to print events!");
+        }
+
+        return 0L;
+    }
+
+    template<class ... Args>
+    uint64_t event_detail(uint64_t eid, const char* fmt, Args ... args) const {
+        auto lout = Log::get();
+
+        if(lout) {
+            return lout->events().detail(eid, fmt, args...);
+        }
+        else {
+            throw std::runtime_error("no logger to print events!");
         }
 
         return 0L;
@@ -293,12 +307,6 @@ public:
 
         if(not lout) throw std::runtime_error("no logger to print events!");
         return lout->events().event_block();
-    }
-    auto& event_details() const {
-        auto lout = Log::get();
-
-        if(not lout) throw std::runtime_error("no logger to print events!");
-        return lout->events().event_details();
     }
 };
 

@@ -362,7 +362,7 @@ void baseSSLCom<L4Proto>::ssl_msg_callback(int write_p, int version, int content
                     if(com->peer()) details_com = dynamic_cast<baseSSLCom*>(com->peer());
                 }
 
-                if(details_com) log.event_details().emplace(event.eid, details_com->ssl_error_details());
+                if(details_com) log.event_detail(event.eid, "%s", details_com->ssl_error_details().c_str());
             }
             
         }
@@ -466,7 +466,7 @@ void baseSSLCom<L4Proto>::report_certificate_problem(X509* err_cert, int err_cod
                   SSLFactory::print_cn(err_cert).c_str(),
                   SSLFactory::print_issuer(err_cert).c_str());
 
-        log.event_details().emplace(event.eid, ssl_error_details());
+        log.event_detail(event.eid, "%s", ssl_error_details().c_str());
     }
     else {
         _dia("[%s]: SSLCom::ssl_client_vrfy_callback: no server certificate", better_name.c_str());
@@ -986,7 +986,7 @@ int baseSSLCom<L4Proto>::certificate_status_ocsp_check(baseSSLCom* com) {
             com->verify_bitset(verify_status_t::VRF_REVOKED);
 
             auto eid = log.event(ERR, "[%s]: certificate is revoked (OCSP query)", socle::com::ssl::connection_name(com, true).c_str());
-            log.event_details().emplace(eid, com->ssl_error_details());
+            log.event_detail(eid, "%s", com->ssl_error_details().c_str());
 
         } else if (res.revoked == 0) {
             com->verify_bitset(verify_status_t::VRF_OK);
@@ -1390,7 +1390,7 @@ int baseSSLCom<L4Proto>::status_resp_callback(SSL* ssl, void* arg) {
                        cn.c_str(),
                        com->opt.cert.failed_check_replacement);
             auto eid = log.event(ERR, "[%s]: certificate is revoked (OCSP stapling status)", socle::com::ssl::connection_name(com, true).c_str());
-            log.event_details().emplace(eid, com->ssl_error_details());
+            log.event_detail(eid, "%s", com->ssl_error_details().c_str());
 
             return com->opt.cert.failed_check_replacement;
         }

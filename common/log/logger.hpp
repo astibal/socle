@@ -106,11 +106,9 @@ struct Events {
 
     // eventID,string - eventID can be used to store more details
     using event_queue_t = std::deque<std::pair<uint64_t, std::string>>;
-    event_queue_t events_; // events ring buffer
     static inline size_t events_max_ = 1000;
 
     using event_detail_db_t = std::unordered_map<uint64_t, std::string>;
-    event_detail_db_t event_detail_db_;
 
     // global eventid counter
     static inline uint64_t event_count_ = 100L;
@@ -126,6 +124,8 @@ struct Events {
     std::mutex& events_lock() const { return events_lock_; };
     template <class ... Args>
     uint64_t insert(loglevel const& l, const std::string& fmt, Args ... args);
+    template <class ... Args>
+    uint64_t detail(uint64_t eid, const char* fmt, Args ... args);
     static uint64_t lock_event_id() { if(current_event_id_ > 0L) { return current_event_id_; } current_event_id_ = ++event_count_; return current_event_id_; }
     static void release_event_id() { current_event_id_ = 0L; }
 
@@ -139,6 +139,10 @@ struct Events {
 
     [[nodiscard]] event_id_block event_block() { event_id_block r; return r; }
     auto& event_details() { return event_detail_db_; }
+
+private:
+    event_detail_db_t event_detail_db_;
+    event_queue_t events_; // events ring buffer
 };
 
 // inherit default setting from logger_profile
@@ -283,7 +287,13 @@ uint64_t Events::insert(loglevel const& l, const std::string& fmt, Args ... args
     return use_eid;
 }
 
+template <class ... Args>
+uint64_t Events::detail(uint64_t eid, const char* fmt, Args ... args) {
+    auto lc_ = std::scoped_lock(events_lock_);
+    event_detail_db_.emplace(eid, string_format(fmt, args...));
 
+    return eid;
+}
 
 template <class ... Args>
 void LogMux::log(loglevel const& l, const std::string& fmt, Args ... args) {
