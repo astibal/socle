@@ -27,6 +27,9 @@
 #include <signature.hpp>
 
 
+struct FlowNotFound : public std::logic_error {
+    using std::logic_error::logic_error;
+};
 
 class AppHostCX: public baseHostCX {
 public:
@@ -71,8 +74,10 @@ public:
     // create pairs of results and pointers to (somewhere, already created) signatures.
     static int make_sig_states(std::shared_ptr<sensorType> sig_states, std::shared_ptr<sensorType> source_signatures);
     
-    inline duplexFlow& flow() { return appflow_; }
-    inline duplexFlow const& flow() const { return appflow_; }
+    inline duplexFlow& flow() { if(not appflow_) { appflow_ = std::make_unique<duplexFlow>(); } return *appflow_; }
+    inline bool have_flow() const { return (appflow_ != nullptr); }
+
+    inline duplexFlow const& cflow() const { if(not appflow_) { throw FlowNotFound("flow not found"); } return *appflow_; }
 
 protected:
 
@@ -98,7 +103,7 @@ protected:
 
 private:
 
-    duplexFlow appflow_;
+    std::unique_ptr<duplexFlow> appflow_ = nullptr;
     buffer::size_type peek_read_counter = 0;
     buffer::size_type peek_write_counter = 0;
 

@@ -36,8 +36,8 @@ std::string AppHostCX::to_string(int verbosity) const {
 
     std::string ts = baseHostCX::to_string(verbosity);
     std::stringstream ss;
-    if(verbosity > iINF) {
-        auto sz = flow().flow_queue().size();
+    if(verbosity > iINF and have_flow()) {
+        auto sz = cflow().flow_queue().size();
         ss << string_format("AppHostCX: sz:%ld m:%d ", sz, mode());
     }
 
