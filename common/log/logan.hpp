@@ -47,6 +47,8 @@ using namespace log::level;
 #define  xcri(x)  if(*(x).level() >= CRI) (x).cri
 #define  xfat(x)  if(*(x).level() >= FAT) (x).fat
 
+#define  _if_level(lev)  if(*log.level() >= (lev))
+
 #ifdef BUILD_RELEASE
 #define  _ext  if(false) log.ext
 #define  _dum  if(false) log.dum
