@@ -72,11 +72,15 @@ bool SSLFactory::load_from_files() {
     serial += time(nullptr);
 
     if (not (load_ca_cert() and load_def_cl_cert() and load_def_sr_cert())) {
-        _dia("SSLFactory::load: key/certs: ca(%x/%x) def_cl(%x/%x) def_sr(%x/%x)", ca_key,ca_cert,
+        _err("SSLFactory::load: key/certs: ca(%x/%x) def_cl(%x/%x) def_sr(%x/%x)", ca_key,ca_cert,
              def_cl_key,def_cl_cert,  def_sr_key,def_sr_cert);
         
         destroy();
         return false;
+    }
+
+    if(not load_def_po_cert()) {
+        _war("SSLFactory::load: error loading portal certificate keypair");
     }
 
     load_custom_certificates();
@@ -271,6 +275,40 @@ bool SSLFactory::load_def_cl_cert() {
     fclose(fp_key);
     
     return ( def_cl_cert and def_cl_key );
+}
+
+bool SSLFactory::load_def_po_cert() {
+    auto const& log = get_log();
+    std::string cer = certs_path() + config_t::PO_CERTF;
+
+    FILE *fp_crt = fopen(cer.c_str(), "r");
+    FILE *fp_key = nullptr;
+
+    if (!fp_crt) {
+        _fat("SSLFactory::load_def_po_cert: unable to open: %s",cer.c_str());
+        return false;
+    }
+
+    std::string key = certs_path() + config_t::PO_KEYF;
+    fp_key = fopen(key.c_str(), "r");
+
+    if (!fp_key) {
+        _fat("SSLFactory::load_def_po_cert: unable to open: %s",key.c_str());
+        fclose(fp_crt);
+        return false;
+    }
+    [&]{
+        auto lc_ = std::scoped_lock(lock());
+
+        config.def_po_cert_str = FILE_to_string(fp_crt);
+        config.def_po_key_str = FILE_to_string(fp_key);
+
+    }();
+
+    fclose(fp_crt);
+    fclose(fp_key);
+
+    return true;
 }
 
 bool SSLFactory::load_def_sr_cert() {

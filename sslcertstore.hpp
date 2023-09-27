@@ -188,6 +188,9 @@ public:
         constexpr static const char* SR_CERTF = "srv-cert.pem";
         constexpr static const char* SR_KEYF = "srv-key.pem";
 
+        constexpr static const char* PO_CERTF = "portal-cert.pem";
+        constexpr static const char* PO_KEYF = "portal-key.pem";
+
         constexpr static const char* CA_CERTF = "ca-cert.pem";
         constexpr static const char* CA_KEYF =  "ca-key.pem";
 
@@ -200,6 +203,9 @@ public:
         std::string def_sr_key_str;
         std::string def_cl_cert_str;
         std::string def_cl_key_str;
+        std::string def_po_cert_str;
+        std::string def_po_key_str;
+
 
         constexpr static size_t SSLCERTSTORE_BUFSIZE = 512;
 
@@ -275,6 +281,9 @@ private:
     bool load_ca_cert();
     bool load_def_cl_cert();
     bool load_def_sr_cert();
+
+    // portal certs are not used in their X509 form
+    bool load_def_po_cert();
     bool load_certs_from(const char* sub_dir, const char* cache_key_prefix);
     bool update_ssl_ctx(CertificateChainCtx& chain, std::string_view issuer1, std::string_view issuer2, std::string_view issuer3);
 
