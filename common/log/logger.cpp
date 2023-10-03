@@ -186,11 +186,43 @@ size_t LogMux::write_log(loglevel level, std::string& sss) {
             s <<  "\r\n";
         }
 
-        std::string a = s.str();
+        std::string to_sent_str = s.str();
+        auto& mut_ref = *mut;
 
-        auto l_ = std::scoped_lock(*mut);
-        if(::send(rem_target, a.c_str(),a.size(),0) < 0) {
-            std::cerr << string_format("logger::write_log: cannot write remote socket: %d", rem_target);
+        auto rep_log = [&mut_ref](auto rem_sock, auto str) {
+            const int rep = 3;
+            bool ret = false;
+
+            for (int i = 0; i < rep; ++i) {
+                ssize_t sent = 0;
+
+                {
+                    // protect socket write with to_sent_str mutex lock
+                    auto l_ = std::scoped_lock(mut_ref);
+                    sent = ::send(rem_sock, str.c_str(), str.size(), MSG_DONTWAIT);
+                }
+
+                if(sent >= 0) {
+                    // return, but success is only if data have been sent
+                    // we ignore if socket is full and not all data have been written (it's just a logging, after all)
+                    ret = ( sent > 0 );
+                    break;
+                }
+                else if (sent < 0 and (errno == EAGAIN or errno == EWOULDBLOCK)) {
+                    // error, could be repeated
+                    continue;
+                }
+                // sent is negative and cannot be repeated
+                break;
+            }
+
+            return ret;
+        };
+
+
+        if(not to_sent_str.empty()) {
+            const int sock = rem_target;
+            rep_log(sock, to_sent_str);
         }
     }
 
