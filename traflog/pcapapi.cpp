@@ -91,7 +91,7 @@ namespace socle::pcap {
         size_t buff_len = hdr_sz + next_sz + payload_len + padd;
 
 
-        char* buff = static_cast<char*>(::malloc(buff_len));
+        char* buff = static_cast<char*>(::alloca(buff_len));
         if(not buff) return 0;
 
         memcpy(buff,                                  hdr,     hdr_sz);
@@ -101,8 +101,6 @@ namespace socle::pcap {
             buff[buff_len-1] = 0;
 
         uint16_t result = iphdr_cksum(buff, buff_len);
-
-        ::free(buff);
 
         return result;
     }
