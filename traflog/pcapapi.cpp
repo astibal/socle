@@ -75,6 +75,8 @@ namespace socle::pcap {
 
     uint16_t iphdr_cksum(void const* data, size_t len)
     {
+        if(not CONFIG::CALCULATE_CHECKSUMS) return 0;
+
         uint32_t sum=0;
         size_t i;
         for (i=0; i < len/2; ++i)
@@ -86,6 +88,8 @@ namespace socle::pcap {
 
 
     uint16_t l4hdr_cksum(void* hdr, size_t hdr_sz, void *next, size_t next_sz, const char *payload, size_t payload_len) {
+
+        if(not CONFIG::CALCULATE_CHECKSUMS) return 0;
 
         unsigned int padd = payload_len & 1u;
         size_t buff_len = hdr_sz + next_sz + payload_len + padd;

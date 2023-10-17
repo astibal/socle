@@ -74,6 +74,11 @@
 
 namespace socle::pcap {
 
+    struct CONFIG {
+        static inline bool CALCULATE_CHECKSUMS = false;
+    };
+
+
     // GREv1
     struct  __attribute__((__packed__)) grehdr {
         uint16_t preamble = 0; // simplified (no chksum, key, or sequence
