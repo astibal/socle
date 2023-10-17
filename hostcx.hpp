@@ -178,6 +178,7 @@ namespace socle {
 class baseHostCX : public Host
 {
 public:
+    char ClassChar = 'B';
 
     struct params_t {
         // allow these as tunables
