@@ -119,7 +119,7 @@ struct SSLComOptionsCert {
 
 struct SSLComOptionsOcsp {
     bool stapling_enabled = false; // should we insist on OCSP response?
-    int  stapling_mode = 0;        // 0 - allow all, log unverified. 1 - allow all, but don't allow unverified. 2 - as 1. but require all connections to have stapling reponse
+    int  stapling_mode = 0;        // 0 - allow all, log unverified. 1 - allow all, but don't allow unverified. 2 - as 1. but require all connections to have stapling response
     bool enforce_in_verify = false;     // stapling was not able to get status, we need use OCSP at the end of verify
     int  mode = 0;
 };
@@ -361,7 +361,7 @@ protected:
     std::shared_ptr<std::vector<std::string>> sni_filter_to_bypass_;
     bool sni_filter_to_bypass_matched = false;
     
-    //try to set peer's key/certificate from cache (succeeds if peer haven't yet started ssl handhake and if there is cert in the cache).
+    //try to set peer's key/certificate from cache (succeeds if peer haven't yet started ssl handshake and if there is cert in the cache).
     //For server side only.
     bool enforce_peer_cert_from_cache(std::string & subj);
     //it's set to true if we used cached cert
@@ -644,7 +644,7 @@ struct ec_point_st {
     BIGNUM Y;
     BIGNUM Z;                   /* Jacobian projective coordinates: (X, Y, Z)
                                  * represents (X/Z^2, Y/Z^3) if Z != 0 */
-    int Z_is_one;               /* enable optimized point arithmetics for
+    int Z_is_one;               /* enable optimized point arithmetic for
                                  * special case */
 } /* EC_POINT */ ;
 

@@ -144,7 +144,7 @@ bool operator==(const Host& h, const Host& hh);
  *  and as such they can be removed from @ref readbuf_ - we call it they can he **finished**, see @ref finish().
  * 
  *  Default implementation of @ref process() returns size of readbuf_ -- when also [auto_finish](@ref auto_finish) returns true, this case consecutive calls of read() 
- *  will just auto- finish() received bytes and new bytes will be copied into @ref readbuf_ . It's clear that @ref process() is good candidate for overiding. Process
+ *  will just auto- finish() received bytes and new bytes will be copied into @ref readbuf_ . It's clear that @ref process() is good candidate for overriding. Process
  *  received data and return how much of bytes you've processed and you don't need anymore.
  * 
  *  This is happening regardless of [auto_finish] (@ref auto_finish()) feature, since 
@@ -459,7 +459,7 @@ public:
 	ssize_t io_write(unsigned char* data, size_t tx_size, int flags) const;
 	
 	
-	//overide this, and return number of bytes to be possible to passed to application/another hostcx
+	//override this, and return number of bytes to be possible to passed to application/another hostcx
 	//
 	virtual std::size_t process_in();
     virtual std::size_t process_out();

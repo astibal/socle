@@ -67,7 +67,7 @@ namespace libbase64 {
         }
     #endif
     
-    //characters used in convertions
+    //characters used in conversions
     namespace libbase64_characters {
         template<typename T>
         inline static const T * getChar64(void){

@@ -316,7 +316,7 @@ public:
     inline bool pollroot() const { return pollroot_; };
     inline void pollroot(bool b) { pollroot_ = b; };
         
-    // overide to create custom context objects
+    // override to create custom context objects
     virtual baseHostCX* new_cx(int);
     virtual baseHostCX* new_cx(const char*, const char*);
         
