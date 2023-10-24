@@ -372,7 +372,7 @@ SSL_CTX* SSLFactory::client_ctx_setup(const char* ciphers) {
         exit(3);
     }
 
-    ciphers == nullptr ? SSL_CTX_set_cipher_list(ctx,"ALL:!ADH:!LOW:!aNULL:!EXP:!MD5:@STRENGTH") : SSL_CTX_set_cipher_list(ctx,ciphers);
+    ciphers == nullptr ? SSL_CTX_set_cipher_list(ctx,"ALL:!ADH:!LOW:!annul:!EXP:!MD5:@STRENGTH") : SSL_CTX_set_cipher_list(ctx,ciphers);
 
     auto ctx_options = def_cl_options;
 #ifdef USE_OPENSSL300
@@ -425,7 +425,7 @@ SSL_CTX* SSLFactory::client_dtls_ctx_setup(const char* ciphers) {
         exit(3);
     }
 
-    ciphers == nullptr ? SSL_CTX_set_cipher_list(ctx,"ALL:!ADH:!LOW:!aNULL:!EXP:!MD5:@STRENGTH") : SSL_CTX_set_cipher_list(ctx,ciphers);
+    ciphers == nullptr ? SSL_CTX_set_cipher_list(ctx,"ALL:!ADH:!LOW:!annul:!EXP:!MD5:@STRENGTH") : SSL_CTX_set_cipher_list(ctx,ciphers);
 
     SSL_CTX_set_session_cache_mode(ctx, SSL_SESS_CACHE_NO_INTERNAL);
 
@@ -1511,7 +1511,7 @@ std::string SSLFactory::print_cert(X509* x, int indent, bool add_cr) {
 
     } else {
         num_of_exts = 0;
-        s << pref << " Extensions: <no extenstions in the certificate> \n");
+        s << pref << " Extensions: <no extensions in the certificate> \n");
     }
 
     for (int i=0; i < num_of_exts; i++) {

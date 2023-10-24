@@ -30,7 +30,7 @@ namespace mp {
          * (in a single line of course)
          */
 
-        // there could be more precious implemenatation of this in the future
+        // there could be more precious implementation of this in the future
         std::lock_guard<std::recursive_mutex> l(facility::lock());
 
         unsigned char *p = data;

@@ -57,17 +57,17 @@ namespace inet {
     /// @param url 'url' full resource URL
     /// @param buf 'buf' buffer where to save the content. Note: buffer doesn't have to be pre-allocated.
     /// @param ipv 'ipv' specify IP version. Can be 4 or 6. Anything else implies IPv4.
-    /// @param timout 'timeout' timeout of the operation
+    /// @param timeout 'timeout' timeout of the operation
     /// @return returns the size of retrieved content bytes (not size of data received on socket). Negative on error.
-    int download(const std::string& url, buffer& buf, int timout, int ipv = 4);
+    int download(const std::string& url, buffer& buf, int timeout, int ipv = 4);
 
     /// @brief Opens a socket to IP address and sends raw bytes. Expects HTTP response.
     /// @param request 'request' raw string with request body
     /// @param port 'port' port number to connect to
     /// @param buf 'buf' buffer where to save the content. Note: buffer doesn't have to be pre-allocated.
-    /// @param timout 'timeout' timeout of the operation
+    /// @param timeout 'timeout' timeout of the operation
     /// @return returns the size of retrieved content bytes (not size of data received on socket). Negative on error.
-    int http_get(const std::string& request, const std::string& ip_address, int port, buffer& buf, int timout=10);
+    int http_get(const std::string& request, const std::string& ip_address, int port, buffer& buf, int timeout=10);
 
     /// @brief is it IPv4?
     bool is_ipv4_address(const std::string& str);
