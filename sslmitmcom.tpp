@@ -139,7 +139,7 @@ bool baseSSLMitmCom<SSLProto>::check_cert(const char* peer_name) {
                 _dia("SSL hostname check succeeded on %s",validated_san.c_str());
             }
             else {
-                _war("SSL hostname check failed (sni %s).", this->sslcom_sni().c_str());
+                _war("SSL hostname check failed (sni '%s').", this->sslcom_sni().c_str());
                 this->verify_bitset(verify_status_t::VRF_HOSTNAME_FAILED);
 
                 if(!this->opt.cert.failed_check_replacement) {
