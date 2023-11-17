@@ -285,7 +285,8 @@ private:
     // portal certs are not used in their X509 form
     bool load_def_po_cert();
     bool load_certs_from(const char* sub_dir, const char* cache_key_prefix);
-    bool update_ssl_ctx(CertificateChainCtx& chain, std::string_view issuer1, std::string_view issuer2, std::string_view issuer3);
+    bool update_ssl_ctx_fullchain(CertificateChainCtx& chain, std::string_view key, std::string_view fullchain);
+    bool update_ssl_ctx_chainfiles(CertificateChainCtx& chain, std::string_view issuer1, std::string_view issuer2, std::string_view issuer3);
 
     std::regex re_hostname = std::regex("^[a-zA-Z0-9-]+\\.");
 
@@ -389,6 +390,7 @@ public:
     [[maybe_unused]] static std::string get_sans_csv(X509* x);
     [[maybe_unused]] static std::string fingerprint(X509 *cert);
     [[maybe_unused]] static std::string print_ASN1_OCTET_STRING(ASN1_OCTET_STRING*);
+    [[maybe_unused]] static std::string print_error();
 
 
     static std::string make_store_key(X509* cert_orig, const SpoofOptions& spo);

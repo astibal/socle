@@ -88,6 +88,14 @@ bool SSLFactory::load_from_files() {
     return ret;
 }
 
+
+bool fullchain_file_exists(std::string_view fnm_fullchain) {
+    auto fp_fullchain = raw::file(fopen(fnm_fullchain.data(), "r"));
+    return (fp_fullchain.value != nullptr);
+}
+
+
+
 std::optional<CertificateChainCtx> load_cert_pair(std::string_view fnm_key, std::string_view fnm_cert, const char* password = nullptr) {
 
 
@@ -107,7 +115,45 @@ std::optional<CertificateChainCtx> load_cert_pair(std::string_view fnm_key, std:
     return CertificateChainCtx(ossl_key, ossl_cert) ;
 }
 
-bool SSLFactory::update_ssl_ctx(CertificateChainCtx& chain, std::string_view issuer1, std::string_view issuer2, std::string_view issuer3) {
+bool SSLFactory::update_ssl_ctx_fullchain(CertificateChainCtx& chain, std::string_view key, std::string_view fullchain) {
+    auto const& log = get_log();
+
+    auto ret = SSL_CTX_use_certificate_chain_file(chain.ctx, fullchain.data());
+
+    if(! ret) {
+        auto serr = print_error();
+
+        log.event(ERR, "custom certificate loading error (fullchain): %s: %s", fullchain.data(), serr.c_str());
+        _err("custom certificate loading error (fullchain): %s: %s", fullchain.data(), serr.c_str());
+
+        return false;
+    }
+
+    auto fp_key = raw::file(fopen(key.data(), "r"));
+    if (fp_key.value) {
+        auto ossl_key = PEM_read_PrivateKey(fp_key.value, nullptr, nullptr, nullptr);
+        if(SSL_CTX_use_PrivateKey(chain.ctx, ossl_key) == 1) {
+
+            chain.chain.cert = SSL_CTX_get0_certificate(chain.ctx);
+            X509_up_ref(chain.chain.cert);
+
+            chain.chain.key = SSL_CTX_get0_privatekey(chain.ctx);
+            EVP_PKEY_up_ref(chain.chain.key);
+        }
+        else {
+            auto serr = print_error();
+
+            log.event(ERR, "custom certificate loading error (fullchain): %s: %s", fullchain.data(), serr.c_str());
+            _err("custom certificate loading error (fullchain): %s: %s", fullchain.data(), serr.c_str());
+
+            return false;
+        }
+    }
+
+    return true;
+}
+
+bool SSLFactory::update_ssl_ctx_chainfiles(CertificateChainCtx& chain, std::string_view issuer1, std::string_view issuer2, std::string_view issuer3) {
     auto const& log = get_log();
 
     int build_chain = 0;
@@ -166,15 +212,40 @@ bool SSLFactory::load_certs_from(const char* sub_dir, const char* cache_key_pref
             // directory is the match
 
             auto path = entry.path().string();
-            auto cert_pair = load_cert_pair(path + "/key.pem", path + "/cert.pem", nullptr);
-            if (cert_pair) {
-                cert_pair.value().ctx = server_ctx_setup(nullptr, nullptr);
+            auto full_fnm = path + "/fullchain.pem";
+            auto key_fnm = path + "/key.pem";
+            bool  full_loaded = false;
 
-                update_ssl_ctx(cert_pair.value(), path + "/issuer.pem", path + "/issuer2.pem", path + "/issuer3.pem");
+            if(fullchain_file_exists(full_fnm)) {
 
-                std::string key = cache_key_prefix;
-                key += entry.path().filename();
-                add_custom(key, cert_pair.value());
+                CertificateChainCtx ce_cx;
+                ce_cx.ctx = server_ctx_setup(nullptr, nullptr);
+                full_loaded = update_ssl_ctx_fullchain(ce_cx, key_fnm, full_fnm);
+
+                if(full_loaded) {
+                    std::string key = cache_key_prefix;
+                    key += entry.path().filename();
+                    add_custom(key, ce_cx);
+
+                    log.event(INF, "custom certificate loaded (fullchain): %s", full_fnm.c_str());
+                }
+            }
+
+            // check for issuer files
+            if(not full_loaded) {
+                auto cert_pair = load_cert_pair(path + "/key.pem", path + "/cert.pem", nullptr);
+                if (cert_pair) {
+                    cert_pair.value().ctx = server_ctx_setup(nullptr, nullptr);
+
+                    update_ssl_ctx_chainfiles(cert_pair.value(), path + "/issuer.pem", path + "/issuer2.pem",
+                                              path + "/issuer3.pem");
+
+                    std::string key = cache_key_prefix;
+                    key += entry.path().filename();
+                    add_custom(key, cert_pair.value());
+
+                    log.event(INF, "custom certificate loaded (files): %s", path.c_str());
+                }
             }
         }
     }
@@ -1624,4 +1695,11 @@ std::string SSLFactory::print_ASN1_OCTET_STRING(ASN1_OCTET_STRING* ostr) {
 
     auto ret = hex_print(ostr->data, ostr->length);
     return ret;
+}
+
+std::string SSLFactory::print_error() {
+    int err = ERR_get_error();
+    std::array<char, 128> buf {};
+    ERR_error_string_n(err, buf.data(), buf.size() - 1);
+    return std::string(buf.data());
 }
