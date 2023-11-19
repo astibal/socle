@@ -7,6 +7,9 @@ SET(SOCLE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
 include_directories ("${SOCLE_DIR}")
 include_directories ("common/")
 
+include(ProcessorCount)
+ProcessorCount(CPUs)
+
 add_library(socle_lib
         baseproxy.hpp
         lrproxy.hpp
@@ -109,8 +112,8 @@ if(UNIX)
 
     IF (CMAKE_BUILD_TYPE STREQUAL "Release")
         message(">>> release: enabling optimizations (socle)")
-        SET(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -fstack-protector-strong -O3 -flto -s -DBUILD_RELEASE")
-        SET(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -flto")
+        SET(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -fstack-protector-strong -O3 -flto=${CPUs} -s -DBUILD_RELEASE")
+        SET(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -flto=${CPUs}")
     ENDIF()
 
     SET(CMAKE_AR  "gcc-ar")
