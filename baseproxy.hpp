@@ -206,6 +206,7 @@ protected:
 public:
     metering const& stats() const { return stats_; }
     proxy_state& state() { return status_; }
+    proxy_state const& state() const { return status_; }
 
     static constexpr unsigned int HANDLE_OK = 0;
     static constexpr unsigned int HANDLE_LEFT_ERROR = -1;
