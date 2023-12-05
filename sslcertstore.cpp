@@ -1671,21 +1671,22 @@ std::string SSLFactory::fingerprint(X509* cert) {
     if(not cert) return {};
 
     const EVP_MD *fprint_type = nullptr;
-    unsigned fprint_size;
-    unsigned char fprint[EVP_MAX_MD_SIZE];
+    unsigned fprint_size = 0;
+    unsigned char fprint[EVP_MAX_MD_SIZE] {0};
 
     fprint_type = EVP_sha1();
+
+    std::string ret;
 
     if (!X509_digest(cert, fprint_type, fprint, &fprint_size)) {
         auto const& log = SSLFactory::get_log();
         _err("error creating the certificate fingerprint");
     }
-
-    std::string ret;
-    for (unsigned int j = 0; j < fprint_size; ++j)  {
-        ret += string_format("%02x", fprint[j]);
+    else {
+        for (unsigned int j = 0; j < fprint_size and j < EVP_MAX_MD_SIZE; ++j)  {
+            ret += string_format("%02x", fprint[j]);
+        }
     }
-
 
     return ret;
 }
