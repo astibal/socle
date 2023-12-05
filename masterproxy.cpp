@@ -126,7 +126,12 @@ int MasterProxy::handle_sockets_once(baseCom* xcom) {
 
         // don't mess with running threaded proxy
         if(proxy->state().in_progress()) continue;
-                
+
+        // we know it's not in progress from condition at the start of the loop
+        if(thr and thread_finish(thr)) {
+            _deb("MasterProxy::handle_sockets_once: run-phase finished handle thread");
+        }
+
         if (not proxy->state().dead()) {
 
             auto run_proxy = [this, xcom](baseProxy* p) {
@@ -152,16 +157,15 @@ int MasterProxy::handle_sockets_once(baseCom* xcom) {
             r++;
 
             // if threading is allowed, thread all proxies unless we are alone
-            if(subproxy_thread_spray_min > 0 and proxies_sz >= subproxy_thread_spray_min and proxies_sz > 1) {
+            auto const spray_possible = (subproxy_thread_spray_min > 0 and proxies_sz >= subproxy_thread_spray_min and proxies_sz > 1);
+
+
+            // spray on existing connections with some data already exchanged
+            if(spray_possible
+                and proxy->stats().mtr_down.total() > subproxy_thread_spray_bytes_min
+                and proxy->stats().mtr_up.total() > subproxy_thread_spray_bytes_min) {
 
                 _deb("proxy spray for: %s", proxy->to_string(iINF).c_str());
-
-                // we know it's not in progress from condition at the start of the loop
-                if(thread_finish(thr)) {
-                    _deb("MasterProxy::handle_sockets_once: run-phase finished handle thread");
-                }
-
-
                 thr = std::make_unique<std::thread>(run_proxy, proxy.get());
 
             } else {
