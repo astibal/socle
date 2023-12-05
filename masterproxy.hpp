@@ -41,7 +41,8 @@ private:
     static bool thread_finish(std::unique_ptr<std::thread>& thread_ptr);
 public:
     static inline unsigned int subproxy_reserve = 10;
-    static inline unsigned int subproxy_thread_spray_min = 2;
+    static inline unsigned int subproxy_thread_spray_min = 5;
+    static inline unsigned int subproxy_thread_spray_bytes_min = 1400;
 
     explicit MasterProxy(baseCom* c): baseProxy(c) {
         proxies_.reserve(subproxy_reserve);
