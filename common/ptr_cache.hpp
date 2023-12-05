@@ -236,7 +236,7 @@ public:
             ret = true;
 
             _dia("ptr_cache::set[%s]: replacing existing entry '%s'", c_type(), k2str(k).c_str());
-            cache()[k] = std::make_unique<DataBlock>(dbs_, v);
+            cache()[k] = std::make_unique<DataBlock>(dbs_, std::move(v));
         } else {
 
             if(max_size_ > 0) {
@@ -260,7 +260,7 @@ public:
                 }
             }
             _dia("ptr_cache::set[%s]: new entry '%s' added", c_type(), k2str(k).c_str());
-            cache()[k] = std::make_unique<DataBlock>(dbs_, v);
+            cache().emplace(k, std::make_unique<DataBlock>(dbs_, std::move(v)));
             items().push_front(k);
         }
 
@@ -333,7 +333,7 @@ inline bool ptr_cache<K,T>::lru_reoder() {
 
     if(last_it != cache().end() and first_it != cache().end()) {
         if( last_it->second->count() > criteria) {
-            items().push_front(last_key);
+            items().push_front(last_it->first);
             items().pop_back();
 
             to_ret = true;
