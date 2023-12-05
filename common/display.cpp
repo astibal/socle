@@ -184,11 +184,11 @@ std::string hex_dump(const unsigned char *data, size_t orig_size, unsigned int l
 
             if(ltrim > 0) for (unsigned int j = 0; j < ltrim; ++j) { ss << " "; }
 
+            if(add_cr) ss << "\r";
+            ss << "\n";
+
             if(prefix != 0) ss << prefix;
 
-            if(add_cr) ss << "\r";
-
-            ss << "\n";
             ss << "[";
             ss << string_format("%04X", i + fake_pos);
             ss << "]  ";
