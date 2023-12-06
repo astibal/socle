@@ -418,13 +418,15 @@ void AppHostCX::pre_write() {
 
             // how many data I am missing?
             buffer::size_type delta  = (meter_write_bytes + b->size()) - peek_write_counter;
-            
-            if(delta > 0) {
+
+            if(delta > 0 and delta <= b->size()) {
                 buffer delta_b = b->view(b->size()-delta,b->size());
                 
                 _dia("AppHostCX::pre_write[%s]: flow append new %d bytes",c_type(),delta_b.size());
                 flow().append('w',delta_b);
-                peek_write_counter += delta_b.size();
+
+                //peek_write_counter += delta_b.size();
+                peek_write_counter += delta; // this should be more accurate, since it's not counting in leftovers from writebuffer
 
                 if(mode() == mode_t::CONTINUOUS) {
                     continuous_mode_keeper(delta_b);
@@ -436,7 +438,12 @@ void AppHostCX::pre_write() {
                 _dia("AppHostCX::pre_write:[%s]: ...",c_type());
                 _dia("AppHostCX::pre_write:[%s]: peek_counter is now %d",c_type(),peek_write_counter);
             } else {
-                _dia("AppHostCX::pre_write:[%s]: data are already copied in the flow",c_type());
+                if(delta > b->size()) {
+                    _err("AppHostCX::pre_write:[%s]: bytes are missing",c_type());
+                }
+                else {
+                    _dia("AppHostCX::pre_write:[%s]: data are already copied in the flow",c_type());
+                }
             }
             
             _deb("AppHostCX::pre_write[%s]: write buffer size %d",c_type(),b->size());
