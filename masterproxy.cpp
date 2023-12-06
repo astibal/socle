@@ -28,8 +28,11 @@ int MasterProxy::prepare_sockets(baseCom* xcom)
     int r = 0;
     
     r += baseProxy::prepare_sockets(xcom);
+
+    auto lc_ = std::scoped_lock(proxies_lock_);
     for(auto& [ p, thr ]: proxies()) {
-        if(p && not p->state().dead()) {
+
+        if(p && not p->state().dead() && not p->state().in_progress()) {
             r += p->prepare_sockets(xcom); // fill my fd_sets!
         }
     }    
@@ -41,33 +44,30 @@ bool MasterProxy::run_timers()
 {
     if(baseProxy::run_timers()) {
 
-        auto delit_list = std::vector<baseProxy*>();
-
+        auto l_ = std::scoped_lock(proxies_lock_);
         for(auto i = proxies().begin(); i != proxies().end(); ) {
 
             auto const& p = i->first;
 
             if(not p) {
                 _inf("null sub-proxy!!");
+                ++i;
                 continue;
             }
 
-            if(p->state().dead() and not p->state().in_progress()) {
-                {
-                    auto l_ = std::scoped_lock(proxies_lock_);
-                    auto& thr = i->second;
-
-                    if(thread_finish(thr)) {
-                        _deb("MasterProxy::run_timers: finished handle thread");
-                    }
-
-                    auto lcx = logan_context(p->to_string(iNOT));
-                    i = proxies().erase(i);
-                }
+            if(p->state().in_progress()) {
+                ++i;
                 continue;
-            } else {
+            }
+
+            if(not p->state().dead()) {
                 auto lcx = logan_context(p->to_string(iNOT));
                 p->run_timers();
+            }
+            else {
+                if(i->second) thread_finish(i->second);
+                i = proxies().erase(i);
+                continue;
             }
 
             ++i;
@@ -108,16 +108,18 @@ int MasterProxy::handle_sockets_once(baseCom* xcom) {
         return 0;
     }
 
-    if(proxies().empty()) return 0;
-
     int r = 0;
-    int proxies_handled= 0;
-    int proxies_shutdown=0;
-    int proxies_deleted=0;
+    int proxies_handled  = 0;
+    int proxies_shutdown = 0;
+    int proxies_deleted  = 0;
 
+
+    auto l_ = std::scoped_lock(proxies_lock_);
+
+    if(proxies().empty()) return 0;
     auto proxies_sz = proxies().size();
 
-    std::size_t proxy_idx = 0;
+
     for(auto& [ proxy, thr ] : proxies()) {
 
         if(state().dead()) {
@@ -128,6 +130,7 @@ int MasterProxy::handle_sockets_once(baseCom* xcom) {
         if(proxy->state().in_progress()) continue;
 
         // we know it's not in progress from condition at the start of the loop
+        // therefore joining it would not block
         if(thr and thread_finish(thr)) {
             _deb("MasterProxy::handle_sockets_once: run-phase finished handle thread");
         }
@@ -135,22 +138,22 @@ int MasterProxy::handle_sockets_once(baseCom* xcom) {
         if (not proxy->state().dead()) {
 
             auto run_proxy = [this, xcom](baseProxy* p) {
-                auto lcx = logan_context(p->to_string(iNOT));
+                if(p->state().in_progress().fetch_add(1) == 0) {
+                    auto lcx = logan_context(p->to_string(iNOT));
 
-                try {
-                    if(p->state().in_progress().fetch_add(1) == 0) {
+                    try {
                         p->handle_sockets_once(xcom);
-
-                        p->state().in_progress().store(0);
                     }
-                }
-                catch (socle::com_error const &e) {
-                    _err("slave proxy exception: %s", e.what());
-                    p->state().dead(true);
-                }
-                catch (std::exception const &e) {
-                    _err("slave proxy exception: %s", e.what());
-                    p->state().dead(true);
+                    catch (socle::com_error const &e) {
+                        _err("slave proxy exception: %s", e.what());
+                        p->state().dead(true);
+                    }
+                    catch (std::exception const &e) {
+                        _err("slave proxy exception: %s", e.what());
+                        p->state().dead(true);
+                    }
+
+                    p->state().in_progress().store(0);
                 }
             };
 
@@ -175,8 +178,6 @@ int MasterProxy::handle_sockets_once(baseCom* xcom) {
                 logan_lite::context(pref);
             }
         }
-
-        ++proxy_idx;
     }
 
     for(auto i = proxies().begin(); i != proxies().end(); ) {
@@ -186,28 +187,27 @@ int MasterProxy::handle_sockets_once(baseCom* xcom) {
 
         if(not proxy) {
             i = proxies().erase(i);
+            proxies_deleted++;
             continue;
         }
 
         // assert in_progress state
-        if(proxy->state().in_progress()) continue;
+        if(proxy->state().in_progress()) {
+            ++i;
+            continue;
+        }
 
         // we know it's not in progress anymore
-        if(thread_finish(thr)) {
+        if(thr and thread_finish(thr)) {
             _deb("MasterProxy::handle_sockets_once: cleanup-phase finished handle thread");
         }
 
-
         if (proxy->state().dead()) {
 
-            {
-                auto l_ = std::scoped_lock(proxies_lock_);
-                proxies_shutdown++;
+            auto lcx = logan_context(proxy->to_string(iNOT));
+            i = proxies().erase(i);
 
-                auto lcx = logan_context(proxy->to_string(iNOT));
-                i = proxies().erase(i);
-            }
-
+            proxies_shutdown++;
             proxies_deleted++;
             continue;
         }
@@ -255,6 +255,7 @@ std::string MasterProxy::hr() {
 	ss << "Masterproxy:\n";
     ss << baseProxy::hr();
 
+    auto lc_ = std::scoped_lock(proxies_lock_);
 	if(not proxies().empty()) {
         ss << "Slaves:\n";
 		

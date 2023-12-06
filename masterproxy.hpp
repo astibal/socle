@@ -47,9 +47,22 @@ public:
     explicit MasterProxy(baseCom* c): baseProxy(c) {
         proxies_.reserve(subproxy_reserve);
     }
+    ~MasterProxy() override {
+        // shutdown active sessions, join in_progress ones
+        MasterProxy::shutdown();
+    }
+
     vector_type <proxy_entry>& proxies() { return proxies_; };
-    inline void add_proxy(baseProxy* p) { proxies_.emplace_back(p, nullptr); }
-    inline void add_proxy(std::unique_ptr<baseProxy> upx) { proxies_.emplace_back(std::move(upx), nullptr); }
+    vector_type <proxy_entry> const& proxies() const { return proxies_; };
+
+    void add_proxy(baseProxy* p) {
+        auto lc_ = std::scoped_lock(proxies_lock_);
+        proxies_.emplace_back(p, nullptr);
+    }
+    void add_proxy(std::unique_ptr<baseProxy> upx) {
+        auto lc_ = std::scoped_lock(proxies_lock_);
+        proxies_.emplace_back(std::move(upx), nullptr);
+    }
 
     int prepare_sockets(baseCom*) override;
 	int handle_sockets_once(baseCom*) override;
