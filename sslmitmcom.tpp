@@ -198,6 +198,17 @@ bool baseSSLMitmCom<SSLProto>::check_cert(const char* peer_name) {
     return r;
 }
 
+template <class SSLProto>
+bool baseSSLMitmCom<SSLProto>::use_cert_null() {
+    auto const& log = log::mitm();
+
+    _dia("SSLMitmCom::use_cert_null: unsetting certifiace key-pair");
+    this->sslcom_pref_cert = nullptr;
+    this->sslcom_pref_key = nullptr;
+
+    return false;
+}
+
 
 template <class SSLProto>
 bool baseSSLMitmCom<SSLProto>::use_cert_sni(SpoofOptions &spo) {
@@ -319,6 +330,12 @@ bool baseSSLMitmCom<SSLProto>::spoof_cert(X509* cert_orig, SpoofOptions& spo) {
     if(this->opt.cert.mitm_cert_sni_search && this->use_cert_sni(spo)) return true;
 
     if(this->opt.cert.mitm_cert_ip_search && this->use_cert_ip(spo)) return true;
+
+    if(this->opt.cert.mitm_cert_searched_only) {
+        use_cert_null();
+        this->error(baseCom::ERROR_UNSPEC);
+        return false;
+    }
 
     return use_cert_mitm(cert_orig, spo);
 }

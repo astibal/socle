@@ -115,6 +115,7 @@ struct SSLComOptionsCert {
 
     bool mitm_cert_sni_search = false;      // allow search based on SNI
     bool mitm_cert_ip_search = false;      // allow search based on SNI
+    bool mitm_cert_searched_only = false;   // if SNI or IP cert is not found, don't use default spoofed mitm certificate
 };
 
 struct SSLComOptionsOcsp {
@@ -140,6 +141,7 @@ struct SSLComOptions {
     // Certificate Transparency support
     bool ct_enable = true;
     bool alpn_block = false;
+    bool no_fallback_bypass = false;
 
     SSLComCryptoFeatures left;
     SSLComCryptoFeatures right;

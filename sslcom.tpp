@@ -109,10 +109,12 @@ void baseSSLCom<L4Proto>::init(baseHostCX* owner)  {
 template <class L4Proto>
 std::string baseSSLCom<L4Proto>::to_string(int verbosity) const {
     mp::stringstream ss;
+
     ss << "SSLCom[" << ( is_server() ? "server] <-" : "client] ->" );
     ss << "sni:" << get_sni() << " alpn: " << sslcom_alpn_;
 
     if(opt.bypass) ss << " bypassed";
+    if(opt.no_fallback_bypass) ss << " no_fallback_bypass";
 
     return ss.str().c_str();
 }
@@ -1748,7 +1750,15 @@ void baseSSLCom<L4Proto>::init_server() {
             _dia("SSLCom::init_server: using custom context 0x%x", sslcom_ctx);
         }
         else if(not sslcom_ctx) {
-            sslcom_ctx = factory()->default_tls_server_cx();
+
+            if(not opt.cert.mitm_cert_searched_only) {
+                sslcom_ctx = factory()->default_tls_server_cx();
+            }
+            else {
+                _dia("using default tls context is prohibited");
+                error(baseCom::ERROR_UNSPEC);
+                return;
+            }
         }
 
 
@@ -2014,6 +2024,9 @@ void baseSSLCom<L4Proto>::accept_socket (int sockfd) {
         counters.prof_accept_bypass_cnt++;
         return;
     }
+    if(not sslcom_ssl) {
+        return;
+    }
 
 
     if (l4_proto() == SOCK_DGRAM) {
@@ -2147,6 +2160,12 @@ int baseSSLCom<L4Proto>::handshake_server() {
     }
 
     ERR_clear_error();
+    if(not sslcom_ssl) {
+        _dia("SSLCom::handshake: socket not upgraded, failing");
+        error(ERROR_UNSPEC);
+        return -1;
+    }
+
     sslcom_ret = SSL_accept(sslcom_ssl);
 
     if(sslcom_ret == 1) {
@@ -2329,14 +2348,22 @@ ret_handshake baseSSLCom<L4Proto>::handshake() {
         op_code = handshake_server();
     }
 
-    int err = SSL_get_error(sslcom_ssl, op_code);
-    unsigned long err2 = ERR_get_error();
 
-    _dia("SSLCom::handshake: %s on socket %d: r=%d, err=%d, err2=%d", op_descr, socket(), op_code, err, err2);
+
+    _dia("SSLCom::handshake: %s on socket %d: r=%d", op_descr, socket(), op_code);
 
     // general error handling code - both accept and connect yield the same errors
     if (op_code < 0) {
+
+        if(error()) {
+            return ret_handshake::FATAL;
+        }
+
+        int err = SSL_get_error(sslcom_ssl, op_code);
+        unsigned long err2 = ERR_get_error();
         // potentially OK if non-blocking socket
+
+        _dia("SSLCom::handshake: %s on socket %d: ret=%d, err=%d, err2=%d", op_descr, socket(), op_code, err, err2);
 
         if (err == SSL_ERROR_WANT_READ) {
             _dia("SSLCom::handshake: SSL_%s[%d]: pending on want_read", op_descr , socket());
@@ -2390,15 +2417,19 @@ ret_handshake baseSSLCom<L4Proto>::handshake() {
         else {
             // any other error < 0 is considered as BAD thing.
 
-            _dia("SSLCom::handshake: SSL_%s: error: %d:%d",op_descr , err, err2);
+            _dia("SSLCom::handshake: SSL_%s: ret=0, err=%d, err2=%d", op_descr, err, err2);
             handshake_dia_error2(op_code, err, err2);
             sslcom_waiting = true;
             return ret_handshake::ERROR;
         }
 
     } else if (op_code == 0) {
+
+        int err = SSL_get_error(sslcom_ssl, op_code);
+        unsigned long err2 = ERR_get_error();
+
         // positively handshake error signalled by SSL_connect or SSL_accept
-        _dia("SSLCom::handshake: SSL_%s: error: %d:%d",op_descr , err, err2);
+        _dia("SSLCom::handshake: SSL_%s: ret=0, err=%d, err2=%d", op_descr, err, err2);
         handshake_dia_error2(op_code, err, err2);
 
         // shutdown OK, but connection failed
@@ -2407,12 +2438,18 @@ ret_handshake baseSSLCom<L4Proto>::handshake() {
     }
     else if (op_code == 2) {
 
-        // our internal signalling for bypass
-        opt.bypass = true;
-        verify_reset(verify_status_t::VRF_OK);
-        _dia("SSLCom::handshake: bypassed.");
+        if(opt.no_fallback_bypass) {
+            error(ERROR_UNSPEC);
+            return ret_handshake::FATAL;
+        }
+        else {
+            // our internal signalling for bypass
+            opt.bypass = true;
+            verify_reset(verify_status_t::VRF_OK);
+            _dia("SSLCom::handshake: bypassed.");
 
-        return ret_handshake::AGAIN;
+            return ret_handshake::AGAIN;
+        }
     }
 
 
@@ -2676,11 +2713,18 @@ bool baseSSLCom<L4Proto>::waiting_peer_hello() {
                         _dia("SSLCom::waiting_peer_hello: analysis failed");
                         _dia("SSLCom::waiting_peer_hello: failed ClientHello data:\r\n%s",
                                 hex_dump(sslcom_peer_hello_buffer.data(),sslcom_peer_hello_buffer.size(), 4, 0, true).c_str());
-                        
-                        if(bypass_me_and_peer()) {
-                            _inf("bypassing non-TLS connection");
-                            log.event(INF, "[%s] cannot read ClientHello: bypassed", peer_scom->to_string(iINF).c_str());
-                            return false;
+
+                        if (not opt.no_fallback_bypass) {
+                            _inf("fallback bypass disabled!");
+                            log.event(INF, "[%s] cannot read ClientHello: bypass disabled",
+                                      peer_scom->to_string(iINF).c_str());
+
+                            if (bypass_me_and_peer()) {
+                                _inf("bypassing non-TLS connection");
+                                log.event(INF, "[%s] cannot read ClientHello: bypassed",
+                                          peer_scom->to_string(iINF).c_str());
+                                return false;
+                            }
                         }
                         
                         error_flag_ = ERROR_UNSPEC; // peer nullptr or its com() is not SSLCom
