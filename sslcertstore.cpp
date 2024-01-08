@@ -129,7 +129,11 @@ bool SSLFactory::update_ssl_ctx_fullchain(CertificateChainCtx& chain, std::strin
         return false;
     }
 
+    bool load_status = false;
+    std::string error_msg;
+
     auto fp_key = raw::file(fopen(key.data(), "r"));
+
     if (fp_key.value) {
         auto ossl_key = PEM_read_PrivateKey(fp_key.value, nullptr, nullptr, nullptr);
         if(SSL_CTX_use_PrivateKey(chain.ctx, ossl_key) == 1) {
@@ -139,15 +143,28 @@ bool SSLFactory::update_ssl_ctx_fullchain(CertificateChainCtx& chain, std::strin
 
             chain.chain.key = SSL_CTX_get0_privatekey(chain.ctx);
             EVP_PKEY_up_ref(chain.chain.key);
+
+            if(chain.chain.cert and chain.chain.key) {
+                load_status = true;
+            }
+            else {
+                error_msg = chain.chain.cert ? "private key not loaded" : "certificate not loaded";
+            }
         }
         else {
-            auto serr = print_error();
-
-            log.event(ERR, "custom certificate loading error (fullchain): %s: %s", fullchain.data(), serr.c_str());
-            _err("custom certificate loading error (fullchain): %s: %s", fullchain.data(), serr.c_str());
-
-            return false;
+            error_msg = print_error();
         }
+    }
+    else {
+        error_msg = "unable to read private key file";
+    }
+
+    if(not load_status) {
+
+        log.event(ERR, "custom certificate loading error (fullchain): %s: %s", fullchain.data(), error_msg.c_str());
+        _err("custom certificate loading error (fullchain): %s: %s", fullchain.data(), error_msg.c_str());
+
+        return false;
     }
 
     return true;
@@ -225,9 +242,16 @@ bool SSLFactory::load_certs_from(const char* sub_dir, const char* cache_key_pref
                 if(full_loaded) {
                     std::string key = cache_key_prefix;
                     key += entry.path().filename();
-                    add_custom(key, ce_cx);
-
-                    log.event(INF, "custom certificate loaded (fullchain): %s", full_fnm.c_str());
+                    if(add_custom(key, ce_cx)) {
+                        log.event(INF, "custom certificate loaded (fullchain): %s", full_fnm.c_str());
+                    }
+                    else {
+                        // indicate full_chain failed to try other options
+                        full_loaded = false;
+                    }
+                }
+                else {
+                    log.event(ERR, "custom certificate (fullchain): %s failed", full_fnm.c_str());
                 }
             }
 
