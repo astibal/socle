@@ -2726,6 +2726,11 @@ bool baseSSLCom<L4Proto>::waiting_peer_hello() {
                                 return false;
                             }
                         }
+                        else {
+                            _inf("fallback bypass disabled!");
+                            log.event(INF, "[%s] cannot read ClientHello: bypass disabled",
+                                      peer_scom->to_string(iINF).c_str());
+                        }
                         
                         error_flag_ = ERROR_UNSPEC; // peer nullptr or its com() is not SSLCom
                         return false;
