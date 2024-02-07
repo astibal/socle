@@ -196,6 +196,8 @@ public:
 
         constexpr static const char* SNI_DIR =  "sni/";
         constexpr static const char* IP_DIR =  "ip/";
+        constexpr static const char* CC_SNI_DIR =  "cc-sni/";
+        constexpr static const char* CC_IP_DIR =  "cc-ip/";
 
         std::string def_ca_cert_str;
         std::string def_ca_key_str;

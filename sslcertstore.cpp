@@ -56,6 +56,14 @@ bool SSLFactory::load_custom_certificates() {
         _dia("some IP certificates not loaded");
     }
 
+    if (not load_certs_from(config_t::CC_SNI_DIR, "cc-sni:")) {
+        _dia("some SNI client certificates not loaded");
+    }
+    if (not load_certs_from(config_t::CC_IP_DIR, "cc-ip:")) {
+        _dia("some IP client certificates not loaded");
+    }
+
+
     return true;
 }
 

@@ -1435,14 +1435,17 @@ int baseSSLCom<L4Proto>::ssl_client_cert_callback(SSL* ssl, X509** x509, EVP_PKE
     
     auto* com = static_cast<baseSSLCom*>(data);
     if(com != nullptr) {
-        name = "sni:[" + com->get_sni();
-        if(com->owner_cx()) {
-             name += "]/" + com->owner_cx()->to_string(iINF);
+        auto sni = com->get_sni();
+        auto* owner = com->owner_cx();
+
+        name = "sni:[" + sni;
+        if(owner) {
+             name += "]/" + owner->to_string(iINF);
         }
         
         com->verify_bitset(verify_status_t::VRF_CLIENT_CERT_RQ);
         switch(com->opt.cert.client_cert_action) {
-            
+
             case 0:
                 _dia("[%s] sending empty client certificate disabled", name.c_str());
                 if(com->opt.cert.failed_check_replacement) {
@@ -1457,14 +1460,62 @@ int baseSSLCom<L4Proto>::ssl_client_cert_callback(SSL* ssl, X509** x509, EVP_PKE
                     return 1;
                 }
                 break;
-                
+
             case 1:
                 _dia("[%s] sending empty client certificate", name.c_str());
                 log.event(INF,"[%s]: client certificate requested - sent empty", name.c_str());
                 return 0;
                 
-            default:
+            case 2:
                 return 1;
+
+            case 3: {
+                bool found = false;
+
+                auto find_client_cert = [&](std::string const& what, std::string const& prefix) {
+                    _dia("looking for client certificate for: %s: %s", prefix.c_str(), what.c_str());
+                    log.event(DIA, "looking for client certificate for: %s: %s", prefix.c_str(), what.c_str());
+
+                    std::string key = prefix + ":" + what;
+                    auto parek = SSLFactory::factory().find_custom(key);
+                    if (parek) {
+                        found = true;
+
+                        *x509 = parek.value().chain.cert;
+                        X509_up_ref(*x509);
+
+                        *pkey = parek.value().chain.key;
+                        EVP_PKEY_up_ref(*pkey);
+
+                        _dia("found client certificate for: %s: %s", prefix.c_str(), what.c_str());
+                        log.event(INF, "found client certificate for: %s: %s", prefix.c_str(), what.c_str());
+
+                        return true;
+                    }
+                    return false;
+                };
+
+                if(not sni.empty()) {
+                    //_dia("looking for client certificate for: SNI: %s", sni.c_str());
+                    //log.event(DIA, "looking for client certificate for: SNI: %s", sni.c_str());
+
+                    //_dia("NYI");
+
+                    found = find_client_cert(sni, "cc-sni");
+                }
+                if(not found and owner) {
+                    auto ip = owner->host();
+
+                    if(not ip.empty()) {
+                        found = find_client_cert(ip, "cc-ip");
+                    }
+                }
+                if(not found) {
+                    _dia("no client certificate found - using empty");
+                    log.event(DIA, "no client certificate found - using empty");
+                }
+                return 1;
+            }
         }
     }
     
@@ -1626,6 +1677,9 @@ void baseSSLCom<L4Proto>::init_ssl_callbacks() {
 
                 _dia("[%s]: OCSP stapling enabled, mode %d", hr().c_str(), opt.ocsp.stapling_mode);
                 SSL_set_tlsext_status_type(sslcom_ssl, TLSEXT_STATUSTYPE_ocsp);
+
+                // this is CTX wide - callback setting here for each connection is unnecessary overhead.
+                // also, passing `this` as arg is incorrect, but is not used
                 SSL_CTX_set_tlsext_status_cb(sslcom_ctx, status_resp_callback);
                 SSL_CTX_set_tlsext_status_arg(sslcom_ctx, this);
             }
@@ -1633,6 +1687,10 @@ void baseSSLCom<L4Proto>::init_ssl_callbacks() {
                 _err("cannot load trusted store for OCSP. Fail-open.");
                 opt.ocsp.stapling_mode = 0;
             }
+        }
+        else {
+            verify_bitset(verify_status_t::VRF_OK);
+            verify_origin(verify_origin_t::NONE);
         }
 
         if (opt.ct_enable) {

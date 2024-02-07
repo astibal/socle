@@ -109,9 +109,11 @@ struct SSLComOptionsCert {
     int  failed_check_override_timeout = 600; // if failed ssl override is active, this is the timeout.
     int  failed_check_override_timeout_type = 0; // 0 - hard timeout, 1 - idle timeout (reset timer on traffic)
 
-    int client_cert_action = 1;                     // 0 - display a warning message and block, or drop the connection
+    int client_cert_action = 3;
+    // 0 - display a warning message and block, or drop the connection
     // 1 - pass, don't provide any certificate to server
     // 2 - bypass next connection
+    // 3 - try to find a client certificate based on SNI or IP, or send empty one
 
     bool mitm_cert_sni_search = false;      // allow search based on SNI
     bool mitm_cert_ip_search = false;      // allow search based on SNI
