@@ -1304,6 +1304,12 @@ int baseSSLCom<L4Proto>::status_resp_callback(SSL* ssl, void* arg) {
         return -1;
     }
 
+    if(not com->opt.ocsp.stapling_enabled and com->opt.ocsp.mode == 0) {
+        _dia("status_resp_callback[%s]: OCSP is completely disabled", name.c_str());
+        com->verify_reset(verify_status_t::VRF_OK);
+        com->verify_origin(verify_origin_t::NONE);
+        return 1;
+    }
 
     // it's not necessary to run any further checks, certificate is not OK
     // status callback comes usually earlier then certificate verify callback, but this can't be guaranteed.
@@ -2773,9 +2779,6 @@ bool baseSSLCom<L4Proto>::waiting_peer_hello() {
                                 hex_dump(sslcom_peer_hello_buffer.data(),sslcom_peer_hello_buffer.size(), 4, 0, true).c_str());
 
                         if (not opt.no_fallback_bypass) {
-                            _inf("fallback bypass disabled!");
-                            log.event(INF, "[%s] cannot read ClientHello: bypass disabled",
-                                      peer_scom->to_string(iINF).c_str());
 
                             if (bypass_me_and_peer()) {
                                 _inf("bypassing non-TLS connection");
