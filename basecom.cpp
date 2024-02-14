@@ -364,6 +364,15 @@ int baseCom::so_quickack(int sock) const {
     return sso;
 }
 
+int baseCom::so_keepalive(int sock) const {
+    constexpr int optval = 1;
+    int sso = setsockopt(sock, SOL_SOCKET, SO_KEEPALIVE , &optval, sizeof optval);
+    if(sso != 0) err_errno(string_format("baseCom::so_keepalive: setsockopt[%d]", sock).c_str(),
+                           "SOL_SOCKET/SO_KEEPALIVE", sso);
+
+    return sso;
+}
+
 int baseCom::so_transparent_v4(int sock) const {
     constexpr int optval = 1;
     int sso = setsockopt(sock, SOL_IP, IP_TRANSPARENT, &optval, sizeof(optval));

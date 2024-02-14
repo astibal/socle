@@ -187,6 +187,7 @@ public:
     int so_broadcast(int sock) const;
     int so_nodelay(int sock) const;
     int so_quickack(int sock) const;
+    int so_keepalive(int sock) const;
     int so_transparent_v4(int sock) const;
     int so_transparent_v6(int sock) const;
     int so_transparent(int sock) const;
