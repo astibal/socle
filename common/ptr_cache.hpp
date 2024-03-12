@@ -44,7 +44,13 @@ struct expiring {
     T& value() { return value_; };
     time_t& expired_at() { return expired_at_; };
 
-    virtual bool expired() { return (this->expired_at_ <= ::time(nullptr)); }
+    virtual bool expired() const { return (this->expired_at_ <= ::time(nullptr)); }
+    void extend(time_t seconds) {
+        if(expired()) expired_at_ = time(nullptr); // follow common sense - if expired, we want to extend from 'now'
+        expired_at_ += seconds;     // if not yet expired, we don't want to mess with the set value
+    }
+    void set_expiry(time_t new_expire_ts) { expired_at_ = new_expire_ts; }
+
     static bool is_expired(std::shared_ptr<expiring<T>> ptr) {  return ptr->expired(); }
 
 private:
@@ -64,7 +70,13 @@ struct expiring_ptr {
     T* value() { return value_.get(); };
     time_t& expired_at() { return expired_at_; };
 
-    virtual bool expired() { return (this->expired_at_ <= ::time(nullptr)); }
+    virtual bool expired() const { return (this->expired_at_ <= ::time(nullptr)); }
+    void extend(time_t seconds) {
+        if(expired()) expired_at_ = time(nullptr); // follow common sense - if expired, we want to extend from 'now'
+        expired_at_ += seconds;     // if not yet expired, we don't want to mess with the set value
+    }
+    void set_expiry(time_t new_expire_ts) { expired_at_ = new_expire_ts; }
+
     static bool is_expired(expiring<T> *ptr) { return ptr->expired(); }
 
 private:
