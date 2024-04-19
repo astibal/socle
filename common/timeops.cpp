@@ -44,7 +44,7 @@ long timeval_msdelta_now (struct timeval  *x)  {
 }
 
 
-std::string uptime_string(unsigned int uptime) {
+std::string uptime_string(time_t uptime) {
 
     double diff = uptime;
     std::ostringstream o;
@@ -101,6 +101,10 @@ std::string uptime_string(unsigned int uptime) {
     return o.str();
 }
 
+
+time_t epoch_days(time_t t) {
+    return t / (24UL * 60UL * 60UL);
+}
 
 // generic counter function:
 // increment counter @counter according to time @last_time value.
