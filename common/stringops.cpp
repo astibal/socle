@@ -37,7 +37,7 @@ void string_tags_update(std::vector<std::string>& tagvec, std::string const& str
         else {
 
             auto c = str[i];
-            if(isalnum(c)) {
+            if(isalnum(c) or c == '.' or c == '_' or c == '/') {
                 ss << str[i];
                 prev_token = ss.str();
             }
