@@ -43,7 +43,9 @@ add_library(
 		socle_size.hpp
 		epoll.cpp
 		xorshift.hpp
-		numops.hpp)
+		numops.hpp
+		stringops.hpp
+		stringops.cpp)
 
 if(UNIX)
 	IF(NOT CMAKE_BUILD_TYPE)

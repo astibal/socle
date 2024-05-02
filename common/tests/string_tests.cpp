@@ -1,6 +1,7 @@
 #include <gtest/gtest.h>
 
 #include <mempool/mempool.hpp>
+#include <common/stringops.hpp>
 
 TEST(Text,HexDump) {
 
@@ -155,4 +156,76 @@ TEST(Text,HexDump) {
 
 //    std::cout << string_format("%s", hex_dump(data, sizeof(data)).c_str());
     std::cout << hex_dump(data, sizeof(data)).c_str();
+}
+
+TEST(Text, TAGS_ADD) {
+    std::string tstr1 = "+abc+def+ghi";
+    std::vector<std::string> res1 = {"abc", "def", "ghi" };
+    auto t1 = string_tags(tstr1);
+
+    ASSERT_TRUE(t1 == res1);
+}
+
+TEST(Text, TAGS_REMOVE) {
+    std::string tstr1 = "+abc+def+ghi-abc";
+    std::vector<std::string> res1 = { "def", "ghi", };
+    auto t1 = string_tags(tstr1);
+
+    ASSERT_TRUE(t1 == res1);
+}
+
+TEST(Text, TAGS_UPDATE_ADD) {
+   std::vector<std::string> start = { "def", "ghi", };
+
+   // note: result will be alphabetically sorted
+   std::vector<std::string> result = { "abc", "def", "ghi" };
+
+    string_tags_update(start, "+abc");
+
+    ASSERT_TRUE(start == result);
+}
+
+TEST(Text, TAGS_UPDATE_SUB) {
+    std::vector<std::string> start = { "def", "ghi", };
+
+    // note: result will be alphabetically sorted
+    std::vector<std::string> result = { "def" };
+
+    string_tags_update(start, "-ghi");
+
+    ASSERT_TRUE(start == result);
+}
+
+
+TEST(Text, TAGS_UPDATE_ASSIGN) {
+    std::vector<std::string> start = { "def", "ghi", };
+
+    // note: result will be alphabetically sorted
+    std::vector<std::string> result = { "xyz" };
+
+    string_tags_update(start, "=xyz");
+
+    ASSERT_TRUE(start == result);
+}
+
+TEST(Text, TAGS_UPDATE_ASSIGN_1) {
+    std::vector<std::string> start = { "def", "ghi", };
+
+    // note: result will be alphabetically sorted
+    std::vector<std::string> result = { "xyz" };
+
+    string_tags_update(start, "+abc=xyz");
+
+    ASSERT_TRUE(start == result);
+}
+
+TEST(Text, TAGS_UPDATE_ASSIGN_2) {
+    std::vector<std::string> start = { "def", "ghi", };
+
+    // note: result will be alphabetically sorted
+    std::vector<std::string> result = { "abc", "def" };
+
+    string_tags_update(start, "=+abc+def");
+
+    ASSERT_TRUE(start == result);
 }
