@@ -18,6 +18,7 @@ void string_tags_update(std::vector<std::string>& tagvec, std::string const& str
         if(str[i] == '=') {
             tags.clear();
             ss = std::stringstream();
+            prev_token.clear();
         }
         else if(str[i] == '+' or str[i] == '-') {
 
@@ -31,6 +32,7 @@ void string_tags_update(std::vector<std::string>& tagvec, std::string const& str
             }
             op = str[i];
             ss = std::stringstream();
+            prev_token.clear();
         }
         else {
 

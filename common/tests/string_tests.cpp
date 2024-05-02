@@ -229,3 +229,12 @@ TEST(Text, TAGS_UPDATE_ASSIGN_2) {
 
     ASSERT_TRUE(start == result);
 }
+
+
+TEST(Text, TAGS_NONALNUM) {
+    std::string tstr1 = "+++ab;.c+d~ef+g--hi";
+    std::vector<std::string> res1 = {"abc", "def", "g" };
+    auto t1 = string_tags(tstr1);
+
+    ASSERT_TRUE(t1 == res1);
+}
