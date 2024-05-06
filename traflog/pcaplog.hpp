@@ -32,7 +32,7 @@
 
 namespace socle::traflog {
 
-    int raw_socket_gre(int family, int ttl);
+    int raw_socket_gre(int family, int ttl, std::string const& iface);
 
     class PcapLog : public baseTrafficLogger {
 
@@ -93,7 +93,9 @@ namespace socle::traflog {
     struct GreExporter : public pcapng::IP_Hook {
         bool execute(pcap::connection_details const& det, buffer const& buf) override {
 
-            if(sock < 0) sock = traflog::raw_socket_gre(target.dst.family, tun_ttl);
+            if(sock < 0) {
+                sock = traflog::raw_socket_gre(target.dst.family, tun_ttl, bind_interface);
+            }
 
             if(not target.dst.ss) return false;
             if(sock < 0) return false;
@@ -144,10 +146,12 @@ namespace socle::traflog {
         virtual ~GreExporter() { if(sock > 0) ::close(sock); }
 
         void ttl(uint8_t ttl) { tun_ttl = ttl; }
+        void bind_if(std::string_view ifa) { bind_interface=ifa; }
     private:
         SocketInfo target{};
         int sock {-1};
         int tun_ttl {32};
+        std::string bind_interface{};
     };
 
 }

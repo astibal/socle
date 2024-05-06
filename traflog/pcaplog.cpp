@@ -28,7 +28,7 @@ namespace socle::traflog {
         static const logan_lite pcaplog {"socle.pcaplog"};
     }
 
-    int raw_socket_gre(int family, int ttl) {
+    int raw_socket_gre(int family, int ttl, std::string const& iface) {
         auto const& log = log::pcaplog;
 
         int sock = socket(family, SOCK_RAW, IPPROTO_GRE);
@@ -36,6 +36,17 @@ namespace socle::traflog {
         if(sock < 0) return sock;
 
         int none = 0;
+
+        if(not iface.empty()) {
+            if (setsockopt(sock, SOL_SOCKET, SO_BINDTODEVICE, iface.c_str(), iface.length()) == -1) {
+                _err("raw_socket_gre: failed to bind raw socket to interface '%s'", iface.c_str());
+                close(sock);
+                return -1;
+            }
+            else {
+                _deb("raw_socket_gre: ok - bind raw socket to interface '%s'", iface.c_str());
+            }
+        }
 
         if (setsockopt (sock,
                         family == AF_INET6 ? IPPROTO_IPV6 : IPPROTO_IP,
