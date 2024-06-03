@@ -134,7 +134,7 @@ bool AppHostCX::detect (const std::shared_ptr<sensorType> &cur_sensor) {
                 continue;
                 
             } else {
-                _ext("AppHostCX::detect[%s]: Signature didn't match: %s",c_type(), vrangetos(ret).c_str());
+                _dum("AppHostCX::detect[%s]: Signature didn't match: %s",c_type(), vrangetos(ret).c_str());
             } 
         } else {
             _deb("AppHostCX::detect[%s]: Signature %s already matched",c_type(), sig_sig->name().c_str());

@@ -90,6 +90,7 @@ class Flow {
 
     flow_queue_type flow_queue_; // store flow data ... ala follow tcp stream :)
     int domain_ = SOCK_STREAM;   // if flow is not stream, data same-side chunks are stored separately
+    std::size_t pop_count_ {0L};
 
     logan_lite log;
 public:
@@ -109,8 +110,16 @@ public:
     std::size_t size() const { return flow_queue_.size(); }
 
     void pop() {
-        if(not flow_queue_.empty()) flow_queue_.pop_front();
+        if(not flow_queue_.empty()) {
+            flow_queue_.pop_front();
+            pop_count_++;
+        }
+
     }
+    [[nodiscard]] std::size_t pop_count() const {
+        return pop_count_;
+    }
+
     unsigned int append(SourceType src, buffer const& b) { return append(src, b.data(), b.size()); };
     unsigned int append(SourceType src, buffer const* pb) { return append(src, pb->data(), pb->size()); };
     unsigned int append(SourceType src,const unsigned char* data, size_t len) {
@@ -326,9 +335,16 @@ public:
         // sanitize step if we have some result already.  Step always starts at LAST already examined
         // flow, NOT NEXT. We need to check if there are new data in the last flow.
         if (! ret.empty() ) {
-            flow_step = ret.size() -1;
+            // flow can be trimmed in the meantime, we need to know how many times, to adjust range
+            // where we start from
+            auto pop_cnt = f->pop_count();
+            flow_step = static_cast<int>(ret.size() - pop_cnt) - 1;
+
+            if(pop_cnt > 0) {
+                _deb("flowMatch::match: pop-trim of %d applied to flow_step", pop_cnt);
+            }
         }
-        
+
         unsigned int cur_flow = flow_step;
         baseMatch* current_sig_match = nullptr;
 
