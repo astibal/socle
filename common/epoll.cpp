@@ -43,7 +43,7 @@ void epoll::_debug_sockets(int nfds) {
 int epoll::process_epoll_events(int nfds) {
     int i = 0;
 
-    for(; i < nfds; ++i) {
+    for(; i < nfds and i < EPOLLER_MAX_EVENTS; ++i) {
         int socket = events[i].data.fd;
         uint32_t eventset = events[i].events;
 
@@ -216,10 +216,10 @@ int epoll::wait(long timeout) {
 
         // optimized-out in Release builds
         _if_deb {
-            _debug_sockets(nfds);
+            _debug_sockets(cur_nfds);
         }
 
-        int proc = process_epoll_events(nfds);
+        int proc = process_epoll_events(cur_nfds);
         _deb("epoll::wait: processed %d from %d ready sockets - round %d", proc, nfds, count);
 
         count++;
