@@ -111,6 +111,9 @@ std::string baseSSLCom<L4Proto>::to_string(int verbosity) const {
     mp::stringstream ss;
 
     ss << "SSLCom[" << ( is_server() ? "server] <-" : "client] ->" );
+    if(owner_cx()) {
+        ss << " ip: " << owner_cx()->host() << ":" << owner_cx()->port() << ", ";
+    }
     ss << "sni:" << get_sni() << " alpn: " << sslcom_alpn_;
 
     if(opt.bypass) ss << " bypassed";

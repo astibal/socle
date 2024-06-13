@@ -123,14 +123,14 @@ bool operator==(const Host& h, const Host& hh);
  *  + directly using socket file descriptor - we call it internally 'reduced' state
  * 
  *  ### Connecting to remote host
- *  You can also take an advantage of 'permanent' HostCX setup. In this case, HostCX will be trying each [reconnect_delay_](@ref reconnect_delay_) seconds
+ *  You can also take an advantage of 'permanent' HostCX setup. In this case, HostCX will be trying each [open_timeout_](@ref open_timeout_) seconds
  *  to reconnect the socket. Blocking/non-blocking state is honored. If the connect is called and blocking is set, connect will just return negative value on error,
  *  or socket file descriptor on success.
  *  
  *  However, when non-blocking option is set, then it always return a socket and always succeeds (as ::connect() does). 
  *  Unless bytes are read/written to the socket, nobody really knows if the socket is ready or not. This is tracked for you be HostCX::read and HostCX::write,
  *  and it's reflected in return value of opening(). If true, the connection is still not ready. There is also opening_timeout(), which will return if the non-blocking 
- *  underlying socket is 'opening' too log. For this purpose [reconnect_delay_](@ref reconnect_delay_) is re-used, and opening_timeout() returns true if we are opening
+ *  underlying socket is 'opening' too log. For this purpose [open_timeout_](@ref open_timeout_) is re-used, and opening_timeout() returns true if we are opening
  *  socket longer.
  * 
  *  ### Sending and receiving data
@@ -187,6 +187,8 @@ public:
         static inline std::atomic<std::size_t> write_full = 200000;    // when to slightly delay our reads if this bytes is queued from their writing
         static inline uint16_t com_not_ready_slowdown = 20;            // when handshakes are not finished, how aggressive checking (higher, more aggressive)
         static inline std::atomic<std::size_t> fast_copy_start = 20*1024;      // how many bytes copy before moving whole buffers (too low may break detection)
+        static inline std::atomic_uint16_t open_timeout = 7;              // seconds after opening connection is considered unsuccessful
+        static inline std::atomic_uint16_t idle_delay = 3600;              // seconds after silent connection is considered dead
     };
 
     static inline params_t params {};
@@ -213,8 +215,8 @@ private:
 	
 	bool permanent_ = false; 	  //!< indice if we want to reconnect, if socket fails (unless HostCX is reduced)
 	time_t last_reconnect_ = 0;   //!< last time of an attempt to reconnect
-	unsigned short reconnect_delay_ = 7; //!< how often we will reconnect the socket (in seconds)
-	unsigned short idle_delay_ = 3600;     // when connection is idle for this time, it will timeout
+	unsigned short open_timeout_ = params_t::open_timeout; //!< how often we will reconnect the socket (in seconds)
+	unsigned short idle_delay_ = params_t::idle_delay;     // when connection is idle for this time, it will timeout
 
 	time_t t_connected{0}; 	  //!< connection timeout facility, useful when socket is opened non-blocking
 	
@@ -403,7 +405,7 @@ public:
     [[nodiscard]] bool reduced() const { return host_.empty() && port_.empty() ; }
 	int connect();
 	bool reconnect();
-	inline int reconnect_delay() const { return reconnect_delay_; }
+	inline int reconnect_delay() const { return open_timeout_; }
 	inline int idle_delay() const { return idle_delay_; };
     inline void idle_delay(unsigned short d) { idle_delay_ = d; };
     
