@@ -451,31 +451,77 @@ int baseSSLCom<L4Proto>::check_server_dh_size(SSL* ssl) {
 #endif
 }
 
+template<class L4Proto>
+bool baseSSLCom<L4Proto>::is_cert_validation_err_code_allowed_by_options(int err_code) const
+{
+    switch(err_code) {
+
+        case X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY:
+        case X509_V_ERR_UNABLE_TO_VERIFY_LEAF_SIGNATURE:
+        case X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT:
+            return opt.cert.allow_unknown_issuer;
+
+        case X509_V_ERR_SELF_SIGNED_CERT_IN_CHAIN:
+        case X509_V_ERR_CERT_UNTRUSTED:
+            return opt.cert.allow_self_signed_chain;
+
+        case X509_V_ERR_DEPTH_ZERO_SELF_SIGNED_CERT:
+            return opt.cert.allow_self_signed;
+
+        case X509_V_ERR_CERT_NOT_YET_VALID:
+        case X509_V_ERR_ERROR_IN_CERT_NOT_BEFORE_FIELD:
+            return opt.cert.allow_not_valid;
+
+        case X509_V_ERR_CERT_HAS_EXPIRED:
+        case X509_V_ERR_ERROR_IN_CERT_NOT_AFTER_FIELD:
+            return opt.cert.allow_not_valid;
+
+        default:
+            break;
+    }
+
+    return false;
+}
 
 template<class L4Proto>
 void baseSSLCom<L4Proto>::report_certificate_problem(X509* err_cert, int err_code) const {
     auto better_name = socle::com::ssl::connection_name(this, true);
 
+    // don't log if validation fails, but reason of failure is tolerated and allowed by options
+    // still we want to show debugs, so _log* macros are still executed
+
+    bool do_log = not is_cert_validation_err_code_allowed_by_options(err_code);
+
     _deb("[%s]: SSLCom::ssl_client_vrfy_callback: %d:%s",better_name.c_str(), err_code, X509_verify_cert_error_string(err_code));
+
+    if(not do_log) {
+        // announce this problem won't be reported in event log
+        _deb("[%s]: SSLCom::ssl_client_vrfy_callback: event supressed due to profile settings", better_name.c_str());
+    }
 
     auto event = log.event_block();
 
-    log.event(ERR, "[%s]: certificate verify problem: %d:%s", better_name.c_str(), err_code, X509_verify_cert_error_string(err_code));
+    if(do_log)
+        log.event(ERR, "[%s]: certificate verify problem: %d:%s", better_name.c_str(), err_code, X509_verify_cert_error_string(err_code));
 
     if (err_cert) {
         _dia("[%s]: SSLCom::ssl_client_vrfy_callback: '%s' issued by '%s'", better_name.c_str(),
              SSLFactory::print_cn(err_cert).c_str(),
              SSLFactory::print_issuer(err_cert).c_str());
 
-        log.event(ERR, "[%s]: certificate verify problem: '%s' issued by '%s'", better_name.c_str(),
-                  SSLFactory::print_cn(err_cert).c_str(),
-                  SSLFactory::print_issuer(err_cert).c_str());
+        if(do_log) {
+            log.event(ERR, "[%s]: certificate verify problem: '%s' issued by '%s'", better_name.c_str(),
+                      SSLFactory::print_cn(err_cert).c_str(),
+                      SSLFactory::print_issuer(err_cert).c_str());
 
-        log.event_detail(event.eid, "%s", ssl_error_details().c_str());
+            log.event_detail(event.eid, "%s", ssl_error_details().c_str());
+        }
     }
     else {
         _dia("[%s]: SSLCom::ssl_client_vrfy_callback: no server certificate", better_name.c_str());
-        log.event(ERR, "%s: no server certificate", better_name.c_str());
+
+        if(do_log)
+            log.event(ERR, "%s: no server certificate", better_name.c_str());
     }
 }
 

@@ -586,6 +586,7 @@ public:
                                         const unsigned char *in, unsigned int inlen,
                                         void *arg);
 
+    bool is_cert_validation_err_code_allowed_by_options(int err_code) const;
     void report_certificate_problem(X509* err_cert, int err_code) const;
 
     TYPENAME_OVERRIDE("SSLCom")
