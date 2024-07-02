@@ -136,6 +136,10 @@ struct SSLComCryptoFeatures {
     bool no_tickets = false;  // enable abbreviated TLS handshake
 };
 
+struct SSLComAlerts {
+    bool decode_error_in_operational = false;
+};
+
 struct SSLComOptions {
     // total bypass
     bool bypass = false;
@@ -145,11 +149,13 @@ struct SSLComOptions {
     bool alpn_block = false;
     bool no_fallback_bypass = false;
 
-    SSLComCryptoFeatures left;
-    SSLComCryptoFeatures right;
 
-    SSLComOptionsCert cert;
-    SSLComOptionsOcsp ocsp;
+    SSLComCryptoFeatures left {};
+    SSLComCryptoFeatures right {};
+
+    SSLComOptionsCert cert {};
+    SSLComOptionsOcsp ocsp {};
+    SSLComAlerts alerts {};
 };
 
 struct SSLComCounters {
@@ -234,8 +240,10 @@ public:
     std::string get_peer_id() const { return sslcom_peer_hello_id(); } //return copy of SNI
     std::string get_peer_alpn() const { return sslcom_peer_hello_alpn(); } //return copy of ALPN
 
-    enum class client_state_t { NONE, INIT, PEER_CLIENTHELLO_WAIT , PEER_CLIENTHELLO_RECVD, CONNECTING, CONNECTED };
-    client_state_t client_state_ = client_state_t::NONE;
+    // does not indicate SSL state, but operational level of the socket
+    // UNKNOWN - default value
+    // READY - successful handshake by SSL_accept() or SSL_connect()
+    enum class sslcom_op_state_t { UNKNOWN, READY } sslcom_op_state { sslcom_op_state_t::UNKNOWN };
 
     static int extdata_index() { return sslcom_ssl_extdata_index; };
 

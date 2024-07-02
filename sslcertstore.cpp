@@ -282,8 +282,8 @@ bool SSLFactory::load_certs_from(const char* sub_dir, const char* cache_key_pref
         }
     }
     catch (std::filesystem::filesystem_error const& e) {
-        log.event(ERR, R"(load_certs_from( "%s", "%s"): error %s)", sub_dir, cache_key_prefix, e.what());
-        _dia(R"(load_certs_from( "%s", "%s"): error %s)", sub_dir, cache_key_prefix, e.what());
+        log.event(ERR, R"(load_certs_from("%s", "%s"): error %s)", sub_dir, cache_key_prefix, e.what());
+        _dia(R"(load_certs_from("%s", "%s"): error %s)", sub_dir, cache_key_prefix, e.what());
     }
 
     return true;

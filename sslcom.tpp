@@ -347,18 +347,30 @@ void baseSSLCom<L4Proto>::ssl_msg_callback(int write_p, int version, int content
                 // unexpected message
                 com->log_profiling_stats(iDEB);
             }
-            
-            // if level is Fatal, log com error and close. 
-            if(level > 1) {
-                _err("[%s]: TLS alert: %s/%s [%d/%d]", name.c_str(),
+
+            bool skip_this_one = false;
+
+            auto state = SSL_get_state(com->sslcom_ssl);
+
+            // if handsake is finished and there is decode error, it's in vast majority
+            // cases abruptly closed socket from the peer.
+            skip_this_one = ((not com->opt.alerts.decode_error_in_operational)
+                                and com->sslcom_op_state == sslcom_op_state_t::READY
+                                and code == TLS1_AD_DECODE_ERROR);
+
+            // if level is Fatal, log com error and close.
+            if(level > 1 and not skip_this_one) {
+                const char* side_comment = com->is_server() ? "left" : "right";
+                const char* state_comment = SSL_state_string(com->sslcom_ssl);
+
+                _err("[%s|%s|%s]: TLS alert: %s/%s [%d/%d]", name.c_str(), side_comment, state_comment,
                         SSL_alert_type_string_long(int_code),SSL_alert_desc_string_long(int_code),level,code);
                 com->error(ERROR_UNSPEC);
 
                 auto event = log.event_block();
 
-                const char* side_comment = com->is_server() ? "server side" : "client side";
 
-                log.event(ERR, "[%s|%s]: TLS alert: %s/%s [%d/%d]", com->to_string(iINF).c_str(), side_comment,
+                log.event(ERR, "[%s|%s|%s]: TLS alert: %s/%s [%d/%d]", com->to_string(iINF).c_str(), side_comment, state_comment,
                           SSL_alert_type_string_long(int_code),SSL_alert_desc_string_long(int_code),level,code);
 
                 baseSSLCom* details_com = com;
@@ -1529,7 +1541,6 @@ int baseSSLCom<L4Proto>::ssl_client_cert_callback(SSL* ssl, X509** x509, EVP_PKE
 
                 auto find_client_cert = [&](std::string const& what, std::string const& prefix) {
                     _dia("looking for client certificate for: %s: %s", prefix.c_str(), what.c_str());
-                    log.event(DIA, "looking for client certificate for: %s: %s", prefix.c_str(), what.c_str());
 
                     std::string key = prefix + ":" + what;
                     auto parek = SSLFactory::factory().find_custom(key);
@@ -1543,7 +1554,6 @@ int baseSSLCom<L4Proto>::ssl_client_cert_callback(SSL* ssl, X509** x509, EVP_PKE
                         EVP_PKEY_up_ref(*pkey);
 
                         _dia("found client certificate for: %s: %s", prefix.c_str(), what.c_str());
-                        log.event(INF, "found client certificate for: %s: %s", prefix.c_str(), what.c_str());
 
                         return true;
                     }
@@ -1567,7 +1577,6 @@ int baseSSLCom<L4Proto>::ssl_client_cert_callback(SSL* ssl, X509** x509, EVP_PKE
                 }
                 if(not found) {
                     _dia("no client certificate found - using empty");
-                    log.event(DIA, "no client certificate found - using empty");
                 }
                 return 1;
             }
@@ -2163,6 +2172,7 @@ void baseSSLCom<L4Proto>::accept_socket (int sockfd) {
     sslcom_ret = SSL_accept(sslcom_ssl);
     if (sslcom_ret > 0) {
         _dia("SSLCom::accept_socket[%d]: success at 1st attempt.", sockfd);
+        sslcom_op_state = sslcom_op_state_t::READY;
         counters.prof_accept_ok++;
         sslcom_waiting = false;
 
@@ -2282,6 +2292,7 @@ int baseSSLCom<L4Proto>::handshake_server() {
     sslcom_ret = SSL_accept(sslcom_ssl);
 
     if(sslcom_ret == 1) {
+        sslcom_op_state = sslcom_op_state_t::READY;
         store_session_if_needed();
     }
 
@@ -2385,6 +2396,9 @@ int baseSSLCom<L4Proto>::handshake_client() {
 
     ERR_clear_error();
     sslcom_ret = SSL_connect(sslcom_ssl);
+    if(sslcom_ret > 0) {
+        sslcom_op_state = sslcom_op_state_t::READY;
+    }
 
     counters.prof_connect_cnt++;
     baseSSLCom::counter_ssl_connect++;
@@ -3682,12 +3696,15 @@ int baseSSLCom<L4Proto>::upgrade_client_socket(int sock) {
         sslcom_ret = SSL_connect(sslcom_ssl);
         counters.prof_connect_cnt++;
 
-        if(sslcom_ret <= 0 && is_blocking(sock)) {
-            _err("SSL connect error on socket %d",sock);
-            close(sock);
-            return -1;
+        if (sslcom_ret > 0) {
+            sslcom_op_state = sslcom_op_state_t::READY;
         }
-        else if (sslcom_ret <= 0) {
+        else {
+            if(is_blocking(sock)) {
+                _err("SSL connect error on blocking socket %d",sock);
+                close(sock);
+                return -1;
+            }
             /* non-blocking may return -1 */
 
             if (sslcom_ret == -1) {
