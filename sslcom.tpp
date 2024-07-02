@@ -348,18 +348,17 @@ void baseSSLCom<L4Proto>::ssl_msg_callback(int write_p, int version, int content
                 com->log_profiling_stats(iDEB);
             }
 
-            bool skip_this_one = false;
-
             auto state = SSL_get_state(com->sslcom_ssl);
 
             // if handsake is finished and there is decode error, it's in vast majority
             // cases abruptly closed socket from the peer.
-            skip_this_one = ((not com->opt.alerts.decode_error_in_operational)
+            bool skip_this_one = ((not com->opt.alerts.decode_error_in_operational)
                                 and com->sslcom_op_state == sslcom_op_state_t::READY
                                 and code == TLS1_AD_DECODE_ERROR);
+            bool skip_all = com->opt.alerts.suppress_all;
 
             // if level is Fatal, log com error and close.
-            if(level > 1 and not com->opt.alerts.suppress_all and not skip_this_one) {
+            if(level > 1) {
                 const char* side_comment = com->is_server() ? "left" : "right";
                 const char* state_comment = SSL_state_string(com->sslcom_ssl);
 
@@ -367,19 +366,21 @@ void baseSSLCom<L4Proto>::ssl_msg_callback(int write_p, int version, int content
                         SSL_alert_type_string_long(int_code),SSL_alert_desc_string_long(int_code),level,code);
                 com->error(ERROR_UNSPEC);
 
-                auto event = log.event_block();
+                if(not skip_all and not skip_this_one) {
+                    auto event = log.event_block();
 
+                    log.event(ERR, "[%s|%s|%s]: TLS alert: %s/%s [%d/%d]", com->to_string(iINF).c_str(), side_comment,
+                              state_comment,
+                              SSL_alert_type_string_long(int_code), SSL_alert_desc_string_long(int_code), level, code);
 
-                log.event(ERR, "[%s|%s|%s]: TLS alert: %s/%s [%d/%d]", com->to_string(iINF).c_str(), side_comment, state_comment,
-                          SSL_alert_type_string_long(int_code),SSL_alert_desc_string_long(int_code),level,code);
+                    baseSSLCom *details_com = com;
+                    if (com->is_server()) {
+                        details_com = nullptr;
+                        if (com->peer()) details_com = dynamic_cast<baseSSLCom *>(com->peer());
+                    }
 
-                baseSSLCom* details_com = com;
-                if(com->is_server()) {
-                    details_com = nullptr;
-                    if(com->peer()) details_com = dynamic_cast<baseSSLCom*>(com->peer());
+                    if (details_com) log.event_detail(event.eid, "%s", details_com->ssl_error_details().c_str());
                 }
-
-                if(details_com) log.event_detail(event.eid, "%s", details_com->ssl_error_details().c_str());
             }
             
         }
