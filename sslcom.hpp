@@ -137,7 +137,11 @@ struct SSLComCryptoFeatures {
 };
 
 struct SSLComAlerts {
+    // don't alert when there is decoding error in 'ready' operational state (after handshake)
+    // this is commonly happening when peer closes TLS socket without close_notify.
     bool decode_error_in_operational = false;
+    // don't alert any TLS errors
+    bool suppress_all = false;
 };
 
 struct SSLComOptions {

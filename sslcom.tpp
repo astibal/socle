@@ -359,7 +359,7 @@ void baseSSLCom<L4Proto>::ssl_msg_callback(int write_p, int version, int content
                                 and code == TLS1_AD_DECODE_ERROR);
 
             // if level is Fatal, log com error and close.
-            if(level > 1 and not skip_this_one) {
+            if(level > 1 and not com->opt.alerts.suppress_all and not skip_this_one) {
                 const char* side_comment = com->is_server() ? "left" : "right";
                 const char* state_comment = SSL_state_string(com->sslcom_ssl);
 
