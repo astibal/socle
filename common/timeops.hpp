@@ -22,6 +22,7 @@
 
 [[maybe_unused]] long timeval_msdelta (struct timeval  *x,struct timeval  *y);
 [[maybe_unused]]long timeval_msdelta_now(struct timeval  *x);
+[[maybe_unused]] std::string make_ts();
 
 std::string uptime_string(time_t uptime);
 time_t epoch_days(time_t);

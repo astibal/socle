@@ -20,9 +20,11 @@
 #include <ctime>
 #include <string>
 #include <sstream>
+#include <chrono>
 
 #include <timeops.hpp>
 #include <sys/time.h>
+#include <iomanip>
 
 long timeval_msdelta (struct timeval  *x,struct timeval  *y)  {
 
@@ -43,6 +45,21 @@ long timeval_msdelta_now (struct timeval  *x)  {
     return sec_delta + usec_delta;
 }
 
+std::string make_ts() {
+    auto now = std::chrono::system_clock::now();
+    auto itt = std::chrono::system_clock::to_time_t(now);
+    auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now.time_since_epoch()) % 1000;
+
+    struct tm result{};
+    gmtime_r(&itt, &result);
+
+    std::ostringstream oss;
+    oss << std::put_time(&result, "%Y-%m-%d--%H:%M:%S"); // Put time using UTC format into the stream.
+    oss << '.' << std::setfill('0') << std::setw(3) << ms.count();
+    std::string timestamp(oss.str());
+
+    return timestamp;
+}
 
 std::string uptime_string(time_t uptime) {
 
