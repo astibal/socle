@@ -23,7 +23,10 @@
 #include <algorithm>
 #include <cstring>
 
+#ifndef LIBC_MUSL
 #include <execinfo.h>
+#endif
+
 #include <sys/utsname.h>
 
 #include "display.hpp"

@@ -26,7 +26,9 @@
 #include <unordered_map>
 #include <atomic>
 
+#if defined(MEMPOOL_DEBUG) || !defined(LIBC_MUSL)
 #include <execinfo.h>
+#endif
 
 #include <display.hpp>
 #include <lockable.hpp>
@@ -79,7 +81,7 @@ struct mem_chunk
 
 
 
-#ifdef MEMPOOL_DEBUG
+#if defined(MEMPOOL_DEBUG) || !defined(LIBC_MUSL)
 
     #define MEM_CHUNK_TRACE_SZ 64
 
