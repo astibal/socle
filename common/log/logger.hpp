@@ -301,6 +301,7 @@ void LogMux::log(loglevel const& l, const std::string& fmt, Args ... args) {
     auto usec = get_usec();
 
 #ifndef _POSIX_C_SOURCE
+    auto const now = std::chrono::system_clock::now();
     auto tt = std::chrono::system_clock::to_time_t(now);
 #else
     time_t const tt = time(nullptr);
