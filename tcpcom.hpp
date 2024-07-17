@@ -100,7 +100,8 @@ protected:
     DECLARE_LOGGING(to_string)
 
 private:
-    logan_lite log {"com.tcp"};
+    static inline logan_lite log {"com.tcp"};
+    static inline logan_lite log_state {"com.tcp.state"};
 };
 
 #endif

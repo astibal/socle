@@ -176,6 +176,7 @@ int TCPCom::bind(unsigned short port) {
 
 
 int TCPCom::accept ( int sockfd, sockaddr* addr, socklen_t* addrlen_ ) {
+
     int news = ::accept(sockfd, addr, addrlen_);
 
     if (news < 0) {
@@ -193,7 +194,39 @@ int TCPCom::accept ( int sockfd, sockaddr* addr, socklen_t* addrlen_ ) {
     return news;
 }
 
+bool is_socket_writable(int sock) {
+    // Create an epoll instance
+    int epoll_fd = epoll_create1(0);
+    if (epoll_fd == -1) {
+        return false;
+    }
+
+    // Register the socket with epoll for write events
+    epoll_event event;
+    event.events = EPOLLOUT;
+    event.data.fd = sock;
+    if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, sock, &event) == -1) {
+        close(epoll_fd);
+        return false;
+    }
+
+    // Wait for the socket to be writable with minimal timeout
+    epoll_event events[1];
+    int nfds = epoll_wait(epoll_fd, events, 1, 0); // 0 ms timeout
+
+    // Clean up
+    close(epoll_fd);
+
+    if (nfds > 0 && (events[0].events & EPOLLOUT)) {
+        return true;
+    }
+
+    return false;
+}
+
 bool TCPCom::is_connected(int s) {
+    auto& log = log_state;
+
 
     // we already **know** connection was established
     if(connect_proven) return true;
@@ -216,20 +249,28 @@ bool TCPCom::is_connected(int s) {
     // fstat(s, &stb);
 
     int r_getsockopt = getsockopt(s, SOL_SOCKET, SO_ERROR, &error_code, &l);
-    error_code = errno;
-    
+    _deb("TCPCom::is_connected[%d]: getsockopt error_code %d = %s", s, error_code, string_error(error_code).c_str());
+
     if ( r_getsockopt == 0 ) {
-                                
+
         if(error_code == 0) {
-                _dum("TCPCom::is_connected[%d]: getsockopt errno %d = %s", s, error_code, string_error(error_code).c_str());
-                _deb("TCPCom::is_connected[%d]: getsockopt now ok", s);
-                connect_proven = true;
+                _deb("TCPCom::is_connected[%d]: getsockopt seems ok", s);
+
+                if(is_socket_writable(s)) {
+                    _deb("TCPCom::is_connected[%d]: epoll sees this socket writable, returning OK", s);
+                    connect_proven = true;
+                }
+                else {
+                    _deb("TCPCom::is_connected[%d]: epoll sees this socket as non-writable, returning NOK", s);
+                }
+
+            _deb("TCPCom::is_connected[%d]: %s", s, connect_proven ? "connected" : "not connected");
+            return connect_proven;
+
         }
 
-        _deb("TCPCom::is_connected[%d]: getsockopt errno %d = %s", s, error_code, string_error(error_code).c_str());
-
         // connection not proven yet, so check if poll returned something about this socket
-        if(error_code == EINPROGRESS) {
+        else if(error_code == EINPROGRESS) {
             auto in_w = master()->in_writeset(s);
             auto in_r = master()->in_readset(s);
             if( in_r or in_w ) {
@@ -245,18 +286,18 @@ bool TCPCom::is_connected(int s) {
 
             return false;
         }
-
-        // optimized-out in Release
-        _if_deb {
-            if(master()->poller.in_write_set(s)) {
-                _deb("TCPCom::is_connected[%d]: writable", s);
-            } else {
-                _deb("TCPCom::is_connected[%d]: not writable", s);
+        else {
+            // optimized-out in Release
+            _if_deb {
+                if (master()->poller.in_write_set(s)) {
+                    _deb("TCPCom::is_connected[%d]: in writeset, but socket error", s);
+                } else {
+                    _deb("TCPCom::is_connected[%d]: not in writeset and with a socket error", s);
+                }
             }
+
+            return false;
         }
-
-        return true;
-
     } else {
         _dia("TCPCom::is_connected[%d]: getsockopt failed, returned %d = %s", s, r_getsockopt, string_error(error_code).c_str());
         return false;
@@ -265,15 +306,11 @@ bool TCPCom::is_connected(int s) {
 
 
 bool TCPCom::com_status() {
+    auto& log = log_state;
     
-    if(baseCom::com_status()) {
-        bool r = is_connected(socket());
-        _deb("TCPCom::com_status: returning %d", r);
-        return r;
-    }
-    
-    _deb("TCPCom::com_status: returning 0");
-    return false;    
+    bool r = is_connected(socket());
+    _deb("TCPCom::com_status: connected returning %d", r);
+    return r;
 }
 
 void TCPCom::on_new_socket(int _fd) {

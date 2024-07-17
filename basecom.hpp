@@ -151,7 +151,7 @@ public:
     bool forced_read_reset() { bool r = forced_read_; if (!forced_read_always_) { forced_read_ = false; } return r; }
     bool forced_write_reset() { bool r = forced_write_; if (!forced_write_always_) {forced_write_ = false; } return r; }
     
-    virtual bool com_status() { _dum("baseCom::com_status: returning 1"); return true; }
+    virtual bool com_status() { return true; }
     inline std::string& logbuf() { return log_buffer_; };
     
     baseCom* peer() const { return peer_; }
