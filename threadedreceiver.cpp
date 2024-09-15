@@ -228,7 +228,7 @@ int ThreadedReceiver<Worker>::add_first_datagrams(int sock, SocketInfo& pinfo) {
         _err("ThreadedReceiver::add_first_datagrams[%d]: cannot enqueue data of size %d", sock, red);
     }
 
-    // crate sockets only for new entries
+    // create sockets only for new entries
     if(new_entry) {
         entry->socket_left = pinfo.create_socket_left(com()->l4_proto());
         hint_push_all(session_key);

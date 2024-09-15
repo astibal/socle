@@ -710,7 +710,7 @@ ssize_t UDPCom::write_to_pool(int _fd, const void* _buf, size_t _n, int _flags) 
             if(record->socket_left.has_value()) {
                 da_socket = record->socket_left.value();
             } else {
-                _deb("Constucting IPv6 pktinfo");
+                _deb("Constructing IPv6 pktinfo");
                 
                 cmsg->cmsg_level = IPPROTO_IPV6;
                 cmsg->cmsg_type = IPV6_PKTINFO;

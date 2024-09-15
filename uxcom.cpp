@@ -40,12 +40,12 @@ int UxCom::connect(const char* host, const char* noop_port) {
 
         if (::connect(sfd, (struct sockaddr *) &server, sizeof(struct sockaddr_un)) < 0) {
             if ( errno == EINPROGRESS ) {
-                _deb("UxCom::connect[%s:%s]: socket[%d]: connnect errno: EINPROGRESS", host, port, sfd);
+                _deb("UxCom::connect[%s:%s]: socket[%d]: connect errno: EINPROGRESS", host, port, sfd);
                 
             } else {
                 close(sfd);
                 sfd = 0;
-                _not("UxCom::connect[%s:%s]: socket[%d]: connnect errno: %s", host, port, sfd, string_error().c_str());
+                _not("UxCom::connect[%s:%s]: socket[%d]: connect errno: %s", host, port, sfd, string_error().c_str());
             }
 
         }

@@ -183,7 +183,7 @@ public:
         return false;
     }
     
-    bool dettach() {
+    bool detach() {
 
         auto const& log = get_log();
         bool ret = true;

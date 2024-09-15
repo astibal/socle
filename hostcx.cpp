@@ -628,7 +628,7 @@ int baseHostCX::write() {
             if(rescan_out_flag_) {
                 rescan_out_flag_ = false;
 
-                // stop monitoring write which results in loop an unnecesary write() calls
+                // stop monitoring write which results in loop an unnecessary write() calls
                 com()->change_monitor(socket(), EPOLLIN);
             }
         }
