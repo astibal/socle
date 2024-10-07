@@ -8,6 +8,7 @@
 #include <limits>
 #include <optional>
 #include <cmath>
+#include <cstdint>
 
 
 namespace socle::raw {

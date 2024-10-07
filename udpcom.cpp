@@ -577,11 +577,11 @@ int UDPCom::read_from_pool(int _fd, void* _buf, size_t _n, int _flags) {
                 break;
             }
 
-            // because we did not necessarily traversed all entries, we need to make sure there is nothing left
+            // because we did not necessarily traverse all entries, we need to make sure there is nothing left
             // if more data, we *must* add it back to in_set - expect timeouts and delays otherwise.
 
             int bytes_left = 0;
-            int elems_left = 0;
+            [[maybe_unused]] int elems_left = 0;
             for(auto& queue_elem : record->rx_queue) {
                 if(! queue_elem.empty()) {
                     bytes_left += queue_elem.size();
