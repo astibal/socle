@@ -64,6 +64,7 @@ public:
     enum  class sq_type_t { SQ_PIPE = 0, SQ_SOCKETPAIR = 1 };
     sq_type_t sq_type() const { return sq_type_; }
     const char* sq_type_str() const;
+    std::string stats_str(int indent=0) const;
 
     int close_all();
     std::size_t push_all(int s);
@@ -190,6 +191,13 @@ struct FdQueueHandler {
     [[nodiscard]] std::atomic_uint32_t& worker_id_max() {
         if(fdqueue)
             return fdqueue->worker_id_max();
+
+        throw fdqueue_error("handler: no fdqueue");
+    }
+
+    [[nodiscard]] std::string stats_str(int indent=0) {
+        if(fdqueue)
+            return fdqueue->stats_str(indent);
 
         throw fdqueue_error("handler: no fdqueue");
     }

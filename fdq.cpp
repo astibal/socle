@@ -133,6 +133,55 @@ void FdQueue::update_load(uint32_t worker_id, uint32_t load) {
      }
 }
 
+std::string FdQueue::stats_str(int indent) const {
+
+    std::multimap<uint64_t, WorkerPipe const*> candidates;
+    std::stringstream ss;
+
+    for(auto const& [ key, pipes ]: hint_pairs_) {
+        candidates.insert(std::pair(pipes.seen_worker_load.load(), &pipes));
+    }
+
+    constexpr size_t max_sz = 10240;
+    std::array<unsigned char, max_sz> dummy {};
+
+    for(auto const& [ load, pipe]: candidates) {
+
+        auto sock = pipe->pipe_to_scheduler();
+
+        auto red = ::recv(sock, dummy.data(), max_sz, MSG_PEEK);
+
+        for (int i = 0; i < indent; ++i) { ss << " "; } // make indent
+
+        ss << string_format("hint pipe[%d] to_worker=%dB load=%d", sock, red, load);
+        if(red < 0) {
+            if(errno != EAGAIN and errno != EWOULDBLOCK) {
+                ss << " ++ error: " << string_error();
+            }
+            else {
+                ss << " ++ ok: (EAGAIN)";
+            }
+        }
+        else if(static_cast<size_t>(red) >= max_sz) {
+            ss << " ++ max buffer read (there is probably even more)";
+        }
+
+        ss << "\n";
+    }
+
+    std::size_t qsz = 0;
+    {
+        auto lc_ = std::lock_guard(sq_lock_);
+        qsz = sq_.size();
+    }
+
+    for (int i = 0; i < indent; ++i) { ss << " "; } // make indent
+    ss << "Socket queue size: " << qsz << "\n";
+
+    return ss.str();
+}
+
+
 int FdQueue::pop(uint32_t worker_id) {
 
     ssize_t red = 0;
