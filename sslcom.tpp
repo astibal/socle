@@ -3309,7 +3309,10 @@ ssize_t baseSSLCom<L4Proto>::read (int _fd, void* _buf, size_t _n, int _flags ) 
 
             case SSL_ERROR_ZERO_RETURN:
                 _deb("SSLCom::read[%d]: zero returned", _fd);
-                return sslcom_ret;
+                error(ERROR_READ);
+
+                // we used to return sslcom_ret, but it may be -1 (we don't want that - it indicates "try later")
+                return 0;
 
             case SSL_ERROR_WANT_READ:
                 _deb("SSLCom::read[%d]: want read: err=%d, read_now=%4d, total=%4d", _fd, err, sslcom_ret, total_r);
