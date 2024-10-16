@@ -3233,6 +3233,15 @@ ssize_t baseSSLCom<L4Proto>::read (int _fd, void* _buf, size_t _n, int _flags ) 
             _dia("SSLCom::read[%d]: peek returned %d", _fd, sslcom_ret);
         } else {
             _dum("SSLCom::read[%d]: peek returned %d", _fd, sslcom_ret);
+
+            auto errc = SSL_get_error(sslcom_ssl, sslcom_ret);
+            if(errc == SSL_ERROR_SYSCALL or errc == SSL_ERROR_ZERO_RETURN or errc == SSL_ERROR_SSL) {
+                sslcom_fatal = true;
+                // this is bad
+                _dia("SSLCom:: read[%d]: ssl_peek() returned %d: unexpected termination!", _fd, sslcom_ret);
+                error(ERROR_READ);
+                return 0;
+            }
         }
 
         return sslcom_ret;
