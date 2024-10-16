@@ -3402,8 +3402,15 @@ ssize_t baseSSLCom<L4Proto>::read (int _fd, void* _buf, size_t _n, int _flags ) 
                 }
                 sslcom_fatal = true;
 
-                if (total_r > 0) return total_r;
-                return sslcom_ret;
+                if (total_r > 0) {
+                    // syscall error when we have already bytes
+                    _dia("SSLCom::read[%d]: syscall error: occurred after %d bytes read", _fd, total_r);
+                    return total_r;
+                }
+                else {
+                    // we used to return sslcom_ret (but it can be -1, we don't want that - it indicates "try later")
+                    return 0;
+                }
 
             default:
                 if (sslcom_ret != -1 && err != 1) {
