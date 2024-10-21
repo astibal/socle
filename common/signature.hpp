@@ -327,7 +327,7 @@ public:
     }
     
     // state-aware match function - state is hold in 
-    virtual bool match(Flow<SourceType>* f, vector_range& ret, unsigned int& sig_pos) {
+    virtual bool match(Flow<SourceType>* flow, vector_range& ret, unsigned int& sig_pos) {
         
         
         int flow_step = 0;
@@ -337,7 +337,7 @@ public:
         if (! ret.empty() ) {
             // flow can be trimmed in the meantime, we need to know how many times, to adjust range
             // where we start from
-            auto pop_cnt = f->pop_count();
+            auto pop_cnt = flow->pop_count();
             flow_step = static_cast<int>(ret.size() - pop_cnt) - 1;
 
             if(pop_cnt > 0) {
@@ -348,14 +348,14 @@ public:
         unsigned int cur_flow = flow_step;
         baseMatch* current_sig_match = nullptr;
 
-        _deb("flowMatch::match: search flow from #%d/%d: %s :sig pos = %d/%d", flow_step, f->flow_queue().size(),
-                                                                                vrangetos(ret).c_str(),
-                                                                                sig_pos,signature_.size());
+        _deb("flowMatch::match: search flow from #%d/%d: %s :sig pos = %d/%d", flow_step, flow->flow_queue().size(),
+             vrangetos(ret).c_str(),
+             sig_pos, signature_.size());
         
         bool first_iter = true;
         SourceType last_src;
-        for( ; cur_flow < f->flow_queue().size() && sig_pos < signature_.size(); cur_flow++) {
-            auto& ff = f->flow_queue().at(cur_flow);
+        for( ; cur_flow < flow->flow_queue().size() && sig_pos < signature_.size(); cur_flow++) {
+            auto& ff = flow->flow_queue().at(cur_flow);
             
             SourceType ff_src = ff.source();
             auto const&    ff_buf = ff.data();
@@ -399,7 +399,7 @@ public:
                 }
                 
                 // DEBUGS
-                _deb("flowMatch::match: flow %d/%d : dirchange: %d", cur_flow, f->flow_queue().size(), direction_change);
+                _deb("flowMatch::match: flow %d/%d : dirchange: %d", cur_flow, flow->flow_queue().size(), direction_change);
                 _deb("flowMatch::match: processing signature[%s]: %s", std::to_string(sig_src).c_str(), sig_match->expr().c_str());
                 _deb("flowMatch::match: pattern[%s] view-size=%d", std::to_string(ff_src).c_str(), ff_view.size());
 
