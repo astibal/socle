@@ -122,7 +122,7 @@ bool AppHostCX::detect (const std::shared_ptr<sensorType> &cur_sensor) {
             
             bool r = sig_res.update(&flow(),sig_sig);
             
-            vector_range& ret = sig_res.result();
+            auto ret = sig_res.result();
             
             if (r) {
                 sig_res.hit() = true;
@@ -130,14 +130,14 @@ bool AppHostCX::detect (const std::shared_ptr<sensorType> &cur_sensor) {
                 
                 matched = true;
                 // log only in debug - it's up to library user to log it his way
-                _deb("AppHostCX::detect[%s]: Signature matched: %s",c_type(), vrangetos(ret).c_str());
+                _dia("AppHostCX::detect[%s]: Signature '%s' matched: %s",c_type(),  sig_sig->name().c_str(), vrangetos(ret).c_str());
                 continue;
                 
             } else {
                 _dum("AppHostCX::detect[%s]: Signature didn't match: %s",c_type(), vrangetos(ret).c_str());
             } 
         } else {
-            _deb("AppHostCX::detect[%s]: Signature %s already matched",c_type(), sig_sig->name().c_str());
+            _deb("AppHostCX::detect[%s]: Signature '%s' already matched",c_type(), sig_sig->name().c_str());
         }
     }
     

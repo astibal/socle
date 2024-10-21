@@ -290,6 +290,52 @@ public:
 };
 
 
+struct RangeResults {
+    static constexpr inline size_t RANGE_SZ=32;
+    RangeResults() {
+        ranges_.resize(RANGE_SZ);
+    }
+    size_t pos_ = 0L;
+
+    void add_result(size_t flow_index, range r) {
+        if(ranges_.capacity() < flow_index + 1) {
+            // resize to accommodate indexes needed
+            ranges_.resize(std::max(flow_index * 2, (size_t)RANGE_SZ));
+        }
+        max_pos_ = std::max(flow_index,max_pos_);
+        ranges_.at(flow_index) = r;
+    }
+    size_t max_pos() const {
+        return max_pos_;
+    }
+
+    void reset_max_pos(size_t nmax) {
+        max_pos_ = nmax;
+    }
+
+    std::string ranges_str() const {
+        std::stringstream ss;
+        ss << "[" << max_pos_ << "/" << ranges_.size() << "] ";
+        for (size_t i = 0; i <= max_pos() && i < ranges_.size(); ++i) {
+            ss << rangetos(ranges_.at(i)) << " ";
+        }
+
+        return ss.str();
+    }
+
+    vector_range result_ranges() const {
+        vector_range result;
+        result.reserve(max_pos_ + 1);
+        result.insert(result.end(), ranges_.begin(), ranges_.begin() + static_cast<unsigned long>(max_pos_) + 1);
+        return result;
+    }
+    
+private:
+    vector_range ranges_ {};
+    size_t max_pos_ = 0L;
+    vector_range& ranges() { return ranges_; }
+};
+
 template <class SourceType>
 class flowMatch {
     
@@ -311,50 +357,45 @@ public:
     void add(SourceType s, baseMatch* m) { 
             signature_.template emplace_back(s,m);
     };
-    
-    
-    virtual vector_range match(Flow<SourceType>* f) {
-        vector_range v;
-        unsigned int p;
-        
-        if(match(f,v,p)) {
-            return v;
+
+    // state-aware match function - state is hold in 
+    virtual bool match(Flow<SourceType>* flow, RangeResults& ret, unsigned int& sig_pos) {
+
+        if(flow->flow_queue().empty()) {
+            return false;
         }
         
-        vector_range ff; 
-        ff.push_back(NULLRANGE);
-        return ff;
-    }
-    
-    // state-aware match function - state is hold in 
-    virtual bool match(Flow<SourceType>* flow, vector_range& ret, unsigned int& sig_pos) {
-        
-        
-        int flow_step = 0;
-        
+        auto flow_step = ret.max_pos();
+
         // sanitize step if we have some result already.  Step always starts at LAST already examined
         // flow, NOT NEXT. We need to check if there are new data in the last flow.
-        if (! ret.empty() ) {
+
+        auto pop_cnt = flow->pop_count();
+        if (pop_cnt) {
             // flow can be trimmed in the meantime, we need to know how many times, to adjust range
             // where we start from
-            auto pop_cnt = flow->pop_count();
-            flow_step = static_cast<int>(ret.size() - pop_cnt) - 1;
-
-            if(pop_cnt > 0) {
-                _deb("flowMatch::match: pop-trim of %d applied to flow_step", pop_cnt);
-            }
+            flow_step = static_cast<int>(ret.max_pos() - pop_cnt) - 1;
+            _deb("flowMatch::match: pop-trim of %d applied to flow_step => %d", pop_cnt, flow_step);
         }
 
-        unsigned int cur_flow = flow_step;
+        auto cur_flow = flow_step;
         baseMatch* current_sig_match = nullptr;
 
         _deb("flowMatch::match: search flow from #%d/%d: %s :sig pos = %d/%d", flow_step, flow->flow_queue().size(),
-             vrangetos(ret).c_str(),
+             ret.ranges_str().c_str(),
              sig_pos, signature_.size());
         
         bool first_iter = true;
         SourceType last_src;
-        for( ; cur_flow < flow->flow_queue().size() && sig_pos < signature_.size(); cur_flow++) {
+        unsigned int it = 0;
+
+
+        int last_match = -1;
+        for( ; cur_flow < flow->flow_queue().size() && sig_pos < signature_.size(); cur_flow++, it++) {
+            _deb("flowMatch::match: iteration [%d] from #%d/%d: %s :sig pos = %d/%d", it, cur_flow, flow->flow_queue().size(),
+                 ret.ranges_str().c_str(),
+                 sig_pos, signature_.size());
+
             auto& ff = flow->flow_queue().at(cur_flow);
             
             SourceType ff_src = ff.source();
@@ -410,32 +451,28 @@ public:
                 if( r != NULLRANGE) {
                     _deb("flowMatch::match: result: %s", rangetos(r).c_str());
 
-                    if(cur_flow == (ret.size() - 1)) {
-                        // if previous result was NULLRANGE, remove
-                        ret.erase(ret.end());
-                    }
-                    
-                    ret.push_back(r);
+                    last_match = static_cast<int>(cur_flow + pop_cnt);
+                    ret.add_result(last_match, r);
+
                     ++sig_pos;
                     _dia("flowMatch::match: interim match on signature[%s]: %s", std::to_string(sig_src).c_str(), sig_match->expr().c_str());
 
                 }
                 else {
-                    // don't add another NULLRANGES if we are at last position which is NULLRANGE already
-                    if(cur_flow != (ret.size() - 1)) {
-                            ret.push_back(NULLRANGE);
-                    }
+                    ret.add_result(cur_flow + pop_cnt, NULLRANGE);
                     _deb("flowMatch::match: interim nok");
                 }
             }
             else {
                 _deb("flowMatch::match: different direction, skipping.");
-                if(cur_flow != (ret.size() - 1)) {
-                        ret.push_back(NULLRANGE);
-                }
+                ret.add_result(cur_flow + pop_cnt, NULLRANGE);
             }
         }
 
+        if(last_match >= 0) {
+            _deb("flowMatch::match: last_matched at %d, resetting new search to %d", last_match, last_match + 1);
+            ret.reset_max_pos(last_match + 1);
+        }
 
         if(sig_pos > 0) {
 
@@ -456,6 +493,7 @@ public:
                 }
 
                 _dia("flowMatch::match: %s result %d/%d: %s",  muchly.c_str(), sig_pos, sig_size, sig.c_str());
+                _dia("flowMatch::matched ranges: %s", ret.ranges_str().c_str());
             }
 
             if(sig_pos >= sig_size) {
@@ -506,17 +544,20 @@ using duplexFlowMatch = flowMatch<char>;
 
 
 class flowMatchState {
-protected:
-    bool         hit_ = false;    
-    vector_range ranges_;
+
+    bool hit_ = false;
     unsigned int sig_pos_ = 0;
-    
+
+    RangeResults results_;
 public:
+
     bool& hit() { return hit_; }
-    vector_range& result() { return ranges_; };
+    vector_range result() const { return results_.result_ranges(); };
     
     bool update(duplexFlow* f, std::shared_ptr<duplexFlowMatch> const& signature) {
-       return signature->match(f,ranges_,sig_pos_);
+        auto ret = signature->match(f, results_, sig_pos_);
+        hit_ = ret;
+        return hit_;
     }
 };
 
