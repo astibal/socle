@@ -46,6 +46,7 @@ int epoll::process_epoll_events(int nfds) {
     for(; i < nfds and i < EPOLLER_MAX_EVENTS; ++i) {
         int socket = events[i].data.fd;
         uint32_t eventset = events[i].events;
+        bool handled = false;
 
         if(eventset & EPOLLIN) {
             if (socket == hint_socket()) {
@@ -57,6 +58,7 @@ int epoll::process_epoll_events(int nfds) {
             // add socket to in_set
             in_set.insert(socket);
             clear_idle_watch(socket);
+            handled = true;
         }
 
         if(eventset & EPOLLOUT) {
@@ -69,13 +71,17 @@ int epoll::process_epoll_events(int nfds) {
                 modify(socket, EPOLLIN);
             }
 
+            handled = true;
         }
 
         if( eventset & EPOLLERR or eventset & EPOLLHUP ) {
             _dia("epoll::wait: error event %d for socket %d", eventset, socket);
             err_set.insert(socket);
+
+            handled = true;
         }
-        else {
+
+        if(not handled) {
             _war("epoll::wait: uncaught event value %d for socket %d", eventset, socket);
         }
     }
