@@ -219,8 +219,13 @@ int epoll::wait(long timeout) {
             _debug_sockets(cur_nfds);
         }
 
-        int proc = process_epoll_events(cur_nfds);
-        _deb("epoll::wait: processed %d from %d ready sockets - round %d", proc, nfds, count);
+        if(cur_nfds > 0) {
+            int proc = process_epoll_events(cur_nfds);
+            _deb("epoll::wait: processed %d from %d ready sockets - round %d", proc, nfds, count);
+        }
+        else {
+            _deb("epoll::wait: 0 ready sockets at the moment");
+        }
 
         count++;
 
