@@ -147,13 +147,17 @@ std::string FdQueue::stats_str(int indent) const {
 
     for(auto const& [ load, pipe]: candidates) {
 
-        auto sock = pipe->pipe_to_scheduler();
+        // note: the point of view is opposite than you may think (it's from PoV from the using component)
+        //       to_scheduler is read by worker
+        //       to_worker is written by scheduler
+        auto sock_to_scheduler = pipe->pipe_to_scheduler();
+        auto sock_to_worker = pipe->pipe_to_worker();
 
-        auto red = ::recv(sock, dummy.data(), max_sz, MSG_PEEK);
+        auto red = ::recv(sock_to_scheduler, dummy.data(), max_sz, MSG_PEEK);
 
         for (int i = 0; i < indent; ++i) { ss << " "; } // make indent
 
-        ss << string_format("hint pipe[%d] to_worker=%dB load=%d", sock, red, load);
+        ss << string_format("hint pipe[%d][%d] worker_side=%dB load=%d", sock_to_worker, sock_to_scheduler, red, load);
         if(red < 0) {
             if(errno != EAGAIN and errno != EWOULDBLOCK) {
                 ss << " ++ error: " << string_error();
