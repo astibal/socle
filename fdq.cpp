@@ -280,11 +280,15 @@ int FdQueue::pop(uint32_t worker_id) {
     } else {
         _dia("FdQueue::pop_for_worker: hint not read, read returned %d", red);
     }
-    if (purged.has_value() and purged.value() > 0) {
-        _dia("FdQueue::pop: heavy load - worker side hint socket dump %d", purged);
-    } else if(purged.has_value()) {
+
+    if (purged.has_value()) {
+        if (purged.value() > 0) {
+            _dia("FdQueue::pop: heavy load - worker side hint socket dump %d", purged.value());
+        }
+        else if(purged.value() == 0) {
         _err("FdQueue::pop: heavy load - worker side hint socket dump failed: %d, %s",
-             purged, string_error().c_str());
+             purged.value(), string_error().c_str());
+        }
     }
 
 
