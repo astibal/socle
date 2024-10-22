@@ -208,35 +208,29 @@ int epoll::wait(long timeout) {
     // wait for epoll
     
     int nfds = 0;
-    int cur_nfds = 0;
     unsigned count = 0;
-    do {
-        cur_nfds = epoll_wait(epoll_socket(), events, EPOLLER_MAX_EVENTS, timeout);
-        if(cur_nfds < 0) {
-            if(errno == EINTR) {
-                return nfds;
-            }
-            _err("epoll::wait: epoll_wait fatal error %d: %s", errno, string_error(errno).c_str());
-            return -1;
-        }
-        nfds += cur_nfds;
 
-        // optimized-out in Release builds
-        _if_deb {
-            _debug_sockets(cur_nfds);
+    nfds = epoll_wait(epoll_socket(), events, EPOLLER_MAX_EVENTS, timeout);
+    if(nfds < 0) {
+        if(errno == EINTR) {
+            return nfds;
         }
+        _err("epoll::wait: epoll_wait fatal error %d: %s", errno, string_error(errno).c_str());
+        return -1;
+    }
 
-        if(cur_nfds > 0) {
-            int proc = process_epoll_events(cur_nfds);
-            _deb("epoll::wait: processed %d from %d ready sockets - round %d", proc, nfds, count);
-        }
-        else {
-            _deb("epoll::wait: 0 ready sockets at the moment");
-        }
+    // optimized-out in Release builds
+    _if_deb {
+        _debug_sockets(nfds);
+    }
 
-        count++;
-
-    } while (cur_nfds == EPOLLER_MAX_EVENTS);
+    if(nfds > 0) {
+        int proc = process_epoll_events(nfds);
+        _deb("epoll::wait: processed %d from %d ready sockets - round %d", proc, nfds, count);
+    }
+    else {
+        _deb("epoll::wait: 0 ready sockets at the moment");
+    }
 
     enforced_to_inset();
 
