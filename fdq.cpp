@@ -185,6 +185,11 @@ std::string FdQueue::stats_str(int indent) const {
     return ss.str();
 }
 
+long purge_socket(int socket) {
+    constexpr size_t max_sz = 10240;
+    std::array<unsigned char, max_sz> dummy{};
+    return ::recv(socket, dummy.data(), max_sz, MSG_DONTWAIT);
+}
 
 int FdQueue::pop(uint32_t worker_id) {
 
@@ -192,71 +197,72 @@ int FdQueue::pop(uint32_t worker_id) {
     char dummy_buffer[1];
 
     int returned_socket = 0;
+    auto my_hint_socket = hint_pairs_[worker_id].pipe_to_scheduler();
 
-    {
+    // if we have hint-pair for each worker, we should read out hint message to not make a loop
+    // because nobody else than us won't.
+    try {
+        int last_errno = 0;
+        const int max_loop = 42;
+        int would_be_blocked_counter = 0;
+        for(int i = 0; i < max_loop && red <= 0; ++i) {
+            red = ::read(my_hint_socket, dummy_buffer, 1);
+            if(red > 0) {
+                break;
+            }
+            else if(red < 0) {
+                const timespec t { .tv_sec = 0, .tv_nsec = 1000 };
+                timespec rem {};
+                last_errno = errno;
 
-        // if we have hint-pair for each worker, we should read out hint message to not make a loop
-        // because nobody else than us won't.
-        try {
-            int last_errno = 0;
-            const int max_loop = 42;
-            int would_be_blocked_counter = 0;
-            for(int i = 0; i < max_loop && red <= 0; ++i) {
-                red = ::read(hint_pairs_[worker_id].pipe_to_scheduler(), dummy_buffer, 1);
-                if(red > 0) {
-                    break;
-                }
-                else if(red < 0) {
-                    const timespec t { .tv_sec = 0, .tv_nsec = 1000 };
-                    timespec rem {};
-                    last_errno = errno;
-
-                    if(last_errno != EAGAIN and last_errno != EWOULDBLOCK) {
-                        _cri("FdQueue::pop: unrecoverable error reading socket");
-                        return 0;
-                    }
-                    nanosleep(&t, &rem);
-                    ++would_be_blocked_counter;
-                }
-                else {
-                    _cri("FdQueue::pop: EOT");
+                if(last_errno != EAGAIN and last_errno != EWOULDBLOCK) {
+                    _cri("FdQueue::pop: unrecoverable error reading socket");
                     return 0;
                 }
+                nanosleep(&t, &rem);
+                ++would_be_blocked_counter;
             }
-
-            if(red < 0) {
-                if(last_errno == EAGAIN or last_errno == EWOULDBLOCK) {
-                    _err("FdQueue::pop: all %d attempts reading hint socket would block", max_loop);
-                }
-                else {
-                    // this should be unreachable code
-                    _err("FdQueue::pop: reading hint socket error: ret=%d, errno=%d, attempts=%d", red, last_errno, max_loop);
-                }
-
-                // we should not act when we cannot remove data from hint socket
-                // Details:
-                //   Even though it seems ok to remove task from the list, ignoring
-                //   bytes in the hint sockets may lead to fill spuriously socket buffer
+            else {
+                _cri("FdQueue::pop: EOT");
                 return 0;
             }
-
-            if(would_be_blocked_counter > 0) {
-                _dia("FdQueue::pop: from max %d attempts, we hit EAGAIN %d times", max_loop, would_be_blocked_counter);
-            }
-
-        } catch (std::out_of_range const&) {
-            throw fdqueue_error("hints out of bounds");
         }
 
+        if(red < 0) {
+            if(last_errno == EAGAIN or last_errno == EWOULDBLOCK) {
+                _err("FdQueue::pop: all %d attempts reading hint socket would block", max_loop);
+            }
+            else {
+                // this should be unreachable code
+                _err("FdQueue::pop: reading hint socket error: ret=%d, errno=%d, attempts=%d", red, last_errno, max_loop);
+            }
+
+            // we should not act when we cannot remove data from hint socket
+            // Details:
+            //   Even though it seems ok to remove task from the list, ignoring
+            //   bytes in the hint sockets may lead to fill spuriously socket buffer
+            return 0;
+        }
+
+        if(would_be_blocked_counter > 0) {
+            _dia("FdQueue::pop: from max %d attempts, we hit EAGAIN %d times", max_loop, would_be_blocked_counter);
+        }
+
+    } catch (std::out_of_range const&) {
+        throw fdqueue_error("hints out of bounds");
+    }
+
+    std::optional<long> purged = -1;
+    // critical section
+    {
         auto lc_ = std::scoped_lock(sq_lock_);
 
         if (sq_.empty()) {
 
             // report to scheduler queue is empty. It's not required, but it's nice from us.
             WorkerPipe::feedback_queue_empty = true;
-            return 0;
-        }
-        else {
+            purged = purge_socket(my_hint_socket);
+        } else {
 
             returned_socket = sq_.back();
             sq_.pop_back();
@@ -264,6 +270,7 @@ int FdQueue::pop(uint32_t worker_id) {
             // do another check and report to scheduler
             if (sq_.empty()) {
                 WorkerPipe::feedback_queue_empty = true;
+                purged = purge_socket(my_hint_socket);
             }
         }
     }
@@ -273,6 +280,14 @@ int FdQueue::pop(uint32_t worker_id) {
     } else {
         _dia("FdQueue::pop_for_worker: hint not read, read returned %d", red);
     }
+    if (purged.has_value() and purged.value() > 0) {
+        _dia("FdQueue::pop: heavy load - worker side hint socket dump %d", purged);
+    } else if(purged.has_value()) {
+        _err("FdQueue::pop: heavy load - worker side hint socket dump failed: %d, %s",
+             purged, string_error().c_str());
+    }
+
+
     return returned_socket;
 }
 
