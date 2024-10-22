@@ -58,24 +58,25 @@ int epoll::process_epoll_events(int nfds) {
             in_set.insert(socket);
             clear_idle_watch(socket);
         }
-        else if(eventset & EPOLLOUT) {
+
+        if(eventset & EPOLLOUT) {
             _dia("epoll::wait: socket %d writable (auto_epollout_remove=%d)",socket , auto_epollout_remove);
 
             out_set.insert(socket);
             clear_idle_watch(socket);
 
             if(auto_epollout_remove) {
-                modify(socket,EPOLLIN);
+                modify(socket, EPOLLIN);
             }
 
         }
-        else if( eventset & EPOLLERR or eventset & EPOLLHUP ) {
+
+        if( eventset & EPOLLERR or eventset & EPOLLHUP ) {
             _dia("epoll::wait: error event %d for socket %d", eventset, socket);
             err_set.insert(socket);
         }
         else {
-            _dia("epoll::wait: uncaught event value %d for socket %d", eventset, socket);
-            err_set.insert(socket);
+            _war("epoll::wait: uncaught event value %d for socket %d", eventset, socket);
         }
     }
 
