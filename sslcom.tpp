@@ -1538,7 +1538,7 @@ int baseSSLCom<L4Proto>::ssl_client_cert_callback(SSL* ssl, X509** x509, EVP_PKE
                 return 1;
 
             case 3: {
-                bool found = false;
+                int found = 0;
 
                 auto find_client_cert = [&](std::string const& what, std::string const& prefix) {
                     _dia("looking for client certificate for: %s: %s", prefix.c_str(), what.c_str());
@@ -1546,8 +1546,6 @@ int baseSSLCom<L4Proto>::ssl_client_cert_callback(SSL* ssl, X509** x509, EVP_PKE
                     std::string key = prefix + ":" + what;
                     auto parek = SSLFactory::factory().find_custom(key);
                     if (parek) {
-                        found = true;
-
                         *x509 = parek.value().chain.cert;
                         X509_up_ref(*x509);
 
@@ -1556,17 +1554,12 @@ int baseSSLCom<L4Proto>::ssl_client_cert_callback(SSL* ssl, X509** x509, EVP_PKE
 
                         _dia("found client certificate for: %s: %s", prefix.c_str(), what.c_str());
 
-                        return true;
+                        return 1;
                     }
-                    return false;
+                    return 0;
                 };
 
                 if(not sni.empty()) {
-                    //_dia("looking for client certificate for: SNI: %s", sni.c_str());
-                    //log.event(DIA, "looking for client certificate for: SNI: %s", sni.c_str());
-
-                    //_dia("NYI");
-
                     found = find_client_cert(sni, "cc-sni");
                 }
                 if(not found and owner) {
@@ -1579,13 +1572,13 @@ int baseSSLCom<L4Proto>::ssl_client_cert_callback(SSL* ssl, X509** x509, EVP_PKE
                 if(not found) {
                     _dia("no client certificate found - using empty");
                 }
-                return 1;
+                return found;
             }
         }
     }
     
     _err("[%s], Oops. Com object not SSL, sending client certificate disabled", name.c_str());
-    return 1;
+    return 0;
 }
 
 
