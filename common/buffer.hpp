@@ -269,6 +269,6 @@ inline T buffer::get_at_ptr(uint8_t const* data) {
 }
 
 
-std::string regex_replace_fill(std::string const& str_sample, std::string const& str_match, std::string const& str_replacement, const char* str_fill_pattern= " ");
+std::optional<std::string> regex_replace_fill(std::string const& str_sample, std::string const& str_match, std::string const& str_replacement, const char* str_fill_pattern);
 
 #endif

@@ -541,7 +541,7 @@ std::string_view buffer::string_view() const {
 
 
 
-std::string regex_replace_fill(std::string const& sample, std::string const& str_match, std::string const& replacement, const char* str_fill_pattern) {
+std::string regex_replace_fill_old(std::string const& sample, std::string const& str_match, std::string const& replacement, const char* str_fill_pattern) {
     
 
   std::regex match (str_match);
@@ -602,6 +602,49 @@ std::string regex_replace_fill(std::string const& sample, std::string const& str
  
   return result;
 }
+
+std::optional<std::string>
+regex_replace_fill(std::string const& sample, std::string const& str_match, std::string const& replacement, const char* str_fill_pattern) {
+
+    std::regex re(str_match);
+    std::stringstream result;
+    std::sregex_iterator begin(sample.begin(), sample.end(), re);
+    std::sregex_iterator end;
+
+    auto orig_sz = sample.size();
+    size_t last_pos = 0;
+
+    for (auto it = begin; it != end; ++it) {
+        // Append the text before the match
+        result << sample.substr(last_pos, it->position() - last_pos);
+
+        // Append the replacement string instead of the matched text
+        result << replacement;
+
+        // Update the last position to the end of the current match
+        last_pos = it->position() + it->length();
+    }
+
+    if(last_pos == 0) {
+        return std::nullopt;
+    }
+
+    // Append the remaining text after the last match
+    result << sample.substr(last_pos);
+    auto tmp_result = result.str();
+
+    if(orig_sz > tmp_result.size() and str_fill_pattern != nullptr) {
+        auto dif = orig_sz - tmp_result.size();
+        for (size_t i = 0; i < dif; ++i) {
+            result << str_fill_pattern;
+        }
+        return result.str();
+    }
+    else {
+        return tmp_result;
+    }
+}
+
 
 std::ostream& operator<<(std::ostream& os, buffer const& b) {
     if(b.data_ and b.size_ > 0)
