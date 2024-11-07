@@ -257,7 +257,10 @@ public:
     X509* target_issuer_issuer() const { return sslcom_target_issuer_issuer; };
 
     // return ALPN (next protocol) really negotiated
-    std::string const& alpn() { return sslcom_alpn_; }
+    std::string const& alpn() const { return sslcom_alpn_; }
+    std::string const& sslcom_sni() const { return sslcom_sni_; }
+    buffer const& client_hello_buffer() const { return sslcom_peer_hello_buffer; }
+
 protected:
 
 	SSL_CTX* sslcom_ctx = nullptr;
@@ -345,7 +348,7 @@ protected:
 	char* ssl_waiting_host = nullptr;
 	
     // return true if peer already received client hello. For server side only (currently). 
-    inline bool sslcom_peer_hello_received() { return sslcom_peer_hello_received_; }
+    inline bool sslcom_peer_hello_received() const { return sslcom_peer_hello_received_; }
     void sslcom_peer_hello_received(bool b) { sslcom_peer_hello_received_ = b; }
     
     //set to true if we should wait for peer's hello
@@ -361,7 +364,6 @@ protected:
     buffer sslcom_peer_hello_buffer;
 
     std::string sslcom_sni_;
-    std::string sslcom_sni() const { return sslcom_sni_; }
     std::string& sslcom_sni() { return sslcom_sni_; }
 
     std::string sslcom_peer_hello_alpn_;

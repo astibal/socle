@@ -2814,7 +2814,7 @@ bool baseSSLCom<L4Proto>::waiting_peer_hello() {
             if(peer_scom->socket() > 0) {
                 _dum("SSLCom::waiting_peer_hello: peek max %d bytes from peer socket %d",sslcom_peer_hello_buffer.capacity(),peer_scom->socket());
 
-                int red = ::recv(peer_scom->socket(),sslcom_peer_hello_buffer.data(),sslcom_peer_hello_buffer.capacity(),MSG_PEEK);
+                int red = ::recv(peer_scom->socket(),sslcom_peer_hello_buffer.data(),sslcom_peer_hello_buffer.capacity(), MSG_PEEK);
                 if (red > 0) {
                     sslcom_peer_hello_buffer.size(red);
 
