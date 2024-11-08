@@ -153,6 +153,8 @@ struct SSLComOptions {
     bool alpn_block = false;
     bool no_fallback_bypass = false;
 
+    // due to its upper level use, it must be statically available
+    static inline bool server_hello_copy = false;
 
     SSLComCryptoFeatures left {};
     SSLComCryptoFeatures right {};
@@ -260,6 +262,7 @@ public:
     std::string const& alpn() const { return sslcom_alpn_; }
     std::string const& sslcom_sni() const { return sslcom_sni_; }
     buffer const& client_hello_buffer() const { return sslcom_peer_hello_buffer; }
+    buffer const& server_hello_buffer() const { return sslcom_server_hello_buffer; }
 
 protected:
 
@@ -362,6 +365,8 @@ protected:
     
     bool sslcom_peer_hello_received_ = false;
     buffer sslcom_peer_hello_buffer;
+
+    buffer sslcom_server_hello_buffer;
 
     std::string sslcom_sni_;
     std::string& sslcom_sni() { return sslcom_sni_; }

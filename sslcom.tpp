@@ -58,6 +58,7 @@ template <class L4Proto>
 baseSSLCom<L4Proto>::baseSSLCom(): L4Proto() {
 
     sslcom_peer_hello_buffer.capacity(1500);
+    sslcom_server_hello_buffer.capacity(0); // don't waste memory for optional collection
     set_timer_now(&timer_start);
     set_timer_now(&timer_read_timeout);
     set_timer_now(&timer_write_timeout);
@@ -406,6 +407,13 @@ void baseSSLCom<L4Proto>::ssl_msg_callback(int write_p, int version, int content
                 _dia("  [%s]: server dh key bits equivalent: %d",name.c_str(),bits);
             }
 #endif
+        }
+    }
+    else if (content_type == SSL3_RT_HANDSHAKE) {
+        const unsigned char *data = (const unsigned char *)buf;
+        if (data[0] == SSL3_MT_SERVER_HELLO and SSLComOptions::server_hello_copy) {
+            _dum("ServerHello: %s", hex_print(data, len).c_str());
+            com->sslcom_server_hello_buffer.assign(data, len);
         }
     }
 }
