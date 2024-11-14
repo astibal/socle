@@ -1,7 +1,9 @@
 #include <gtest/gtest.h>
 #include <mempool/mempool.hpp>
+#include <stringformat.hpp>
 
 #include <thread>
+#include <array>
 
 TEST(MemPool, TooBig) {
 
@@ -25,4 +27,11 @@ TEST(MemPool, TooBig) {
     a.join();
     b.join();
     c.join();
+}
+
+TEST(StringFormat, TooLong) {
+    std::array<char, 32000> buf {};
+    memset(buf.data(), 'A', buf.size());
+
+    auto s = string_format(">>%s<<", (const char*)buf.data());
 }
