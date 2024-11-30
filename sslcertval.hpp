@@ -263,7 +263,7 @@ namespace inet {
             bool do_send_request ();
 
             int timeout_request = 5;
-            // proces received response
+            // process received response
             bool do_process_response ();
 
             [[nodiscard]] int state() const { return state_; }
