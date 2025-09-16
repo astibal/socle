@@ -449,8 +449,7 @@ namespace socle::traflog {
         }
         else if(details.next_proto == connection_details::UDP) {
 
-            if (b.size() > 0)
-                self->write_udp_data(side, b, details);
+            self->write_udp_data(side, b, details);
         }
         else {
             _err("pcaplog::write: unknown protocol to write: %d", details.next_proto);
