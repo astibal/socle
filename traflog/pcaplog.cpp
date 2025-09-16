@@ -442,13 +442,15 @@ namespace socle::traflog {
                 tcp_start_written = true;
             }
 
-            self->write_tcp_data(side, b, details);
+            if (b.size() > 0)
+                self->write_tcp_data(side, b, details);
 
             // Fins are written with PcapLog destruction
         }
         else if(details.next_proto == connection_details::UDP) {
 
-            self->write_udp_data(side, b, details);
+            if (b.size() > 0)
+                self->write_udp_data(side, b, details);
         }
         else {
             _err("pcaplog::write: unknown protocol to write: %d", details.next_proto);
