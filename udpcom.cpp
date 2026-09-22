@@ -1015,6 +1015,7 @@ void UDPCom::shutdown(int _fd) {
     if(_fd > 0) {
 
         size_t killed_from_cache = 0;
+        bool handled_by_cache = false;
 
         {
             auto l_ = std::scoped_lock(ConnectionsCache::lock);
@@ -1027,6 +1028,7 @@ void UDPCom::shutdown(int _fd) {
                 if (key) {
                     _deb("UDPCom::shutdown[%d]: removing connect cache key '%s'", _fd, key.value().c_str());
 
+                    handled_by_cache = ConnectionsCache::cache.find(key.value()) != ConnectionsCache::cache.end();
                     killed_from_cache = kill_and_deref_from_connnect(key.value());
                     _dia("UDPCom::shutdown[%d]: removed %d from connect cache", _fd, killed_from_cache);
                 } else {
@@ -1035,7 +1037,12 @@ void UDPCom::shutdown(int _fd) {
             }
         }
 
-        if(killed_from_cache == 0)  kill_socket(_fd);
+        // A cached socket with refcount > 1 is still owned by another UDP
+        // session. kill_and_deref_from_connnect() returns zero in that case
+        // because it removes no map entry; zero must not be interpreted as
+        // "not handled", otherwise we close the shared socket underneath the
+        // remaining session.
+        if(not handled_by_cache) kill_socket(_fd);
 
         _deb("UDPCom::shutdown[%d]: eof real socket specific code", _fd);
 
