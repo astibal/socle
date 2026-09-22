@@ -154,6 +154,10 @@ int UDPCom::bind(short unsigned int port) {
 int UDPCom::connect(const char* host, const char* port) {
 
     auto use_cached_connection = [this](std::string const& cache_key) -> std::optional<int> {
+        if(cache_key.empty()) {
+            return std::nullopt;
+        }
+
         std::scoped_lock<std::recursive_mutex> l(connections.lock);
         auto it_fd = connections.cache.find(cache_key);
 
@@ -292,9 +296,13 @@ int UDPCom::connect(const char* host, const char* port) {
 
             } else {
                 // connect OK
-                std::scoped_lock<std::recursive_mutex> l(connections.lock);
-                connections.cache[connect_cache_key_cur] = std::pair<int, int>(sfd, 1);
-                connections.my_key = connect_cache_key_cur;
+                if(nonlocal_src() and not connect_cache_key_cur.empty()) {
+                    std::scoped_lock<std::recursive_mutex> l(connections.lock);
+                    connections.cache[connect_cache_key_cur] = std::pair<int, int>(sfd, 1);
+                    connections.my_key = connect_cache_key_cur;
+                } else {
+                    connections.my_key.reset();
+                }
 
                 _dia("UDPCom::connect[%s:%s]: socket[%d] connection %s:%d OK", host, port, sfd,
                      nonlocal_src_host().c_str(), nonlocal_src_port());
