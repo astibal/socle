@@ -300,7 +300,8 @@ private:
     using session_cache_t = ptr_cache<std::string,session_holder>;
 
     verify_cache_t verify_cache_ = verify_cache_t("pki.verify", config_t::VERIFY_CACHE_SIZE, true);
-    crl_cache_t crl_cache_ = crl_cache_t("crl_cache", config_t::CRL_CACHE_SIZE,true);
+    crl_cache_t crl_cache_ = crl_cache_t(
+        "crl_cache", config_t::CRL_CACHE_SIZE, true, expiring_crl::is_expired);
     session_cache_t session_cache_ = session_cache_t("ssl_session_cache", config_t::SESSION_CACHE_SIZE,true, ptr_cache<std::string,session_holder>::mode_t::LRU);
 
     X509_STORE* trust_store_ = nullptr;

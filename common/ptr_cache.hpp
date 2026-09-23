@@ -77,7 +77,9 @@ struct expiring_ptr {
     }
     void set_expiry(time_t new_expire_ts) { expired_at_ = new_expire_ts; }
 
-    static bool is_expired(expiring<T> *ptr) { return ptr->expired(); }
+    static bool is_expired(const std::shared_ptr<expiring_ptr<T>>& ptr) {
+        return !ptr || ptr->expired();
+    }
 
 private:
     std::unique_ptr<T> value_;
@@ -185,6 +187,7 @@ public:
         if(it != cache().end()) {
             _deb("ptr_cache::erase[%s]: erase: key found ", c_type());
             cache().erase(k);
+            items_.remove(k);
             _dia("ptr_cache::erase[%s]: erase: key '%s' erased", c_type(), k2str(k).c_str());
             
             return true;
@@ -318,12 +321,11 @@ inline bool ptr_cache<K,T>::delete_last() {
             // log.removal errors only if opportunistic removal is enabled
             _not("ptr_cache::set[%s]: cannot erase oldest object: not found!", c_type());
         }
+        items().pop_back();
     } else {
         to_ret = true;
         _dia("ptr_cache::set[%s]: oldest object removed", c_type());
     }
-
-    items().pop_back();
 
     return to_ret;
 }
