@@ -105,20 +105,25 @@ void MasterProxy::defer_proxy_ul(proxy_entry&& entry) {
     }
 }
 
-bool MasterProxy::deferred_under_pressure() const {
+MasterProxy::pressure_level MasterProxy::get_pressure_level() const {
     auto lock = std::scoped_lock(deferred_lock_);
-    return deferred().size() >= deferred_pressure_threshold;
+    return deferred().size() >= deferred_pressure_threshold
+        ? pressure_level::elevated
+        : pressure_level::nominal;
 }
 
-void MasterProxy::reap_deferred(std::size_t budget) {
+void MasterProxy::reap_deferred(std::size_t count_budget,
+                                std::optional<std::chrono::milliseconds> time_budget,
+                                std::size_t target_size) {
     auto const started_at = std::chrono::steady_clock::now();
     std::size_t reaped = 0;
     std::size_t deferred_left = 0;
-    while(reaped < budget) {
+    while(reaped < count_budget) {
         proxy_entry entry;
         {
             auto lock = std::scoped_lock(deferred_lock_);
             if(deferred().empty()) break;
+            if(deferred().size() <= target_size) break;
             if(deferred().front().deferred_at + deferred_grace > std::chrono::steady_clock::now()) break;
             entry = std::move(deferred().front().proxy);
             deferred().pop_front();
@@ -132,7 +137,7 @@ void MasterProxy::reap_deferred(std::size_t budget) {
         proxy.reset();
 
         ++reaped;
-        if(std::chrono::steady_clock::now() - started_at >= deferred_reap_time_budget) break;
+        if(time_budget and std::chrono::steady_clock::now() - started_at >= *time_budget) break;
     }
     if(reaped > 0) {
         _deb("MasterProxy::reap_deferred: reaped=%zd, deferred=%zd", reaped, deferred_left);
@@ -141,10 +146,26 @@ void MasterProxy::reap_deferred(std::size_t budget) {
 
 int MasterProxy::handle_sockets_once(baseCom* xcom) {
 
-    auto const deferred_pressure = deferred_under_pressure();
-    if(deferred_pressure or ++deferred_reap_tick_ >= deferred_reap_every) {
-        deferred_reap_tick_ = 0;
-        reap_deferred(deferred_pressure ? deferred_pressure_batch : 1);
+    switch(get_pressure_level()) {
+        case pressure_level::nominal:
+            if(++deferred_reap_tick_ >= deferred_reap_every) {
+                deferred_reap_tick_ = 0;
+                reap_deferred(1, std::nullopt);
+            }
+            break;
+        case pressure_level::elevated:
+            deferred_reap_tick_ = 0;
+            reap_deferred(deferred_pressure_batch, deferred_reap_time_budget);
+            break;
+        case pressure_level::critical:
+            deferred_reap_tick_ = 0;
+            reap_deferred(deferred_critical_batch, deferred_critical_time_budget);
+            break;
+        case pressure_level::emergency:
+            deferred_reap_tick_ = 0;
+            reap_deferred(deferred_emergency_batch, deferred_emergency_time_budget,
+                          deferred_emergency_low_watermark);
+            break;
     }
 
     int my_handle_returned = 0;
