@@ -22,6 +22,7 @@
 #include <iostream>
 #include <algorithm>
 #include <cstring>
+#include <cstdlib>
 
 #ifndef LIBC_MUSL
 #include <execinfo.h>
@@ -275,7 +276,7 @@ std::string bt(bool add_r) {
         s += maybe_r;
         s += strings[i];
     }
-    delete[] strings;
+    std::free(strings);
 
     s += "--";
 
@@ -597,4 +598,3 @@ std::string string_shorten(std::string const& orig, size_t max_len) {
     }
     return orig;
 };
-
