@@ -336,6 +336,7 @@ int UDPCom::connect(const char* host, const char* port) {
 void UDPCom::init(baseHostCX* owner)
 {
     baseCom::init(owner);
+    owner_token_ = next_owner_token_.fetch_add(1, std::memory_order_relaxed) + 1;
 }
 
 bool UDPCom::is_connected(int s) {
@@ -655,9 +656,13 @@ ssize_t UDPCom::write_to_pool(int _fd, const void* _buf, size_t _n, int _flags) 
         // the old HostCX (and possibly its write buffer) alive for a while.
         // Never route that old buffer through a newer pool entry which merely
         // happens to have the same virtual descriptor.
-        if(record->cx != nullptr && record->cx != owner_cx()) {
-            _err("UDPCom::write_to_pool[%d]: stale owner, refusing cross-flow write (record=%p, writer=%p)",
-                 _fd, static_cast<void*>(record->cx), static_cast<void*>(owner_cx()));
+        if((record->cx != nullptr && record->cx != owner_cx()) ||
+           (record->owner_token != 0 && record->owner_token != owner_token())) {
+            _err("UDPCom::write_to_pool[%d]: stale owner, refusing cross-flow write "
+                 "(record=%p/%llu, writer=%p/%llu)",
+                 _fd, static_cast<void*>(record->cx),
+                 static_cast<unsigned long long>(record->owner_token),
+                 static_cast<void*>(owner_cx()), static_cast<unsigned long long>(owner_token()));
             errno = ESTALE;
             return -1;
         }
@@ -947,9 +952,13 @@ int UDPCom::remove_datagram_entry(int fd) {
 
         // Deferred destruction of an old Com must not erase a replacement
         // entry which already owns the same deterministic virtual key.
-        if(it->cx != nullptr && it->cx != owner_cx()) {
-            _war("UDPCom::remove_datagram_entry[%d]: stale owner, preserving newer entry (record=%p, remover=%p)",
-                 fd, static_cast<void*>(it->cx), static_cast<void*>(owner_cx()));
+        if((it->cx != nullptr && it->cx != owner_cx()) ||
+           (it->owner_token != 0 && it->owner_token != owner_token())) {
+            _war("UDPCom::remove_datagram_entry[%d]: stale owner, preserving newer entry "
+                 "(record=%p/%llu, remover=%p/%llu)",
+                 fd, static_cast<void*>(it->cx),
+                 static_cast<unsigned long long>(it->owner_token),
+                 static_cast<void*>(owner_cx()), static_cast<unsigned long long>(owner_token()));
             return 0;
         }
 

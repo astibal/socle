@@ -483,6 +483,7 @@ int ThreadedReceiverProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
             record->cx = cx;
 
             if(auto ucom = dynamic_cast<UDPCom*>(cx->com()); ucom) {
+                record->owner_token = ucom->owner_token();
                 // set virtual socket to read early data
                 ucom->embryonics().id = virtual_socket;
 

@@ -55,7 +55,7 @@ struct Datagram {
     Datagram() = default;
 
     Datagram(Datagram const& r): dst(r.dst), src(r.src), socket_left(r.socket_left), reuse(r.reuse), cx(r.cx),
-                                 flow_key(r.flow_key), rx_queue(r.rx_queue) {}
+                                 owner_token(r.owner_token), flow_key(r.flow_key), rx_queue(r.rx_queue) {}
 
     Datagram& operator=(Datagram const& r)  {
         assign(r);
@@ -69,6 +69,7 @@ struct Datagram {
 
         reuse = r.reuse;
         cx = r.cx;
+        owner_token = r.owner_token;
         flow_key = r.flow_key;
         rx_queue = r.rx_queue;
     }
@@ -85,6 +86,7 @@ struct Datagram {
 
 
     baseHostCX* cx = nullptr;
+    uint64_t owner_token = 0;
     std::string flow_key;
     std::array<buffer,5> rx_queue;
 
@@ -173,6 +175,7 @@ public:
 
     UDPCom();
     void init(baseHostCX* owner) override;
+    [[nodiscard]] uint64_t owner_token() const { return owner_token_; }
     baseCom* replicate() override { return new UDPCom(); };
 
     int connect(const char* host, const char* port) override;
@@ -219,6 +222,8 @@ public:
     embryon& embryonics() { return embryonics_; };
     embryon embryonics(uint32_t n, bool p) { auto tmp = embryonics_; embryonics_ = { .id = n, .pool_depleted = p }; return tmp; };
 protected:
+    static inline std::atomic<uint64_t> next_owner_token_ {0};
+    uint64_t owner_token_ = 0;
     embryon embryonics_= {0, false };
 
     unsigned int bind_sock_family = AF_INET6;
