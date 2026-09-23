@@ -120,6 +120,10 @@ public:
         return pop_count_;
     }
 
+    [[nodiscard]] std::size_t pos_size() const {
+        return size() + pop_count();
+    }
+
     unsigned int append(SourceType src, buffer const& b) { return append(src, b.data(), b.size()); };
     unsigned int append(SourceType src, buffer const* pb) { return append(src, pb->data(), pb->size()); };
     unsigned int append(SourceType src,const unsigned char* data, size_t len) {
