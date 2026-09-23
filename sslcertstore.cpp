@@ -801,6 +801,16 @@ void SSLFactory::destroy() {
     _deb("SSLFactory::destroy: cert_cache");
     cert_mitm_cache_.clear();
     cert_custom_cache_.clear();
+    auto free_ctx = [](SSL_CTX*& ctx) {
+        if (ctx) {
+            SSL_CTX_free(ctx);
+            ctx = nullptr;
+        }
+    };
+    free_ctx(def_cl_ctx);
+    free_ctx(def_dtls_cl_ctx);
+    free_ctx(def_sr_ctx);
+    free_ctx(def_dtls_sr_ctx);
 
 
     if(trust_store_) {
