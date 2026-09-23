@@ -113,7 +113,8 @@ namespace inet {
         ocsp_send_request (BIO *err, OCSP_REQUEST *req, char *host, char *path, char *port, int use_ssl,
                            int req_timeout);
 
-        inet::cert::VerifyStatus ocsp_verify_response(OCSP_RESPONSE *resp, X509* cert, X509* issuer);
+        inet::cert::VerifyStatus ocsp_verify_response(OCSP_RESPONSE *resp, X509* cert, X509* issuer,
+                                                      X509_STORE* trust_store = nullptr);
 
         inet::cert::VerifyStatus ocsp_check_cert (X509 *x509, X509 *issuer, int req_timeout = 2);
 

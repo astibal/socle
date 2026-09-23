@@ -443,7 +443,8 @@ namespace inet {
             return resp;
         }
 
-        inet::cert::VerifyStatus ocsp_verify_response(OCSP_RESPONSE *resp, X509* cert, X509* issuer) {
+        inet::cert::VerifyStatus ocsp_verify_response(OCSP_RESPONSE *resp, X509* cert, X509* issuer,
+                                                      X509_STORE* trust_store) {
 
             using namespace inet::cert;
 
@@ -452,14 +453,23 @@ namespace inet {
 
             auto const& log = OcspFactory::log();
 
+            if (!resp || !cert || !issuer)
+                return VerifyStatus(is_revoked, ttl, VerifyStatus::status_origin::OCSP);
+
 #ifdef USE_OPENSSL11
 
             OCSP_BASICRESP *br = OCSP_response_get1_basic(resp);
 
             if(br) {
 
-                X509_STORE *st = X509_STORE_new();
-                X509_STORE_set_default_paths(st);
+                const bool owns_store = trust_store == nullptr;
+                X509_STORE *st = owns_store ? X509_STORE_new() : trust_store;
+                if (!st) {
+                    OCSP_BASICRESP_free(br);
+                    return VerifyStatus(-1, ttl, VerifyStatus::status_origin::OCSP);
+                }
+                if (owns_store)
+                    X509_STORE_set_default_paths(st);
 
                 STACK_OF(X509*) signers = sk_X509_new_null();
                 sk_X509_push(signers, issuer);
@@ -510,7 +520,9 @@ namespace inet {
 
                         // match certificate ID in response with checked cert (to prevent replays of correct OCSP responses
                         // but for different cert
-                        if (OCSP_id_cmp(const_cast<OCSP_CERTID*>(id), my_id) == 0) {
+                        const bool id_matches = my_id &&
+                            OCSP_id_cmp(const_cast<OCSP_CERTID*>(id), my_id) == 0;
+                        if (id_matches) {
                             _dia("ocsp_verify_response [%d]: certificate ID matching this single", i);
                             matching_ids = true;
                         } else {
@@ -520,8 +532,14 @@ namespace inet {
                         OCSP_CERTID_free(my_id);
                         my_id = nullptr;
 
-                        if(! matching_ids) {
+                        if(! id_matches) {
                             continue;
+                        }
+
+                        if (OCSP_check_validity(thisupd, nextupd, 5 * 60, -1) != 1) {
+                            _err("ocsp_verify_response [%d]: response validity interval is not current", i);
+                            is_revoked = -1;
+                            break;
                         }
 
                         std::string s_name_hash = SSLFactory::print_ASN1_OCTET_STRING(name_hash);
@@ -544,16 +562,20 @@ namespace inet {
 
                         int days = 0;
                         int secs = 0;
-                        if (ASN1_TIME_diff( &days, &secs, nullptr, nextupd) > 0) {
-                            _dia("ocsp_verify_response [%d]: TTL: %d days, %d seconds", i, days, secs);
-
-                            ttl = days*24*60*60 + secs;
-
-                        } else {
-                            _war("ocsp_verify_response [%d]: negative TTL: %d days, %d seconds", i, days, secs);
-                            _err("this is possible OCSP replay attack, marked as revoked!");
-                            is_revoked = 1;
+                        if (nextupd) {
+                            if (ASN1_TIME_diff( &days, &secs, nullptr, nextupd) > 0) {
+                                _dia("ocsp_verify_response [%d]: TTL: %d days, %d seconds", i, days, secs);
+                                ttl = days*24*60*60 + secs;
+                            } else {
+                                _war("ocsp_verify_response [%d]: negative TTL: %d days, %d seconds", i, days, secs);
+                                _err("this is possible OCSP replay attack, marked as revoked!");
+                                is_revoked = 1;
+                            }
                         }
+
+                        // A response status is meaningful only for its exact
+                        // CertID. Later entries describe other certificates.
+                        break;
                     }
 
                     if(! matching_ids) {
@@ -563,7 +585,8 @@ namespace inet {
                 }
 
                 OCSP_BASICRESP_free(br);
-                X509_STORE_free(st);
+                if (owns_store)
+                    X509_STORE_free(st);
                 sk_X509_free(signers);
             } else {
                 _err("received data doesn't contain OCSP response");
