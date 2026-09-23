@@ -84,11 +84,26 @@ uint32_t SocketInfo::create_session_key(bool negative) {
         dst.pack();
     }
 
+    // A dual-stack IPv6 listener receives IPv4 peers as IPv4-mapped
+    // sockaddr_in6 values. AddressInfo::unpack() correctly exposes those as
+    // AF_INET, but the stored sockaddr still has the IPv6 layout. Hashing it
+    // through sockaddr_in would read sin6_flowinfo instead of the IPv4
+    // address, commonly producing a zero source seed for every IPv4 peer.
+    // Normalize local copies before selecting the family-specific hasher.
+    auto key_src = src.ss.value();
+    auto key_dst = dst.ss.value();
+    if(key_src.ss_family != src.family) {
+        key_src = pack_ss(src.family, src.str_host.c_str(), src.port);
+    }
+    if(key_dst.ss_family != dst.family) {
+        key_dst = pack_ss(dst.family, dst.str_host.c_str(), dst.port);
+    }
+
     switch (src.family) {
         case AF_INET6:
-            return create_session_key6(&src.ss.value(), &dst.ss.value(), negative);
+            return create_session_key6(&key_src, &key_dst, negative);
         default:
-            return create_session_key4(&src.ss.value(), &dst.ss.value(), negative);
+            return create_session_key4(&key_src, &key_dst, negative);
     }
 }
 
