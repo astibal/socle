@@ -79,6 +79,7 @@ namespace socle {
             }
 
             filename_.clear();
+            writer_.reset();
         }
     }
 
