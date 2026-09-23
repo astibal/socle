@@ -21,6 +21,7 @@
 
 #include <string>
 #include <array>
+#include <map>
 #include <optional>
 
 #include <cstring>
@@ -53,7 +54,8 @@ struct Datagram {
 
     Datagram() = default;
 
-    Datagram(Datagram const& r): dst(r.dst), src(r.src), socket_left(r.socket_left), reuse(r.reuse), cx(r.cx), rx_queue(r.rx_queue) {}
+    Datagram(Datagram const& r): dst(r.dst), src(r.src), socket_left(r.socket_left), reuse(r.reuse), cx(r.cx),
+                                 flow_key(r.flow_key), rx_queue(r.rx_queue) {}
 
     Datagram& operator=(Datagram const& r)  {
         assign(r);
@@ -67,6 +69,7 @@ struct Datagram {
 
         reuse = r.reuse;
         cx = r.cx;
+        flow_key = r.flow_key;
         rx_queue = r.rx_queue;
     }
 
@@ -82,6 +85,7 @@ struct Datagram {
 
 
     baseHostCX* cx = nullptr;
+    std::string flow_key;
     std::array<buffer,5> rx_queue;
 
     mutable std::mutex rx_queue_lock;
@@ -150,6 +154,7 @@ class DatagramCom {
 public:
     std::recursive_mutex lock;
     std::map<uint64_t,std::shared_ptr<Datagram>> datagrams_received;
+    std::map<std::string,uint32_t> flow_to_virtual;
   
     // set with all virtual sockets which have data to read
     epoll::set_type in_virt_set;

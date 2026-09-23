@@ -155,15 +155,19 @@ template<class Worker>
 int ThreadedReceiver<Worker>::add_first_datagrams(int sock, SocketInfo& pinfo) {
 
     auto session_key = pinfo.create_session_key(true);
+    auto flow_key = string_format("%d|%s|%u|%d|%s|%u",
+                                  pinfo.src.family, pinfo.src.str_host.c_str(), pinfo.src.port,
+                                  pinfo.dst.family, pinfo.dst.str_host.c_str(), pinfo.dst.port);
 
 
     // lambda creating a new entry
-    auto create_new_entry = [](int sock, SocketInfo& pinfo) -> std::shared_ptr<Datagram> {
+    auto create_new_entry = [](SocketInfo& pinfo, std::string const& flow_key) -> std::shared_ptr<Datagram> {
         auto entry = std::make_shared<Datagram>();
 
         entry->src = pinfo.src.ss.value();
         entry->dst = pinfo.dst.ss.value();
         entry->reuse = false;
+        entry->flow_key = flow_key;
 
         return entry;
     };
@@ -175,6 +179,35 @@ int ThreadedReceiver<Worker>::add_first_datagrams(int sock, SocketInfo& pinfo) {
     auto udpc = UDPCom::datagram_com_static();
     auto lc_ = std::scoped_lock(udpc->lock);
 
+    // The 31-bit virtual descriptor is only an initial candidate. Keep a
+    // full-tuple index so genuine hash collisions remain distinct flows and
+    // subsequent datagrams keep using the collision-resolved descriptor.
+    auto flow_it = udpc->flow_to_virtual.find(flow_key);
+    if(flow_it != udpc->flow_to_virtual.end()) {
+        auto record_it = udpc->datagrams_received.find(flow_it->second);
+        if(record_it != udpc->datagrams_received.end() && record_it->second != nullptr &&
+           record_it->second->flow_key == flow_key) {
+            session_key = flow_it->second;
+        } else {
+            udpc->flow_to_virtual.erase(flow_it);
+            flow_it = udpc->flow_to_virtual.end();
+        }
+    }
+
+    if(flow_it == udpc->flow_to_virtual.end()) {
+        auto record_it = udpc->datagrams_received.find(session_key);
+        if(record_it != udpc->datagrams_received.end() && record_it->second != nullptr &&
+           record_it->second->flow_key == flow_key) {
+            // Recover an index missing after an interrupted handover.
+            udpc->flow_to_virtual.emplace(flow_key, session_key);
+        } else {
+            while(udpc->datagrams_received.find(session_key) != udpc->datagrams_received.end()) {
+                session_key = 0x80000000u | ((session_key + 1u) & 0x7fffffffu);
+            }
+            udpc->flow_to_virtual.emplace(flow_key, session_key);
+        }
+    }
+
     std::shared_ptr<Datagram> entry;
     auto it = udpc->datagrams_received.find(session_key);
     bool new_entry = 1;
@@ -185,7 +218,7 @@ int ThreadedReceiver<Worker>::add_first_datagrams(int sock, SocketInfo& pinfo) {
 
         if(! it->second) {
             _deb("existing datagram - null");
-            it->second = create_new_entry(sock, pinfo);
+            it->second = create_new_entry(pinfo, flow_key);
         }
         entry = it->second;
         new_entry = 0;
@@ -193,7 +226,7 @@ int ThreadedReceiver<Worker>::add_first_datagrams(int sock, SocketInfo& pinfo) {
 
         _dia("new datagram");
 
-        entry = create_new_entry(sock, pinfo);
+        entry = create_new_entry(pinfo, flow_key);
         udpc->datagrams_received[session_key] = entry;
     }
 

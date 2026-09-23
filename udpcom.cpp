@@ -953,6 +953,13 @@ int UDPCom::remove_datagram_entry(int fd) {
             return 0;
         }
 
+        if(not it->flow_key.empty()) {
+            auto flow_it = datagram_com()->flow_to_virtual.find(it->flow_key);
+            if(flow_it != datagram_com()->flow_to_virtual.end() && flow_it->second == key) {
+                datagram_com()->flow_to_virtual.erase(flow_it);
+            }
+        }
+
         if(not it->reuse) {
             if(it->socket_left.has_value() && it->socket_left.value() > 0) {
                 int left = it->socket_left.value();
