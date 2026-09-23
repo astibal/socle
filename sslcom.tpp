@@ -3009,7 +3009,7 @@ int baseSSLCom<L4Proto>::parse_peer_hello() {
                     unsigned char handshake_version_min = b.get_at<unsigned char>(curpos);
                     curpos += sizeof(unsigned char); //@11
                     [[maybe_unused]]
-                    unsigned int handshake_unixtime = ntohl(b.get_at<unsigned char>(curpos));
+                    unsigned int handshake_unixtime = ntohl(b.get_at<unsigned int>(curpos));
                     curpos += sizeof(unsigned int); //@15
 
                     curpos += 28; // skip random 24B bytes
@@ -3057,6 +3057,7 @@ int baseSSLCom<L4Proto>::parse_peer_hello() {
 
                 } catch(std::out_of_range const& e) {
                     _dia("SSLCom::parse_peer_hello: too short to read position %d from data size %d", curpos, b.size());
+                    throw socle::ex::SSL_clienthello_malformed();
                 }
 
                 /* extension section, optional in tls1.2, but mandatory in tls 1.3 */
@@ -3073,7 +3074,7 @@ int baseSSLCom<L4Proto>::parse_peer_hello() {
                  */
 
                 unsigned short extensions_length = 0;
-                if(curpos + sizeof(unsigned short) < b.size()) {
+                if(curpos + sizeof(unsigned short) <= b.size()) {
                     extensions_length = ntohs(b.get_at<unsigned short>(curpos));
                     curpos += sizeof(unsigned short);
                 }
@@ -3085,11 +3086,16 @@ int baseSSLCom<L4Proto>::parse_peer_hello() {
                 }
 
                 if (extensions_length > 0) {
+                    const unsigned int extensions_end = curpos + extensions_length;
+                    while (curpos < extensions_end) {
+                        if (extensions_end - curpos < 4)
+                            throw socle::ex::SSL_clienthello_malformed();
 
-                    // minimal extension size is 5 (2 for ID, 2 for len)
-                    while (curpos + 4 < b.size()) {
                         _deb("SSLCom::parse_peer_hello: parsing extension at position %d", curpos);
-                        curpos += parse_peer_hello_extensions(b, curpos);
+                        const unsigned int parsed = parse_peer_hello_extensions(b, curpos);
+                        if (parsed > extensions_end - curpos)
+                            throw socle::ex::SSL_clienthello_malformed();
+                        curpos += parsed;
                     }
                 }
             }
@@ -3131,10 +3137,18 @@ int baseSSLCom<L4Proto>::parse_peer_hello() {
 template <class L4Proto>
 unsigned short baseSSLCom<L4Proto>::parse_peer_hello_extensions(buffer& b, unsigned int curpos) {
 
+    if (curpos > b.size() || b.size() - curpos < 4)
+        throw socle::ex::SSL_clienthello_malformed();
+
     unsigned short ext_id = ntohs(b.get_at<unsigned short>(curpos));
     curpos+=sizeof(unsigned short);
     unsigned short ext_length = ntohs(b.get_at<unsigned short>(curpos));
     curpos+=sizeof(unsigned short);
+
+    if (ext_length > b.size() - curpos)
+        throw socle::ex::SSL_clienthello_malformed();
+
+    const unsigned int ext_end = curpos + ext_length;
 
     _deb("SSLCom::parse_peer_hello_extensions: extension id 0x%x, length %d", ext_id, ext_length);
 
@@ -3142,16 +3156,25 @@ unsigned short baseSSLCom<L4Proto>::parse_peer_hello_extensions(buffer& b, unsig
 
         // SNI
 
+        if (ext_length < 5)
+            throw socle::ex::SSL_clienthello_malformed();
+
         [[maybe_unused]]
-        unsigned short sn_list_length = htons(b.get_at<unsigned short>(curpos));
+        unsigned short sn_list_length = ntohs(b.get_at<unsigned short>(curpos));
         curpos += sizeof(unsigned short);
+        if (sn_list_length != ext_length - sizeof(unsigned short))
+            throw socle::ex::SSL_clienthello_malformed();
+
         unsigned char sn_type = b.get_at<unsigned char>(curpos);
         curpos += sizeof(unsigned char);
 
         /* type is hostname*/
         if (sn_type == 0) {
-            unsigned short sn_hostname_length = htons(b.get_at<unsigned short>(curpos));
+            unsigned short sn_hostname_length = ntohs(b.get_at<unsigned short>(curpos));
             curpos += sizeof(unsigned short);
+            if (sn_hostname_length > ext_end - curpos)
+                throw socle::ex::SSL_clienthello_malformed();
+
             std::string s;
             s.append((const char *) b.data() + curpos, (size_t) sn_hostname_length);
 
@@ -3162,8 +3185,13 @@ unsigned short baseSSLCom<L4Proto>::parse_peer_hello_extensions(buffer& b, unsig
     }
     else if(ext_id == 16) {
 
-        unsigned short alpn_length = htons(b.get_at<unsigned short>(curpos));
+        if (ext_length < sizeof(unsigned short))
+            throw socle::ex::SSL_clienthello_malformed();
+
+        unsigned short alpn_length = ntohs(b.get_at<unsigned short>(curpos));
         curpos += sizeof(unsigned short);
+        if (alpn_length != ext_end - curpos)
+            throw socle::ex::SSL_clienthello_malformed();
 
         std::string s;
         s.append((const char *) b.data() + curpos, (size_t) alpn_length);

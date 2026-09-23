@@ -248,24 +248,28 @@ inline void buffer::counter_clear_bt() {
 template <typename T>
 inline T buffer::get_at(unsigned int idx) const
 {
-    if(idx + sizeof(T) > size_)
+    if(idx > size_ || sizeof(T) > size_ - idx)
         throw std::out_of_range ("buffer: index out of range: " + std::to_string((int)idx) + " of " + std::to_string(size_));
 
-    return *((T*)(&data_[idx]));
+    T value;
+    std::memcpy(&value, &data_[idx], sizeof(value));
+    return value;
 }
 
 template <typename T>
 inline void buffer::set_at(unsigned int idx, T val)
 {
-    if(idx + sizeof(T) > size_)
+    if(idx > size_ || sizeof(T) > size_ - idx)
         throw std::out_of_range ("buffer: index out of range: " + std::to_string((int)idx) + " of " + std::to_string(size_));
 
-    *((T*)(&data()[idx])) = val;
+    std::memcpy(&data()[idx], &val, sizeof(val));
 }
 
 template <typename T>
 inline T buffer::get_at_ptr(uint8_t const* data) {
-    return *((T*)(data));
+    T value;
+    std::memcpy(&value, data, sizeof(value));
+    return value;
 }
 
 
