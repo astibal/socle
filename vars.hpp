@@ -20,6 +20,7 @@
 #define VARS_HPP
 
 
+#include <cstdlib>
 #include <cstdio>
 #include <unistd.h>
 #include <functional>
