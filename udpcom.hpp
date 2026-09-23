@@ -193,6 +193,7 @@ public:
     size_t kill_and_deref_from_connnect(std::string const& key);
     int remove_datagram_entry(int fd);
     void shutdown(int _fd) override;
+    [[nodiscard]] bool shutdown_consumes_fd() const override { return true; }
     
     void cleanup() override {};
     
