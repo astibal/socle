@@ -708,6 +708,8 @@ namespace inet {
 
             if (ocsp_req_ctx)
                 OCSP_REQ_CTX_free(ocsp_req_ctx);
+            if (ocsp_resp)
+                OCSP_RESPONSE_free(ocsp_resp);
 
         }
 
@@ -721,6 +723,11 @@ namespace inet {
                 char *port = nullptr;
                 char *path = nullptr;
                 int use_ssl;
+                auto url_parts = raw::guard([&] {
+                    OPENSSL_free(host);
+                    OPENSSL_free(port);
+                    OPENSSL_free(path);
+                });
 
                 char *ocsp_url = sk_OPENSSL_STRING_value(ocsp_list, j);
                 if (OCSP_parse_url(ocsp_url, &host, &port, &path, &use_ssl)) {
@@ -906,6 +913,8 @@ namespace inet {
                 case OcspQuery::ST_CONNECTED:
 
 
+                    if (ocsp_req_ctx)
+                        OCSP_REQ_CTX_free(ocsp_req_ctx);
                     ocsp_req_ctx = OCSP_sendreq_new(conn_bio, ocsp_path.c_str(), nullptr, -1);
                     if (!ocsp_req_ctx) {
                         _err("OcspQuery::do_send_request[0x%lx]: OCSP_sendreq_new failed", ref_id);
