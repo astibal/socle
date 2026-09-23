@@ -20,6 +20,9 @@
 #ifndef MASTERPROXY_H
 #define MASTERPROXY_H
 
+#include <chrono>
+#include <deque>
+
 #include <baseproxy.hpp>
 
 class MasterProxy : public baseProxy {
@@ -31,18 +34,33 @@ public:
     using set_type = mp::set<T>;
     using proxy_entry = std::pair<std::unique_ptr<baseProxy>,std::unique_ptr<std::thread>>;
 
+    struct deferred_entry {
+        proxy_entry proxy;
+        std::chrono::steady_clock::time_point deferred_at;
+    };
+    using deferred_queue = std::deque<deferred_entry>;
+
     using mutex_t = std::mutex;
     mutex_t& proxy_lock() const { return proxies_lock_; }
 
 private:
     vector_type <proxy_entry> proxies_;
+    deferred_queue deferred_;
     mutable mutex_t proxies_lock_;
+    mutable mutex_t deferred_lock_;
+    std::size_t deferred_reap_tick_ = 0;
 
     static bool thread_finish(std::unique_ptr<std::thread>& thread_ptr);
+    // Caller holds proxies_lock_. The _ul suffix follows the existing
+    // convention for operations which expect their lock to be held already.
+    void defer_proxy_ul(proxy_entry&& entry);
+    void reap_deferred_once();
 public:
     static inline unsigned int subproxy_reserve = 10;
     static inline unsigned int subproxy_thread_spray_min = 5;
     static inline unsigned int subproxy_thread_spray_bytes_min = 1400;
+    static inline std::chrono::milliseconds deferred_grace {1000};
+    static inline std::size_t deferred_reap_every = 16;
 
     explicit MasterProxy(baseCom* c): baseProxy(c) {
         proxies_.reserve(subproxy_reserve);
@@ -54,6 +72,8 @@ public:
 
     vector_type <proxy_entry>& proxies() { return proxies_; };
     vector_type <proxy_entry> const& proxies() const { return proxies_; };
+    deferred_queue& deferred() { return deferred_; };
+    deferred_queue const& deferred() const { return deferred_; };
 
     void add_proxy(baseProxy* p) {
         auto lc_ = std::scoped_lock(proxies_lock_);

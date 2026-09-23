@@ -44,33 +44,35 @@ bool MasterProxy::run_timers()
 {
     if(baseProxy::run_timers()) {
 
-        auto l_ = std::scoped_lock(proxies_lock_);
-        for(auto i = proxies().begin(); i != proxies().end(); ) {
+        {
+            auto l_ = std::scoped_lock(proxies_lock_);
+            for(auto i = proxies().begin(); i != proxies().end(); ) {
 
-            auto const& p = i->first;
+                auto const& p = i->first;
 
-            if(not p) {
-                _inf("null sub-proxy!!");
+                if(not p) {
+                    _inf("null sub-proxy!!");
+                    i = proxies().erase(i);
+                    continue;
+                }
+
+                if(p->state().in_progress()) {
+                    ++i;
+                    continue;
+                }
+
+                if(not p->state().dead()) {
+                    auto lcx = logan_context(p->to_string(iNOT));
+                    p->run_timers();
+                }
+                else {
+                    defer_proxy_ul(std::move(*i));
+                    i = proxies().erase(i);
+                    continue;
+                }
+
                 ++i;
-                continue;
             }
-
-            if(p->state().in_progress()) {
-                ++i;
-                continue;
-            }
-
-            if(not p->state().dead()) {
-                auto lcx = logan_context(p->to_string(iNOT));
-                p->run_timers();
-            }
-            else {
-                if(i->second) thread_finish(i->second);
-                i = proxies().erase(i);
-                continue;
-            }
-
-            ++i;
         }
 
         return true;
@@ -95,7 +97,41 @@ bool MasterProxy::thread_finish(std::unique_ptr<std::thread>& thread_ptr) {
     return ret;
 }
 
+void MasterProxy::defer_proxy_ul(proxy_entry&& entry) {
+    {
+        auto l_ = std::scoped_lock(deferred_lock_);
+        deferred().push_back({std::move(entry), std::chrono::steady_clock::now()});
+        _deb("MasterProxy::defer_proxy_ul: queued, deferred=%zd", deferred().size());
+    }
+}
+
+void MasterProxy::reap_deferred_once() {
+    proxy_entry entry;
+    std::size_t deferred_left = 0;
+    {
+        auto lock = std::scoped_lock(deferred_lock_);
+        if(deferred().empty()) return;
+        if(deferred().front().deferred_at + deferred_grace > std::chrono::steady_clock::now()) return;
+
+        entry = std::move(deferred().front().proxy);
+        deferred().pop_front();
+        deferred_left = deferred().size();
+    }
+
+    // HostCX and Com teardown has worker-thread affinity. Keep destruction on
+    // the MasterProxy worker, but outside both queue locks.
+    auto& [proxy, thread] = entry;
+    thread_finish(thread);
+    proxy.reset();
+    _deb("MasterProxy::reap_deferred_once: reaped, deferred=%zd", deferred_left);
+}
+
 int MasterProxy::handle_sockets_once(baseCom* xcom) {
+
+    if(++deferred_reap_tick_ >= deferred_reap_every) {
+        deferred_reap_tick_ = 0;
+        reap_deferred_once();
+    }
 
     int my_handle_returned = 0;
 
@@ -205,6 +241,7 @@ int MasterProxy::handle_sockets_once(baseCom* xcom) {
         if (proxy->state().dead()) {
 
             auto lcx = logan_context(proxy->to_string(iNOT));
+            defer_proxy_ul(std::move(*i));
             i = proxies().erase(i);
 
             proxies_shutdown++;
@@ -226,10 +263,26 @@ void MasterProxy::shutdown() {
 	
 	int i = 0;
 
-	// anyone getting proxies from list would get valid pointer
-	auto l_ = std::scoped_lock(proxies_lock_);
+	vector_type<proxy_entry> shutdown_entries;
+	{
+		// anyone getting proxies from list would get a valid pointer until it is
+		// atomically moved to the local shutdown list.
+		auto l_ = std::scoped_lock(proxies_lock_);
+		shutdown_entries.reserve(proxies().size());
+		for(auto& entry : proxies()) shutdown_entries.emplace_back(std::move(entry));
+		proxies().clear();
+	}
 
-	for(auto& [ proxy, thr ] : proxies()) {
+	{
+		auto l_ = std::scoped_lock(deferred_lock_);
+		shutdown_entries.reserve(shutdown_entries.size() + deferred().size());
+		while(not deferred().empty()) {
+			shutdown_entries.emplace_back(std::move(deferred().front().proxy));
+			deferred().pop_front();
+		}
+	}
+
+	for(auto& [ proxy, thr ] : shutdown_entries) {
 		_inf("MasterProxy::shutdown: slave[%d]",i);
 
         if(thr and thr->joinable()) {
@@ -244,7 +297,6 @@ void MasterProxy::shutdown() {
         }
         i++;
     }
-	proxies().clear();
 }
 
 
