@@ -49,7 +49,7 @@ namespace socle {
 
         writer_ = std::make_unique<std::ofstream>(fnm , std::ofstream::out | std::ofstream::app);
 
-        if(chmod(fnm.c_str(), 0600) == 0) {
+        if(chmod(fnm.c_str(), 0600) != 0) {
             close();
             return false;
         }
