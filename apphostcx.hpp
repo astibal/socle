@@ -46,7 +46,7 @@ public:
         static inline unsigned int max_detect_bytes = 2048;
 
         static inline unsigned int min_detect_bytes = 1024;
-        static inline unsigned int max_exchanges = 20;
+        static inline unsigned int max_exchanges = 200;
 
         static inline size_t continuous_data_left_default = 100000;
         static inline bool opt_switch_to_continuous = true;
@@ -56,7 +56,12 @@ public:
 
     // acknowledge interest in capturing more flow data
     void acknowledge_continuous_mode(size_t to_read_bytes) {
-        continuous_data_left = to_read_bytes == 0L ? config::continuous_data_left_default : to_read_bytes;
+
+        // if zero, acknowledge default byte amount
+        auto to_set = to_read_bytes == 0L ? config::continuous_data_left_default : to_read_bytes;
+
+        // don't allow shrinking the continuous mode window
+        continuous_data_left = std::max(to_set, continuous_data_left);
         _dia("acknowledged continuous mode for next %ldB", continuous_data_left);
     }
 

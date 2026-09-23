@@ -71,8 +71,6 @@ int AppHostCX::make_sig_states(std::shared_ptr<sensorType> sig_states, std::shar
     _deb("AppHostCX::zip_signatures: loaded %d of %d",r, source_signatures->size());
     return r;
 }
-
-
 // iterate over all enabled signature trees
 bool AppHostCX::detect () {
 
@@ -367,7 +365,7 @@ bool AppHostCX::inside_detect_ranges() {
     bool inside_detect_range = bytes_total <= config::max_detect_bytes;
 
     bool exchanges_bytes_override = bytes_total <= config::min_detect_bytes;
-    bool inside_detect_exchanges = flow().size() < config::max_exchanges or exchanges_bytes_override;
+    bool inside_detect_exchanges = flow().pos_size() < config::max_exchanges or exchanges_bytes_override;
 
     return (inside_detect_range and inside_detect_exchanges);
 }
@@ -425,8 +423,7 @@ void AppHostCX::pre_write() {
                 _dia("AppHostCX::pre_write[%s]: flow append new %d bytes",c_type(),delta_b.size());
                 flow().append('w',delta_b);
 
-                //peek_write_counter += delta_b.size();
-                peek_write_counter += delta; // this should be more accurate, since it's not counting in leftovers from writebuffer
+                peek_write_counter += delta_b.size();
 
                 if(mode() == mode_t::CONTINUOUS) {
                     continuous_mode_keeper(delta_b);
@@ -462,6 +459,4 @@ void AppHostCX::pre_write() {
         }
     }
 }
-
-
 
