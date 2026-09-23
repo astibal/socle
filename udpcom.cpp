@@ -650,6 +650,17 @@ ssize_t UDPCom::write_to_pool(int _fd, const void* _buf, size_t _n, int _flags) 
     if(it_record != datagram_com()->datagrams_received.end()) {
         auto record = (*it_record).second;
 
+        // A virtual descriptor is a deterministic flow key and can be reused
+        // after the original flow has been removed. Deferred teardown keeps
+        // the old HostCX (and possibly its write buffer) alive for a while.
+        // Never route that old buffer through a newer pool entry which merely
+        // happens to have the same virtual descriptor.
+        if(record->cx != nullptr && record->cx != owner_cx()) {
+            _err("UDPCom::write_to_pool[%d]: stale owner, refusing cross-flow write (record=%p, writer=%p)",
+                 _fd, static_cast<void*>(record->cx), static_cast<void*>(owner_cx()));
+            errno = ESTALE;
+            return -1;
+        }
 
         if(record->socket_left.has_value()) {
             _dia("UDPCom::write_to_pool[%d]: about to write %d bytes into real socket %d", _fd, _n, record->socket_left.value());
@@ -933,6 +944,14 @@ int UDPCom::remove_datagram_entry(int fd) {
 
     if(it_record != db.end()) {
         auto it = db[key];
+
+        // Deferred destruction of an old Com must not erase a replacement
+        // entry which already owns the same deterministic virtual key.
+        if(it->cx != nullptr && it->cx != owner_cx()) {
+            _war("UDPCom::remove_datagram_entry[%d]: stale owner, preserving newer entry (record=%p, remover=%p)",
+                 fd, static_cast<void*>(it->cx), static_cast<void*>(owner_cx()));
+            return 0;
+        }
 
         if(not it->reuse) {
             if(it->socket_left.has_value() && it->socket_left.value() > 0) {
