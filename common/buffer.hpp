@@ -17,6 +17,7 @@
 #include <cstring>   // std::memcpy, std::memcmp, std::memset, std::memchr
 #include <stdexcept> // std::out_of_range, std::invalid_argument
 #include <string>
+#include <type_traits>
 #include <vector>
 #include <mutex>
 
@@ -248,6 +249,9 @@ inline void buffer::counter_clear_bt() {
 template <typename T>
 inline T buffer::get_at(unsigned int idx) const
 {
+    static_assert(std::is_trivially_copyable_v<T>,
+                  "buffer typed access requires a trivially copyable type");
+
     if(idx > size_ || sizeof(T) > size_ - idx)
         throw std::out_of_range ("buffer: index out of range: " + std::to_string((int)idx) + " of " + std::to_string(size_));
 
@@ -259,6 +263,9 @@ inline T buffer::get_at(unsigned int idx) const
 template <typename T>
 inline void buffer::set_at(unsigned int idx, T val)
 {
+    static_assert(std::is_trivially_copyable_v<T>,
+                  "buffer typed access requires a trivially copyable type");
+
     if(idx > size_ || sizeof(T) > size_ - idx)
         throw std::out_of_range ("buffer: index out of range: " + std::to_string((int)idx) + " of " + std::to_string(size_));
 
@@ -267,6 +274,9 @@ inline void buffer::set_at(unsigned int idx, T val)
 
 template <typename T>
 inline T buffer::get_at_ptr(uint8_t const* data) {
+    static_assert(std::is_trivially_copyable_v<T>,
+                  "buffer typed access requires a trivially copyable type");
+
     T value;
     std::memcpy(&value, data, sizeof(value));
     return value;
