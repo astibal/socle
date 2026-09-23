@@ -54,13 +54,17 @@ private:
     // Caller holds proxies_lock_. The _ul suffix follows the existing
     // convention for operations which expect their lock to be held already.
     void defer_proxy_ul(proxy_entry&& entry);
-    void reap_deferred_once();
+    void reap_deferred(std::size_t budget);
+    bool deferred_under_pressure() const;
 public:
     static inline unsigned int subproxy_reserve = 10;
     static inline unsigned int subproxy_thread_spray_min = 5;
     static inline unsigned int subproxy_thread_spray_bytes_min = 1400;
     static inline std::chrono::milliseconds deferred_grace {1000};
     static inline std::size_t deferred_reap_every = 16;
+    static inline std::size_t deferred_pressure_threshold = 128;
+    static inline std::size_t deferred_pressure_batch = 32;
+    static inline std::chrono::milliseconds deferred_reap_time_budget {2};
 
     explicit MasterProxy(baseCom* c): baseProxy(c) {
         proxies_.reserve(subproxy_reserve);

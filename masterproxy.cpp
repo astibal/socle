@@ -105,32 +105,46 @@ void MasterProxy::defer_proxy_ul(proxy_entry&& entry) {
     }
 }
 
-void MasterProxy::reap_deferred_once() {
-    proxy_entry entry;
+bool MasterProxy::deferred_under_pressure() const {
+    auto lock = std::scoped_lock(deferred_lock_);
+    return deferred().size() >= deferred_pressure_threshold;
+}
+
+void MasterProxy::reap_deferred(std::size_t budget) {
+    auto const started_at = std::chrono::steady_clock::now();
+    std::size_t reaped = 0;
     std::size_t deferred_left = 0;
-    {
-        auto lock = std::scoped_lock(deferred_lock_);
-        if(deferred().empty()) return;
-        if(deferred().front().deferred_at + deferred_grace > std::chrono::steady_clock::now()) return;
+    while(reaped < budget) {
+        proxy_entry entry;
+        {
+            auto lock = std::scoped_lock(deferred_lock_);
+            if(deferred().empty()) break;
+            if(deferred().front().deferred_at + deferred_grace > std::chrono::steady_clock::now()) break;
+            entry = std::move(deferred().front().proxy);
+            deferred().pop_front();
+            deferred_left = deferred().size();
+        }
 
-        entry = std::move(deferred().front().proxy);
-        deferred().pop_front();
-        deferred_left = deferred().size();
+        // HostCX and Com teardown has worker-thread affinity. Keep destruction
+        // on the MasterProxy worker, but outside both queue locks.
+        auto& [proxy, thread] = entry;
+        thread_finish(thread);
+        proxy.reset();
+
+        ++reaped;
+        if(std::chrono::steady_clock::now() - started_at >= deferred_reap_time_budget) break;
     }
-
-    // HostCX and Com teardown has worker-thread affinity. Keep destruction on
-    // the MasterProxy worker, but outside both queue locks.
-    auto& [proxy, thread] = entry;
-    thread_finish(thread);
-    proxy.reset();
-    _deb("MasterProxy::reap_deferred_once: reaped, deferred=%zd", deferred_left);
+    if(reaped > 0) {
+        _deb("MasterProxy::reap_deferred: reaped=%zd, deferred=%zd", reaped, deferred_left);
+    }
 }
 
 int MasterProxy::handle_sockets_once(baseCom* xcom) {
 
-    if(++deferred_reap_tick_ >= deferred_reap_every) {
+    auto const deferred_pressure = deferred_under_pressure();
+    if(deferred_pressure or ++deferred_reap_tick_ >= deferred_reap_every) {
         deferred_reap_tick_ = 0;
-        reap_deferred_once();
+        reap_deferred(deferred_pressure ? deferred_pressure_batch : 1);
     }
 
     int my_handle_returned = 0;
