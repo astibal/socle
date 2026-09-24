@@ -41,15 +41,11 @@ struct sobject_info {
     std::string extra_string() const { if (bt_) { return string_format("creation point:\n%s",bt_->c_str()); } else { return ""; } }
     sobject_info() { init(); }
 
-    void init() { 
-        created_ = time(nullptr); 
+    void init() {
         if(enable_bt_) {
             bt_ = new std::string(bt());
         }
     }
-
-    time_t created_ = 0L;
-    time_t age() const { return time(nullptr) - created_; }
 
     std::string to_string(int verbosity) const;
     [[nodiscard]] inline std::string str() const { return to_string(iINF); };
@@ -302,4 +298,3 @@ typedef sref<std::vector<std::string>> sref_vector_string;
 
 }
 #endif
-

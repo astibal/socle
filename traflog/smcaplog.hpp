@@ -23,11 +23,10 @@
 #include <traflog/filewriter.hpp>
 #include <traflog/threadedpoolwriter.hpp>
 #include <traflog/fsoutput.hpp>
-#include <sessionobject.hpp>
 
 namespace socle::traflog {
 
-    class SmcapLog : public baseTrafficLogger, public session_object {
+    class SmcapLog : public baseTrafficLogger {
 
         static const bool use_pool_writer = true;
 
@@ -54,9 +53,9 @@ namespace socle::traflog {
             }
         }
 
-        std::string to_string(int verbosity) const override;
+        virtual std::string to_string(int verbosity) const;
 
-        TYPENAME_OVERRIDE("trafLog")
+        TYPENAME_BASE("trafLog")
         DECLARE_LOGGING(to_string)
 
     private:

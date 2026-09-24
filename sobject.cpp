@@ -30,14 +30,10 @@ bool sobject_info::enable_bt_ = false;
 std::string sobject_info::to_string(int verbosity) const {
     std::stringstream r;
     
-    if(verbosity > INF) {
-        r << "    " << c_type() << ": age: " << age() << "s";
-        
-        if(verbosity >= DEB ) {
-            std::string ex = extra_string();
-            if(! ex.empty() )
-                r << " extra info: " << ex;
-        }
+    if(verbosity >= DEB ) {
+        std::string ex = extra_string();
+        if(! ex.empty() )
+            r << "    " << c_type() << " extra info: " << ex;
     }
     
     return r.str();
@@ -141,10 +137,6 @@ std::string sobjectDB::str_stats(const char* criteria) {
     std::stringstream ret;
     unsigned long object_counter = 0;
     
-    std::time_t youngest_age = 0L;
-    std::time_t oldest_age = 0L;
-    std::time_t sum_age = 0L;
-
     {
         std::scoped_lock<std::recursive_mutex> l_(getlock());
         for (auto const & it: db()) {
@@ -155,33 +147,18 @@ std::string sobjectDB::str_stats(const char* criteria) {
             }
             _deb("comparing classname: %s and %s", ptr->c_type(), criteria);
             if (criteria == nullptr || ptr->c_type() == criteria) {
-                auto const & si = it.second;
                 object_counter++;
-
-                if (si != nullptr) {
-                    auto age = si->age();
-                    sum_age += age;
-
-                    if (age > oldest_age) oldest_age = age;
-                    if (age < youngest_age) youngest_age = age;
-                }
-
             }
         }
     }
 
-    float avg_age = 0;
-    if (object_counter > 0) 
-        avg_age = static_cast<float>(sum_age)/static_cast<float>(object_counter);
-    
     ret << "Performance: " << socle::sobject::mtr_created().get() << " new objects per second, "
                            << socle::sobject::mtr_deleted().get() << " deleted objects per second.\n";
 
     ret << "Totals: " << sobject::mtr_created().total() << " objects created," << sobject::mtr_deleted().total() << " deleted";
 
-    ret << "Database contains: "<< object_counter << " matching entries (" << ( criteria ? criteria : "*" ) << "), oldest " << static_cast<int>(oldest_age) << "s, ";
-    ret << "youngest age "<< youngest_age << "s, average age is "<< avg_age << "s.";
-    ret << "\n";
+    ret << "Database contains: " << object_counter << " matching entries ("
+        << (criteria ? criteria : "*") << ").\n";
 
     {
         std::scoped_lock<std::recursive_mutex> l_(getlock());
