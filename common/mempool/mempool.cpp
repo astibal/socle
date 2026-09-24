@@ -358,7 +358,7 @@ void memPool::free_heap(mem_chunk const& mch) {
 
 #ifdef MEMPOOL_ALL
     // don't recurse to itself
-        ::free(to_ret.ptr);
+        ::free(mch.ptr);
 #else
     delete[] mch.ptr;
 #endif
