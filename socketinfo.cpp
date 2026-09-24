@@ -159,7 +159,7 @@ uint32_t SocketInfo::create_session_key6(sockaddr_storage* from, sockaddr_storag
     return mirand; // however we return it as the key, therefore cast to unsigned int
 }
 
-int SockOps::socket_create(int family ,int l4proto, int protocol) {
+int SockOps::socket_create(int family, int l4proto, int protocol, bool reuse_addr) {
     int fd = socket(family, l4proto, protocol);
 
     if (fd < 0) {
@@ -168,7 +168,7 @@ int SockOps::socket_create(int family ,int l4proto, int protocol) {
     }
     int n;
 
-    if (n = 1; 0 != ::setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &n, sizeof(int))) {
+    if (n = reuse_addr ? 1 : 0; 0 != ::setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &n, sizeof(int))) {
         throw socket_info_error(string_format("cannot set socket %d option SO_REUSEADDR\n", fd).c_str());
     }
 
