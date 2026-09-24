@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.0)
+cmake_minimum_required(VERSION 3.14)
 
 project(socle CXX)
 
@@ -165,4 +165,3 @@ configure_file(
         ${SOCLE_DIR}/socle_version.h.in
         ${SOCLE_DIR}/socle_version.h
 )
-

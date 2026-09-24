@@ -20,6 +20,7 @@
 #define MEMPOOL_HPP
 
 #include <cstddef>
+#include <cstdlib>
 #include <vector>
 #include <stack>
 #include <mutex>
@@ -109,7 +110,7 @@ struct mem_chunk
             ret += "\n";
             ret += strings[i];
         }
-        delete[] strings;
+        std::free(strings);
 
         return ret;
     };
