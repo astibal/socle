@@ -35,10 +35,10 @@ namespace socle {
         }
 
         template <typename T>
-        memvar temp_clone(T* source, std::size_t size) {
+        memvar temp_clone(const T* source, std::size_t size) {
 
             auto* buf = mempool_alloc(size);
-            std::memcpy((std::byte*)source, buf, size);
+            if (buf && source && size) std::memcpy(buf, source, size);
 
             return { std::move(buf), deleters::mp_free };
         }
