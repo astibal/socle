@@ -242,11 +242,19 @@ void baseHostCX::shutdown() {
         closing_fds_ = fds_;
 
         if(com()) {
+            // Stop dispatching before shutdown: UDP shutdown closes the fd
+            // immediately, so clearing its handler afterwards could clear a
+            // different socket which already reused the same descriptor.
+            unhandle();
+            _deb("baseHostCX::shutdown[%s]: handler removed", c_type());
+
             com()->shutdown(closing_fds_);
             _deb("baseHostCX::shutdown[%s]: socket shutdown on com", c_type());
 
-            unhandle();
-            _deb("baseHostCX::shutdown[%s]: handler removed, com halted", c_type());
+            // UDPCom either closes the socket or transfers a shared cached
+            // socket to another session. In both cases this HostCX must not
+            // close the numeric fd again later: it may already be reused.
+            if(com()->shutdown_consumes_fd()) closing_fds_ = 0;
         }
         fds_ = 0;
     } else {
@@ -817,4 +825,3 @@ std::string baseHostCX::full_name(unsigned char side) {
                                                         self_c.c_str(), self_ss.c_str(), self.c_str(), self_p.c_str());
 
 }
-

@@ -154,6 +154,10 @@ int UDPCom::bind(short unsigned int port) {
 int UDPCom::connect(const char* host, const char* port) {
 
     auto use_cached_connection = [this](std::string const& cache_key) -> std::optional<int> {
+        if(cache_key.empty()) {
+            return std::nullopt;
+        }
+
         std::scoped_lock<std::recursive_mutex> l(connections.lock);
         auto it_fd = connections.cache.find(cache_key);
 
@@ -292,9 +296,13 @@ int UDPCom::connect(const char* host, const char* port) {
 
             } else {
                 // connect OK
-                std::scoped_lock<std::recursive_mutex> l(connections.lock);
-                connections.cache[connect_cache_key_cur] = std::pair<int, int>(sfd, 1);
-                connections.my_key = connect_cache_key_cur;
+                if(nonlocal_src() and not connect_cache_key_cur.empty()) {
+                    std::scoped_lock<std::recursive_mutex> l(connections.lock);
+                    connections.cache[connect_cache_key_cur] = std::pair<int, int>(sfd, 1);
+                    connections.my_key = connect_cache_key_cur;
+                } else {
+                    connections.my_key.reset();
+                }
 
                 _dia("UDPCom::connect[%s:%s]: socket[%d] connection %s:%d OK", host, port, sfd,
                      nonlocal_src_host().c_str(), nonlocal_src_port());
@@ -328,6 +336,7 @@ int UDPCom::connect(const char* host, const char* port) {
 void UDPCom::init(baseHostCX* owner)
 {
     baseCom::init(owner);
+    owner_token_ = next_owner_token_.fetch_add(1, std::memory_order_relaxed) + 1;
 }
 
 bool UDPCom::is_connected(int s) {
@@ -642,6 +651,21 @@ ssize_t UDPCom::write_to_pool(int _fd, const void* _buf, size_t _n, int _flags) 
     if(it_record != datagram_com()->datagrams_received.end()) {
         auto record = (*it_record).second;
 
+        // A virtual descriptor is a deterministic flow key and can be reused
+        // after the original flow has been removed. Deferred teardown keeps
+        // the old HostCX (and possibly its write buffer) alive for a while.
+        // Never route that old buffer through a newer pool entry which merely
+        // happens to have the same virtual descriptor.
+        if((record->cx != nullptr && record->cx != owner_cx()) ||
+           (record->owner_token != 0 && record->owner_token != owner_token())) {
+            _err("UDPCom::write_to_pool[%d]: stale owner, refusing cross-flow write "
+                 "(record=%p/%llu, writer=%p/%llu)",
+                 _fd, static_cast<void*>(record->cx),
+                 static_cast<unsigned long long>(record->owner_token),
+                 static_cast<void*>(owner_cx()), static_cast<unsigned long long>(owner_token()));
+            errno = ESTALE;
+            return -1;
+        }
 
         if(record->socket_left.has_value()) {
             _dia("UDPCom::write_to_pool[%d]: about to write %d bytes into real socket %d", _fd, _n, record->socket_left.value());
@@ -926,6 +950,25 @@ int UDPCom::remove_datagram_entry(int fd) {
     if(it_record != db.end()) {
         auto it = db[key];
 
+        // Deferred destruction of an old Com must not erase a replacement
+        // entry which already owns the same deterministic virtual key.
+        if((it->cx != nullptr && it->cx != owner_cx()) ||
+           (it->owner_token != 0 && it->owner_token != owner_token())) {
+            _war("UDPCom::remove_datagram_entry[%d]: stale owner, preserving newer entry "
+                 "(record=%p/%llu, remover=%p/%llu)",
+                 fd, static_cast<void*>(it->cx),
+                 static_cast<unsigned long long>(it->owner_token),
+                 static_cast<void*>(owner_cx()), static_cast<unsigned long long>(owner_token()));
+            return 0;
+        }
+
+        if(not it->flow_key.empty()) {
+            auto flow_it = datagram_com()->flow_to_virtual.find(it->flow_key);
+            if(flow_it != datagram_com()->flow_to_virtual.end() && flow_it->second == key) {
+                datagram_com()->flow_to_virtual.erase(flow_it);
+            }
+        }
+
         if(not it->reuse) {
             if(it->socket_left.has_value() && it->socket_left.value() > 0) {
                 int left = it->socket_left.value();
@@ -1015,6 +1058,7 @@ void UDPCom::shutdown(int _fd) {
     if(_fd > 0) {
 
         size_t killed_from_cache = 0;
+        bool handled_by_cache = false;
 
         {
             auto l_ = std::scoped_lock(ConnectionsCache::lock);
@@ -1027,6 +1071,7 @@ void UDPCom::shutdown(int _fd) {
                 if (key) {
                     _deb("UDPCom::shutdown[%d]: removing connect cache key '%s'", _fd, key.value().c_str());
 
+                    handled_by_cache = ConnectionsCache::cache.find(key.value()) != ConnectionsCache::cache.end();
                     killed_from_cache = kill_and_deref_from_connnect(key.value());
                     _dia("UDPCom::shutdown[%d]: removed %d from connect cache", _fd, killed_from_cache);
                 } else {
@@ -1035,7 +1080,12 @@ void UDPCom::shutdown(int _fd) {
             }
         }
 
-        if(killed_from_cache == 0)  kill_socket(_fd);
+        // A cached socket with refcount > 1 is still owned by another UDP
+        // session. kill_and_deref_from_connnect() returns zero in that case
+        // because it removes no map entry; zero must not be interpreted as
+        // "not handled", otherwise we close the shared socket underneath the
+        // remaining session.
+        if(not handled_by_cache) kill_socket(_fd);
 
         _deb("UDPCom::shutdown[%d]: eof real socket specific code", _fd);
 
