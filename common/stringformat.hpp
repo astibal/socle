@@ -42,12 +42,19 @@ std::string string_format(const char* format, Args ... args)
     //  ... and return bytes that would have been written if buffer is large enough, or < 0 on error.
     auto written_n = snprintf(buffer, default_buff_sz, format, args...);
 
-    if(written_n < 0 or written_n >= default_buff_sz) {
+    if(written_n < 0) return {};
 
-        buffer = (char*)mempool_alloc(written_n+1); //space for \0
+    if(written_n >= default_buff_sz) {
+
+        const auto capacity = static_cast<std::size_t>(written_n) + 1U;
+        buffer = static_cast<char*>(mempool_alloc(capacity)); //space for \0
         if(not buffer) return {};
 
-        written_n = snprintf((char*)buffer, written_n+1, format, args...);
+        written_n = snprintf(buffer, capacity, format, args...);
+        if(written_n < 0 or static_cast<std::size_t>(written_n) >= capacity) {
+            mempool_free(buffer);
+            return {};
+        }
     }
 
     // w counts in also \0 terminator
