@@ -31,7 +31,6 @@
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 
-#include <sobject.hpp>
 #include <buffer.hpp>
 #include <basecom.hpp>
 #include <tcpcom.hpp>
@@ -718,4 +717,3 @@ typedef struct sess_cert_st
 #endif //SSLCOM_HPP
 
 #include <sslcom.tpp>
-

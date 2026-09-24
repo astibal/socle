@@ -33,7 +33,7 @@ add_library(socle_lib
         sslcertstore.hpp
         sslcertstore.cpp
         apphostcx.cpp
-        sobject.cpp
+        common/meter.cpp
         uxcom.cpp
         sslcertval.cpp
         iproxy.hpp

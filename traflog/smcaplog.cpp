@@ -21,7 +21,6 @@
 #include <deque>
 
 #include <vars.hpp>
-#include <sobject.hpp>
 #include <baseproxy.hpp>
 
 
