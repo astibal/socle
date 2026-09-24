@@ -23,22 +23,17 @@
 #include <traflog/filewriter.hpp>
 #include <traflog/threadedpoolwriter.hpp>
 #include <traflog/fsoutput.hpp>
+#include <sessionobject.hpp>
 
 namespace socle::traflog {
 
-    class SmcapLog : public baseTrafficLogger, public sobject {
+    class SmcapLog : public baseTrafficLogger, public session_object {
 
         static const bool use_pool_writer = true;
 
     public:
         SmcapLog(baseProxy *p, const char* d_dir, const char* f_prefix, const char* f_suffix);
         ~SmcapLog() override;
-
-        bool ask_destroy() override {
-            delete this;
-
-            return true;
-        };
 
     private:
         baseProxy *proxy_;
