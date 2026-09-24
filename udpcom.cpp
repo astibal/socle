@@ -256,7 +256,10 @@ int UDPCom::connect(const char* host, const char* port) {
                 }
 
             } else {
-                sfd = SockOps::socket_create(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+                // Connected outbound UDP sockets must have exclusive ephemeral
+                // ports. SO_REUSEADDR permits live sockets with identical
+                // four-tuples, allowing replies to cross between flows.
+                sfd = SockOps::socket_create(rp->ai_family, rp->ai_socktype, rp->ai_protocol, false);
             }
         }
         catch(socket_info_error const& e) {
