@@ -106,7 +106,7 @@ namespace socle::traflog {
 
 
 
-        if(not s.src) {
+        if(not s.dst) {
             _war("pcaplog::ctor: dst info not created");
             return;
         }
