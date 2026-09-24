@@ -820,6 +820,11 @@ namespace socle::pcapng {
         auto* cur_data = const_cast<char*>(data);
         auto to_write = details.max_data_size <= 0 ? data_size : std::min(details.max_data_size, data_size);
 
+        if(to_write == 0 and not ((tcpflags & TCPFLAG_FIN) or (tcpflags & TCPFLAG_SYN)) ) {
+            // don't send empty ACKs
+            return -1;
+        }
+
         do {
 
             auto cap_est = sizeof(linux_cooked_capture) +

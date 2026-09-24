@@ -172,6 +172,10 @@ public:
     virtual ssize_t peek(int _fd, void* _buf, size_t _n, int _flags) = 0;
     virtual ssize_t write(int _fd, const void* _buf, size_t _n, int _flags) = 0;
     virtual void shutdown(int _fd) = 0;
+    // Most Com implementations leave the descriptor open for baseHostCX to
+    // close during destruction. Implementations which consume or transfer
+    // descriptor ownership in shutdown() must override this.
+    [[nodiscard]] virtual bool shutdown_consumes_fd() const { return false; }
     virtual void close(int _fd);
     virtual int bind(unsigned short _port) = 0;
     virtual int bind(const char* _path) = 0;

@@ -48,7 +48,7 @@ struct SockOps {
     static std::string ss_str(const sockaddr_storage *s);
 
     static void socket_transparent(int fd, int family);
-    static int socket_create(int family ,int l4proto, int protocol);
+    static int socket_create(int family, int l4proto, int protocol, bool reuse_addr = true);
 };
 
 struct AddressInfo {

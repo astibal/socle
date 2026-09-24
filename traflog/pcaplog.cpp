@@ -157,7 +157,7 @@ namespace socle::traflog {
                             pcapng::pcapng_epb f2;
                             if (self->ip_packet_hook) f2.ip_packet_hook = self->ip_packet_hook;
 
-                            f1.append_TCP(out, "", 0, 1, TCPFLAG_FIN | TCPFLAG_ACK, details);
+                            f2.append_TCP(out, "", 0, 1, TCPFLAG_FIN | TCPFLAG_ACK, details);
 
                             if (not ip_packet_hook_only)
                                 writer->write(fs.filename_full, out);
@@ -442,7 +442,8 @@ namespace socle::traflog {
                 tcp_start_written = true;
             }
 
-            self->write_tcp_data(side, b, details);
+            if (b.size() > 0)
+                self->write_tcp_data(side, b, details);
 
             // Fins are written with PcapLog destruction
         }

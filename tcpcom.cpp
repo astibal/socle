@@ -169,7 +169,10 @@ int TCPCom::bind(unsigned short port) {
         ::close(sock);   // coverity: 1407959
         return -130;
     }
-    if (listen(sock, config.listen_backlog) == -1)  return -131;
+    if (listen(sock, config.listen_backlog) == -1) {
+        ::close(sock);
+        return -131;
+    }
     
     return sock;
 }
