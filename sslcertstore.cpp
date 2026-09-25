@@ -965,41 +965,6 @@ std::optional<const CertificateChainCtx> SSLFactory::find_custom(std::string con
 }
 
 
-std::optional<std::string> SSLFactory::_find_subject_by_fqdn(std::string const& fqdn) {
-
-    {
-        auto lc_ = std::scoped_lock(lock());
-        auto const& log = get_log();
-
-        auto entry = cache_mitm().get(fqdn);
-        if (not entry) {
-            _deb("SSLFactory::find_subject_by_fqdn[%x]: NOT cached '%s'", this, fqdn.c_str());
-        } else {
-            _deb("SSLFactory::find_subject_by_fqdn[%x]: found cached '%s'", this, fqdn.c_str());
-            return std::optional(fqdn);
-        }
-    }
-
-    // do this outside locked section
-    mp::string re_wildcard("*.");
-    std::string wildcard_fqdn = std::regex_replace(fqdn, re_hostname, re_wildcard);
-
-    {
-        auto lc_ = std::scoped_lock(lock());
-        auto const& log = get_log();
-
-        auto entry = cache_mitm().get(wildcard_fqdn);
-        if (not entry) {
-            _deb("SSLFactory::find_subject_by_fqdn[%x]: wildcard NOT cached '%s'", this, wildcard_fqdn.c_str());
-        } else {
-            _deb("SSLFactory::find_subject_by_fqdn[%x]: found cached wildcard '%s'", this, fqdn.c_str());
-            return std::optional(wildcard_fqdn);
-        }
-    }
-
-    return std::nullopt;
-}
-
 bool SSLFactory::erase_mitm(std::string const& subject) {
     return erase(cache_mitm(), subject);
 }

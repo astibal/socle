@@ -405,8 +405,6 @@ public:
     std::optional<const CertificateChainCtx> find_mitm(std::string const& subject);
     std::optional<const CertificateChainCtx> find_custom(std::string const& subject);
 
-    [[deprecated("dead code")]] std::optional<std::string> _find_subject_by_fqdn(std::string const& fqdn);
-
     bool erase(X509_CACHE& cache, const std::string &subject);
     bool erase_mitm(const std::string &subject);
      
