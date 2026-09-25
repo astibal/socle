@@ -227,10 +227,8 @@ int SocketInfo::create_socket_left(int l4_proto) {
 
         bool is_six = connect_ss->sa_family == AF_INET6;
 
-        if(not is_six) {
-            if (0 != ::setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, bind_connect_race_hack_iface, bcrhi_sz)) {
-                throw socket_info_error("cannot bind to device - bind-connect races may occur");
-            }
+        if (0 != ::setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, bind_connect_race_hack_iface, bcrhi_sz)) {
+            throw socket_info_error("cannot bind to device - bind-connect races may occur");
         }
 
         {
@@ -244,6 +242,24 @@ int SocketInfo::create_socket_left(int l4_proto) {
                 throw socket_info_error(
                         string_format("cannot bind socket %d to %s:%d - %s", fd, dst.str_host.c_str(), dst.port,
                                       string_error().c_str()).c_str());
+            }
+
+            // First connect IPv6 to loopback, so that it stops being a wildcard
+            // socket before becoming visible on other interfaces. Reconnecting
+            // an already-connected UDP socket changes the peer inside the
+            // kernel and avoids a userspace bind-to-connect race window.
+            if(is_six) {
+                auto dummy = *reinterpret_cast<sockaddr_in6*>(connect_ss);
+                dummy.sin6_addr = in6addr_loopback;
+                dummy.sin6_scope_id = 0;
+                if (::connect(fd, reinterpret_cast<sockaddr*>(&dummy), sizeof(dummy))) {
+                    throw socket_info_error(
+                            string_format("cannot park IPv6 socket %d on loopback - %s", fd,
+                                          string_error().c_str()).c_str());
+                }
+                if (0 != ::setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, "", 0)) {
+                    throw socket_info_error("cannot bind to 'any' device - socket inoperable");
+                }
             }
 
             if (::connect(fd, connect_ss, sizeof(struct sockaddr_storage))) {
