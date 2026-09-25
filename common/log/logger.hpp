@@ -84,7 +84,7 @@ public:
     //should we print also source with line, if loglevel >= DIA?
     bool print_srcline_ = true;
 
-    //should we print it always, regarless of log level?
+    //should we print it always, regardless of log level?
     bool print_srcline_always_ = false;
 
 

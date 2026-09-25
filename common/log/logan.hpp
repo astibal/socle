@@ -117,10 +117,10 @@ class logan_lite {
 
 private:
     mutable std::shared_mutex lock_;
-    // loging name in catalogue
+    // logging name in catalogue
     std::string topic_;
 
-    // loging message prefix in log line
+    // logging message prefix in log line
     static thread_local inline std::string context_ {};
 
     struct ContextFilter {

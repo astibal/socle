@@ -719,7 +719,7 @@ namespace inet {
                 timer_ = ::time(nullptr);
 
 
-                // cound be init in previous iteration
+                // could be init in previous iteration
                 if(conn_bio) {
                     _err("OcspQuery::do_prepare_target[0x%lx]: removing old connection", ref_id);
                     BIO_free(conn_bio);
