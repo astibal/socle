@@ -27,16 +27,16 @@ class BioMemory {
 public:
     BioMemory() {
         mem_ = BIO_new(BIO_s_mem());
+        if (!mem_) throw std::bad_alloc();
         BIO_get_mem_ptr(mem_, &bptr_);
-        BIO_set_close(mem_, BIO_NOCLOSE);
     }
 
     virtual ~BioMemory() {
         BIO_free(mem_);
     }
 
-    std::string str() const { return std::string(bptr_->data, bptr_->length); }
-    mp::string mp_str() const { return mp::string(bptr_->data, bptr_->length); }
+    std::string str() const { return bptr_ ? std::string(bptr_->data, bptr_->length) : std::string{}; }
+    mp::string mp_str() const { return bptr_ ? mp::string(bptr_->data, bptr_->length) : mp::string{}; }
 
     operator BIO*() { return mem_; };
 private:

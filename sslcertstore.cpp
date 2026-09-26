@@ -144,7 +144,8 @@ bool SSLFactory::update_ssl_ctx_fullchain(CertificateChainCtx& chain, std::strin
 
     if (fp_key.value) {
         auto ossl_key = PEM_read_PrivateKey(fp_key.value, nullptr, nullptr, nullptr);
-        if(SSL_CTX_use_PrivateKey(chain.ctx, ossl_key) == 1) {
+        auto key_guard = raw::guard([&ossl_key]{ if (ossl_key) EVP_PKEY_free(ossl_key); });
+        if(ossl_key && SSL_CTX_use_PrivateKey(chain.ctx, ossl_key) == 1) {
 
             chain.chain.cert = SSL_CTX_get0_certificate(chain.ctx);
             X509_up_ref(chain.chain.cert);
@@ -244,6 +245,7 @@ bool SSLFactory::load_certs_from(const char* sub_dir, const char* cache_key_pref
             if(fullchain_file_exists(full_fnm)) {
 
                 CertificateChainCtx ce_cx;
+                auto ce_guard = raw::guard([&ce_cx]{ ce_cx.release(); });
                 ce_cx.ctx = server_ctx_setup(nullptr, nullptr);
                 full_loaded = update_ssl_ctx_fullchain(ce_cx, key_fnm, full_fnm);
 
@@ -267,6 +269,9 @@ bool SSLFactory::load_certs_from(const char* sub_dir, const char* cache_key_pref
             if(not full_loaded) {
                 auto cert_pair = load_cert_pair(path + "/key.pem", path + "/cert.pem", nullptr);
                 if (cert_pair) {
+                    auto pair_guard = raw::guard([&cert_pair]{
+                        if (cert_pair) cert_pair.value().release();
+                    });
                     cert_pair.value().ctx = server_ctx_setup(nullptr, nullptr);
 
                     update_ssl_ctx_chainfiles(cert_pair.value(), path + "/issuer.pem", path + "/issuer2.pem",
@@ -801,6 +806,16 @@ void SSLFactory::destroy() {
     _deb("SSLFactory::destroy: cert_cache");
     cert_mitm_cache_.clear();
     cert_custom_cache_.clear();
+    auto free_ctx = [](SSL_CTX*& ctx) {
+        if (ctx) {
+            SSL_CTX_free(ctx);
+            ctx = nullptr;
+        }
+    };
+    free_ctx(def_cl_ctx);
+    free_ctx(def_dtls_cl_ctx);
+    free_ctx(def_sr_ctx);
+    free_ctx(def_dtls_sr_ctx);
 
 
     if(trust_store_) {

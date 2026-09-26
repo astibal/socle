@@ -153,6 +153,7 @@ static void init_log() {
 struct SSLCom_Buddy : public SSLCom {
     void test_peer_hello_buffer(buffer const& b) { sslcom_peer_hello_buffer.assign( (void*)b.data(), b.size(), b.size(), false); }
     int test_parse_sni() { return parse_peer_hello(); }
+    unsigned short test_parse_extension(buffer& b) { return parse_peer_hello_extensions(b, 0); }
 };
 
 
@@ -233,4 +234,29 @@ TEST(TLS_Tests, ParseClientHello_ALPN) {
     exp << "http/1.1";
 
     ASSERT_TRUE(s.get_peer_alpn() == exp.str());
+}
+
+TEST(TLS_Tests, RejectsALPNLengthOutsideExtension) {
+    // The ALPN list claims 32767 bytes while its containing extension has two.
+    unsigned char data[] = {0x00, 0x10, 0x00, 0x02, 0x7f, 0xff};
+    buffer b;
+    b.assign(data, sizeof(data), sizeof(data), false);
+    SSLCom_Buddy s;
+
+    ASSERT_THROW(s.test_parse_extension(b), socle::ex::SSL_clienthello_malformed);
+}
+
+TEST(TLS_Tests, RejectsSNIHostnameOutsideExtension) {
+    // A valid SNI envelope cannot contain the claimed 65535-byte hostname.
+    unsigned char data[] = {
+        0x00, 0x00, 0x00, 0x05, // extension type and payload length
+        0x00, 0x03,             // server-name list length
+        0x00,                   // host_name
+        0xff, 0xff              // impossible hostname length
+    };
+    buffer b;
+    b.assign(data, sizeof(data), sizeof(data), false);
+    SSLCom_Buddy s;
+
+    ASSERT_THROW(s.test_parse_extension(b), socle::ex::SSL_clienthello_malformed);
 }

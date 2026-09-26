@@ -16,10 +16,9 @@ namespace {
     int bio_string_write(BIO* bio, const char* data, int len) {
 
 #ifdef USE_OPENSSL11
-        BUF_MEM* ptr;
-        BIO_get_mem_ptr(bio,&ptr);
-
-        reinterpret_cast<std::string*>((void*)ptr)->append(data,raw::down_cast_signed<std::string::size_type>(len).value_or(0));
+        auto* str = static_cast<std::string*>(BIO_get_data(bio));
+        if (!str) return 0;
+        str->append(data,raw::down_cast_signed<std::string::size_type>(len).value_or(0));
 #else
         reinterpret_cast<std::string*>(bio->ptr)->append(data, len);
 #endif // USE_OPENSSL11
@@ -34,9 +33,7 @@ namespace {
     long bio_string_ctrl(BIO* bio, int cmd, long num, void* ptr) {
 
 #ifdef USE_OPENSSL11
-        BUF_MEM* mem_ptr;
-        BIO_get_mem_ptr(bio,&mem_ptr);
-        auto str = reinterpret_cast<std::string*>((void*)mem_ptr);
+        auto* str = static_cast<std::string*>(BIO_get_data(bio));
 #else
 
         std::string* str = reinterpret_cast<std::string*>(bio->ptr);
@@ -59,7 +56,8 @@ namespace {
 
     int bio_string_new(BIO* bio) {
 #ifdef USE_OPENSSL11
-        BIO_reset(bio);
+        BIO_set_data(bio, nullptr);
+        BIO_set_init(bio, 0);
         return 1;
 #else
         bio->ptr = nullptr;
@@ -116,13 +114,8 @@ BIO* BIO_new_string(std::string* out) {
 
 #ifdef USE_OPENSSL11
     BIO* bio = BIO_new(bio_string_methods());
-    BUF_MEM* mem_ptr = BUF_MEM_new();
-
-    mem_ptr->data = (char*) out->data();
-    mem_ptr->length = out->length();
-
-    // set NOCLOSE, because string takes responsibility to free the memory
-    BIO_set_mem_buf( bio, mem_ptr, BIO_NOCLOSE);
+    if (!bio) return nullptr;
+    BIO_set_data(bio, out);
     BIO_set_init(bio, 1);
 #else
     BIO* bio = BIO_new(&bio_string_methods);

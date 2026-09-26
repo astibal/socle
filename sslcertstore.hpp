@@ -75,6 +75,32 @@ struct CertificateChain {
         issuers[0] = i;
         issuers[1] = i2;
     }
+    CertificateChain(CertificateChain const& other) { *this = other; }
+    CertificateChain& operator=(CertificateChain const& other) {
+        if (this == &other) return *this;
+        release();
+        key = other.key;
+        cert = other.cert;
+        issuers = other.issuers;
+        if (key) EVP_PKEY_up_ref(key);
+        if (cert) X509_up_ref(cert);
+        for (auto* issuer : issuers) if (issuer) X509_up_ref(issuer);
+        return *this;
+    }
+    CertificateChain(CertificateChain&& other) noexcept
+        : key(other.key), cert(other.cert), issuers(other.issuers) {
+        other.nullify();
+    }
+    CertificateChain& operator=(CertificateChain&& other) noexcept {
+        if (this != &other) {
+            release();
+            key = other.key;
+            cert = other.cert;
+            issuers = other.issuers;
+            other.nullify();
+        }
+        return *this;
+    }
 
     EVP_PKEY* key = nullptr;
     X509* cert    = nullptr;
@@ -102,6 +128,31 @@ struct CertificateChainCtx {
     CertificateChainCtx() {}
     explicit CertificateChainCtx(EVP_PKEY* k, X509* c, X509* i = nullptr, X509* i2 = nullptr, SSL_CTX* cx = nullptr) : chain(k, c, i, i2), ctx(cx) {}
     explicit CertificateChainCtx(CertificateChain const& ch, SSL_CTX* cx = nullptr) : chain(ch), ctx(cx) {}
+    CertificateChainCtx(CertificateChainCtx const& other) : chain(other.chain), ctx(other.ctx) {
+        if (ctx) SSL_CTX_up_ref(ctx);
+    }
+    CertificateChainCtx& operator=(CertificateChainCtx const& other) {
+        if (this != &other) {
+            release();
+            chain = other.chain;
+            ctx = other.ctx;
+            if (ctx) SSL_CTX_up_ref(ctx);
+        }
+        return *this;
+    }
+    CertificateChainCtx(CertificateChainCtx&& other) noexcept
+        : chain(std::move(other.chain)), ctx(other.ctx) {
+        other.ctx = nullptr;
+    }
+    CertificateChainCtx& operator=(CertificateChainCtx&& other) noexcept {
+        if (this != &other) {
+            release();
+            chain = std::move(other.chain);
+            ctx = other.ctx;
+            other.ctx = nullptr;
+        }
+        return *this;
+    }
 
     CertificateChain chain {};
     SSL_CTX* ctx = nullptr;
@@ -131,12 +182,12 @@ public:
     void assign(CertCacheEntry&& v) noexcept {
         reset();
 
-        entry_ = v.entry_;
-        v.entry_.release();
+        entry_ = std::move(v.entry_);
+        v.entry_.nullify();
     }
 
     CertificateChainCtx release() noexcept {
-        auto ret = entry_;
+        auto ret = std::move(entry_);
         entry_.nullify();
         return ret;
     }
@@ -300,7 +351,8 @@ private:
     using session_cache_t = ptr_cache<std::string,session_holder>;
 
     verify_cache_t verify_cache_ = verify_cache_t("pki.verify", config_t::VERIFY_CACHE_SIZE, true);
-    crl_cache_t crl_cache_ = crl_cache_t("crl_cache", config_t::CRL_CACHE_SIZE,true);
+    crl_cache_t crl_cache_ = crl_cache_t(
+        "crl_cache", config_t::CRL_CACHE_SIZE, true, expiring_crl::is_expired);
     session_cache_t session_cache_ = session_cache_t("ssl_session_cache", config_t::SESSION_CACHE_SIZE,true, ptr_cache<std::string,session_holder>::mode_t::LRU);
 
     X509_STORE* trust_store_ = nullptr;

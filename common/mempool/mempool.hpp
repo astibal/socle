@@ -247,8 +247,12 @@ public:
     static inline bool bailing = false;
 
     static memPool& pool() {
-        static auto m = memPool(100,50,50,10,8);
-        return m;
+        // The pool backs containers owned by other function-local and global
+        // statics. Keeping it alive until process termination avoids an
+        // undefined cross-translation-unit destruction order where a cache
+        // may access storage after the pool's buckets have been released.
+        static auto* m = new memPool(100,50,50,10,8);
+        return *m;
     }
 
     void allocate(std::size_t sz256, std::size_t sz1k, std::size_t sz5k, std::size_t sz10k, std::size_t sz20k);
