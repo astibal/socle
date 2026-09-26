@@ -58,6 +58,7 @@
 #include <sys/file.h>
 
 #include <vector>
+#include <optional>
 
 // mempool
 #define USE_MEMPOOL
@@ -79,9 +80,9 @@ namespace socle::pcap {
     };
 
 
-    // GREv1
+    // GREv0 base header. Optional fields are appended according to flags.
     struct  __attribute__((__packed__)) grehdr {
-        uint16_t preamble = 0; // simplified (no chksum, key, or sequence
+        uint16_t preamble = 0;
         uint16_t next_proto = 0;
     };
 
@@ -128,6 +129,10 @@ namespace socle::pcap {
         uint16_t tun_proto{tunnel::NONE};
         uint8_t  tun_ttl {1};
         SocketInfo* tun_details = nullptr;
+
+        // A keyed GRE record lets capture i.e. stream IDs and assist further
+        // traffic processing
+        std::optional<uint32_t> gre_key;
 
         ssize_t max_data_size{1380};
 
@@ -223,6 +228,7 @@ namespace socle::pcap {
     void append_LCC_header(buffer& out_buffer, connection_details const& details, int in);
 
     void append_GRE_header(buffer& out_buffer, connection_details const& details);
+    size_t gre_header_size(connection_details const& details);
 
     void append_IP_header(buffer& out_buffer, connection_details& details, int in, size_t payload_size);
         void create_IPv4_header(iphdr& ip_header, connection_details& details, int direction, size_t payload_size);

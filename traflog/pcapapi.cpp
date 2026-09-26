@@ -173,12 +173,19 @@ namespace socle::pcap {
     void append_GRE_header(buffer& out_buffer, connection_details const& details) {
         grehdr hdr{0};
 
+        if (details.gre_key) hdr.preamble = htons(0x2000); // RFC 2890 K bit.
+
         if(details.ip_version == 6) {
             hdr.next_proto = htons(0x86DD);
         } else {
             hdr.next_proto = htons(0x0800);
         }
         out_buffer.append(&hdr, sizeof(hdr));
+        if (details.gre_key) out_buffer.append(htonl(*details.gre_key));
+    }
+
+    size_t gre_header_size(connection_details const& details) {
+        return sizeof(grehdr) + (details.gre_key ? sizeof(uint32_t) : 0U);
     }
 
 
@@ -294,7 +301,8 @@ namespace socle::pcap {
             auto l3_sz = l3_header_sz(details);
 
             if (details.tun_proto == connection_details::GRE) {
-                ip_header.tot_len = htons(sizeof(struct iphdr) + sizeof(struct grehdr) + l3_sz + l4_sz + payload_size);
+                ip_header.tot_len = htons(sizeof(struct iphdr) + gre_header_size(details)
+                                          + l3_sz + l4_sz + payload_size);
                 ip_header.protocol = IPPROTO_GRE;
             } else {
                 auto msg = string_format("invalid tunneling protocol: %d", details.next_proto);
@@ -351,7 +359,8 @@ namespace socle::pcap {
             auto l3_sz = l3_header_sz(details);
 
             if (details.tun_proto == connection_details::GRE) {
-                ip_header.ip6_plen = htons(sizeof(struct grehdr) + l3_sz + l4_sz + payload_size);
+                ip_header.ip6_plen = htons(gre_header_size(details)
+                                           + l3_sz + l4_sz + payload_size);
                 ip_header.ip6_nxt = IPPROTO_GRE;
             } else {
                 auto msg = string_format("invalid tunneling protocol: %d", details.next_proto);

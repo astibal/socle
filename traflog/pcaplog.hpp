@@ -100,7 +100,7 @@ namespace socle::traflog {
             if(not target.dst.ss) return false;
             if(sock < 0) return false;
 
-            buffer send_data(buf.size() + sizeof(pcap::grehdr));
+            buffer send_data(buf.size() + pcap::gre_header_size(det));
             pcapng::append_GRE_header(send_data, det);
 
             send_data.append(buf);
