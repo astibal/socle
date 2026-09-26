@@ -68,6 +68,7 @@ public:
 
     int close_all();
     std::size_t push_all(int s);
+    std::size_t wake_all();
 
     void update_load(uint32_t worker_id, uint32_t load);
     int pop(uint32_t worker_id);
@@ -148,6 +149,13 @@ struct FdQueueHandler {
     std::size_t hint_push_all(int s) const {
         if(fdqueue)
             return fdqueue->push_all(s);
+
+        throw fdqueue_error("handler: no fdqueue");
+    }
+
+    std::size_t hint_wake_all() const {
+        if(fdqueue)
+            return fdqueue->wake_all();
 
         throw fdqueue_error("handler: no fdqueue");
     }

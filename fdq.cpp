@@ -126,6 +126,20 @@ std::size_t FdQueue::push_all(int s) {
     return entry_count;
 }
 
+std::size_t FdQueue::wake_all() {
+    std::size_t woken = 0;
+    for(auto const& [id, pipes] : hint_pairs_) {
+        auto const written = ::write(pipes.pipe_to_worker(), "S", 1);
+        if(written > 0) {
+            ++woken;
+        } else if(errno != EAGAIN && errno != EWOULDBLOCK) {
+            _err("FdQueue::wake_all: failed to wake worker %d: %s", id,
+                 string_error().c_str());
+        }
+    }
+    return woken;
+}
+
 void FdQueue::update_load(uint32_t worker_id, uint32_t load) {
      auto it = hint_pairs_.find(worker_id);
      if(it != hint_pairs_.end()) {

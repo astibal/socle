@@ -358,7 +358,7 @@ void memPool::free_heap(mem_chunk const& mch) {
 
 #ifdef MEMPOOL_ALL
     // don't recurse to itself
-        ::free(to_ret.ptr);
+        ::free(mch.ptr);
 #else
     delete[] mch.ptr;
 #endif
@@ -475,7 +475,7 @@ void* mempool_realloc(void* optr, size_t nsz) {
         }
 
         mp_stats::get().stat_mempool_realloc++;
-        mp_stats::get().stat_mempool_realloc += (new_m.capacity - old_m.capacity);
+        mp_stats::get().stat_mempool_realloc_size += (new_m.capacity - old_m.capacity);
 
         return static_cast<void*>(new_m.ptr);
     }

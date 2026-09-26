@@ -31,7 +31,7 @@
 #include <log/logger.hpp>
 #include <hostcx.hpp>
 #include <mpstd.hpp>
-#include <sobject.hpp>
+#include <common/meter.hpp>
 
 /*
 TCPProxy: proxy left<->right socket bytes
@@ -376,4 +376,3 @@ private:
 };
 
 #endif
-

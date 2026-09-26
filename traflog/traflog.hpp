@@ -24,7 +24,6 @@
 #include <baseproxy.hpp>
 
 
-#include <sobject.hpp>
 #include <traflog/basetraflog.hpp>
 
 namespace socle::traflog {

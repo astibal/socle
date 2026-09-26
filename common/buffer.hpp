@@ -89,6 +89,7 @@ public:
   }
 
   buffer& operator= (buffer&& ref) noexcept {
+      if (this == &ref) return *this;
 
       if (free_ and data_ != nullptr ) {
           if(use_pool) {

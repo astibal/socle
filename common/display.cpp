@@ -36,6 +36,7 @@
 #include <cstdarg>
 #include <cstdio>
 #include <cerrno>
+#include <system_error>
 
 class buffer;
 
@@ -238,10 +239,8 @@ std::string string_error() {
 }
 
 std::string string_error(int code) {
-
-    char msg[255];
-    memset(msg,0,255);
-    return string_format("error %d: %s", code, strerror_r(code,msg,255));
+    const auto message = std::error_code(code, std::generic_category()).message();
+    return string_format("error %d: %s", code, message.c_str());
 }
 
 

@@ -21,7 +21,6 @@
 #include <deque>
 
 #include <vars.hpp>
-#include <sobject.hpp>
 #include <baseproxy.hpp>
 
 
@@ -31,7 +30,7 @@
 namespace socle::traflog {
 
     SmcapLog::SmcapLog(baseProxy *p, const char* d_dir, const char* f_prefix, const char* f_suffix) :
-            sobject(), proxy_(p), FS_(proxy_, d_dir, f_prefix, f_suffix, true) {
+            proxy_(p), FS_(proxy_, d_dir, f_prefix, f_suffix, true) {
         ;
 
         if(!use_pool_writer) {

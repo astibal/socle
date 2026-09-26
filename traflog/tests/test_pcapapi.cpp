@@ -9,6 +9,43 @@ using namespace socle::pcap;
 // NOTE: it's not really practical to check generated PCAP content automatically packet by packet,
 //       please check files in wireshark.
 
+TEST(PcapTest, GreHeaderWithoutKeyKeepsLegacyWireFormat) {
+    connection_details details {};
+    details.ip_version = 4;
+    buffer output;
+
+    append_GRE_header(output, details);
+
+    ASSERT_EQ(4U, gre_header_size(details));
+    ASSERT_EQ(4U, output.size());
+    auto const* bytes = static_cast<unsigned char const*>(output.data());
+    EXPECT_EQ(0x00, bytes[0]); // No optional GRE fields.
+    EXPECT_EQ(0x00, bytes[1]);
+    EXPECT_EQ(0x08, bytes[2]); // Inner protocol: IPv4.
+    EXPECT_EQ(0x00, bytes[3]);
+}
+
+TEST(PcapTest, GreHeaderWithKeyUsesRfc2890WireFormat) {
+    connection_details details {};
+    details.ip_version = 4;
+    details.gre_key = 0x01020304U;
+    buffer output;
+
+    append_GRE_header(output, details);
+
+    ASSERT_EQ(8U, gre_header_size(details));
+    ASSERT_EQ(8U, output.size());
+    auto const* bytes = static_cast<unsigned char const*>(output.data());
+    EXPECT_EQ(0x20, bytes[0]); // RFC 2890 K bit.
+    EXPECT_EQ(0x00, bytes[1]);
+    EXPECT_EQ(0x08, bytes[2]); // Inner protocol: IPv4.
+    EXPECT_EQ(0x00, bytes[3]);
+    EXPECT_EQ(0x01, bytes[4]); // Key is serialized in network byte order.
+    EXPECT_EQ(0x02, bytes[5]);
+    EXPECT_EQ(0x03, bytes[6]);
+    EXPECT_EQ(0x04, bytes[7]);
+}
+
 
 TEST(PcapTest, BasicHttp) {
 

@@ -26,19 +26,13 @@
 
 namespace socle::traflog {
 
-    class SmcapLog : public baseTrafficLogger, public sobject {
+    class SmcapLog : public baseTrafficLogger {
 
         static const bool use_pool_writer = true;
 
     public:
         SmcapLog(baseProxy *p, const char* d_dir, const char* f_prefix, const char* f_suffix);
         ~SmcapLog() override;
-
-        bool ask_destroy() override {
-            delete this;
-
-            return true;
-        };
 
     private:
         baseProxy *proxy_;
@@ -59,9 +53,9 @@ namespace socle::traflog {
             }
         }
 
-        std::string to_string(int verbosity) const override;
+        virtual std::string to_string(int verbosity) const;
 
-        TYPENAME_OVERRIDE("trafLog")
+        TYPENAME_BASE("trafLog")
         DECLARE_LOGGING(to_string)
 
     private:
