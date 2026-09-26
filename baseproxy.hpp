@@ -121,9 +121,9 @@ protected:
 
     struct proxy_state {
 
-        // dead can be written by other threads - make it atomic
+        // Session diagnostics and control paths may mark a proxy dead while
+        // its owning worker is between polling cycles.
         std::atomic_bool dead_ = false;
-        std::atomic_uint in_progress_ {0};
 
         bool error_on_left_read = false;
         bool error_on_right_read = false;
@@ -133,8 +133,6 @@ protected:
         // when writing didn't write all data in writebuf
         bool write_left_neck_ = false;
         bool write_right_neck_ = false;
-
-        [[nodiscard]] inline std::atomic_uint& in_progress() { return in_progress_; }
 
         [[nodiscard]] inline bool dead() const { return dead_.load(); }
         inline void dead(bool d) { dead_ = d; }
