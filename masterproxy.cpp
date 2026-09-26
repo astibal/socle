@@ -30,9 +30,8 @@ int MasterProxy::prepare_sockets(baseCom* xcom)
     r += baseProxy::prepare_sockets(xcom);
 
     auto lc_ = std::scoped_lock(proxies_lock_);
-    for(auto& [ p, thr ]: proxies()) {
-
-        if(p && not p->state().dead() && not p->state().in_progress()) {
+    for(auto& p: proxies()) {
+        if(p && not p->state().dead()) {
             r += p->prepare_sockets(xcom); // fill my fd_sets!
         }
     }    
@@ -48,16 +47,11 @@ bool MasterProxy::run_timers()
             auto l_ = std::scoped_lock(proxies_lock_);
             for(auto i = proxies().begin(); i != proxies().end(); ) {
 
-                auto const& p = i->first;
+                auto const& p = *i;
 
                 if(not p) {
                     _inf("null sub-proxy!!");
                     i = proxies().erase(i);
-                    continue;
-                }
-
-                if(p->state().in_progress()) {
-                    ++i;
                     continue;
                 }
 
@@ -81,21 +75,6 @@ bool MasterProxy::run_timers()
     return false;
 }
 
-
-bool MasterProxy::thread_finish(std::unique_ptr<std::thread>& thread_ptr) {
-    bool ret = false;
-
-    if(thread_ptr) {
-        if(thread_ptr->joinable()) {
-            thread_ptr->join();
-        }
-
-        thread_ptr.reset();
-        ret = true;
-    }
-
-    return ret;
-}
 
 void MasterProxy::defer_proxy_ul(proxy_entry&& entry) {
     {
@@ -132,9 +111,7 @@ void MasterProxy::reap_deferred(std::size_t count_budget,
 
         // HostCX and Com teardown has worker-thread affinity. Keep destruction
         // on the MasterProxy worker, but outside both queue locks.
-        auto& [proxy, thread] = entry;
-        thread_finish(thread);
-        proxy.reset();
+        entry.reset();
 
         ++reaped;
         if(time_budget and std::chrono::steady_clock::now() - started_at >= *time_budget) break;
@@ -188,89 +165,47 @@ int MasterProxy::handle_sockets_once(baseCom* xcom) {
     auto l_ = std::scoped_lock(proxies_lock_);
 
     if(proxies().empty()) return 0;
-    auto proxies_sz = proxies().size();
-
-
-    for(auto& [ proxy, thr ] : proxies()) {
+    for(auto& proxy : proxies()) {
+        if(not proxy) continue;
 
         if(state().dead()) {
             proxy->state().dead(true);
         }
 
-        // don't mess with running threaded proxy
-        if(proxy->state().in_progress()) continue;
-
-        // we know it's not in progress from condition at the start of the loop
-        // therefore joining it would not block
-        if(thr and thread_finish(thr)) {
-            _deb("MasterProxy::handle_sockets_once: run-phase finished handle thread");
-        }
-
         if (not proxy->state().dead()) {
-
-            auto run_proxy = [this, xcom](baseProxy* p) {
-                if(p->state().in_progress().fetch_add(1) == 0) {
-                    auto lcx = logan_context(p->to_string(iNOT));
-
-                    try {
-                        p->handle_sockets_once(xcom);
-                    }
-                    catch (socle::com_error const &e) {
-                        _err("slave proxy exception: %s", e.what());
-                        p->state().dead(true);
-                    }
-                    catch (std::exception const &e) {
-                        _err("slave proxy exception: %s", e.what());
-                        p->state().dead(true);
-                    }
-
-                    p->state().in_progress().store(0);
-                }
-            };
-
             r++;
+            proxies_handled++;
 
-            // if threading is allowed, thread all proxies unless we are alone
-            auto const spray_possible = (subproxy_thread_spray_min > 0 and proxies_sz >= subproxy_thread_spray_min and proxies_sz > 1);
-
-
-            // spray on existing connections with some data already exchanged
-            if(spray_possible
-                and proxy->stats().mtr_down.total() > subproxy_thread_spray_bytes_min
-                and proxy->stats().mtr_up.total() > subproxy_thread_spray_bytes_min) {
-
-                _deb("proxy spray for: %s", proxy->to_string(iINF).c_str());
-                thr = std::make_unique<std::thread>(run_proxy, proxy.get());
-
-            } else {
-
-                auto pref = logan_lite::context();
-                run_proxy(proxy.get());
-                logan_lite::context(pref);
+            auto const pref = logan_lite::context();
+            {
+                auto lcx = logan_context(proxy->to_string(iNOT));
+                try {
+                    // Sub-proxies share their worker's poll cycle. Keeping the
+                    // whole lifecycle on that worker avoids cross-thread access
+                    // to HostCX buffers, readiness state and connection teardown.
+                    proxy->handle_sockets_once(xcom);
+                }
+                catch (socle::com_error const &e) {
+                    _err("slave proxy exception: %s", e.what());
+                    proxy->state().dead(true);
+                }
+                catch (std::exception const &e) {
+                    _err("slave proxy exception: %s", e.what());
+                    proxy->state().dead(true);
+                }
             }
+            logan_lite::context(pref);
         }
     }
 
     for(auto i = proxies().begin(); i != proxies().end(); ) {
 
-        auto const& proxy = i->first;
-        auto& thr = i->second;
+        auto const& proxy = *i;
 
         if(not proxy) {
             i = proxies().erase(i);
             proxies_deleted++;
             continue;
-        }
-
-        // assert in_progress state
-        if(proxy->state().in_progress()) {
-            ++i;
-            continue;
-        }
-
-        // we know it's not in progress anymore
-        if(thr and thread_finish(thr)) {
-            _deb("MasterProxy::handle_sockets_once: cleanup-phase finished handle thread");
         }
 
         if (proxy->state().dead()) {
@@ -317,15 +252,8 @@ void MasterProxy::shutdown() {
 		}
 	}
 
-	for(auto& [ proxy, thr ] : shutdown_entries) {
+	for(auto& proxy : shutdown_entries) {
 		_inf("MasterProxy::shutdown: slave[%d]",i);
-
-        if(thr and thr->joinable()) {
-            _deb("MasterProxy::shutdown: slave[%d]: joining handler thread",i);
-            thr->join();
-            thr.reset();
-            _dia("MasterProxy::shutdown: slave[%d]: joined",i);
-        }
 
         if(proxy) {
             proxy->shutdown();
@@ -347,7 +275,7 @@ std::string MasterProxy::hr() {
         ss << "Slaves:\n";
 		
 		int i = 0;
-		for(auto const& [ proxy, thr ]: proxies()) {
+		for(auto const& proxy: proxies()) {
 			
             ss << "slave-" + std::to_string(i) + ":\n";
             ss << proxy->hr();
