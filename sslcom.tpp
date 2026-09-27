@@ -2826,6 +2826,36 @@ bool baseSSLCom<L4Proto>::waiting_peer_hello() {
                 if (red > 0) {
                     sslcom_peer_hello_buffer.size(red);
 
+                    // A modern ClientHello can exceed one Ethernet MTU (for
+                    // example when it carries a hybrid post-quantum key
+                    // share).  Do not parse a truncated TLS record: grow only
+                    // to the length declared by a plausible handshake record
+                    // and wait for the remaining TCP fragments.
+                    constexpr std::size_t tls_record_header_size = 5;
+                    constexpr std::size_t tls_record_max_size = 18437;
+                    if (sslcom_peer_hello_buffer.size() >= tls_record_header_size &&
+                        sslcom_peer_hello_buffer.get_at<unsigned char>(0) == 22 &&
+                        sslcom_peer_hello_buffer.get_at<unsigned char>(1) == 3) {
+                        const auto payload_size = ntohs(
+                            sslcom_peer_hello_buffer.get_at<unsigned short>(3));
+                        const std::size_t record_size = tls_record_header_size + payload_size;
+
+                        if (record_size > tls_record_max_size) {
+                            _err("SSLCom::waiting_peer_hello: oversized TLS record: %zu bytes", record_size);
+                            error(ERROR_UNSPEC);
+                            return false;
+                        }
+                        if (record_size > sslcom_peer_hello_buffer.capacity()) {
+                            sslcom_peer_hello_buffer.capacity(record_size);
+                            master()->poller.rescan_in(peer_scom->socket());
+                            return false;
+                        }
+                        if (sslcom_peer_hello_buffer.size() < record_size) {
+                            master()->poller.rescan_in(peer_scom->socket());
+                            return false;
+                        }
+                    }
+
                     _dia("SSLCom::waiting_peer_hello: %d bytes in buffer for hello analysis",red);
                     _dum("SSLCom::waiting_peer_hello: ClientHello data:\r\n%s",
                                 hex_dump(sslcom_peer_hello_buffer.data(),sslcom_peer_hello_buffer.size(), 4, 0, true).c_str());
