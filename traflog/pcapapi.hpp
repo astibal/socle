@@ -425,7 +425,7 @@ namespace socle::pcapng {
 
 
     struct padding {
-        static size_t append(buffer& out, size_t n, uint8_t c = 0xCC);
+        static size_t append(buffer& out, size_t n, uint8_t c = 0);
     };
 
     size_t padding_sz32(size_t s);

@@ -1005,7 +1005,7 @@ namespace socle::pcapng {
 
         auto padding_sz = padding_sz32(data->size());
 
-        return sizeof(code) + sizeof(len) + data->size() + padding_sz + sizeof(footer);
+        return sizeof(code) + sizeof(len) + data->size() + padding_sz;
     }
 
     size_t pcapng_options::entry::append (buffer &out) {
@@ -1025,19 +1025,20 @@ namespace socle::pcapng {
 
     size_t pcapng_options::size () const {
         size_t sz = 0;
-        std::for_each(entries.begin(), entries.end(), [&sz](auto e) { sz += e.size(); });
+        std::for_each(entries.begin(), entries.end(), [&sz](auto const& e) { sz += e.size(); });
 
-        return sz;
+        return sz > 0 ? sz + sizeof(footer) : 0;
     }
 
     size_t pcapng_options::append (buffer &out) {
 
         size_t wrt = 0;
 
-        std::for_each(entries.begin(), entries.end(), [&wrt, &out](auto e) { if(e.size() > 0) wrt += e.append(out); });
+        std::for_each(entries.begin(), entries.end(), [&wrt, &out](auto& e) { if(e.size() > 0) wrt += e.append(out); });
 
         if(wrt > 0) {
             out.append(footer);
+            wrt += sizeof(footer);
         }
 
         return wrt;

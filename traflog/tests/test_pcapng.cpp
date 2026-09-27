@@ -57,6 +57,62 @@ TEST(NgTest, Empty_Ipb) {
     fclose(f);
 }
 
+TEST(NgTest, MultipleOptionsHaveOneFooterAndZeroPadding) {
+    pcapng_options options;
+    std::string const first_data = "abc";
+    std::string const second_data = "wxyz";
+    options.entries.push_back({1, 0,
+        std::make_shared<buffer>(first_data.data(), first_data.size())});
+    options.entries.push_back({2, 0,
+        std::make_shared<buffer>(second_data.data(), second_data.size())});
+    buffer output;
+
+    auto const written = options.append(output);
+
+    ASSERT_EQ(options.size(), 20U);
+    ASSERT_EQ(written, options.size());
+    ASSERT_EQ(output.size(), options.size());
+    auto const* bytes = static_cast<unsigned char const*>(output.data());
+
+    uint16_t first_code = 0;
+    uint16_t first_length = 0;
+    uint16_t second_code = 0;
+    uint16_t second_length = 0;
+    uint32_t footer = 1;
+    std::memcpy(&first_code, bytes, sizeof(first_code));
+    std::memcpy(&first_length, bytes + 2, sizeof(first_length));
+    std::memcpy(&second_code, bytes + 8, sizeof(second_code));
+    std::memcpy(&second_length, bytes + 10, sizeof(second_length));
+    std::memcpy(&footer, bytes + 16, sizeof(footer));
+
+    EXPECT_EQ(first_code, 1U);
+    EXPECT_EQ(first_length, first_data.size());
+    EXPECT_EQ(std::memcmp(bytes + 4, first_data.data(), first_data.size()), 0);
+    EXPECT_EQ(bytes[7], 0U);
+    EXPECT_EQ(second_code, 2U);
+    EXPECT_EQ(second_length, second_data.size());
+    EXPECT_EQ(std::memcmp(bytes + 12, second_data.data(), second_data.size()), 0);
+    EXPECT_EQ(footer, 0U);
+}
+
+TEST(NgTest, MultipleOptionsKeepEnhancedPacketBlockLengthConsistent) {
+    pcapng_epb frame;
+    frame.packet_data = std::make_shared<buffer>("x", 1);
+    frame.comment("first");
+    frame.comment("second");
+    buffer output;
+
+    auto const written = frame.append(output);
+
+    ASSERT_EQ(written, output.size());
+    ASSERT_EQ(frame.total_length, output.size());
+    uint32_t trailing_length = 0;
+    auto const* bytes = static_cast<unsigned char const*>(output.data());
+    std::memcpy(&trailing_length, bytes + output.size() - sizeof(trailing_length),
+                sizeof(trailing_length));
+    EXPECT_EQ(trailing_length, output.size());
+}
+
 TEST(NgTest, DecryptionSecretsBlockContainsTlsKeyLog) {
     std::string const line =
         "CLIENT_HANDSHAKE_TRAFFIC_SECRET 00112233 aabbccdd\n";
