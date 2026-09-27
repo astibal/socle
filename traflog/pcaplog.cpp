@@ -459,4 +459,80 @@ namespace socle::traflog {
     void PcapLog::write (side_t side, const std::string &s) {
         comlog.append(s);
     }
+
+    void PcapLog::write_packet(side_t side, buffer const& packet) {
+        if (not status() || packet.empty()) return;
+
+        auto const* bytes = static_cast<unsigned char const*>(packet.data());
+        auto const ip_version = static_cast<uint8_t>(bytes[0] >> 4U);
+        if (ip_version != 4 && ip_version != 6) {
+            _err("pcaplog::write_packet: unsupported IP version %u", ip_version);
+            return;
+        }
+
+        PcapLog* self = single_only ? &single_instance() : this;
+        if (not self->writer_) self->init_writer();
+        auto* writer = self->writer_;
+        auto const& fs = self->FS;
+        if (not writer->opened() && not writer->open(fs.filename_full)) {
+            _err("write '%s' failed to open dump file!", fs.filename_full.c_str());
+            return;
+        }
+
+        if (not ip_packet_hook_only) {
+            if (not writer->opened()) return;
+            bool const is_recreated = prepare_file();
+            if (is_recreated) self->stat_bytes_written = 0LL;
+            self->write_pcap_header(is_recreated);
+        }
+
+        pcap::connection_details packet_details = details;
+        packet_details.ip_version = ip_version;
+        pcapng::pcapng_epb frame;
+        if (self->ip_packet_hook) frame.ip_packet_hook = self->ip_packet_hook;
+        buffer output;
+        if (frame.append_IP_packet(output, packet, side == side_t::RIGHT,
+                                   packet_details) == 0) {
+            _err("pcaplog::write_packet: cannot append IP packet");
+            return;
+        }
+        if (not ip_packet_hook_only) {
+            auto const written = writer->write(fs.filename_full, output);
+            self->stat_bytes_written += written;
+        }
+    }
+
+    void PcapLog::write_secret(traffic_secret_format format, buffer const& data) {
+        if (not status() || format != traffic_secret_format::tls_key_log
+            || data.empty()) return;
+
+        PcapLog* self = single_only ? &single_instance() : this;
+        if (not self->writer_) self->init_writer();
+        auto* writer = self->writer_;
+        auto const& fs = self->FS;
+
+        if (not writer->opened() && not writer->open(fs.filename_full)) {
+            _err("write '%s' failed to open dump file!", fs.filename_full.c_str());
+            return;
+        }
+        if (ip_packet_hook_only || not writer->opened()) return;
+
+        bool const is_recreated = prepare_file();
+        if (is_recreated) self->stat_bytes_written = 0LL;
+        self->write_pcap_header(is_recreated);
+
+        // A TLS Key Log DSB may contain one or more NSS-format lines. Ensure
+        // the final line is terminated so Wireshark accepts incremental blocks.
+        auto secrets = std::make_shared<buffer>(data.size() + 1);
+        secrets->append(data.data(), data.size());
+        auto const* bytes = static_cast<unsigned char const*>(data.data());
+        if (bytes[data.size() - 1] != '\n') secrets->append('\n');
+
+        pcapng::pcapng_dsb block;
+        block.secrets_data = std::move(secrets);
+        buffer output;
+        block.append(output);
+        auto const written = writer->write(fs.filename_full, output);
+        self->stat_bytes_written += written;
+    }
 }

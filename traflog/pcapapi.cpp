@@ -724,6 +724,32 @@ namespace socle::pcapng {
         return out.size() - orig_size;
     }
 
+    size_t pcapng_dsb::size() const {
+        constexpr size_t fixed_sz =
+                sizeof(type) +
+                sizeof(total_length) +
+                sizeof(secrets_type) +
+                sizeof(secrets_length) +
+                sizeof(total_length);
+        auto const data_size = secrets_data ? secrets_data->size() : 0;
+        return fixed_sz + data_size + padding_sz32(data_size);
+    }
+
+    size_t pcapng_dsb::append(buffer& out) {
+        auto const original_size = out.size();
+        secrets_length = secrets_data ? secrets_data->size() : 0;
+        total_length = size();
+
+        out.append(type);
+        out.append(total_length);
+        out.append(secrets_type);
+        out.append(secrets_length);
+        if (secrets_data) out.append(secrets_data.get());
+        padding::append(out, padding_sz32(secrets_length), 0);
+        out.append(total_length);
+        return out.size() - original_size;
+    }
+
     size_t pcapng_epb::size () const {
 
         size_t sz = 0;
@@ -948,6 +974,24 @@ namespace socle::pcapng {
         save_payload(fd, out);
 
         return out.size();
+    }
+
+    size_t pcapng_epb::append_IP_packet(buffer& out_buffer, buffer const& packet,
+                                        int in, connection_details const& details) {
+        if (packet.empty()) return 0;
+
+        auto const capacity = sizeof(linux_cooked_capture) + packet.size() + 16;
+        if (not packet_data) packet_data = std::make_shared<buffer>(capacity);
+        else packet_data->capacity(capacity);
+        if (packet_data->capacity() == 0 || not packet_data->data()) return 0;
+
+        packet_data->size(0);
+        append_LCC_header(*packet_data, details, in);
+        packet_data->append(packet.data(), packet.size());
+
+        if (auto hook = ip_packet_hook.lock(); hook) hook->execute(details, packet);
+        append(out_buffer);
+        return out_buffer.size();
     }
 
     size_t pcapng_options::entry::size() const {

@@ -3,7 +3,24 @@
 #include <socketinfo.hpp>
 #include <traflog/pcapapi.hpp>
 
+#include <cstring>
+
 using namespace socle::pcapng;
+
+namespace {
+
+class packet_hook final : public IP_Hook {
+public:
+    bool execute(connection_details const&, buffer const& packet) override {
+        bytes.assign(static_cast<unsigned char const*>(packet.data()),
+                     static_cast<unsigned char const*>(packet.data()) + packet.size());
+        return true;
+    }
+
+    std::vector<unsigned char> bytes;
+};
+
+} // namespace
 
 TEST(NgTest, Empty) {
     auto f = fopen("/tmp/ng_empty.pcapng", "w");
@@ -21,6 +38,69 @@ TEST(NgTest, Empty_Ipb) {
     pcapng_ifb hdr;
     save_NG_ifb(fd, hdr);
     fclose(f);
+}
+
+TEST(NgTest, DecryptionSecretsBlockContainsTlsKeyLog) {
+    std::string const line =
+        "CLIENT_HANDSHAKE_TRAFFIC_SECRET 00112233 aabbccdd\n";
+    pcapng_dsb block;
+    block.secrets_data = std::make_shared<buffer>(line.data(), line.size());
+    buffer output;
+
+    auto const written = block.append(output);
+
+    ASSERT_EQ(written, output.size());
+    ASSERT_GE(output.size(), 20U + line.size());
+    auto const* bytes = static_cast<unsigned char const*>(output.data());
+    uint32_t block_type = 0;
+    uint32_t block_length = 0;
+    uint32_t secrets_type = 0;
+    uint32_t secrets_length = 0;
+    std::memcpy(&block_type, bytes, sizeof(block_type));
+    std::memcpy(&block_length, bytes + 4, sizeof(block_length));
+    std::memcpy(&secrets_type, bytes + 8, sizeof(secrets_type));
+    std::memcpy(&secrets_length, bytes + 12, sizeof(secrets_length));
+    EXPECT_EQ(block_type, 0x0000000AU);
+    EXPECT_EQ(block_length, output.size());
+    EXPECT_EQ(secrets_type, pcapng_dsb::TLS_KEY_LOG);
+    EXPECT_EQ(secrets_length, line.size());
+    EXPECT_EQ(std::memcmp(bytes + 16, line.data(), line.size()), 0);
+
+    // Keep a complete sample for compatibility checks with Wireshark/editcap.
+    auto* file = std::fopen("/tmp/ng_tls_secrets.pcapng", "wb");
+    ASSERT_NE(file, nullptr);
+    buffer capture;
+    pcapng_shb section;
+    pcapng_ifb interface;
+    section.append(capture);
+    interface.append(capture);
+    capture.append(output.data(), output.size());
+    EXPECT_EQ(std::fwrite(capture.data(), 1, capture.size(), file), capture.size());
+    std::fclose(file);
+}
+
+TEST(NgTest, CompleteIpPacketIsNotSynthesizedOrTransformed) {
+    std::vector<unsigned char> const ip_packet {
+        0x45, 0x00, 0x00, 0x18, 0x12, 0x34, 0x00, 0x00,
+        0x20, 0x11, 0x00, 0x00, 192, 0, 2, 1, 198, 51, 100, 2,
+        'Q', 'U', 'I', 'C',
+    };
+    buffer packet(ip_packet.data(), ip_packet.size());
+    connection_details details {};
+    details.ip_version = 4;
+    auto hook = std::make_shared<packet_hook>();
+    pcapng_epb frame;
+    frame.ip_packet_hook = hook;
+    buffer output;
+
+    ASSERT_GT(frame.append_IP_packet(output, packet, 0, details), 0U);
+
+    ASSERT_NE(frame.packet_data, nullptr);
+    ASSERT_EQ(frame.packet_data->size(), sizeof(linux_cooked_capture) + ip_packet.size());
+    auto const* stored = static_cast<unsigned char const*>(frame.packet_data->data());
+    EXPECT_EQ(std::memcmp(stored + sizeof(linux_cooked_capture),
+                          ip_packet.data(), ip_packet.size()), 0);
+    EXPECT_EQ(hook->bytes, ip_packet);
 }
 
 

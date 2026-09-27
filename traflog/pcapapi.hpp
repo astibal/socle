@@ -325,6 +325,22 @@ namespace socle::pcapng {
         size_t append(buffer& out);
     };
 
+    /** PCAPNG Decryption Secrets Block (DSB). */
+    struct pcapng_dsb {
+        enum secrets_type : uint32_t {
+            TLS_KEY_LOG = 0x544C534B,
+        };
+
+        uint32_t type = 0x0000000AL;
+        uint32_t total_length = 0;
+        uint32_t secrets_type = TLS_KEY_LOG;
+        uint32_t secrets_length = 0;
+        std::shared_ptr<buffer> secrets_data;
+
+        size_t size() const;
+        size_t append(buffer& out);
+    };
+
     struct pcapng_options;
 
 
@@ -364,6 +380,10 @@ namespace socle::pcapng {
 
         size_t append_UDP(buffer& out_buffer, const char* data, ssize_t size, int in, connection_details& details);
         size_t save_UDP(int fd, const char* data, ssize_t size, int in, connection_details& details);
+
+        /** Store one complete IP packet and forward that exact packet to IP_Hook. */
+        size_t append_IP_packet(buffer& out_buffer, buffer const& packet,
+                                int in, connection_details const& details);
     };
     using pcapng_frame = pcapng_epb;
 
