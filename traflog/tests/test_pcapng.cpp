@@ -566,6 +566,11 @@ TEST(PcapExperiments, Tun6) {
     tun.dst.str_host = "172.30.255.1";
     tun.src.family = AF_INET;
     tun.dst.family = AF_INET;
+    tun.src.pack();
+    tun.dst.pack();
+
+    ASSERT_TRUE(tun.src.ss.has_value());
+    ASSERT_TRUE(tun.dst.ss.has_value());
 
 
     d.tun_details = &tun;
@@ -594,11 +599,12 @@ TEST(PcapExperiments, Tun6) {
 
     [&] {
         auto r = raw_socket();
-        if(r) {
+        if(r >= 0) {
             sendto(r, a.data(), a.size(), 0, (sockaddr*) &d.tun_details->dst.ss.value(),
                    sizeof(sockaddr_storage));
             sendto(r, b.data(), b.size(), 0, (sockaddr*) &d.tun_details->dst.ss.value(),
                    sizeof(sockaddr_storage));
+            close(r);
 
         } else {
             std::cerr << "no raw socket" << std::endl;

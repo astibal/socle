@@ -261,6 +261,8 @@ const unsigned char dns_req[] = {
 };
 
 TEST(PcapTest, L4_chksum) {
+    const bool calculate_checksums = CONFIG::CALCULATE_CHECKSUMS;
+    CONFIG::CALCULATE_CHECKSUMS = true;
     SocketInfo s;
     s.src.str_host = "192.168.254.100";
     s.dst.str_host = "8.8.8.8";
@@ -290,5 +292,6 @@ TEST(PcapTest, L4_chksum) {
     udp_header.check = htons(L4_chksum<udphdr>(d, 0, &udp_header, (const char*) dns_req, sizeof(dns_req)));
 
     std::cout << string_format("chksum: 0x%x\n", udp_header.check);
+    CONFIG::CALCULATE_CHECKSUMS = calculate_checksums;
     ASSERT_TRUE(udp_header.check == ntohs(0xf685));
 }
