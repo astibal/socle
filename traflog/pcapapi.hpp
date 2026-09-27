@@ -115,6 +115,9 @@ namespace socle::pcap {
 
 
     struct connection_details {
+        /** Describes whether a capture packet was synthesized or observed whole. */
+        enum class record_origin { synthetic, packet };
+
         sockaddr_storage source{};
         sockaddr_storage destination{};
         uint16_t ip_id_in;
@@ -133,6 +136,10 @@ namespace socle::pcap {
         // A keyed GRE record lets capture i.e. stream IDs and assist further
         // traffic processing
         std::optional<uint32_t> gre_key;
+
+        // Hooks can use the origin to select between reconstructed traffic and
+        // complete packets supplied through baseTrafficLogger::write_packet().
+        record_origin origin {record_origin::synthetic};
 
         ssize_t max_data_size{1380};
 
@@ -228,6 +235,9 @@ namespace socle::pcap {
     void append_LCC_header(buffer& out_buffer, connection_details const& details, int in);
 
     void append_GRE_header(buffer& out_buffer, connection_details const& details);
+    /** Append GRE with an explicit EtherType for non-IP capture records. */
+    void append_GRE_header(buffer& out_buffer, connection_details const& details,
+                           uint16_t next_protocol);
     size_t gre_header_size(connection_details const& details);
 
     void append_IP_header(buffer& out_buffer, connection_details& details, int in, size_t payload_size);
@@ -345,6 +355,12 @@ namespace socle::pcapng {
 
 
     struct IP_Hook {
+        virtual bool execute(connection_details const&, buffer const&) = 0;
+    };
+
+    /** Receives one complete, serialized PCAPNG block. */
+    struct Record_Hook {
+        virtual ~Record_Hook() = default;
         virtual bool execute(connection_details const&, buffer const&) = 0;
     };
 

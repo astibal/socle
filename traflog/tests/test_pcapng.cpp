@@ -2,6 +2,7 @@
 
 #include <socketinfo.hpp>
 #include <traflog/pcapapi.hpp>
+#include <traflog/pcaplog.hpp>
 
 #include <cstring>
 
@@ -11,13 +12,29 @@ namespace {
 
 class packet_hook final : public IP_Hook {
 public:
-    bool execute(connection_details const&, buffer const& packet) override {
+    bool execute(connection_details const& details, buffer const& packet) override {
+        origin = details.origin;
         bytes.assign(static_cast<unsigned char const*>(packet.data()),
                      static_cast<unsigned char const*>(packet.data()) + packet.size());
         return true;
     }
 
     std::vector<unsigned char> bytes;
+    connection_details::record_origin origin {
+        connection_details::record_origin::synthetic};
+};
+
+class record_hook final : public Record_Hook {
+public:
+    bool execute(connection_details const& details, buffer const& record) override {
+        origins.push_back(details.origin);
+        auto const* begin = static_cast<unsigned char const*>(record.data());
+        records.emplace_back(begin, begin + record.size());
+        return true;
+    }
+
+    std::vector<connection_details::record_origin> origins;
+    std::vector<std::vector<unsigned char>> records;
 };
 
 } // namespace
@@ -101,6 +118,104 @@ TEST(NgTest, CompleteIpPacketIsNotSynthesizedOrTransformed) {
     EXPECT_EQ(std::memcmp(stored + sizeof(linux_cooked_capture),
                           ip_packet.data(), ip_packet.size()), 0);
     EXPECT_EQ(hook->bytes, ip_packet);
+    EXPECT_EQ(hook->origin, connection_details::record_origin::packet);
+}
+
+TEST(NgTest, GreExporterCanSelectCaptureRecordOrigin) {
+    socle::traflog::GreExporter exporter(AF_INET, "127.0.0.1");
+
+    EXPECT_TRUE(exporter.accepts(connection_details::record_origin::synthetic));
+    EXPECT_TRUE(exporter.accepts(connection_details::record_origin::packet));
+
+    exporter.origin(connection_details::record_origin::synthetic);
+    EXPECT_TRUE(exporter.accepts(connection_details::record_origin::synthetic));
+    EXPECT_FALSE(exporter.accepts(connection_details::record_origin::packet));
+
+    exporter.origin(connection_details::record_origin::packet);
+    EXPECT_FALSE(exporter.accepts(connection_details::record_origin::synthetic));
+    EXPECT_TRUE(exporter.accepts(connection_details::record_origin::packet));
+
+    exporter.format(socle::traflog::GreExporter::payload_format::pcapng_record);
+    EXPECT_EQ(exporter.format(),
+              socle::traflog::GreExporter::payload_format::pcapng_record);
+}
+
+TEST(NgTest, PcapngGreRecordsUseExperimentalEtherType) {
+    connection_details details {};
+    details.gre_key = 0x01020304;
+    buffer header;
+
+    append_GRE_header(header, details,
+                      socle::traflog::GreExporter::pcapng_gre_protocol);
+
+    ASSERT_EQ(header.size(), 8U);
+    auto const* bytes = static_cast<unsigned char const*>(header.data());
+    EXPECT_EQ(bytes[0], 0x20);
+    EXPECT_EQ(bytes[1], 0x00);
+    EXPECT_EQ(bytes[2], 0x88);
+    EXPECT_EQ(bytes[3], 0xB5);
+
+    unsigned char const record_bytes[] {0x06, 0x00, 0x00, 0x00};
+    buffer record(record_bytes, sizeof(record_bytes));
+    socle::traflog::GreExporter exporter(AF_INET, "127.0.0.1");
+    exporter.format(socle::traflog::GreExporter::payload_format::pcapng_record);
+    auto encapsulated = exporter.encapsulate(details, record);
+
+    ASSERT_EQ(encapsulated.size(), header.size() + record.size());
+    auto const* encapsulated_bytes =
+        static_cast<unsigned char const*>(encapsulated.data());
+    EXPECT_EQ(std::memcmp(encapsulated_bytes, bytes, header.size()), 0);
+    EXPECT_EQ(std::memcmp(encapsulated_bytes + header.size(), record_bytes,
+                          sizeof(record_bytes)), 0);
+}
+
+TEST(NgTest, NativePacketAndSecretsProduceRemotePcapngRecords) {
+    auto& logger = socle::traflog::PcapLog::single_instance();
+    auto const previous_remote_only = socle::traflog::PcapLog::ip_packet_hook_only;
+    auto previous_ip_hook = logger.ip_packet_hook;
+    auto previous_record_hook = logger.pcapng_record_hook;
+    struct restore_state {
+        socle::traflog::PcapLog& logger;
+        bool remote_only;
+        std::shared_ptr<IP_Hook> ip_hook;
+        std::shared_ptr<Record_Hook> record_hook;
+        ~restore_state() {
+            socle::traflog::PcapLog::ip_packet_hook_only = remote_only;
+            logger.ip_packet_hook = std::move(ip_hook);
+            logger.pcapng_record_hook = std::move(record_hook);
+        }
+    } restore {logger, previous_remote_only, std::move(previous_ip_hook),
+               std::move(previous_record_hook)};
+
+    auto sink = std::make_shared<record_hook>();
+    socle::traflog::PcapLog::ip_packet_hook_only = true;
+    logger.ip_packet_hook.reset();
+    logger.pcapng_record_hook = sink;
+
+    std::vector<unsigned char> const ip_packet {
+        0x45, 0x00, 0x00, 0x18, 0x12, 0x34, 0x00, 0x00,
+        0x20, 0x11, 0x00, 0x00, 192, 0, 2, 1, 198, 51, 100, 2,
+        'Q', 'U', 'I', 'C',
+    };
+    buffer packet(ip_packet.data(), ip_packet.size());
+    logger.write_packet(socle::side_t::LEFT, packet);
+
+    std::string const key =
+        "CLIENT_HANDSHAKE_TRAFFIC_SECRET 00112233 aabbccdd\n";
+    buffer secret(key.data(), key.size());
+    logger.write_secret(socle::traffic_secret_format::tls_key_log, secret);
+
+    ASSERT_EQ(sink->records.size(), 2U);
+    ASSERT_EQ(sink->origins.size(), 2U);
+    EXPECT_EQ(sink->origins[0], connection_details::record_origin::packet);
+    EXPECT_EQ(sink->origins[1], connection_details::record_origin::packet);
+
+    uint32_t first_type = 0;
+    uint32_t second_type = 0;
+    std::memcpy(&first_type, sink->records[0].data(), sizeof(first_type));
+    std::memcpy(&second_type, sink->records[1].data(), sizeof(second_type));
+    EXPECT_EQ(first_type, 0x00000006U);
+    EXPECT_EQ(second_type, 0x0000000AU);
 }
 
 

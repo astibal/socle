@@ -170,18 +170,19 @@ namespace socle::pcap {
     };
 
 
-    void append_GRE_header(buffer& out_buffer, connection_details const& details) {
+    void append_GRE_header(buffer& out_buffer, connection_details const& details,
+                           uint16_t next_protocol) {
         grehdr hdr{0};
 
         if (details.gre_key) hdr.preamble = htons(0x2000); // RFC 2890 K bit.
-
-        if(details.ip_version == 6) {
-            hdr.next_proto = htons(0x86DD);
-        } else {
-            hdr.next_proto = htons(0x0800);
-        }
+        hdr.next_proto = htons(next_protocol);
         out_buffer.append(&hdr, sizeof(hdr));
         if (details.gre_key) out_buffer.append(htonl(*details.gre_key));
+    }
+
+    void append_GRE_header(buffer& out_buffer, connection_details const& details) {
+        append_GRE_header(out_buffer, details,
+                          details.ip_version == 6 ? 0x86DD : 0x0800);
     }
 
     size_t gre_header_size(connection_details const& details) {
@@ -989,7 +990,11 @@ namespace socle::pcapng {
         append_LCC_header(*packet_data, details, in);
         packet_data->append(packet.data(), packet.size());
 
-        if (auto hook = ip_packet_hook.lock(); hook) hook->execute(details, packet);
+        if (auto hook = ip_packet_hook.lock(); hook) {
+            auto packet_details = details;
+            packet_details.origin = connection_details::record_origin::packet;
+            hook->execute(packet_details, packet);
+        }
         append(out_buffer);
         return out_buffer.size();
     }

@@ -46,6 +46,8 @@ namespace socle::traflog {
         // if ip_packet_hook is set and _only is set too, pcaplog will prepare IP packets, but won't write into files!
         static inline bool ip_packet_hook_only = false;
         std::shared_ptr<pcapng::IP_Hook> ip_packet_hook;
+        /** Optional sink for native EPB and DSB blocks, independent of local output. */
+        std::shared_ptr<pcapng::Record_Hook> pcapng_record_hook;
 
         void write_pcap_header(bool is_recreated);
 
@@ -92,8 +94,16 @@ namespace socle::traflog {
 
 
 
-    struct GreExporter : public pcapng::IP_Hook {
+    struct GreExporter : public pcapng::IP_Hook, public pcapng::Record_Hook {
+        enum class payload_format { ip_packet, pcapng_record };
+        static constexpr uint16_t pcapng_gre_protocol = 0x88B5;
+
         bool execute(pcap::connection_details const& det, buffer const& buf) override {
+
+            if(format_ == payload_format::ip_packet
+               && record_origin_filter && det.origin != *record_origin_filter) {
+                return true;
+            }
 
             if(sock < 0) {
                 sock = traflog::raw_socket_gre(target.dst.family, tun_ttl, bind_interface);
@@ -102,10 +112,7 @@ namespace socle::traflog {
             if(not target.dst.ss) return false;
             if(sock < 0) return false;
 
-            buffer send_data(buf.size() + pcap::gre_header_size(det));
-            pcapng::append_GRE_header(send_data, det);
-
-            send_data.append(buf);
+            auto send_data = encapsulate(det, buf);
 
             auto r = sendto(sock, send_data.data(), send_data.size(), 0, (sockaddr*) target.dst.as_ss(), sizeof(sockaddr_storage));
             if(r <= 0) {
@@ -115,18 +122,46 @@ namespace socle::traflog {
             return true;
         }
 
+        /** Build the GRE payload independently of the raw socket transport. */
+        [[nodiscard]] buffer encapsulate(pcap::connection_details const& det,
+                                         buffer const& payload) const {
+            buffer send_data(payload.size() + pcap::gre_header_size(det));
+            if(format_ == payload_format::pcapng_record) {
+                // IEEE local experimental EtherType keeps record traffic
+                // unambiguous without pretending that a PCAPNG block is IP.
+                pcapng::append_GRE_header(send_data, det, pcapng_gre_protocol);
+            } else {
+                pcapng::append_GRE_header(send_data, det);
+            }
+
+            send_data.append(payload);
+            return send_data;
+        }
+
         GreExporter(int family, std::string_view host) {
             target.dst.family = family;
             target.dst.str_host = host;
             target.dst.pack();
         }
-        GreExporter(GreExporter const& other) : target(other.target), sock(-1), tun_ttl(other.tun_ttl) {};
-        GreExporter(GreExporter&& other) noexcept : target(std::move(other.target)), sock(other.sock), tun_ttl(other.tun_ttl) { other.sock = -1; };
+        GreExporter(GreExporter const& other)
+            : target(other.target), sock(-1), tun_ttl(other.tun_ttl),
+              bind_interface(other.bind_interface),
+              format_(other.format_),
+              record_origin_filter(other.record_origin_filter) {}
+        GreExporter(GreExporter&& other) noexcept
+            : target(std::move(other.target)), sock(other.sock), tun_ttl(other.tun_ttl),
+              bind_interface(std::move(other.bind_interface)),
+              format_(other.format_),
+              record_origin_filter(other.record_origin_filter) { other.sock = -1; }
 
         GreExporter& operator=(GreExporter const& other) {
             if(&other != this) {
+                if(sock >= 0) ::close(sock);
                 target = other.target;
                 tun_ttl = other.tun_ttl;
+                bind_interface = other.bind_interface;
+                format_ = other.format_;
+                record_origin_filter = other.record_origin_filter;
                 sock = -1;
             }
 
@@ -134,9 +169,13 @@ namespace socle::traflog {
         };
         GreExporter& operator=(GreExporter&& other) noexcept {
             if(&other != this) {
+                if(sock >= 0) ::close(sock);
                 target = std::move(other.target);
                 sock = other.sock;
                 tun_ttl = other.tun_ttl;
+                bind_interface = std::move(other.bind_interface);
+                format_ = other.format_;
+                record_origin_filter = other.record_origin_filter;
 
                 other.sock = -1;
             }
@@ -145,15 +184,26 @@ namespace socle::traflog {
         };
 
 
-        virtual ~GreExporter() { if(sock > 0) ::close(sock); }
+        ~GreExporter() override { if(sock >= 0) ::close(sock); }
 
         void ttl(uint8_t ttl) { tun_ttl = ttl; }
         void bind_if(std::string_view ifa) { bind_interface=ifa; }
+        void format(payload_format value) { format_ = value; }
+        [[nodiscard]] payload_format format() const { return format_; }
+        /** Restrict export to reconstructed or complete capture records. */
+        void origin(pcap::connection_details::record_origin value) {
+            record_origin_filter = value;
+        }
+        [[nodiscard]] bool accepts(pcap::connection_details::record_origin value) const {
+            return !record_origin_filter || *record_origin_filter == value;
+        }
     private:
         SocketInfo target{};
         int sock {-1};
         int tun_ttl {32};
         std::string bind_interface{};
+        payload_format format_ {payload_format::ip_packet};
+        std::optional<pcap::connection_details::record_origin> record_origin_filter;
     };
 
 }
