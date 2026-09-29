@@ -2896,8 +2896,12 @@ bool baseSSLCom<L4Proto>::waiting_peer_hello() {
                         return false;
                     }
 
-                    // set peers SNI the same
+                    // Preserve the parsed ClientHello SNI on the client-facing
+                    // peer, then optionally replace only this outbound value.
                     peer_scom->sslcom_sni() = sslcom_sni();
+                    if(auto const* target = owner_cx(); target) {
+                        sslcom_sni() = target->outbound_sni(sslcom_sni());
+                    }
                     
                     sslcom_peer_hello_received(true);
                     set_monitor(socket());

@@ -1,6 +1,23 @@
 #include <gtest/gtest.h>
 #include <sslcom.hpp>
 
+TEST(TLS_Tests, OutboundSniRewriteExactMatch) {
+    baseHostCX target(new TCPCom(), "192.0.2.1", "443");
+    target.configure_sni_rewrite("client.example", "origin.internal");
+
+    EXPECT_EQ(target.outbound_sni("client.example"), "origin.internal");
+    EXPECT_EQ(target.outbound_sni("other.example"), "other.example");
+}
+
+TEST(TLS_Tests, OutboundSniRewriteRequiresBothValues) {
+    baseHostCX target(new TCPCom(), "192.0.2.1", "443");
+    target.configure_sni_rewrite("client.example", "");
+    EXPECT_EQ(target.outbound_sni("client.example"), "client.example");
+
+    target.configure_sni_rewrite("", "origin.internal");
+    EXPECT_EQ(target.outbound_sni("client.example"), "client.example");
+}
+
 
 unsigned char tls_sni_smithproxy[] = {
         0x16, 0x03, 0x01, 0x01, 0x62, 0x01, 0x00, 0x01,

@@ -262,6 +262,9 @@ private:
 
     baseHostCX* peer_ = nullptr;
 
+    std::string rewrite_sni_;
+    std::string rewrite_sni_to_;
+
     // if io is disabled, no read/write should be called.
     // This is admin indication flag, if you call read() or write(), it will succeed.
     // Setting is not enforced to prevent EAGAIN loops
@@ -303,6 +306,17 @@ public:
     }
 
     baseCom* peercom() const { if(peer()) { return peer()->com(); } return nullptr; }
+
+    void configure_sni_rewrite(std::string const& from, std::string const& to) {
+        rewrite_sni_ = from;
+        rewrite_sni_to_ = to;
+    }
+    [[nodiscard]] std::string outbound_sni(std::string const& client_sni) const {
+        if(not rewrite_sni_.empty() and not rewrite_sni_to_.empty() and client_sni == rewrite_sni_) {
+            return rewrite_sni_to_;
+        }
+        return client_sni;
+    }
     
     inline std::string& comlog() const { if(com()) return com()->log_buffer_; throw socle::com_is_null(); };
 public:
