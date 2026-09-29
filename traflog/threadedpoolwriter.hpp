@@ -20,6 +20,7 @@
 #define THREADEDPOOLWRITER_HPP
 
 #include <unistd.h>
+#include <atomic>
 #include <queue>
 
 #include <traflog/poolwriter.hpp>
@@ -34,7 +35,7 @@ namespace socle {
         void run_worker();
         void worker();
 
-        bool stop_signal_ = false;
+        std::atomic_bool stop_signal_ {false};
         std::thread worker_thread_;
 
     public:

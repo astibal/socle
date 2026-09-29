@@ -39,12 +39,17 @@ namespace socle {
 
     void threadedPoolFileWriter::worker() {
         :: pthread_setname_np(pthread_self(), "sx-wrt");
-        while(! stop_signal_)
+        while(true)
         {
             bool wait = false;
             {
                 std::scoped_lock<std::mutex> l_(queue_lock_);
                 if (queue().empty()) {
+                    // Shutdown is complete only after every record accepted by
+                    // write() has reached the backing file. Capture sessions
+                    // can enqueue their final data and FIN blocks while static
+                    // loggers are being destroyed.
+                    if (stop_signal_.load()) break;
                     wait = true;
                 } else {
                     auto& fnm = queue().front().first; // copy to ram is faster than to disk
