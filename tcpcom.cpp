@@ -180,7 +180,7 @@ int TCPCom::bind(unsigned short port) {
 
 int TCPCom::accept ( int sockfd, sockaddr* addr, socklen_t* addrlen_ ) {
 
-    int news = ::accept(sockfd, addr, addrlen_);
+    int news = ::accept4(sockfd, addr, addrlen_, SOCK_NONBLOCK | SOCK_CLOEXEC);
 
     if (news < 0) {
         if (errno != EAGAIN) {
