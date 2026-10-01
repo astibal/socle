@@ -111,6 +111,12 @@ namespace socle {
             }
 
             auto* stream = new std::ofstream(fnm , std::ofstream::out | std::ofstream::app);
+            if(!stream->is_open()) {
+                _err("file: %s: cannot open output stream: %s",
+                     fnm.c_str(), string_error().c_str());
+                delete stream;
+                return nullptr;
+            }
 
             if(chmod(fnm.c_str(), 0600) != 0) {
                 _err("chmod failed: %s", string_error().c_str());

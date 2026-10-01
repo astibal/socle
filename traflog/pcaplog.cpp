@@ -33,7 +33,10 @@ namespace socle::traflog {
 
         int sock = socket(family, SOCK_RAW, IPPROTO_GRE);
 
-        if(sock < 0) return sock;
+        if(sock < 0) {
+            _err("raw_socket_gre: cannot create raw socket: %s", string_error().c_str());
+            return sock;
+        }
 
         int none = 0;
 
