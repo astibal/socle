@@ -472,7 +472,10 @@ public:
     struct options {
         static inline int ocsp_status_ttl = 1800;
         static inline int crl_status_ttl = 86400;
-        static inline bool ktls = true;
+        // Smithproxy cannot use SSL_sendfile(): inspected payloads already
+        // pass through userspace. Software KTLS therefore adds overhead on
+        // ordinary NICs; keep it as an explicit opt-in for HW-offload hosts.
+        static inline bool ktls = false;
     };
     static inline SSLFactory::options options_;
 

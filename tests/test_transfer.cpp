@@ -10,7 +10,9 @@
 #include <vector>
 
 #include "hostcx.hpp"
+#include "baseproxy.hpp"
 #include "tcpcom.hpp"
+#include "udpcom.hpp"
 
 namespace {
 
@@ -96,6 +98,18 @@ public:
     ~ScopedIoBatch() { baseHostCX::params_t::io_batch = previous_; }
 private:
     std::size_t previous_;
+};
+
+class RawAcceptCountingProxy : public baseProxy {
+public:
+    explicit RawAcceptCountingProxy(baseCom* transport) : baseProxy(transport) {
+        new_raw(true);
+    }
+
+    std::size_t left_callbacks = 0;
+
+protected:
+    void on_left_new_raw(int) override { ++left_callbacks; }
 };
 
 class SocketPair {
@@ -283,6 +297,17 @@ TEST(TransferDrain, ReturnsProgressWhenDrainEndsInWouldBlock) {
     EXPECT_EQ(transport->output.size(), chunk);
     EXPECT_TRUE(std::equal(payload.begin() + chunk, payload.end(),
                            connection.writebuf()->data()));
+}
+
+TEST(AcceptDrain, DatagramListenerGetsOneCallbackPerReadinessEvent) {
+    auto const listener_fd = ::socket(AF_INET, SOCK_DGRAM | SOCK_NONBLOCK, 0);
+    ASSERT_GE(listener_fd, 0);
+
+    RawAcceptCountingProxy proxy(new UDPCom());
+    baseHostCX listener(new UDPCom(), listener_fd);
+
+    EXPECT_EQ(proxy.handle_sockets_accept_batch('l', proxy.com(), &listener), 1U);
+    EXPECT_EQ(proxy.left_callbacks, 1U);
 }
 
 } // namespace

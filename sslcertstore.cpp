@@ -486,7 +486,7 @@ SSL_CTX* SSLFactory::client_ctx_setup(const char* ciphers) {
 #ifdef USE_OPENSSL300
     if (options::ktls) {
         _dia("SSLFactory::client_ctx_setup: KTLS on");
-        ctx_options += SSL_OP_ENABLE_KTLS;
+        ctx_options |= SSL_OP_ENABLE_KTLS;
     }
     else {
         _dia("SSLFactory::client_ctx_setup: KTLS off");
@@ -563,7 +563,7 @@ SSL_CTX* SSLFactory::server_ctx_setup(EVP_PKEY* priv, X509* cert, const char* ci
 #ifdef USE_OPENSSL300
     if (options::ktls) {
         _dia("SSLFactory::server_ctx_setup: KTLS on");
-        ctx_options += SSL_OP_ENABLE_KTLS;
+        ctx_options |= SSL_OP_ENABLE_KTLS;
     }
     else {
         _dia("SSLFactory::server_ctx_setup: KTLS off");
