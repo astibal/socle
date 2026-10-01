@@ -531,6 +531,13 @@ public:
     bool bypass_me_and_peer();
     static inline const char* ci_def_filter
         = "HIGH RC4 !aNULL !eNULL !LOW !3DES !MD5 !EXP !DSS !PSK !SRP !kECDH !CAMELLIA !IDEA !SEED @STRENGTH";
+    static inline const char* ci_default_filter
+        = "HIGH RC4 !aNULL !eNULL !LOW !3DES !MD5 !EXP !DSS !PSK !SRP !kECDH !CAMELLIA !IDEA !SEED @STRENGTH !RC4";
+
+    static constexpr bool uses_default_cipher_filter(const SSLComCryptoFeatures& features) {
+        return features.kex_dh && features.kex_rsa && features.allow_sha1 &&
+               !features.allow_rc4 && features.allow_aes128;
+    }
 
     int ocsp_cert_is_revoked = -1;
     [[maybe_unused]] static int certificate_status_ocsp_check(baseSSLCom* com);

@@ -169,10 +169,23 @@ static void init_log() {
 
 struct SSLCom_Buddy : public SSLCom {
     void test_peer_hello_buffer(buffer const& b) { sslcom_peer_hello_buffer.assign( (void*)b.data(), b.size(), b.size(), false); }
+    const unsigned char* test_peer_hello_data() const { return sslcom_peer_hello_buffer.data(); }
     int test_parse_sni() { return parse_peer_hello(); }
     unsigned short test_parse_extension(buffer& b) { return parse_peer_hello_extensions(b, 0); }
     int test_normalize_records() { return static_cast<int>(normalize_peer_hello_records()); }
 };
+
+TEST(TLS_Tests, CompleteClientHelloNormalizationReusesInputBuffer) {
+    buffer complete(tls_sni_smithproxy, sizeof(tls_sni_smithproxy));
+    SSLCom_Buddy s;
+    s.test_peer_hello_buffer(complete);
+    const auto* before = s.test_peer_hello_data();
+
+    EXPECT_EQ(s.test_normalize_records(), 1); // client_hello_peek_t::READY
+    EXPECT_EQ(s.test_peer_hello_data(), before);
+    EXPECT_EQ(s.test_parse_sni(), 1);
+    EXPECT_EQ(s.get_sni(), "smithproxy.org");
+}
 
 
 

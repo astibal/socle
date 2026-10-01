@@ -440,6 +440,8 @@ int baseHostCX::read() {
 
     ssize_t buffer_written_len = 0;
     auto this_read_op_limit = read_limit().value_or(0);
+    auto const io_batch = baseHostCX::params_t::io_batch.load();
+    auto const drain_socket = socket() < 0 || !baseCom::is_blocking(socket());
 
     while(true) {
 
@@ -448,6 +450,12 @@ int baseHostCX::read() {
 
         // read only amount of bytes fitting the buffer capacity
         auto max_bytes_left = readbuf()->capacity() - readbuf()->size();
+
+        if (io_batch > 0) {
+            auto const batch_left = io_batch - std::min(
+                io_batch, static_cast<std::size_t>(buffer_written_len));
+            max_bytes_left = std::min(max_bytes_left, batch_left);
+        }
 
         if (this_read_op_limit > 0 and max_bytes_left > this_read_op_limit)
         {
@@ -458,6 +466,12 @@ int baseHostCX::read() {
         _ext("HostCX::read[%s]: readbuf_ base=%x, wr at=%x, maximum to write=%d", c_type(),
              readbuf_.data(), cur_read_ptr, max_bytes_left);
 
+
+        // A full buffer which cannot grow must not be presented to recv()/SSL_read()
+        // as a zero-length read: zero means EOF to the caller.
+        if(max_bytes_left == 0) {
+            break;
+        }
 
         //read on last position in buffer
         auto cur_io_len = io_read(cur_read_ptr, max_bytes_left);
@@ -496,14 +510,30 @@ int baseHostCX::read() {
 
         if(this_read_op_limit != 0L) this_read_op_limit -= cur_io_len_bytes;
 
+        if(io_batch > 0 && static_cast<std::size_t>(buffer_written_len) >= io_batch) {
+            break;
+        }
+
         // if buffer is full, let's reallocate it and try read again (to save system resources)
 
         if(readbuf_.size() >= readbuf_.capacity()) {
             grow_buffer();
         }
 
-        // reaching code here means that we don't want other iterations
-        break;
+        // Blocking descriptors may wait indefinitely on the next read. Proxy
+        // sockets are non-blocking, so drain those until EAGAIN or the batch
+        // limit instead of returning through the whole poll/proxy stack for
+        // every small read/TLS record.
+        if(!drain_socket) {
+            break;
+        }
+
+        // A successful TLS read can consume application bytes and then stop
+        // on WANT_WRITE. Do not immediately retry that state transition in
+        // the same batch; the matching writable event will force the read.
+        if(!com()->readable(socket())) {
+            break;
+        }
 
     }
 
@@ -602,46 +632,68 @@ int baseHostCX::write() {
         }
     }
 
-    // process_out can actually extend bytes, so we cannot rely on tx_size
-    ssize_t l = io_write(writebuf_.data(), std::min(writebuf_.size(), processed_out_), MSG_NOSIGNAL);
+    // process_out can actually extend bytes, so we cannot rely on tx_size.
+    // Drain non-blocking transports in a bounded batch. This is especially
+    // important for TLSCom, whose individual SSL_write() is intentionally
+    // capped to one record-sized chunk.
+    auto remaining_processed = std::min(writebuf_.size(), processed_out_);
+    auto const io_batch = baseHostCX::params_t::io_batch.load();
+    auto const drain_socket = socket() < 0 || !baseCom::is_blocking(socket());
+    std::size_t total_written = 0;
+    ssize_t last_result = 0;
 
-    if (l > 0) {
-        meter_write_bytes += static_cast<std::size_t>(l);
+    // SSLCom uses zero-length writes to advance a non-blocking handshake on
+    // EPOLLOUT even when no application bytes are queued yet. Preserve that
+    // state-machine tick before applying the data-path drain loop.
+    if(remaining_processed == 0) {
+        last_result = io_write(writebuf_.data(), 0, MSG_NOSIGNAL);
+    }
+
+    while(remaining_processed > 0 && (io_batch == 0 || total_written < io_batch)) {
+        auto request_size = remaining_processed;
+        if(io_batch > 0) {
+            request_size = std::min(request_size, io_batch - total_written);
+        }
+
+        last_result = io_write(writebuf_.data(), request_size, MSG_NOSIGNAL);
+        if(last_result <= 0) {
+            break;
+        }
+
+        auto const written = static_cast<std::size_t>(last_result);
+        meter_write_bytes += written;
         meter_write_count++;
+        total_written += written;
+        remaining_processed -= std::min(remaining_processed, written);
         w_activity = time(nullptr);
 
         if (opening()) {
             _deb("baseHostCX::write[%s]: connection established", c_type());
             opening(false);
         }
-        _deb("baseHostCX::write[%s]: %d from %d bytes sent from tx buffer at %x", c_type(), l, tx_size, writebuf_.data());
-        if (l < static_cast<ssize_t>(tx_size)) {
-            // rather log this: not a big deal, but we couldn't have sent all data!
-            _dia("baseHostCX::write[%s]: only %d from %d bytes sent from tx buffer!", c_type(), l, tx_size);
-        }
+        _deb("baseHostCX::write[%s]: %zd bytes sent from tx buffer at %p", c_type(),
+             last_result, static_cast<void*>(writebuf_.data()));
 
         _dum("baseHostCX::write[%s]: calling post_write", c_type());
         post_write();
+        writebuf_.flush(written);
 
-        if(l < static_cast<ssize_t>(writebuf_.size())) {
-            _dia("baseHostCX::write[%s]: %d bytes written out of %d -> setting socket write monitor",
-                    c_type(), l, writebuf_.size());
-            // we need to check once more when socket is fully writable
+        if(!drain_socket) {
+            break;
+        }
+    }
 
+    if(total_written > 0) {
+        if(not writebuf_.empty()) {
+            _dia("baseHostCX::write[%s]: %zu bytes written, %zu pending -> setting socket write monitor",
+                 c_type(), total_written, writebuf_.size());
             com()->set_write_monitor(socket());
             rescan_out_flag_ = true;
-
-        } else {
-            // write buffer is empty
-            if(rescan_out_flag_) {
-                rescan_out_flag_ = false;
-
-                // stop monitoring write which results in loop an unnecesary write() calls
-                com()->change_monitor(socket(), EPOLLIN);
-            }
+        } else if(rescan_out_flag_) {
+            rescan_out_flag_ = false;
+            // stop monitoring write which results in unnecessary write() calls
+            com()->change_monitor(socket(), EPOLLIN);
         }
-
-        writebuf_.flush(static_cast<std::size_t>(l));
 
         if(baseCom::debug_log_data_crc) {
             _deb("baseHostCX::write[%s]: after: buffer crc = %X", c_type(),
@@ -652,20 +704,25 @@ int baseHostCX::write() {
             shutdown();
         }
     }
-    else if(l == 0 and not writebuf()->empty()) {
+    else if(last_result == 0 and not writebuf()->empty()) {
         // write unsuccessful, we have to try immediately socket is writable!
-        _dia("baseHostCX::write[%s]: %d bytes written out of %d -> setting socket write monitor",
-                c_type(), l, writebuf_.size());
+        _dia("baseHostCX::write[%s]: %zd bytes written out of %zu -> setting socket write monitor",
+                c_type(), last_result, writebuf_.size());
 
         // write was not successful, wait a while
         com()->rescan_write(socket());
         rescan_out_flag_ = true;
     }
-    else if(l < 0) {
+    else if(last_result < 0) {
         _dia("baseHostCX::write[%s] write failed: %s, unrecoverable.", c_type(), string_error().c_str());
     }
 
-    return down_cast<int>(l).value_or(max_of<int>());
+    if(last_result < 0) {
+        return down_cast<int>(last_result).value_or(-1);
+    }
+    return total_written > static_cast<std::size_t>(max_of<int>())
+        ? max_of<int>()
+        : static_cast<int>(total_written);
 }
 
 
