@@ -2459,6 +2459,23 @@ ret_handshake baseSSLCom<L4Proto>::handshake() {
 
     const char* op_descr = op_unknown;
 
+    auto fail_both_sides = [this](bool fatal) {
+        sslcom_waiting = false;
+        sslcom_fatal = sslcom_fatal || fatal;
+        error(ERROR_UNSPEC);
+        if (owner_cx())
+            owner_cx()->error(true);
+        if (socket() > 0)
+            ::shutdown(socket(), SHUT_RDWR);
+        if (auto* other = peer()) {
+            other->error(ERROR_READ);
+            if (other->owner_cx())
+                other->owner_cx()->error(true);
+            if (other->socket() > 0)
+                ::shutdown(other->socket(), SHUT_RDWR);
+        }
+    };
+
     if (sslcom_ssl == nullptr and ! auto_upgrade()) {
         _war("SSLCom::handshake: sslcom_ssl is NULL and auto_upgrade is not set");
         return ret_handshake::ERROR;
@@ -2500,6 +2517,7 @@ ret_handshake baseSSLCom<L4Proto>::handshake() {
     if (op_code < 0) {
 
         if(error()) {
+            fail_both_sides(true);
             return ret_handshake::FATAL;
         }
 
@@ -2517,7 +2535,7 @@ ret_handshake baseSSLCom<L4Proto>::handshake() {
 
             // OpenSSL made no progress and explicitly needs socket readability.
             // Retrying without a new readiness edge only burns a worker cycle.
-            set_monitor(socket());
+            change_monitor(socket(), EPOLLIN);
 
             return ret_handshake::AGAIN;
         }
@@ -2536,6 +2554,7 @@ ret_handshake baseSSLCom<L4Proto>::handshake() {
 
             auto x_errno = errno;
             _dia("SSLCom::handshake: SSL_%s[%d]: error_syscall: %d %s", op_descr, socket(), x_errno, (x_errno == 0 ? "EOT from peer" : "" ));
+            fail_both_sides(true);
             return ret_handshake::FATAL;
         }
         else {
@@ -2543,7 +2562,7 @@ ret_handshake baseSSLCom<L4Proto>::handshake() {
 
             _dia("SSLCom::handshake: SSL_%s: ret=0, err=%d, err2=%d", op_descr, err, err2);
             handshake_dia_error2(op_code, err, err2);
-            sslcom_waiting = true;
+            fail_both_sides(true);
             return ret_handshake::ERROR;
         }
 
@@ -2557,7 +2576,7 @@ ret_handshake baseSSLCom<L4Proto>::handshake() {
         handshake_dia_error2(op_code, err, err2);
 
         // shutdown OK, but connection failed
-        sslcom_waiting = false;
+        fail_both_sides(false);
         return ret_handshake::ERROR;
     }
     if(SSL_session_reused(sslcom_ssl)) {
@@ -2568,8 +2587,7 @@ ret_handshake baseSSLCom<L4Proto>::handshake() {
     if(!is_server()) {
         if (not check_cert(ssl_waiting_host)) {
             _err("SSLCom::handshake: peer certificate/counterpart setup failed");
-            error(ERROR_UNSPEC);
-            sslcom_waiting = false;
+            fail_both_sides(false);
             return ret_handshake::ERROR;
         }
         store_session_if_needed();
@@ -2956,7 +2974,7 @@ bool baseSSLCom<L4Proto>::waiting_peer_hello() {
                     }
                     
                     sslcom_peer_hello_received(true);
-                    set_monitor(socket());
+                    change_monitor(socket(), EPOLLIN);
 
                 } else {
                     _deb("SSLCom::waiting_peer_hello: peek returns %d, readbuf=%d", red, owner_cx() ? owner_cx()->readbuf()->size() : -1);
@@ -2986,7 +3004,7 @@ bool baseSSLCom<L4Proto>::waiting_peer_hello() {
                 if(peer_scom->l4_proto() == SOCK_DGRAM) {
                     // atm don't wait for hello
                     sslcom_peer_hello_received(true);
-                    set_monitor(socket());
+                    change_monitor(socket(), EPOLLIN);
                 }
             }
         } else {
@@ -3852,7 +3870,17 @@ int baseSSLCom<L4Proto>::upgrade_client_socket(int sock) {
                 }
                 else if(err == SSL_ERROR_WANT_READ) {
                     _dia("upgrade_client_socket[%d]: SSL_connect: pending on want_read",sock);
-                    
+
+                    // connect() completion may have left this socket monitored
+                    // only for writes.  Without restoring read interest here,
+                    // a ServerHello, alert or EOF can arrive without another
+                    // event and leave the client-facing handshake suspended.
+                    change_monitor(socket(), EPOLLIN);
+                    // EPOLLET may already have delivered the EOF/data edge
+                    // before the mask change. Queue exactly one retry to
+                    // observe the current socket state.
+                    rescan_read(socket());
+
                     // since connect is not immediate, ignore all read events of the peer causing busy loop
                     unmonitor_peer();
                 }
