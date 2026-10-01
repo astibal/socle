@@ -239,6 +239,46 @@ TEST(TLS_Tests, PartialTlsRecordWaitsInsteadOfBecomingBypassCandidate) {
     EXPECT_EQ(s.test_normalize_records(), 0); // client_hello_peek_t::WAIT
 }
 
+TEST(TLS_Tests, EveryClientHelloPrefixWaitsUntilComplete) {
+    for (std::size_t visible = 1; visible < sizeof(tls_sni_smithproxy); ++visible) {
+        buffer partial(tls_sni_smithproxy, visible);
+        SSLCom_Buddy s;
+        s.test_peer_hello_buffer(partial);
+
+        EXPECT_EQ(s.test_normalize_records(), 0) // client_hello_peek_t::WAIT
+            << "visible bytes: " << visible;
+    }
+
+    buffer complete(tls_sni_smithproxy, sizeof(tls_sni_smithproxy));
+    SSLCom_Buddy s;
+    s.test_peer_hello_buffer(complete);
+    EXPECT_EQ(s.test_normalize_records(), 1); // client_hello_peek_t::READY
+}
+
+TEST(TLS_Tests, FragmentedClientHelloPrefixesNeverBecomeBypassCandidates) {
+    constexpr std::size_t header_size = 5;
+    constexpr std::size_t cut = 4;
+    std::vector<unsigned char> fragmented;
+    auto add_record = [&](const unsigned char* payload, std::size_t size) {
+        fragmented.insert(fragmented.end(), {0x16, 0x03, 0x01,
+            static_cast<unsigned char>((size >> 8U) & 0xffU),
+            static_cast<unsigned char>(size & 0xffU)});
+        fragmented.insert(fragmented.end(), payload, payload + size);
+    };
+    add_record(tls_sni_smithproxy + header_size, cut);
+    add_record(tls_sni_smithproxy + header_size + cut,
+               sizeof(tls_sni_smithproxy) - header_size - cut);
+
+    for (std::size_t visible = 1; visible < fragmented.size(); ++visible) {
+        buffer partial(fragmented.data(), visible);
+        SSLCom_Buddy s;
+        s.test_peer_hello_buffer(partial);
+
+        EXPECT_EQ(s.test_normalize_records(), 0) // client_hello_peek_t::WAIT
+            << "visible bytes: " << visible;
+    }
+}
+
 TEST(TLS_Tests, MalformedTlsRecordIsInvalidInsteadOfBypassCandidate) {
     unsigned char malformed[] = {0x16, 0x03, 0x01, 0x00, 0x04, 0x02, 0x00, 0x00, 0x00};
     buffer input(malformed, sizeof(malformed));
