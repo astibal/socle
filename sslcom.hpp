@@ -79,7 +79,7 @@ struct CompatThreading {
     static void dyn_destroy_function(CompatThreading::CRYPTO_dynlock_value *l, const char *file, int line);
 };
 
-enum class ret_handshake { FATAL=-2, ERROR=-1, AGAIN=0, SUCCESS=1, BYPASS=2 };
+enum class ret_handshake { FATAL=-2, ERROR=-1, AGAIN=0, SUCCESS=1 };
 
 namespace socle::ex {
         class SSL_clienthello_malformed : public std::exception {
@@ -250,7 +250,14 @@ public:
     // READY - successful handshake by SSL_accept() or SSL_connect()
     enum class sslcom_op_state_t { UNKNOWN, READY } sslcom_op_state { sslcom_op_state_t::UNKNOWN };
 
-    static int extdata_index() { return sslcom_ssl_extdata_index; };
+    // Function-local static initialization is thread-safe since C++11.  Keeping
+    // the OpenSSL ex-data index here avoids racing the first concurrent TLS
+    // connections through a check-then-assign global integer.
+    static int extdata_index() {
+        static const int index = SSL_get_ex_new_index(
+            0, const_cast<char*>("sslcom object"), nullptr, nullptr, nullptr);
+        return index;
+    };
 
     SSL* get_SSL() const { return sslcom_ssl; }
     X509* target_cert() const { return sslcom_target_cert; }
@@ -271,9 +278,6 @@ protected:
     int      sslcom_ret = 0;  // return value of last SSL_get_error() capable calls:
                               // SSL_connect, SSL_accept, SSL_do_handshake, SSL_read, SSL_peek,
                               // SSL_shutdown, SSL_write - and their respective _ex variants.
-    
-    //SSL external data offset, used by openssl callbacks
-    static inline int sslcom_ssl_extdata_index {-1};
     
     //preferred key/cert pair to be loaded, instead of default one
     X509*     sslcom_pref_cert = nullptr;
@@ -516,13 +520,15 @@ public:
     SSLComCounters counters;
     SSLComOptions opt;
 
+    // SSL_read/SSL_write retry guards.  Handshake readiness is handled
+    // directly from SSL_get_error() and deliberately does not use these.
+    static const int rescan_threshold_read = 30;
+    static const int rescan_threshold_write = 30;
+
     using verify_origin_t = com::ssl::verify_origin_t;
     using staple_code_t = com::ssl::staple_code_t;
     using verify_status_t = com::ssl::verify_status_t;
     using vrf_other_values_t = com::ssl::vrf_other_values_t;
-
-    static const int rescan_threshold_read = 30;
-    static const int rescan_threshold_write = 30;
 
     bool bypass_me_and_peer();
     static inline const char* ci_def_filter

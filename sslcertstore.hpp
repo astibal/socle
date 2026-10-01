@@ -312,7 +312,7 @@ private:
     void is_ct_available(bool n) { is_ct_available_ = n; };
     bool is_ct_available_ = false;
     
-    long serial = 0xCABA1AL;
+    std::atomic_long serial {0xCABA1AL};
     
     X509*     ca_cert = nullptr; // ca certificate
     EVP_PKEY* ca_key = nullptr;  // ca key to self-sign 
@@ -358,6 +358,8 @@ private:
     X509_STORE* trust_store_ = nullptr;
 
     mutable std::recursive_mutex mutex_cache_write_;
+    static constexpr std::size_t MITM_KEY_LOCK_SHARDS = 64;
+    mutable std::array<std::mutex, MITM_KEY_LOCK_SHARDS> mitm_key_locks_;
 
     SSLFactory() = default;
 
@@ -392,6 +394,9 @@ public:
 
     //always use locking when using this class!
     std::recursive_mutex& lock() const { return mutex_cache_write_; };
+    std::mutex& mitm_key_lock(std::string const& key) const {
+        return mitm_key_locks_[std::hash<std::string>{}(key) % MITM_KEY_LOCK_SHARDS];
+    }
     std::atomic_bool is_initialized = false;
 
 

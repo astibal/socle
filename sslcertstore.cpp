@@ -77,7 +77,7 @@ bool SSLFactory::load_from_files() {
     
     OpenSSL_add_all_algorithms();
     
-    serial += time(nullptr);
+    serial.fetch_add(time(nullptr), std::memory_order_relaxed);
 
     if (not (load_ca_cert() and load_def_cl_cert() and load_def_sr_cert())) {
         _err("SSLFactory::load: key/certs: ca(%x/%x) def_cl(%x/%x) def_sr(%x/%x)", ca_key,ca_cert,
@@ -497,6 +497,9 @@ SSL_CTX* SSLFactory::client_ctx_setup(const char* ciphers) {
     SSL_CTX_set_session_cache_mode(ctx, SSL_SESS_CACHE_NO_INTERNAL);
 
     SSL_CTX_sess_set_new_cb(ctx, SSLCom::new_session_callback);
+    SSL_CTX_set_client_cert_cb(ctx, SSLCom::ssl_client_cert_callback);
+    SSL_CTX_set_tlsext_status_cb(ctx, SSLCom::status_resp_callback);
+    SSL_CTX_set_tlsext_status_arg(ctx, nullptr);
 
     #ifdef USE_OPENSSL111
     SSL_CTX_set_keylog_callback(ctx, SSLCom::ssl_keylog_callback);
@@ -573,6 +576,7 @@ SSL_CTX* SSLFactory::server_ctx_setup(EVP_PKEY* priv, X509* cert, const char* ci
     SSL_CTX_sess_set_new_cb(ctx, SSLCom::new_session_callback);
     // set server callback on internal cache miss
     SSL_CTX_sess_set_get_cb(ctx, SSLCom::server_get_session_callback);
+    SSL_CTX_set_alpn_select_cb(ctx, SSLCom::ssl_alpn_select_callback, nullptr);
 
     _deb("SSLCom::server_ctx_setup: loading default key/cert");
     priv == nullptr ? SSL_CTX_use_PrivateKey(ctx, def_sr_key) : SSL_CTX_use_PrivateKey(ctx,priv);
@@ -842,7 +846,7 @@ bool SSLFactory::add_to_cache(SSLFactory::X509_CACHE &cache, std::string const& 
     bool op_status = true;
 
     if (parek.chain.key == nullptr || parek.chain.cert == nullptr) {
-        _dia("SSLFactory::add_to_cache<%s>[%X]: one of about to be stored components is nullptr", cache.info.c_str() ,serial);
+        _dia("SSLFactory::add_to_cache<%s>[%X]: one of about to be stored components is nullptr", cache.info.c_str() ,serial.load());
 
         return false;
     }
@@ -1119,7 +1123,7 @@ std::optional<X509_REQ*> SSLFactory::sign_csr(X509_REQ*&& corpus) const {
     EVP_MD const* digest = EVP_sha256();
 
     if (!(X509_REQ_sign( own_corpus, pkey, digest))) {
-        _err("SSLFactory::spoof[%X]: error signing request", serial);
+        _err("SSLFactory::spoof[%X]: error signing request", serial.load());
         return std::nullopt;
     }
 
@@ -1134,16 +1138,16 @@ std::optional<X509_REQ*> SSLFactory::create_csr_from(X509* cert_orig, bool self_
     auto* tmp = a_tmp.data();
 
 
-    _deb("SSLFactory::spoof[%X]: about to spoof certificate!", serial);
+    _deb("SSLFactory::spoof[%X]: about to spoof certificate!", serial.load());
 
     if(self_sign) {
-        _dia("SSLFactory::spoof[%X]: about to spoof certificate (self-signed)!", serial);
+        _dia("SSLFactory::spoof[%X]: about to spoof certificate (self-signed)!", serial.load());
     }
     if(additional_sans != nullptr && ! additional_sans->empty()) {
-        _dia("SSLFactory::spoof[%X]: about to spoof certificate (+sans):", serial);
+        _dia("SSLFactory::spoof[%X]: about to spoof certificate (+sans):", serial.load());
         std::vector<std::string>const & sans = *additional_sans;
         for (auto const& san: sans) {
-            _dia("SSLFactory::spoof[%X]:  SAN: %s", serial, san.c_str());
+            _dia("SSLFactory::spoof[%X]:  SAN: %s", serial.load(), san.c_str());
         }
     }
 
@@ -1155,7 +1159,7 @@ std::optional<X509_REQ*> SSLFactory::create_csr_from(X509* cert_orig, bool self_
     std::string subject(tmp);
 
 
-    _deb("SSLFactory::spoof[%X]: generating CSR for '%s'", serial, subject.c_str());
+    _deb("SSLFactory::spoof[%X]: generating CSR for '%s'", serial.load(), subject.c_str());
 
     auto* copy = X509_REQ_new();
     X509_NAME* copy_subj = X509_NAME_new();
@@ -1166,12 +1170,12 @@ std::optional<X509_REQ*> SSLFactory::create_csr_from(X509* cert_orig, bool self_
     EVP_PKEY_free(pub_sr_cert);
 
     if( not copy) {
-        _err("SSLFactory::spoof[%X]: cannot init request", serial);
+        _err("SSLFactory::spoof[%X]: cannot init request", serial.load());
         return std::nullopt;
     }
 
     if (not copy_subj) {
-        _err("SSLFactory::spoof[%X]: cannot init subject for request", serial);
+        _err("SSLFactory::spoof[%X]: cannot init subject for request", serial.load());
         return std::nullopt;
     }
 
@@ -1185,7 +1189,7 @@ std::optional<X509_REQ*> SSLFactory::create_csr_from(X509* cert_orig, bool self_
     });
 
     if (X509_REQ_set_subject_name(copy, n_dup) != 1) {
-        _err("SSLFactory::spoof[%X]: error copying subject to request", serial);
+        _err("SSLFactory::spoof[%X]: error copying subject to request", serial.load());
         return std::nullopt;
     }
 
@@ -1203,7 +1207,7 @@ std::optional<X509_REQ*> SSLFactory::create_csr_from(X509* cert_orig, bool self_
     std::string san_add;
     if(additional_sans != nullptr and not additional_sans->empty()) {
         san_add = string_csv(*additional_sans);
-        _dia("SSLFactory::spoof[%X]: additional sans = '%s'", serial, san_add.c_str());
+        _dia("SSLFactory::spoof[%X]: additional sans = '%s'", serial.load(), san_add.c_str());
     }
 
     bool san_added = false;
@@ -1216,23 +1220,23 @@ std::optional<X509_REQ*> SSLFactory::create_csr_from(X509* cert_orig, bool self_
             for (int i=0; i < num_of_exts; i++) {
                 X509_EXTENSION *ex = sk_X509_EXTENSION_value(exts, i);
                 if(!ex) {
-                    _err("SSLFactory::spoof[%X]: error obtaining certificate extension [%d] value ", serial, i);
+                    _err("SSLFactory::spoof[%X]: error obtaining certificate extension [%d] value ", serial.load(), i);
                     continue;
                 }
                 ASN1_OBJECT *obj = X509_EXTENSION_get_object(ex);
                 if(!obj) {
-                    _err("SSLFactory::spoof[%X]: unable to extract ASN1 object from extension [%d]", serial, i);
+                    _err("SSLFactory::spoof[%X]: unable to extract ASN1 object from extension [%d]", serial.load(), i);
                     continue;
                 }
 
                 unsigned nid = OBJ_obj2nid(obj);
                 if(nid == NID_subject_alt_name) {
-                    _deb("SSLFactory::spoof[%X]: adding subjAltName to extensions", serial);
+                    _deb("SSLFactory::spoof[%X]: adding subjAltName to extensions", serial.load());
 
 #ifdef USE_OPENSSL11
                     // it'ext_stack easier to get san list with different call, instead of diging it out from here.
                     std::string san = get_sans_csv(cert_orig);
-                    _deb("SSLFactory::spoof[%X]: original cert sans to be added: %ext_stack", serial, san.c_str());
+                    _deb("SSLFactory::spoof[%X]: original cert sans to be added: %ext_stack", serial.load(), san.c_str());
 
 #else
 
@@ -1259,7 +1263,7 @@ std::optional<X509_REQ*> SSLFactory::create_csr_from(X509* cert_orig, bool self_
                     }
 
                     int a_r = add_ext(ext_stack, NID_subject_alt_name, san.data());
-                    _deb("SSLFactory::spoof[%X]: add_ext returned %d", serial, a_r);
+                    _deb("SSLFactory::spoof[%X]: add_ext returned %d", serial.load(), a_r);
 
                     san_added = true;
                 }
@@ -1269,15 +1273,15 @@ std::optional<X509_REQ*> SSLFactory::create_csr_from(X509* cert_orig, bool self_
         if(not san_added) {
 
             int a_r = add_ext(ext_stack, NID_subject_alt_name, san_add.data());
-            _dum("SSLFactory::spoof[%X]: add_ext returned %d", serial, a_r);
+            _dum("SSLFactory::spoof[%X]: add_ext returned %d", serial.load(), a_r);
 
         }
 
         int r = X509_REQ_add_extensions(copy, ext_stack);
-        _dum("SSLFactory::spoof[%X]: X509_REQ_add_extensions returned %d", serial, r);
+        _dum("SSLFactory::spoof[%X]: X509_REQ_add_extensions returned %d", serial.load(), r);
     }
 
-    _deb("SSLFactory::spoof[%X]: generating CSR finished", serial);
+    _deb("SSLFactory::spoof[%X]: generating CSR finished", serial.load());
 
     return sign_csr(std::move(copy));
 }
@@ -1287,19 +1291,19 @@ bool SSLFactory::validate_spoof_requirements(X509 const* cert, X509_NAME const* 
 
     // init new certificate
     if (not cert) {
-        _err("SSLFactory::spoof[%X]: validate - error creating X509 object", serial);
+        _err("SSLFactory::spoof[%X]: validate - error creating X509 object", serial.load());
         return false;
     }
     if (not cert_name) {
-        _err("SSLFactory::spoof[%X]: validate - subjectName cannot be extracted from CSR", serial);
+        _err("SSLFactory::spoof[%X]: validate - subjectName cannot be extracted from CSR", serial.load());
         return false;
     }
     if (not issuer_name) {
-        _cri("SSLFactory::spoof[%X]: validate - subjectName cannot be extracted from CA!",  serial);
+        _cri("SSLFactory::spoof[%X]: validate - subjectName cannot be extracted from CA!",  serial.load());
         return false;
     }
     if (not pkey) {
-        _err("SSLFactory::spoof[%X]: validate - error getting public key from request", serial);
+        _err("SSLFactory::spoof[%X]: validate - error getting public key from request", serial.load());
         return false;
     }
 
@@ -1310,11 +1314,11 @@ std::optional<CertificateChainCtx> SSLFactory::spoof(X509* cert_orig, bool self_
 
     auto const& log = get_log();
 
-    ++serial;
+    const long certificate_serial = serial.fetch_add(1, std::memory_order_relaxed) + 1;
     auto copy = create_csr_from(cert_orig, self_sign, additional_sans);
     if(not copy) {
 
-        _err("SSLFactory::spoof[%X]: no CSR generated", serial);
+        _err("SSLFactory::spoof[%lX]: no CSR generated", certificate_serial);
         return std::nullopt;
     }
 
@@ -1337,14 +1341,14 @@ std::optional<CertificateChainCtx> SSLFactory::spoof(X509* cert_orig, bool self_
 
     // set version number for the certificate (X509v3) and then serial #
     if (X509_set_version (cert, 2L) != 1) {
-        _err("SSLFactory::spoof[%X]: cannot set X509 version!", serial);
+        _err("SSLFactory::spoof[%lX]: cannot set X509 version!", certificate_serial);
         return std::nullopt;
     }
 
-    ASN1_INTEGER_set(X509_get_serialNumber(cert), serial);
+    ASN1_INTEGER_set(X509_get_serialNumber(cert), certificate_serial);
 
     if (X509_set_subject_name(cert, name) != 1) {
-        _err("SSLFactory::spoof[%X]: error setting subject name of certificate", serial);
+        _err("SSLFactory::spoof[%X]: error setting subject name of certificate", serial.load());
         return std::nullopt;
     }     
 
@@ -1357,20 +1361,20 @@ std::optional<CertificateChainCtx> SSLFactory::spoof(X509* cert_orig, bool self_
     });
 
     if (not req_exts) {
-        _inf("SSLFactory::spoof[%X]: error getting the request's extension", serial);
+        _inf("SSLFactory::spoof[%X]: error getting the request's extension", serial.load());
     } else {
         subjAltName_pos = X509v3_get_ext_by_NID(req_exts,OBJ_sn2nid("subjectAltName"),-1);
         subjAltName = X509v3_get_ext(req_exts, subjAltName_pos);
     }
 
     if (X509_set_issuer_name(cert, issuer_name) != 1) {
-        _err("SSLFactory::spoof[%X]: error setting issuer name of certificate", serial);
+        _err("SSLFactory::spoof[%X]: error setting issuer name of certificate", serial.load());
         return std::nullopt;
         
     }
     // set public key in the certificate 
     if ((X509_set_pubkey( cert, pkey)) != 1) {
-        _err("SSLFactory::spoof[%X]: error setting public key of the certificate", serial);
+        _err("SSLFactory::spoof[%X]: error setting public key of the certificate", serial.load());
         return std::nullopt;
     }
     
@@ -1380,12 +1384,12 @@ std::optional<CertificateChainCtx> SSLFactory::spoof(X509* cert_orig, bool self_
 
     // set duration for the certificate
     if (!(X509_gmtime_adj(X509_get_notBefore(cert), EXPIRE_START))) {
-        _err("SSLFactory::spoof[%X]: error setting beginning time of the certificate", serial);
+        _err("SSLFactory::spoof[%X]: error setting beginning time of the certificate", serial.load());
         return std::nullopt;
     }
 
     if (!(X509_gmtime_adj(X509_get_notAfter(cert), EXPIRE_SECS))) {
-        _err("SSLFactory::spoof[%X]: error setting ending time of the certificate", serial);
+        _err("SSLFactory::spoof[%X]: error setting ending time of the certificate", serial.load());
         return std::nullopt;
     }
 
@@ -1399,18 +1403,18 @@ std::optional<CertificateChainCtx> SSLFactory::spoof(X509* cert_orig, bool self_
         auto ga_ = raw::guard([&ext]{ if(ext) X509_EXTENSION_free(ext); });
 
         if (not ext) {
-            _war("SSLFactory::spoof[%X]: error on \"%s = %s\"", serial, ext_name.c_str(), ext_value.c_str());
-            _war("SSLFactory::spoof[%X]: error creating X509 extension object", serial);
+            _war("SSLFactory::spoof[%X]: error on \"%s = %s\"", serial.load(), ext_name.c_str(), ext_value.c_str());
+            _war("SSLFactory::spoof[%X]: error creating X509 extension object", serial.load());
             continue;
         }
         if (not X509_add_ext(cert, ext, -1)) {
-            _err("SSLFactory::spoof[%X]: error on \"%s = %s\"", serial, ext_name.c_str(), ext_value.c_str());
-            _err("SSLFactory::spoof[%X]: error adding X509 extension into certificate", serial);
+            _err("SSLFactory::spoof[%X]: error on \"%s = %s\"", serial.load(), ext_name.c_str(), ext_value.c_str());
+            _err("SSLFactory::spoof[%X]: error adding X509 extension into certificate", serial.load());
         }
     }
 
     if(subjAltName != nullptr and not X509_add_ext(cert, subjAltName, -1)) {
-        _err("SSLFactory::spoof[%X]: error adding subjectAltName to certificate", serial);
+        _err("SSLFactory::spoof[%X]: error adding subjectAltName to certificate", serial.load());
         return std::nullopt;
     }
 
@@ -1423,7 +1427,7 @@ std::optional<CertificateChainCtx> SSLFactory::spoof(X509* cert_orig, bool self_
 
     const EVP_MD* digest = EVP_sha256();
     if (!(X509_sign(cert, sign_key, digest))) {
-        _err("SSLFactory::spoof[%X]: error signing certificate", serial);
+        _err("SSLFactory::spoof[%X]: error signing certificate", serial.load());
         return std::nullopt;
     }
 

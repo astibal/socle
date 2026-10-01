@@ -560,7 +560,7 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int lib_preverify, X509_STORE_
     _deb("SSLCom::ssl_client_vrfy_callback: data index = %d, lib_preverify = %d, depth = %d", idx, lib_preverify, depth);
 
     auto const* ssl = static_cast<SSL*>(X509_STORE_CTX_get_ex_data(ctx, SSL_get_ex_data_X509_STORE_CTX_idx()));
-    void* data = SSL_get_ex_data(ssl, sslcom_ssl_extdata_index);
+    void* data = SSL_get_ex_data(ssl, extdata_index());
     std::string name = "unknown_cx";
 
     auto* com = static_cast<baseSSLCom*>(data);
@@ -807,7 +807,7 @@ unsigned long baseSSLCom<L4Proto>::log_if_error(unsigned int level, const char* 
 #ifndef USE_OPENSSL300
 template <class L4Proto>
 DH* baseSSLCom<L4Proto>::ssl_dh_callback(SSL* s, int is_export, int key_length)  {
-    void* data = SSL_get_ex_data(s, sslcom_ssl_extdata_index);
+    void* data = SSL_get_ex_data(s, extdata_index());
     std::string name = "unknown_cx";
 
     auto* com = static_cast<baseSSLCom*>(data);
@@ -843,7 +843,7 @@ DH* baseSSLCom<L4Proto>::ssl_dh_callback(SSL* s, int is_export, int key_length) 
 #ifndef  USE_OPENSSL11
 template <class L4Proto>
 EC_KEY* baseSSLCom<L4Proto>::ssl_ecdh_callback(SSL* s, int is_export, int key_length) {
-    void* data = SSL_get_ex_data(s, sslcom_ssl_extdata_index);
+    void* data = SSL_get_ex_data(s, extdata_index());
     std::string name = "unknown_cx";
 
     auto const& log = log_cb_ecdh();
@@ -1359,7 +1359,7 @@ int baseSSLCom<L4Proto>::status_resp_callback(SSL* ssl, void* arg) {
 
     auto const& log = inet::ocsp::OcspFactory::log();
 
-    void* data = SSL_get_ex_data(ssl, sslcom_ssl_extdata_index);
+    void* data = SSL_get_ex_data(ssl, extdata_index());
     std::string name = "unknown_cx";
 
     auto* com = static_cast<baseSSLCom*>(data);
@@ -1502,7 +1502,7 @@ int baseSSLCom<L4Proto>::ssl_client_cert_callback(SSL* ssl, X509** x509, EVP_PKE
 
     auto const& log = log_cb_ccert();
     
-    void* data = SSL_get_ex_data(ssl, sslcom_ssl_extdata_index);
+    void* data = SSL_get_ex_data(ssl, extdata_index());
     std::string name = "unknown_cx";
 
     *x509 = nullptr;
@@ -1726,28 +1726,16 @@ void baseSSLCom<L4Proto>::init_ssl_callbacks() {
     _deb("init ssl callbacks");
 
     // add this pointer to ssl external data
-    if(sslcom_ssl_extdata_index < 0) {
-        sslcom_ssl_extdata_index = SSL_get_ex_new_index(0, (void*) "sslcom object", nullptr, nullptr, nullptr);
-    }
-    SSL_set_ex_data(sslcom_ssl,sslcom_ssl_extdata_index, static_cast<void*>(this));
+    SSL_set_ex_data(sslcom_ssl, extdata_index(), static_cast<void*>(this));
 
     if(! is_server()) {
         SSL_set_verify(sslcom_ssl,SSL_VERIFY_PEER,&ssl_client_vrfy_callback);
-        SSL_CTX_set_client_cert_cb(sslcom_ctx,ssl_client_cert_callback);
-
         if(opt.ocsp.stapling_enabled || opt.ocsp.mode > 0) {
 
             if(factory()->trust_store() != nullptr) {
 
-                auto lc_ = std::scoped_lock(factory()->lock());
-
                 _dia("[%s]: OCSP stapling enabled, mode %d", hr().c_str(), opt.ocsp.stapling_mode);
                 SSL_set_tlsext_status_type(sslcom_ssl, TLSEXT_STATUSTYPE_ocsp);
-
-                // this is CTX wide - callback setting here for each connection is unnecessary overhead.
-                // also, passing `this` as arg is incorrect, but is not used
-                SSL_CTX_set_tlsext_status_cb(sslcom_ctx, status_resp_callback);
-                SSL_CTX_set_tlsext_status_arg(sslcom_ctx, this);
             }
             else {
                 _err("cannot load trusted store for OCSP. Fail-open.");
@@ -1775,10 +1763,6 @@ void baseSSLCom<L4Proto>::init_ssl_callbacks() {
         }
 
     }
-    else {
-        // set server cx (left-side) callback to set ALPN
-        SSL_CTX_set_alpn_select_cb(sslcom_ctx, ssl_alpn_select_callback, this);
-    }
 }
 
 template <class L4Proto>
@@ -1793,14 +1777,10 @@ void baseSSLCom<L4Proto>::init_client() {
 
     if(l4_proto() == SOCK_STREAM) {
 
-        auto lc_ = std::scoped_lock(factory()->lock());
-
         sslcom_ctx = factory()->default_tls_client_cx();
         sslcom_ssl = SSL_new(sslcom_ctx);
     } else 
     if(l4_proto() == SOCK_DGRAM) {
-
-        auto lc_ = std::scoped_lock(factory()->lock());
 
         sslcom_ctx = factory()->default_dtls_client_cx();
         sslcom_ssl = SSL_new(sslcom_ctx);
@@ -1867,8 +1847,6 @@ void baseSSLCom<L4Proto>::init_server() {
 
     if(l4_proto() == SOCK_STREAM) {
 
-        auto lc_ = std::scoped_lock(factory()->lock());
-
         if(sslcom_pref_ctx) {
             sslcom_ctx = sslcom_pref_ctx;
             _dia("SSLCom::init_server: using custom context 0x%x", sslcom_ctx);
@@ -1889,8 +1867,6 @@ void baseSSLCom<L4Proto>::init_server() {
         sslcom_ssl = SSL_new(sslcom_ctx);
     } else
     if(l4_proto() == SOCK_DGRAM) {
-
-        auto lc_ = std::scoped_lock(factory()->lock());
 
         if(sslcom_pref_ctx) {
             sslcom_ctx = sslcom_pref_ctx;
@@ -2201,7 +2177,7 @@ void baseSSLCom<L4Proto>::accept_socket (int sockfd) {
 
 template <class L4Proto>
 void baseSSLCom<L4Proto>::ssl_keylog_callback(const SSL* ssl, const char* line) {
-    void* data = SSL_get_ex_data(ssl, sslcom_ssl_extdata_index);
+    void* data = SSL_get_ex_data(ssl, extdata_index());
     auto* com = static_cast<baseSSLCom*>(data);
 
     if(com && com->sslkeylog) {
@@ -2500,13 +2476,9 @@ ret_handshake baseSSLCom<L4Proto>::handshake() {
             sslcom_waiting = true;
             counters.prof_want_read_cnt++;
 
-            // don't wait first XY attempts - slow down later
-            if(counters.prof_want_read_cnt > rescan_threshold_read) {
-                _dia("SSLCom::handshake: SSL_%s[%d]: pending on want_read - repeated, rescanning", op_descr , socket());
-                rescan_read(socket());
-            } else {
-                set_monitor(socket());
-            }
+            // OpenSSL made no progress and explicitly needs socket readability.
+            // Retrying without a new readiness edge only burns a worker cycle.
+            set_monitor(socket());
 
             return ret_handshake::AGAIN;
         }
@@ -2516,13 +2488,9 @@ ret_handshake baseSSLCom<L4Proto>::handshake() {
             sslcom_waiting = true;
             counters.prof_want_write_cnt++;
 
-            // don't wait first XY attempts - slow down later
-            if(counters.prof_want_write_cnt > rescan_threshold_write) {
-                _dia("SSLCom::handshake: SSL_%s[%d]: pending on want_write, repeated, rescanning", op_descr, socket());
-                rescan_write(socket());
-            } else {
-                set_write_monitor_only(socket());
-            }
+            // Monitor only the readiness OpenSSL requested.  The old cumulative
+            // threshold permanently switched long-lived sessions to rescans.
+            set_write_monitor_only(socket());
             return ret_handshake::AGAIN;
         }
         else if (err == SSL_ERROR_SYSCALL) {
@@ -2530,18 +2498,6 @@ ret_handshake baseSSLCom<L4Proto>::handshake() {
             auto x_errno = errno;
             _dia("SSLCom::handshake: SSL_%s[%d]: error_syscall: %d %s", op_descr, socket(), x_errno, (x_errno == 0 ? "EOT from peer" : "" ));
             return ret_handshake::FATAL;
-        }
-        // this is error code produced by SSL_connect via OCSP callback. 
-        // Unfortunately this error code is undocumented, added here to make it work
-        // our way based on observation.
-        else if (err2 == 654741622 || err2 == 654741605) {
-            
-            if(ocsp_cert_is_revoked > 0) {
-                _dia("SSLCom::handshake: aborted due to certificate verification failure.");
-                return ret_handshake::ERROR;
-            }
-            
-            return ret_handshake::AGAIN; // return again, we continue.
         }
         else {
             // any other error < 0 is considered as BAD thing.
@@ -2565,23 +2521,6 @@ ret_handshake baseSSLCom<L4Proto>::handshake() {
         sslcom_waiting = false;
         return ret_handshake::ERROR;
     }
-    else if (op_code == 2) {
-
-        if(opt.no_fallback_bypass) {
-            error(ERROR_UNSPEC);
-            return ret_handshake::FATAL;
-        }
-        else {
-            // our internal signalling for bypass
-            opt.bypass = true;
-            verify_reset(verify_status_t::VRF_OK);
-            _dia("SSLCom::handshake: bypassed.");
-
-            return ret_handshake::AGAIN;
-        }
-    }
-
-
     if(SSL_session_reused(sslcom_ssl)) {
         flags_ |= HSK_REUSED;
     }
@@ -2603,7 +2542,7 @@ ret_handshake baseSSLCom<L4Proto>::handshake() {
     _dia("SSLCom::handshake: %s finished on socket %d", op_descr, socket());
     sslcom_waiting = false;
 
-    return ret_handshake::AGAIN;
+    return ret_handshake::SUCCESS;
 }
 
 

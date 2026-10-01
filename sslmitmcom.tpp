@@ -274,6 +274,11 @@ bool baseSSLMitmCom<SSLProto>::use_cert_mitm(X509 *cert_orig, SpoofOptions &spo)
 
     std::string store_key = SSLFactory::make_store_key(cert_orig, spo);
 
+    // Serialize only callers creating the same (or same-shard) certificate.
+    // Unrelated cold SNI handshakes may sign in parallel, while the second
+    // lookup below still prevents duplicate generation for one cache key.
+    auto key_lock = std::scoped_lock(this->factory()->mitm_key_lock(store_key));
+
     auto parek = this->factory()->find_mitm(store_key);
     if (parek.has_value()) {
         _dia("SSLMitmCom::use_cert_mitm: factory found '%s'", store_key.c_str());
@@ -325,8 +330,6 @@ bool baseSSLMitmCom<SSLProto>::spoof_cert(X509* cert_orig, SpoofOptions& spo) {
     auto const& log = log::mitm();
 
 
-    auto lc_ = std::scoped_lock(this->factory()->lock());
-
     if(this->opt.cert.mitm_cert_sni_search && this->use_cert_sni(spo)) return true;
 
     if(this->opt.cert.mitm_cert_ip_search && this->use_cert_ip(spo)) return true;
@@ -342,4 +345,3 @@ bool baseSSLMitmCom<SSLProto>::spoof_cert(X509* cert_orig, SpoofOptions& spo) {
 
 
 #endif
-
