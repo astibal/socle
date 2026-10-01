@@ -725,10 +725,16 @@ bool baseProxy::handle_sockets_accept(unsigned char side, baseCom* xcom, baseHos
 unsigned int baseProxy::handle_sockets_accept_batch(unsigned char side, baseCom* xcom, baseHostCX* thiscx) {
     // Drain a ready listener instead of deferring queued connections to later
     // poll cycles, but keep a bound so a sustained flood cannot starve other FDs.
+    // Only stream transports have an accept queue. UDPCom::accept() returns the
+    // bound socket itself and its raw callback drains the datagram queue, so
+    // repeating it would only issue empty receive probes.
     constexpr unsigned int accept_batch_limit = 256;
+    auto const batch_limit = com()->master()->l4_proto() == SOCK_STREAM
+                           ? accept_batch_limit
+                           : 1U;
     unsigned int accepted = 0;
 
-    while(accepted < accept_batch_limit && handle_sockets_accept(side, xcom, thiscx)) {
+    while(accepted < batch_limit && handle_sockets_accept(side, xcom, thiscx)) {
         ++accepted;
     }
 
