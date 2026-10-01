@@ -20,6 +20,7 @@
 #define SSLCOM_HPP
 
 #include <map>
+#include <atomic>
 #include <string>
 #include <thread>
 
@@ -154,6 +155,10 @@ struct SSLComOptions {
 
     // due to its upper level use, it must be statically available
     static inline bool server_hello_copy = false;
+    // Maximum plaintext bytes offered to one SSL_write(). OpenSSL may return
+    // less (notably with partial-write mode), so callers must honor the
+    // positive return value rather than assuming a record size.
+    static inline std::atomic<std::size_t> write_chunk = 20 * 1024;
 
     SSLComCryptoFeatures left {};
     SSLComCryptoFeatures right {};

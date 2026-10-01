@@ -92,6 +92,7 @@ protected:
     // detection mode is done in "post" phase
     void post_read() override;
     void post_write() override;
+    bool write_needs_incremental_flush() override;
     
     void pre_read() override;
     void pre_write() override;

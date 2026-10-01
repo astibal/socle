@@ -233,6 +233,13 @@ void AppHostCX::post_write() {
     }
 }
 
+bool AppHostCX::write_needs_incremental_flush() {
+    // post_write() examines the exact buffer remaining after each transport
+    // write while POST inspection is active. Outside that bounded detection
+    // window it is a no-op and the buffer can be compacted once per drain.
+    return mode() == mode_t::POST && inside_detect_ranges();
+}
+
 void AppHostCX::pre_read() {
 
     _dum("AppHostCX::pre_read[%s]: === start",c_type());
@@ -459,4 +466,3 @@ void AppHostCX::pre_write() {
         }
     }
 }
-

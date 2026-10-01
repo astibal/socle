@@ -497,6 +497,10 @@ public:
 	// pre- and post- functions/hooks called as the very first or last command in the write() function
 	virtual void pre_write();
 	virtual void post_write(); //note: write buffer is emptied AFTER this call, but data are already sent.
+	// POST-mode inspectors need to observe the historical per-write buffer
+	// layout.  Other users can defer the physical buffer compaction until the
+	// end of a bounded write drain.
+	virtual bool write_needs_incremental_flush();
 	
 	virtual void on_timer() {};
 	

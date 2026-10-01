@@ -30,8 +30,10 @@ public:
 class ChunkedTCPCom : public TCPCom {
 public:
     explicit ChunkedTCPCom(std::vector<std::uint8_t> input = {},
-                           std::size_t chunk_size = 16 * 1024)
-        : input_(std::move(input)), chunk_size_(chunk_size) {}
+                           std::size_t chunk_size = 16 * 1024,
+                           std::size_t successful_writes = SIZE_MAX)
+        : input_(std::move(input)), chunk_size_(chunk_size),
+          successful_writes_(successful_writes) {}
 
     baseCom* replicate() override { return new ChunkedTCPCom(); }
 
@@ -50,6 +52,10 @@ public:
 
     ssize_t write(int, const void* source, size_t size, int) override {
         if(size == 0) return 0;
+        if(write_calls >= successful_writes_) {
+            errno = EAGAIN;
+            return -1;
+        }
         auto const count = std::min(size, chunk_size_);
         auto const* bytes = static_cast<std::uint8_t const*>(source);
         output.insert(output.end(), bytes, bytes + count);
@@ -64,7 +70,23 @@ public:
 private:
     std::vector<std::uint8_t> input_;
     std::size_t chunk_size_;
+    std::size_t successful_writes_;
     std::size_t read_offset_ = 0;
+};
+
+class PostWriteTrackingHostCX : public baseHostCX {
+public:
+    PostWriteTrackingHostCX(baseCom* transport, bool incremental)
+        : baseHostCX(transport, -1), incremental_(incremental) {}
+
+    std::size_t post_write_calls = 0;
+
+protected:
+    void post_write() override { ++post_write_calls; }
+    bool write_needs_incremental_flush() override { return incremental_; }
+
+private:
+    bool incremental_;
 };
 
 class ScopedIoBatch {
@@ -212,6 +234,55 @@ TEST(TransferDrain, WriteStopsAtFairnessBudget) {
     ASSERT_EQ(transport->output.size(), batch);
     EXPECT_TRUE(std::equal(payload.begin(), payload.begin() + batch,
                            transport->output.begin()));
+}
+
+TEST(TransferDrain, CompactsWriteBufferOncePerBatch) {
+    constexpr std::size_t batch = 64 * 1024;
+    ScopedIoBatch batch_guard(batch);
+    auto const payload = pattern(batch * 2);
+    auto* transport = new ChunkedTCPCom();
+    PostWriteTrackingHostCX connection(transport, false);
+    connection.opening(false);
+    connection.writebuf()->append(payload.data(), payload.size());
+
+    EXPECT_EQ(connection.write(), static_cast<int>(batch));
+    EXPECT_EQ(connection.post_write_calls, 1U);
+    EXPECT_EQ(connection.writebuf()->size(), batch);
+    ASSERT_EQ(transport->output.size(), batch);
+    EXPECT_TRUE(std::equal(payload.begin(), payload.begin() + batch,
+                           transport->output.begin()));
+    EXPECT_TRUE(std::equal(payload.begin() + batch, payload.end(),
+                           connection.writebuf()->data()));
+}
+
+TEST(TransferDrain, PreservesIncrementalPostWriteSemantics) {
+    constexpr std::size_t batch = 64 * 1024;
+    ScopedIoBatch batch_guard(batch);
+    auto const payload = pattern(batch);
+    auto* transport = new ChunkedTCPCom();
+    PostWriteTrackingHostCX connection(transport, true);
+    connection.opening(false);
+    connection.writebuf()->append(payload.data(), payload.size());
+
+    EXPECT_EQ(connection.write(), static_cast<int>(batch));
+    EXPECT_EQ(connection.post_write_calls, batch / (16 * 1024));
+    EXPECT_TRUE(connection.writebuf()->empty());
+    EXPECT_EQ(transport->output, payload);
+}
+
+TEST(TransferDrain, ReturnsProgressWhenDrainEndsInWouldBlock) {
+    constexpr std::size_t chunk = 16 * 1024;
+    auto const payload = pattern(chunk * 4);
+    auto* transport = new ChunkedTCPCom({}, chunk, 1);
+    baseHostCX connection(transport, -1);
+    connection.opening(false);
+    connection.writebuf()->append(payload.data(), payload.size());
+
+    EXPECT_EQ(connection.write(), static_cast<int>(chunk));
+    EXPECT_EQ(connection.writebuf()->size(), payload.size() - chunk);
+    EXPECT_EQ(transport->output.size(), chunk);
+    EXPECT_TRUE(std::equal(payload.begin() + chunk, payload.end(),
+                           connection.writebuf()->data()));
 }
 
 } // namespace

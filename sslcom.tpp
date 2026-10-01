@@ -3651,7 +3651,8 @@ ssize_t baseSSLCom<L4Proto>::write (int _fd, const void* _buf, size_t _n, int _f
     }
 
     sslcom_write_blocked_on_read=0;
-    int normalized__n = 20480;
+    auto const configured_chunk = SSLComOptions::write_chunk.load(std::memory_order_relaxed);
+    auto const normalized__n = static_cast<int>(std::min(_n, configured_chunk));
     void *ptr = (void*)_buf;
 
     if(_n == 0) {
@@ -3659,10 +3660,6 @@ ssize_t baseSSLCom<L4Proto>::write (int _fd, const void* _buf, size_t _n, int _f
     } else {
         _deb("SSLCom::write[%d]: attempt to send %d bytes", _fd, _n);
     }
-    if (_n < 20480) {
-        normalized__n = _n;
-    }
-
     if (_n <= 0 ) {
         return 0;
     }
@@ -3724,7 +3721,6 @@ ssize_t baseSSLCom<L4Proto>::write (int _fd, const void* _buf, size_t _n, int _f
             sslcom_write_blocked_on_write=1;
 
             if (sslcom_ret > 0) {
-                normalized__n = normalized__n - sslcom_ret;
                 ptr = static_cast<uint8_t*>(ptr) + sslcom_ret;
             } else {
                 _dum("SSLCom::write[%d]: want write: repeating last operation", _fd);

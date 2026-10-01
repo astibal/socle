@@ -639,6 +639,7 @@ int baseHostCX::write() {
     auto remaining_processed = std::min(writebuf_.size(), processed_out_);
     auto const io_batch = baseHostCX::params_t::io_batch.load();
     auto const drain_socket = socket() < 0 || !baseCom::is_blocking(socket());
+    auto const incremental_flush = write_needs_incremental_flush();
     std::size_t total_written = 0;
     ssize_t last_result = 0;
 
@@ -655,7 +656,8 @@ int baseHostCX::write() {
             request_size = std::min(request_size, io_batch - total_written);
         }
 
-        last_result = io_write(writebuf_.data(), request_size, MSG_NOSIGNAL);
+        auto* const write_at = writebuf_.data() + (incremental_flush ? 0 : total_written);
+        last_result = io_write(write_at, request_size, MSG_NOSIGNAL);
         if(last_result <= 0) {
             break;
         }
@@ -672,11 +674,13 @@ int baseHostCX::write() {
             opening(false);
         }
         _deb("baseHostCX::write[%s]: %zd bytes sent from tx buffer at %p", c_type(),
-             last_result, static_cast<void*>(writebuf_.data()));
+             last_result, static_cast<void*>(write_at));
 
-        _dum("baseHostCX::write[%s]: calling post_write", c_type());
-        post_write();
-        writebuf_.flush(written);
+        if(incremental_flush) {
+            _dum("baseHostCX::write[%s]: calling incremental post_write", c_type());
+            post_write();
+            writebuf_.flush(written);
+        }
 
         if(!drain_socket) {
             break;
@@ -684,6 +688,14 @@ int baseHostCX::write() {
     }
 
     if(total_written > 0) {
+        if(!incremental_flush) {
+            _dum("baseHostCX::write[%s]: calling batched post_write", c_type());
+            post_write();
+            // Compact the remaining queue once, rather than moving the same
+            // tail after every TLS-record-sized transport write.
+            writebuf_.flush(total_written);
+        }
+
         if(not writebuf_.empty()) {
             _dia("baseHostCX::write[%s]: %zu bytes written, %zu pending -> setting socket write monitor",
                  c_type(), total_written, writebuf_.size());
@@ -717,7 +729,7 @@ int baseHostCX::write() {
         _dia("baseHostCX::write[%s] write failed: %s, unrecoverable.", c_type(), string_error().c_str());
     }
 
-    if(last_result < 0) {
+    if(last_result < 0 && total_written == 0) {
         return down_cast<int>(last_result).value_or(-1);
     }
     return total_written > static_cast<std::size_t>(max_of<int>())
@@ -731,6 +743,10 @@ void baseHostCX::pre_write() {
 
 
 void baseHostCX::post_write() {
+}
+
+bool baseHostCX::write_needs_incremental_flush() {
+    return false;
 }
 
 std::size_t baseHostCX::process_in() {
