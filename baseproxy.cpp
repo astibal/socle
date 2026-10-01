@@ -722,6 +722,19 @@ bool baseProxy::handle_sockets_accept(unsigned char side, baseCom* xcom, baseHos
     return true;
 }
 
+unsigned int baseProxy::handle_sockets_accept_batch(unsigned char side, baseCom* xcom, baseHostCX* thiscx) {
+    // Drain a ready listener instead of deferring queued connections to later
+    // poll cycles, but keep a bound so a sustained flood cannot starve other FDs.
+    constexpr unsigned int accept_batch_limit = 256;
+    unsigned int accepted = 0;
+
+    while(accepted < accept_batch_limit && handle_sockets_accept(side, xcom, thiscx)) {
+        ++accepted;
+    }
+
+    return accepted;
+}
+
 
 int baseProxy::handle_sockets_once(baseCom* xcom) {
 
@@ -915,10 +928,10 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
 
                         if(m) {
                             auto l_ = std::unique_lock(*m);
-                            handle_sockets_accept('l', xcom, (i));
+                            handle_sockets_accept_batch('l', xcom, (i));
                         }
                         else {
-                            handle_sockets_accept('l', xcom, (i));
+                            handle_sockets_accept_batch('l', xcom, (i));
                             throw  std::runtime_error("mutex unprotected accept");
                         }
 
@@ -942,10 +955,10 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
 
                         if(m) {
                             auto l_ = std::unique_lock(*m);
-                            handle_sockets_accept('r', xcom, (i));
+                            handle_sockets_accept_batch('r', xcom, (i));
                         }
                         else {
-                            handle_sockets_accept('r', xcom, (i));
+                            handle_sockets_accept_batch('r', xcom, (i));
                             throw  std::runtime_error("mutex unprotected accept");
                         }
 
