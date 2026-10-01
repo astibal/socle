@@ -33,6 +33,11 @@ bool baseSSLMitmCom<SSLProto>::check_cert(const char* peer_name) {
     _deb("SSLMitmCom::check_cert: called");
     bool r = SSLProto::check_cert(peer_name);
     X509* cert = SSL_get_peer_certificate(SSLProto::sslcom_ssl);
+
+    if (not cert) {
+        _err("SSLMitmCom::check_cert: upstream handshake provided no peer certificate");
+        return false;
+    }
     
     auto* remote = dynamic_cast<baseSSLMitmCom*>(this->peer());
     
@@ -176,12 +181,18 @@ bool baseSSLMitmCom<SSLProto>::check_cert(const char* peer_name) {
                     if (remote->sslcom_waiting) {
                         if(not remote->upgraded()) {
                             remote->init_server();
-                            remote->upgraded(true);
+                            if (remote->sslcom_ssl) {
+                                remote->upgraded(true);
+                            } else {
+                                _err("SSLMitmCom::check_cert: failed to initialize client-facing TLS state");
+                                r = false;
+                            }
                         } else {
                             _dia("remote is already upgraded");
                         }
                     } else {
                         _war("Trying to init SSL server while it's already running!");
+                        r = false;
                     } 
                 }
             } else {

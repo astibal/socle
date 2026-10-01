@@ -361,6 +361,9 @@ protected:
     bool should_wait_for_peer_hello_ = false;
     //peeks peer socket for client_hello. For server side only (currently).
     bool waiting_peer_hello();
+
+    enum class client_hello_peek_t { WAIT, READY, NOT_TLS, INVALID };
+    client_hello_peek_t normalize_peer_hello_records();
     
     //parses peer hello and stores interesting data (e.g. SNI information). For server side only (currently).
     int parse_peer_hello();
@@ -520,11 +523,6 @@ public:
     SSLComCounters counters;
     SSLComOptions opt;
 
-    // SSL_read/SSL_write retry guards.  Handshake readiness is handled
-    // directly from SSL_get_error() and deliberately does not use these.
-    static const int rescan_threshold_read = 30;
-    static const int rescan_threshold_write = 30;
-
     using verify_origin_t = com::ssl::verify_origin_t;
     using staple_code_t = com::ssl::staple_code_t;
     using verify_status_t = com::ssl::verify_status_t;
@@ -574,6 +572,7 @@ public:
     static int ct_verify_callback(const CT_POLICY_EVAL_CTX *ctx, const STACK_OF(SCT) *scts, void *arg);
 
     static inline int SSLCOM_CLIENTHELLO_TIMEOUT = 3*1000; //in ms
+    static constexpr std::size_t SSLCOM_CLIENTHELLO_MAX_SIZE = 256 * 1024;
     static inline int SSLCOM_WRITE_TIMEOUT = 60*1000;      //in ms
     static inline int SSLCOM_READ_TIMEOUT = 60*1000;       //in ms
 
