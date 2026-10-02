@@ -379,6 +379,45 @@ namespace socle::traflog {
         }
     }
 
+    void PcapLog::write_annotation(side_t side, std::string const& text) {
+        if (text.empty()) return;
+        (void)side;
+
+        PcapLog* self = single_only ? &single_instance() : this;
+        auto const local_output = not ip_packet_hook_only;
+        if (not local_output and not self->pcapng_record_hook) return;
+
+        auto const& fs = self->FS;
+        baseFileWriter* writer = nullptr;
+        if (local_output) {
+            if (not self->writer_) self->init_writer();
+            writer = self->writer_;
+            if (not writer->opened() and not writer->open(fs.filename_full)) {
+                _err("write '%s' failed to open dump file!", fs.filename_full.c_str());
+                return;
+            }
+            if (not writer->opened()) return;
+
+            bool const is_recreated = prepare_file();
+            if (is_recreated) self->stat_bytes_written = 0LL;
+            self->write_pcap_header(is_recreated);
+        }
+
+        buffer out;
+        pcapng::pcapng_epb frame;
+        frame.comment(text);
+        frame.append(out);
+        if (self->pcapng_record_hook) {
+            auto record_details = pcap::connection_details(details);
+            record_details.origin = pcap::connection_details::record_origin::packet;
+            self->pcapng_record_hook->execute(record_details, out);
+        }
+        if(local_output) {
+            auto const written = writer->write(fs.filename_full, out);
+            self->stat_bytes_written += written;
+        }
+    }
+
     void PcapLog::write_udp_data(side_t side, buffer const& b, tcp_details& real_details) {
         auto const& log = log_write;
 

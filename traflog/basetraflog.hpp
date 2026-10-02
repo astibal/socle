@@ -54,6 +54,11 @@ namespace socle {
         /** Attach decryption material to this capture when its format supports it. */
         virtual void write_secret(traffic_secret_format, buffer const&) {}
 
+        /** Emit a capture-visible metadata event without borrowing a data frame. */
+        virtual void write_annotation(side_t side, std::string const& text) {
+            write(side, text);
+        }
+
         virtual void write(side_t side, std::string const& s) = 0;
         void write_left(std::string const& s) { if(status()) write(side_t::LEFT, s); };
         void write_right(std::string const& s) { if(status()) write(side_t::RIGHT, s); };

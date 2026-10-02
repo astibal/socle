@@ -60,6 +60,7 @@ namespace socle::traflog {
         void write(side_t side, std::string const& s) override;
         void write_packet(side_t side, buffer const& packet) override;
         void write_secret(traffic_secret_format format, buffer const& data) override;
+        void write_annotation(side_t side, std::string const& text) override;
 
         baseProxy *parent = nullptr;
         pcap::tcp_details details;
