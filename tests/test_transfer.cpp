@@ -233,6 +233,23 @@ TEST(TransferDrain, ReadStopsAtFairnessBudget) {
     EXPECT_GT(transport->read_calls, 1U);
 }
 
+TEST(TransferDrain, ReadLimitSurvivesMultiplePartialReads) {
+    constexpr std::size_t limit = 20 * 1024;
+    constexpr std::size_t chunk = 8 * 1024;
+    ScopedIoBatch batch_guard(64 * 1024);
+    auto const payload = pattern(32 * 1024);
+    auto* transport = new ChunkedTCPCom(payload, chunk);
+    baseHostCX connection(transport, -1);
+    connection.opening(false);
+    connection.read_limit(limit);
+
+    EXPECT_EQ(connection.read(), static_cast<int>(limit));
+    EXPECT_EQ(connection.readbuf()->size(), limit);
+    EXPECT_GT(transport->read_calls, 1U);
+    EXPECT_TRUE(std::equal(payload.begin(), payload.begin() + limit,
+                           connection.readbuf()->data()));
+}
+
 TEST(TransferDrain, WriteStopsAtFairnessBudget) {
     constexpr std::size_t batch = 64 * 1024;
     ScopedIoBatch batch_guard(batch);

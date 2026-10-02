@@ -500,15 +500,18 @@ int baseHostCX::read() {
         //increment read counter
         buffer_written_len += cur_io_len_bytes;
 
-        if(this_read_op_limit > 0 and buffer_written_len >= static_cast<ssize_t>(this_read_op_limit))
-        {
-            _dia("baseHostCX::read[%s]: read limiter hit on %d bytes.", c_type(), buffer_written_len);
-            break;
+        // read_limit is the remaining allowance for this dispatch.  Comparing
+        // the cumulative byte count with that shrinking value stops too early
+        // after multiple partial reads (for example 8 + 8 out of a 20 KiB
+        // peek).  The requested size is already capped to the allowance, so
+        // consume it directly and stop only when none remains.
+        if(this_read_op_limit > 0) {
+            this_read_op_limit -= cur_io_len_bytes;
+            if(this_read_op_limit == 0) {
+                _dia("baseHostCX::read[%s]: read limiter hit on %d bytes.", c_type(), buffer_written_len);
+                break;
+            }
         }
-
-        // in case next_read_limit_ is large and we read less bytes than it, we need to decrement also next_read_limit_
-
-        if(this_read_op_limit != 0L) this_read_op_limit -= cur_io_len_bytes;
 
         if(io_batch > 0 && static_cast<std::size_t>(buffer_written_len) >= io_batch) {
             break;
