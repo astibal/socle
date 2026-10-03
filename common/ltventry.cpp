@@ -19,6 +19,7 @@
 #include <iostream>
 #include <string>
 #include <cstring>
+#include <array>
 
 #include "ltventry.hpp"
 #include "display.hpp"
@@ -71,25 +72,41 @@ int LTVEntry::unpack(uint8_t* buffer, unsigned int buflen) {
 	_deb("LTVEntry::unpack:  --- process buffer 0x%x[%u], buffer owner=%d", buffer, (long) buflen,owner());
 	
 	
-	// to read at least the size of the package
-	if (buflen < 4) {
+	// Read the length first, then require the complete fixed header.  A short
+	// encoded length must never turn datalen() into a huge unsigned value.
+	if (buffer == nullptr || buflen < sizeof(uint32_t)) {
 		return -1;
 	}
 	_ext("stage1: can read length field");
 	
-	len_ = ltv_get_length(buffer);
+	const auto wire_len = ltv_get_length(buffer);
+	if (wire_len < ltv_header_size()) {
+		return -1;
+	}
 	
-	_ext("stage2: len detected: %d ", len_);
+	_ext("stage2: len detected: %d ", wire_len);
 	_dum(hex_dump(buffer,4).c_str());
-	_dum(hex_dump(buffer+4,4).c_str());
+	if (buflen >= ltv_header_size()) {
+		_dum(hex_dump(buffer+4,ltv_header_size()-4).c_str());
+	}
 		
 	//return underflow if we should expect more data
-	if (buflen < len_) {
-		_deb("LTVEntry::unpack: buffer %x too short: %u, want to read %u bytes", buffer, buflen, len());
+	if (buflen < wire_len) {
+		_deb("LTVEntry::unpack: buffer %x too short: %u, want to read %u bytes", buffer, buflen, wire_len);
 		return 0;
 	}
 
-	if (buflen >= len_) {
+	if (buflen >= wire_len) {
+		const bool own_buffer = owner();
+		if (data_ != nullptr && own_buffer) {
+			delete[] data_;
+		}
+		for (auto* entry: contains_) {
+			delete entry;
+		}
+		contains_.clear();
+		data_ = nullptr;
+		len_ = wire_len;
 		
 		id_ = ltv_get_id(buffer);
 		type_ = ltv_get_type(buffer);
@@ -132,7 +149,7 @@ int LTVEntry::unpack(uint8_t* buffer, unsigned int buflen) {
 				
 				uint8_t* new_data = data() + data_index;
 				
-				unsigned int sub_red = l->unpack(new_data,payload_len);
+				int sub_red = l->unpack(new_data,payload_len);
 				if (sub_red > 0) {
 					contains().push_back(l);
 					_deb("LTVEntry::unpack:   sub-entry[%u] at 0x%x[%u] | len %u", subentries,data(), (long)data_index,sub_red);
@@ -142,7 +159,19 @@ int LTVEntry::unpack(uint8_t* buffer, unsigned int buflen) {
 				} else {
 					_war("LTVEntry::unpack:   sub-entry[%u] ERROR at 0x%x[%u] | len %u", subentries, data(), (long)data_index,sub_red);
 					delete l;
-					break;
+					for (auto* entry: contains_) {
+						delete entry;
+					}
+					contains_.clear();
+					if (data_ != nullptr && own_buffer) {
+						delete[] data_;
+					}
+					data_ = nullptr;
+					len_ = 0;
+					id_ = 0;
+					type_ = 0;
+					owner(own_buffer);
+					return -1;
 				}
 				
 				// this is correct place to finish the loop!
@@ -163,6 +192,9 @@ int LTVEntry::unpack(uint8_t* buffer, unsigned int buflen) {
 }
 
 std::string LTVEntry::hr(int ltrim) {
+	if (data_ == nullptr || len_ < ltv_header_size()) {
+		return "LTVEntry::hr: uninitialized";
+	}
 	
 	int tr = 0;
 	if (ltrim > 0) {
@@ -210,13 +242,21 @@ std::string LTVEntry::hr(int ltrim) {
 }
 
 std::string LTVEntry::data_str() const {
-	return std::string((char*)data(),(unsigned int)len_-ltv_header_size());
+	if (data() == nullptr) return {};
+	return std::string(reinterpret_cast<char*>(data()), datalen());
 }
 
 std::string LTVEntry::data_str_ip() const {
-	in_addr dd_addr = *(in_addr*)data();
-	const char *ip = ::inet_ntoa((in_addr)dd_addr);
-	return std::string(ip);
+	if (datalen() != sizeof(in_addr)) {
+		throw std::invalid_argument("invalid IPv4 data size");
+	}
+	in_addr dd_addr {};
+	memcpy(&dd_addr, data(), sizeof(dd_addr));
+	std::array<char, INET_ADDRSTRLEN> text {};
+	if (::inet_ntop(AF_INET, &dd_addr, text.data(), text.size()) == nullptr) {
+		throw std::invalid_argument("invalid IPv4 data");
+	}
+	return text.data();
 }
 
 
@@ -224,6 +264,11 @@ void LTVEntry::clear() {
 	if (data_ != nullptr && owner()) {
 		delete[] data_;
 	}
+	for (auto* entry: contains_) {
+		delete entry;
+	}
+	contains_.clear();
+	data_ = nullptr;
 	len(0);
 	id(0);
 	type(0);
@@ -233,6 +278,9 @@ void LTVEntry::clear() {
 
 
 void LTVEntry::set_str(unsigned char i, unsigned char t, const char* str) {
+	if (str == nullptr) {
+		throw std::invalid_argument("string data must not be null");
+	}
 	
 	clear();
 	
@@ -252,17 +300,21 @@ void LTVEntry::set_str(unsigned char i, unsigned char t, const char* str) {
 }
 
 void LTVEntry::set_bytes(unsigned char i, unsigned char t, const char* str, unsigned int size) {
+	if (str == nullptr && size != 0) {
+		throw std::invalid_argument("byte data must not be null");
+	}
 	
 	clear();
 	
 	id_ = i;
 	type_ = t;
 	size_t data_len = size;
-	size_t str_len = strlen(str);
 	data_ = new uint8_t[data_len+ltv_header_size()];
 	owner(true);
 	memset(data(),0,size);
-	memcpy(data(),str,str_len);
+	if (str != nullptr) {
+		memcpy(data(),str,std::min<size_t>(strlen(str), data_len));
+	}
 	
 	len_ = ltv_header_size() + data_len;
 	
@@ -282,7 +334,8 @@ void LTVEntry::set_num(unsigned char i, unsigned char t, uint32_t d) {
 	data_ = new uint8_t[data_len+ltv_header_size()];
 	owner(true);
 	
-	*(uint32_t*)data() = htonl(d);
+	const auto value = htonl(d);
+	memcpy(data(), &value, sizeof(value));
 	
 	len_ = ltv_header_size() + data_len;
 	
@@ -293,7 +346,9 @@ void LTVEntry::set_num(unsigned char i, unsigned char t, uint32_t d) {
 
 void LTVEntry::set_ip(unsigned char id, unsigned char type, const char* str) {
 	struct in_addr inp{0};
-	inet_aton(str,&inp);
+	if (str == nullptr || inet_pton(AF_INET, str, &inp) != 1) {
+		throw std::invalid_argument("invalid IPv4 address");
+	}
 	
 	//what?? ip addresses are always hl and not honor network byte-order?
 	set_num(id,type,ntohl(inp.s_addr));
@@ -330,31 +385,36 @@ int LTVEntry::pack(::buffer* buf) {
 	}
 	else {
 		b = new ::buffer();
-		b->attach(data_,len_);
-		b->size(len_);
 		this_is_owner = true;
-		//keep length_pos = 0; buffer is already filled with 6 bytes of container header
 	}
 	
 	
 	int sub_bytes = 0;
 	if (type() == typ::cont) {
-
-		if (! this_is_owner ) {
-			//buffer owner already appended the buffer when initialized		
-			b->append(buffer(),buflen());
+		if (buffer() == nullptr || buflen() < ltv_header_size()) {
+			if (this_is_owner) delete b;
+			return 0;
 		}
+
+		// Always rebuild containers from their fixed header.  Reusing the
+		// previous packed payload made every repeated pack duplicate children.
+		b->append(buffer(), ltv_header_size());
 		
 		for (auto* ltve: contains()) {
 			sub_bytes += ltve->pack(b);
 		}
 
-		len(len() + sub_bytes);
+		len(raw::down_cast<uint32_t>(ltv_header_size() + sub_bytes)
+		        .value_or(raw::max_of<uint32_t>()));
 		ltv_set_length(b->data()+(length_pos),len());	
 		
 		if(this_is_owner) {
-			data_ = b->data();
-			b->detach();
+			auto* packed = new uint8_t[b->size()];
+			memcpy(packed, b->data(), b->size());
+			if (data_ != nullptr && owner()) {
+				delete[] data_;
+			}
+			data_ = packed;
 			owner(true);
 			delete b;
 		}
@@ -364,18 +424,12 @@ int LTVEntry::pack(::buffer* buf) {
 	} else {
 		// this is not the container: return already allocated space
 		if (buflen() > 0) {
+			if (this_is_owner) {
+				delete b;
+				return buflen();
+			}
 			b->append(buffer(),buflen());
 			_deb("LTVEntry::pack: scalar 0x%x packed in %d bytes", this, buflen());
-
-            // coverity: 1407983  - this case didn't covered case when buffer is null, so we created new here
-            //                      it's probably rare not having container on the top of data tree,
-            //                      but anyway this is fixing the case.
-            if(this_is_owner) {
-                data_ = b->data();
-                b->detach();
-                owner(true);
-                delete b;
-            }
 
 			return buflen();
 		} else {
