@@ -9,6 +9,7 @@ std::mutex buffer::alloc_map_lock_;
 #include <string>
 #include <regex>
 #include <iterator>
+#include <cstdint>
 
 // replace strings on regex basis BUT don't allow the resulting string be shorter than original. 
 // This is important in some scenarios when you are replacing inline data, which are already indicated to be of some specific size.
@@ -190,31 +191,54 @@ buffer& buffer::operator=(const buffer& x)
 {
     if(&x == this) return *this;
 
-    if (x.size_ > capacity_ or not data_)
+    // Assigning an owner's own view back to it must not free the storage that
+    // backs the right-hand side. Keep ownership and compact the selected
+    // range in place instead.
+    if(not x.free_ and free_ and data_ and x.data_) {
+        const auto owned_begin = reinterpret_cast<std::uintptr_t>(data_);
+        const auto owned_end = owned_begin + capacity_;
+        const auto source_begin = reinterpret_cast<std::uintptr_t>(x.data_);
+        if(source_begin >= owned_begin && source_begin <= owned_end &&
+           x.size_ <= owned_end - source_begin) {
+            if(x.size_ != 0) std::memmove(data_, x.data_, x.size_);
+            size_ = x.size_;
+            return *this;
+        }
+    }
+
+    // A borrowed buffer stays a borrowed view, consistently with the copy
+    // constructor. Its data must never be conditionally copied based on the
+    // destination's previous capacity.
+    if (not x.free_)
+    {
+        dealloc();
+        data_ = x.data_;
+        size_ = x.size_;
+        capacity_ = x.capacity_;
+        free_ = false;
+        return *this;
+    }
+
+    // Never copy an owning source into storage borrowed by the destination.
+    // The assignment must acquire its own storage first.
+    if (not free_ or x.size_ > capacity_ or not data_)
     {
         dealloc();
 
         capacity_ = x.capacity_;
 
-        if(x.free_) {
-
-            if(use_pool) {
-                mem_chunk_t mch = memPool::pool().acquire(x.capacity_);
-                data_ = mch.ptr;
-                capacity_  = mch.capacity;
-            }
-            else {
-                data_ = new unsigned char[x.capacity_];
-                counter_alloc(x.capacity_);
-            }
-            free_ = true;
+        if(use_pool) {
+            mem_chunk_t mch = memPool::pool().acquire(x.capacity_);
+            data_ = mch.ptr;
+            capacity_  = mch.capacity;
         } else {
-            data_ = x.data_;
-            free_ = false;
+            data_ = x.capacity_ != 0 ? new unsigned char[x.capacity_] : nullptr;
+            counter_alloc(x.capacity_);
         }
+        free_ = true;
     }
 
-    if (x.size_ != 0 && x.free_) // copy only if original had ownership: honor ownership
+    if (x.size_ != 0)
         std::memcpy (data_, x.data_, x.size_);
 
     size_ = x.size_;

@@ -71,6 +71,9 @@ public:
   buffer (const void* data, size_type size, size_type capacity);
   buffer (void* data, size_type size, size_type capacity, bool own);
 
+  // Copying an owning source makes an independent owning copy. Copying a
+  // non-owning source preserves its view semantics and lifetime dependency.
+  // Assigning an owner's own sub-view compacts it in place and keeps ownership.
   buffer (const buffer&);
   buffer& operator= (const buffer&);
 
