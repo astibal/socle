@@ -1533,7 +1533,7 @@ int baseSSLCom<L4Proto>::ssl_client_cert_callback(SSL* ssl, X509** x509, EVP_PKE
     
     auto* com = static_cast<baseSSLCom*>(data);
     if(com != nullptr) {
-        auto sni = com->get_sni();
+        auto const& sni = com->get_sni();
         auto* owner = com->owner_cx();
 
         name = "sni:[" + sni;
@@ -2364,14 +2364,14 @@ bool baseSSLCom<L4Proto>::handshake_peer_client() {
 
                 for (std::string const& filter_element_raw: *sni_filter_to_bypass()) {
 
-                    bool wildcard_planted = false;
-                    auto filter_element = filter_element_raw;
-                    if(filter_element_raw.size() > 1 and filter_element_raw.at(0) == '*' and filter_element_raw.at(1) == '.') {
-                        filter_element.replace(0, 2, "");
-                        wildcard_planted = true;
-                    }
+                    bool const wildcard_planted = filter_element_raw.size() > 1
+                        and filter_element_raw[0] == '*' and filter_element_raw[1] == '.';
+                    std::string_view filter_element = filter_element_raw;
+                    if(wildcard_planted) filter_element.remove_prefix(2);
 
-                    _deb("SSLCom:waiting: check SNI filter: %s %s", filter_element.c_str(), wildcard_planted ? "(*.)" : "");
+                    _deb("SSLCom:waiting: check SNI filter: %.*s %s",
+                         static_cast<int>(filter_element.size()), filter_element.data(),
+                         wildcard_planted ? "(*.)" : "");
 
                     std::size_t pos = sslcom_sni().rfind(filter_element);
                     if (pos != std::string::npos && pos + filter_element.size() >= sslcom_sni().size()) {
@@ -2382,19 +2382,22 @@ bool baseSSLCom<L4Proto>::handshake_peer_client() {
 
                         if (pos > 0) {
                             if (sslcom_sni().at(pos - 1) != '.') {
-                                _deb("%s NOT bypassed with sni filter %s", sslcom_sni().c_str(),
-                                     filter_element.c_str());
+                                _deb("%s NOT bypassed with sni filter %.*s", sslcom_sni().c_str(),
+                                     static_cast<int>(filter_element.size()), filter_element.data());
                                 cont = false;
                             }
                         }
 
                         if (cont) {
-                            _dia("SSLCom:waiting: matched SNI filter: %s%s!", filter_element.c_str(), wildcard_planted ? " (*.)" : "");
+                            _dia("SSLCom:waiting: matched SNI filter: %.*s%s!",
+                                 static_cast<int>(filter_element.size()), filter_element.data(),
+                                 wildcard_planted ? " (*.)" : "");
                             sni_filter_to_bypass_matched = true;
 
                             if (bypass_me_and_peer()) {
-                                _inf("%s bypassed with sni filter %s %s", sslcom_sni().c_str(),
-                                     filter_element.c_str(), wildcard_planted ? " (*.)" : "");
+                                _inf("%s bypassed with sni filter %.*s %s", sslcom_sni().c_str(),
+                                     static_cast<int>(filter_element.size()), filter_element.data(),
+                                     wildcard_planted ? " (*.)" : "");
                                 return false;
                             } else {
                                 _dia("SSLCom:waiting: SNI filter matched, but peer is not SSLCom");
@@ -2628,10 +2631,11 @@ bool baseSSLCom<L4Proto>::store_session_if_needed() {
 
     bool ret = false;
     bool proceed  = is_server() ? !opt.left.no_tickets : !opt.right.no_tickets;
-    std::string pref = is_server() ? "l-" : "r-";
-
     if(proceed and factory() && owner_cx()) {
-        std::string current_sni;
+        std::string key = is_server() ? "l-" : "r-";
+        std::string_view current_sni;
+        key.reserve(key.size() + owner_cx()->host().size()
+                    + owner_cx()->port().size() + 96);
 
         if(is_server()) {
             auto peerscom = dynamic_cast<SSLCom*>(peer());
@@ -2641,26 +2645,24 @@ bool baseSSLCom<L4Proto>::store_session_if_needed() {
             }
 
             auto sess = SSL_get0_session(sslcom_ssl);
-            pref += owner_cx()->host() + "-";
+            key.append(owner_cx()->host()).push_back('-');
 
             if(sess) {
                 unsigned int sid_len = 0;
                 auto sid = SSL_SESSION_get_id(sess, &sid_len);
-                pref += hex_print(sid, sid_len) + "-";
+                key.append(hex_print(sid, sid_len)).push_back('-');
             }
 
 
         } else {
-            if (sslcom_sni().length() > 0) {
-                current_sni = sslcom_sni();
-            }
+            current_sni = sslcom_sni();
         }
-        
-        std::string key;
-        if (current_sni.length() > 0) {
-            key = pref + current_sni;
+
+        if (not current_sni.empty()) {
+            key.append(current_sni);
         } else {
-            key = pref + string_format("%s:%s",owner_cx()->host().c_str(),owner_cx()->port().c_str());
+            key.append(owner_cx()->host()).push_back(':');
+            key.append(owner_cx()->port());
         }
 
         if(!SSL_session_reused(sslcom_ssl)) {
@@ -2760,36 +2762,35 @@ bool baseSSLCom<L4Proto>::load_session_if_needed() {
 
     bool ret = false;
     bool proceed  = is_server() ? !opt.left.no_tickets : !opt.right.no_tickets;
-    std::string pref = is_server() ? "l-" : "r-";
-
     if(proceed and factory() && owner_cx()) {
-        std::string current_sni;
+        std::string key = is_server() ? "l-" : "r-";
+        std::string_view current_sni;
+        key.reserve(key.size() + owner_cx()->host().size()
+                    + owner_cx()->port().size() + 96);
 
         if(is_server()) {
             auto const* peerscom = dynamic_cast<SSLCom*>(peer());
             if(peerscom) {
                 // this is actually mine SNI :)
                 current_sni = peerscom->get_sni();
-            }
-
-            pref += owner_cx()->host() + "-";
-
-            auto sid = peerscom->get_peer_id();
-            if(sid.length() > 0) {
-                pref += sid + "-";
+                key.append(owner_cx()->host()).push_back('-');
+                auto const& sid = peerscom->get_peer_id();
+                if(not sid.empty()) {
+                    key.append(sid).push_back('-');
+                }
+            } else {
+                key.append(owner_cx()->host()).push_back('-');
             }
 
         } else {
-            if (sslcom_sni().length() > 0) {
-                current_sni = sslcom_sni();
-            }
+            current_sni = sslcom_sni();
         }
-        
-        std::string key;
-        if (current_sni.length() > 0) {
-            key = pref + current_sni;
+
+        if (not current_sni.empty()) {
+            key.append(current_sni);
         } else {
-            key = pref + string_format("%s:%s",owner_cx()->host().c_str(),owner_cx()->port().c_str());
+            key.append(owner_cx()->host()).push_back(':');
+            key.append(owner_cx()->port());
         }
 
         auto h = factory()->session_cache().get(key);
@@ -3319,12 +3320,10 @@ unsigned short baseSSLCom<L4Proto>::parse_peer_hello_extensions(buffer& b, unsig
             if (sn_hostname_length > ext_end - curpos)
                 throw socle::ex::SSL_clienthello_malformed();
 
-            std::string s;
-            s.append((const char *) b.data() + curpos, (size_t) sn_hostname_length);
-
-            _dia("SSLCom::parse_peer_hello_extensions:    SNI hostname: %s", s.c_str());
-
-            sslcom_sni_ = s;
+            sslcom_sni_.assign(reinterpret_cast<char const*>(b.data()) + curpos,
+                               sn_hostname_length);
+            _dia("SSLCom::parse_peer_hello_extensions:    SNI hostname: %s",
+                 sslcom_sni_.c_str());
         }
     }
     else if(ext_id == 16) {
@@ -3337,11 +3336,11 @@ unsigned short baseSSLCom<L4Proto>::parse_peer_hello_extensions(buffer& b, unsig
         if (alpn_length != ext_end - curpos)
             throw socle::ex::SSL_clienthello_malformed();
 
-        std::string s;
-        s.append((const char *) b.data() + curpos, (size_t) alpn_length);
+        sslcom_peer_hello_alpn_.assign(
+            reinterpret_cast<char const*>(b.data()) + curpos, alpn_length);
         _dia("SSLCom::parse_peer_hello_extensions:    ALPN: %s",
-             hex_print(reinterpret_cast<unsigned char *>(s.data()), s.size()).c_str());
-        sslcom_peer_hello_alpn_ = s;
+             hex_print(sslcom_peer_hello_alpn_.data(),
+                       sslcom_peer_hello_alpn_.size()).c_str());
     }
 
 

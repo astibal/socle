@@ -17,6 +17,7 @@
 */
 
 #include <cstdio>
+#include <cstring>
 #include <ctime>
 #include <regex>
 #include <array>
@@ -892,28 +893,31 @@ std::string SSLFactory::make_store_key(X509* cert_orig, const SpoofOptions& spo)
 
     char tmp[512];
     X509_NAME_oneline( X509_get_subject_name(cert_orig) , tmp, 512);
-    std::string subject(tmp);
+    std::vector<std::string> const cert_sans = SSLFactory::get_sans(cert_orig);
 
-    std::stringstream store_key_ss;
+    std::size_t key_size = std::strlen(tmp) + (spo.self_signed ? 12 : 0);
+    for(auto const& san: cert_sans) key_size += 5 + san.size();
+    for(auto const& san: spo.sans) key_size += 5 + san.size();
 
-    store_key_ss << subject;
+    std::string store_key;
+    store_key.reserve(key_size);
+    store_key.append(tmp);
 
     if(spo.self_signed) {
-        store_key_ss << "+self_signed";
+        store_key.append("+self_signed");
     }
 
-    std::vector<std::string> cert_sans = SSLFactory::get_sans(cert_orig);
     for(auto const& s1: cert_sans) {
-        store_key_ss << string_format("+san:%s",s1.c_str());
+        store_key.append("+san:").append(s1);
     }
 
     if( ! spo.sans.empty() ) {
         for(auto const& san: spo.sans) {
-            store_key_ss << string_format("+san:%s",san.c_str());
+            store_key.append("+san:").append(san);
         }
     }
 
-    return store_key_ss.str();
+    return store_key;
 
 }
 
@@ -931,28 +935,32 @@ std::string SSLFactory::make_store_key(X509* cert_orig, const SpoofOptions& spo)
     //TODO: add signature as part of the key, to cover new orig certificates with also new spoofed ones
 
     X509_NAME_oneline( X509_get_subject_name(cert_orig) , tmp.data(), 512);
-    std::string const subject(tmp.data());
+    std::vector<std::string> const cert_sans = SSLFactory::get_sans(cert_orig);
 
-    std::stringstream store_key_ss;
+    std::size_t key_size = 5 + std::strlen(tmp.data()) + (spo.self_signed ? 12 : 0);
+    for(auto const& san: cert_sans) key_size += 5 + san.size();
+    for(auto const& san: spo.sans) key_size += 5 + san.size();
 
-    store_key_ss << "subj:" << subject;
+    std::string store_key;
+    store_key.reserve(key_size);
+    store_key.append("subj:");
+    store_key.append(tmp.data());
 
     if(spo.self_signed) {
-        store_key_ss << "+self_signed";
+        store_key.append("+self_signed");
     }
 
-    std::vector<std::string> const cert_sans = SSLFactory::get_sans(cert_orig);
     for(auto const& s1: cert_sans) {
-        store_key_ss << string_format("+san:%s",s1.c_str());
+        store_key.append("+san:").append(s1);
     }
 
     if( ! spo.sans.empty() ) {
         for(auto const& san: spo.sans) {
-            store_key_ss << string_format("+san:%s",san.c_str());
+            store_key.append("+san:").append(san);
         }
     }
 
-    return store_key_ss.str();
+    return store_key;
 
 }
 

@@ -22,6 +22,7 @@
 #include <map>
 #include <atomic>
 #include <string>
+#include <string_view>
 #include <thread>
 
 #include <openssl/rsa.h>
@@ -246,9 +247,9 @@ public:
 
     // get_peer_* return values as captured on the network
     // note: get_peer* don't necessarily return used values
-    std::string get_sni() const { return sslcom_sni(); } //return copy of SNI
-    std::string get_peer_id() const { return sslcom_peer_hello_id(); } //return copy of SNI
-    std::string get_peer_alpn() const { return sslcom_peer_hello_alpn(); } //return copy of ALPN
+    std::string const& get_sni() const { return sslcom_sni(); }
+    std::string const& get_peer_id() const { return sslcom_peer_hello_id(); }
+    std::string const& get_peer_alpn() const { return sslcom_peer_hello_alpn(); }
 
     // does not indicate SSL state, but operational level of the socket
     // UNKNOWN - default value
@@ -383,13 +384,13 @@ protected:
     std::string& sslcom_sni() { return sslcom_sni_; }
 
     std::string sslcom_peer_hello_alpn_;
-    std::string sslcom_peer_hello_alpn() const { return sslcom_peer_hello_alpn_; }
+    std::string const& sslcom_peer_hello_alpn() const { return sslcom_peer_hello_alpn_; }
     std::string& sslcom_peer_hello_alpn() { return sslcom_peer_hello_alpn_; }
 
     std::string sslcom_alpn_;
 
     std::string sslcom_peer_hello_id_;
-    std::string sslcom_peer_hello_id() const { return sslcom_peer_hello_id_; }
+    std::string const& sslcom_peer_hello_id() const { return sslcom_peer_hello_id_; }
     std::string& sslcom_peer_hello_id() { return sslcom_peer_hello_id_; }
 
     std::shared_ptr<std::vector<std::string>> sni_filter_to_bypass_;
