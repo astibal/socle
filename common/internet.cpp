@@ -90,7 +90,8 @@ namespace inet {
 
         int sd = ::socket(family, SOCK_STREAM, 0);
         if (sd >= 0) {
-            auto connect_err = ::connect(sd, (struct sockaddr *) &final_sa, sizeof(final_sa));
+            const socklen_t address_size = family == AF_INET ? sizeof(sockaddr_in) : sizeof(sockaddr_in6);
+            auto connect_err = ::connect(sd, reinterpret_cast<sockaddr*>(&final_sa), address_size);
 
             if (connect_err == 0) {
                 // success - connected
@@ -130,8 +131,29 @@ namespace inet {
         domain = std::string(url.begin() + offset, pos1 != std::string::npos ? url.begin() + pos1 : url.end());
 
         path = (pos2 = path.find('#')) != std::string::npos ? path.substr(0, pos2) : path;
-        url_port = (pos3 = domain.find(':')) != std::string::npos ? domain.substr(pos3 + 1) : "80";
-        domain = domain.substr(0, pos3 != std::string::npos ? pos3 : domain.length());
+        bool explicit_port = false;
+        url_port = "80";
+        if (!domain.empty() && domain.front() == '[') {
+            const auto bracket = domain.find(']');
+            if (bracket == std::string::npos)
+                return 0;
+            if (bracket + 1 < domain.size()) {
+                if (domain[bracket + 1] != ':' || bracket + 2 >= domain.size())
+                    return 0;
+                url_port = domain.substr(bracket + 2);
+                explicit_port = true;
+            }
+            domain = domain.substr(1, bracket - 1);
+        } else {
+            pos3 = domain.find(':');
+            // A single colon separates host and port. Multiple colons are an
+            // unbracketed IPv6 literal and therefore carry no explicit port.
+            if (pos3 != std::string::npos && domain.find(':', pos3 + 1) == std::string::npos) {
+                url_port = domain.substr(pos3 + 1);
+                domain.resize(pos3);
+                explicit_port = true;
+            }
+        }
 
         protocol = offset > 0 ? url.substr(0, offset - 3) : "";
         query = (pos4 = path.find('?')) != std::string::npos ? path.substr(pos4 + 1) : "";
@@ -145,7 +167,7 @@ namespace inet {
             path.reserve(path.length() + 1 + query.length());
             path.append("?").append(query);
         }
-        if(protocol.length() > 0) {
+        if(protocol.length() > 0 && !explicit_port) {
             if(protocol == "http") {
                 url_port = "80";
             }
@@ -175,7 +197,15 @@ namespace inet {
         }
 
         if (not ip_addresses.empty()) {
-            port = std::stoi(url_port);
+            try {
+                std::size_t parsed_chars = 0;
+                const auto parsed_port = std::stoul(url_port, &parsed_chars);
+                if (parsed_chars != url_port.size() || parsed_port == 0 || parsed_port > 65535)
+                    return 0;
+                port = static_cast<unsigned short>(parsed_port);
+            } catch (const std::exception&) {
+                return 0;
+            }
 
             std::string request = "GET " + path + " HTTP/1.0\r\n";
             request += "Host: " + domain + "\r\n\r\n";
@@ -224,21 +254,15 @@ namespace inet {
         auto const& log = Factory::log();
 
         auto send_request = [&request](auto sd) -> int{
-            unsigned attempts = 10;
-            buffer send_buf(request.length());
-            send_buf.size(0);
-            std::memcpy(send_buf.data(), request.c_str(), request.length());
-
             std::size_t sent = 0;
             do {
-                auto str_send = request.substr(sent);
-                auto ret = ::send(sd, str_send.c_str(), str_send.length(), 0);
+                auto ret = ::send(sd, request.data() + sent, request.length() - sent, MSG_NOSIGNAL);
                 if (ret > 0) {
                     sent += ret;
                 } else {
                     return -1;
                 }
-            } while (sent < request.length() and attempts > 0);
+            } while (sent < request.length());
 
             return request.length();
         };
@@ -270,7 +294,8 @@ namespace inet {
                 if (nfds > 0 and e.in_read_set(sd)) {
                     /* Don't rely on the value of tv now! */
                     bytes_received = ::recv(sd, recv_buffer, sizeof(recv_buffer), 0);
-                    bytes_total += bytes_received;
+                    if (bytes_received > 0)
+                        bytes_total += bytes_received;
 
                     _deb("internet::http_get(%s): received %dB, %dB total", request.c_str(), bytes_received,
                          bytes_total);
@@ -321,11 +346,15 @@ namespace inet {
                 }
                 if (state == sizeof(delim) - 1)//read body
                 {
+                    if (bytes_expected >= 0)
+                        bytes_received = std::min(bytes_received, bytes_expected - bytes_sofar);
                     bytes_sofar += bytes_received;
                     buf.append(recv_buffer + body_index, bytes_received);
                 }
             }
 
+            if (bytes_expected >= 0 && bytes_sofar != bytes_expected)
+                return -1;
             return bytes_sofar;
 
         };

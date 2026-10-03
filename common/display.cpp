@@ -560,7 +560,7 @@ std::string string_trim(const std::string& orig) {
     }
     
     if(spaces > 0) {
-        return ret.substr(0,-spaces);
+        return ret.substr(0, ret.size() - static_cast<std::size_t>(spaces));
     }
     
     return ret;
@@ -591,9 +591,13 @@ std::string string_csv(const std::vector<std::string>& str_list_ref, char delim)
 
 std::string string_shorten(std::string const& orig, size_t max_len) {
     if(orig.length() > max_len) {
-        auto shortened = orig.substr(0, 3);
-        auto shortened2 = orig.substr(orig.length() - 3, orig.length());
-        return shortened + "..." + shortened2;
+        if (max_len <= 3) return orig.substr(0, max_len);
+
+        const auto payload = max_len - 3;
+        const auto prefix_len = (payload + 1) / 2;
+        const auto suffix_len = payload / 2;
+        return orig.substr(0, prefix_len) + "..." +
+               orig.substr(orig.length() - suffix_len);
     }
     return orig;
 };
