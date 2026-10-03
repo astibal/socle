@@ -191,8 +191,14 @@ namespace inet {
                     for (int k = 0; k < sk_X509_NAME_ENTRY_num(sk_relname); k++) {
                         X509_NAME_ENTRY *e = sk_X509_NAME_ENTRY_value(sk_relname, k);
                         ASN1_STRING *d = X509_NAME_ENTRY_get_data(e);
+                        if (!d)
+                            continue;
 #ifdef USE_OPENSSL11
-                        list.emplace_back(std::string((char *) ASN1_STRING_get0_data(d), ASN1_STRING_length(d)));
+                        const auto* data = ASN1_STRING_get0_data(d);
+                        const int length = ASN1_STRING_length(d);
+                        if (data && length > 0)
+                            list.emplace_back(reinterpret_cast<const char*>(data),
+                                              static_cast<std::size_t>(length));
 #else
                         list.push_back( std::string( (char*)ASN1_STRING_data(d), ASN1_STRING_length(d) ) );
 #endif
@@ -287,9 +293,9 @@ namespace inet {
             auto const& log = OcspFactory::log();
 
             OCSP_CERTID *id;
-            if (!issuer) {
+            if (!req || !cert || !cert_id_md || !issuer || !ids) {
 
-                _err("ocsp_prepare_request: No issuer certificate specified");
+                _err("ocsp_prepare_request: Invalid request inputs");
                 return 0;
             }
 
@@ -301,11 +307,19 @@ namespace inet {
 
             id = OCSP_cert_to_id(cert_id_md, cert, issuer);
 
-            if (!id || !sk_OCSP_CERTID_push(ids, id))
+            if (!id)
                 goto err;
 
-            if (!OCSP_request_add0_id(*req, id))
+            if (!sk_OCSP_CERTID_push(ids, id)) {
+                OCSP_CERTID_free(id);
                 goto err;
+            }
+
+            if (!OCSP_request_add0_id(*req, id)) {
+                sk_OCSP_CERTID_pop(ids);
+                OCSP_CERTID_free(id);
+                goto err;
+            }
 
             return 1;
 
@@ -324,6 +338,9 @@ namespace inet {
             OCSP_RESPONSE *rsp = nullptr;
 
             auto const& log = OcspFactory::log();
+
+            if (!cbio || !path || !host || !req)
+                return nullptr;
 
             if (req_timeout != -1)
                 BIO_set_nbio(cbio, 1);
@@ -418,6 +435,8 @@ namespace inet {
         OCSP_RESPONSE *ocsp_send_request (BIO *err, OCSP_REQUEST *req,
                                           char *host, char *path, char *port, int use_ssl,
                                           int req_timeout) {
+            if (!req || !host || !path || use_ssl != 0)
+                return nullptr;
             BIO *cbio = nullptr;
             OCSP_RESPONSE *resp = nullptr;
             cbio = BIO_new_connect(host);
@@ -468,11 +487,20 @@ namespace inet {
                     OCSP_BASICRESP_free(br);
                     return VerifyStatus(-1, ttl, VerifyStatus::status_origin::OCSP);
                 }
-                if (owns_store)
-                    X509_STORE_set_default_paths(st);
+                if (owns_store && X509_STORE_set_default_paths(st) != 1) {
+                    OCSP_BASICRESP_free(br);
+                    X509_STORE_free(st);
+                    return VerifyStatus(-1, ttl, VerifyStatus::status_origin::OCSP);
+                }
 
                 STACK_OF(X509*) signers = sk_X509_new_null();
-                sk_X509_push(signers, issuer);
+                if (!signers || sk_X509_push(signers, issuer) != 1) {
+                    sk_X509_free(signers);
+                    OCSP_BASICRESP_free(br);
+                    if (owns_store)
+                        X509_STORE_free(st);
+                    return VerifyStatus(-1, ttl, VerifyStatus::status_origin::OCSP);
+                }
 
                 // @certs - untrusted intermediates
                 // @st - truststore
@@ -497,6 +525,8 @@ namespace inet {
                     _deb("ocsp_verify_response: got %d entries in response", resp_count);
                     for (int i = 0; i < resp_count; i++) {
                         OCSP_SINGLERESP *single = OCSP_resp_get0(br, i);
+                        if (!single)
+                            continue;
                         int reason;
                         ASN1_GENERALIZEDTIME *revtime;
                         ASN1_GENERALIZEDTIME *thisupd;
@@ -505,17 +535,23 @@ namespace inet {
                         int status = OCSP_single_get0_status(single, &reason, &revtime, &thisupd, &nextupd);
 
                         const OCSP_CERTID* id = OCSP_SINGLERESP_get0_id(single);
-                        ASN1_OCTET_STRING* name_hash;
-                        ASN1_OCTET_STRING* key_hash;
-                        ASN1_OBJECT* pmd;
-                        ASN1_INTEGER* serial;
+                        ASN1_OCTET_STRING* name_hash = nullptr;
+                        ASN1_OCTET_STRING* key_hash = nullptr;
+                        ASN1_OBJECT* pmd = nullptr;
+                        ASN1_INTEGER* serial = nullptr;
 
                         // get shallow details from CERTID
-                        OCSP_id_get0_info(&name_hash, &pmd, &key_hash, &serial, const_cast<OCSP_CERTID*>(id));
+                        if (!id || OCSP_id_get0_info(
+                                &name_hash, &pmd, &key_hash, &serial,
+                                const_cast<OCSP_CERTID*>(id)) != 1 || !pmd) {
+                            continue;
+                        }
 
                         // now we can create cert ID and compare it to one from OCSP response
 
                         const EVP_MD* md = EVP_get_digestbyobj(const_cast<const ASN1_OBJECT*>(pmd));
+                        if (!md)
+                            continue;
                         OCSP_CERTID* my_id = OCSP_cert_to_id(md , cert , issuer);
 
                         // match certificate ID in response with checked cert (to prevent replays of correct OCSP responses
@@ -627,8 +663,10 @@ namespace inet {
 
             using namespace inet::cert;
 
-            int is_revoked = -1;
             VerifyStatus ret(-1, 60, VerifyStatus::status_origin::OCSP);
+
+            if (!x509 || !issuer)
+                return ret;
 
             BIO *bio_out = BIO_new_fp(stdout, BIO_NOCLOSE | BIO_FP_TEXT);
             BIO *bio_err = BIO_new_fp(stderr, BIO_NOCLOSE | BIO_FP_TEXT);
@@ -639,11 +677,16 @@ namespace inet {
                 //STACK_OF(CONF_VALUE) *headers = nullptr;
                 STACK_OF(OCSP_CERTID) *ids = sk_OCSP_CERTID_new_null();
                 const EVP_MD *cert_id_md = EVP_sha1();
-                ocsp_prepare_request(&req, x509, cert_id_md, issuer, ids);
+                if (!ids || !ocsp_prepare_request(&req, x509, cert_id_md, issuer, ids)) {
+                    sk_OCSP_CERTID_free(ids);
+                    BIO_free(bio_out);
+                    BIO_free(bio_err);
+                    return ret;
+                }
 
                 //loop through OCSP urls
                 STACK_OF(OPENSSL_STRING) *ocsp_list = X509_get1_ocsp(x509);
-                for (int j = 0; j < sk_OPENSSL_STRING_num(ocsp_list) && is_revoked == -1; j++) {
+                for (int j = 0; j < sk_OPENSSL_STRING_num(ocsp_list) && ret.revoked == -1; j++) {
                     char *host = nullptr, *port = nullptr, *path = nullptr;
                     int use_ssl;
                     //std::string ocsp_url0 = std::string( sk_OPENSSL_STRING_value(ocsp_list, j) );
@@ -679,10 +722,20 @@ namespace inet {
 
 
         int ocsp_check_bytes (const char cert_bytes[], const char issuer_bytes[]) {
+            if (!cert_bytes || !issuer_bytes)
+                return -1;
             BIO *bio_mem1 = BIO_new(BIO_s_mem());
             BIO *bio_mem2 = BIO_new(BIO_s_mem());
-            BIO_puts(bio_mem1, cert_bytes);
-            BIO_puts(bio_mem2, issuer_bytes);
+            if (!bio_mem1 || !bio_mem2) {
+                BIO_free(bio_mem1);
+                BIO_free(bio_mem2);
+                return -1;
+            }
+            if (BIO_puts(bio_mem1, cert_bytes) <= 0 || BIO_puts(bio_mem2, issuer_bytes) <= 0) {
+                BIO_free(bio_mem1);
+                BIO_free(bio_mem2);
+                return -1;
+            }
             X509 *x509 = PEM_read_bio_X509(bio_mem1, nullptr, nullptr, nullptr);
             X509 *issuer = PEM_read_bio_X509(bio_mem2, nullptr, nullptr, nullptr);
             int ret = inet::ocsp::ocsp_check_cert(x509, issuer).revoked;
@@ -716,6 +769,10 @@ namespace inet {
         void OcspQuery::parse_cert () {
             auto const& log = OcspFactory::log();
 
+            ocsp_targets.clear();
+            if (!cert_check)
+                return;
+
             STACK_OF(OPENSSL_STRING) *ocsp_list = X509_get1_ocsp(cert_check);
             for (int j = 0; j < sk_OPENSSL_STRING_num(ocsp_list); j++) {
 
@@ -730,7 +787,8 @@ namespace inet {
                 });
 
                 char *ocsp_url = sk_OPENSSL_STRING_value(ocsp_list, j);
-                if (OCSP_parse_url(ocsp_url, &host, &port, &path, &use_ssl)) {
+                if (OCSP_parse_url(ocsp_url, &host, &port, &path, &use_ssl)
+                    && host && port && path) {
                     ocsp_targets.emplace_back(
                             std::tuple<std::string, std::string, std::string, bool>(std::string(host),
                                                                                     std::string(port),
@@ -749,6 +807,12 @@ namespace inet {
         bool OcspQuery::do_init () {
             auto const& log = OcspFactory::log();
 
+            if (!cert_check || !cert_issuer) {
+                state_ = OcspQuery::ST_FINISHED;
+                yield_ = OcspQuery::RET_UNKNOWN;
+                return false;
+            }
+
             parse_cert();
 
 
@@ -766,7 +830,12 @@ namespace inet {
             //build ocsp request
             ocsp_req_ids = sk_OCSP_CERTID_new_null();
             const EVP_MD *cert_id_md = EVP_sha1();
-            ocsp_prepare_request(&ocsp_req, cert_check, cert_id_md, cert_issuer, ocsp_req_ids);
+            if (!ocsp_req_ids || !ocsp_prepare_request(
+                    &ocsp_req, cert_check, cert_id_md, cert_issuer, ocsp_req_ids)) {
+                state_ = OcspQuery::ST_FINISHED;
+                yield_ = OcspQuery::RET_UNKNOWN;
+                return false;
+            }
 
             return true;
         }
@@ -804,6 +873,8 @@ namespace inet {
                 if(conn_bio) {
                     _err("OcspQuery::do_prepare_target[0x%lx]: removing old connection", ref_id);
                     BIO_free(conn_bio);
+                    conn_bio = nullptr;
+                    socket.socket_ = -1;
                 }
 
                 // run this only if we are not retrying (initiate conn_bio)
@@ -849,8 +920,8 @@ namespace inet {
                 if (! do_prepare_target()) {
                     _err("OcspQuery::do_connect[0x%lx]: no ocsp targets %s", ref_id, ocsp_targets.empty() ? "" : "left");
                     state_ = ST_FINISHED;
-                    yield_ = RET_NOOCSP_TARGETS;
-                    return true; // report finished task
+                    yield_ = ocsp_targets.empty() ? RET_NOOCSP_TARGETS : RET_CONNFAIL;
+                    return false;
                 }
             }
 
@@ -877,14 +948,24 @@ namespace inet {
 
                             // reset current connection info
                             conn_bio = nullptr;
+                            socket.socket_ = -1;
 
-                            state_ = ST_CLOSED;
+                            state_ = ST_CONNECTING;
                             yield_ = RET_CONNFAIL;
 
                         } else {
                             _dia("OcspQuery::do_connect[0x%lx]: retry on socket %d", ref_id, socket.socket_);
                             return false;
                         }
+                    } else {
+                        _dia("OcspQuery::do_connect[0x%lx]: connection failed: %s/%s",
+                             ref_id, ocsp_host.c_str(), ocsp_path.c_str());
+                        BIO_free(conn_bio);
+                        conn_bio = nullptr;
+                        socket.socket_ = -1;
+                        ocsp_target_index++;
+                        state_ = ST_CONNECTING;
+                        yield_ = RET_CONNFAIL;
                     }
 
                 } else {
@@ -972,6 +1053,7 @@ namespace inet {
                         // rv == 0, or undefined returned value
                     else {
                         _err("OcspQuery::do_send_request[0x%lx]: Timeout or error while sending request", ref_id);
+                        goto err;
                     }
             }
 
@@ -982,6 +1064,7 @@ namespace inet {
             if(conn_bio) {
                 BIO_free(conn_bio);
                 conn_bio = nullptr;
+                socket.socket_ = -1;
             }
 
             // set state to connecting - try other ocsp host if available.
@@ -1031,60 +1114,56 @@ namespace inet {
         }
 
         bool OcspQuery::run () {
-
-            switch (state_) {
-                case OcspQuery::ST_INIT:
-
-                    // A certificate without an OCSP endpoint is a completed
-                    // query, not a connection to retry. Ignoring do_init()'s
-                    // terminal result moved the state back to CONNECTED and
-                    // attempted to build a request on a null BIO forever.
-                    if(!do_init()) {
-                        return false;
-                    }
-
-                    [[ fallthrough ]];
-
-                case OcspQuery::ST_CONNECTING:
-
-                    // return only on IO blocking (can connect immediately)
-                    if (!do_connect()) {
-                        if (state_ == OcspQuery::ST_CONNECTING) {
+            for (;;) {
+                switch (state_) {
+                    case OcspQuery::ST_INIT:
+                        if (!do_init())
                             return false;
-                        } else {
-                            break;
+                        state_ = OcspQuery::ST_CONNECTING;
+                        continue;
+
+                    case OcspQuery::ST_CONNECTING:
+                        if (do_connect()) {
+                            state_ = OcspQuery::ST_CONNECTED;
+                            continue;
                         }
-                    }
-                    state_ = ST_CONNECTED;
+                        if (state_ == OcspQuery::ST_FINISHED)
+                            return false;
+                        // A live BIO is waiting for readiness. A failed target
+                        // has already cleared it, so immediately try the next
+                        // target rather than monitoring a closed descriptor.
+                        if (conn_bio)
+                            return true;
+                        continue;
 
-                    [[ fallthrough ]];
+                    case OcspQuery::ST_CONNECTED:
+                    case OcspQuery::ST_REQ_INPROGRESS:
+                        if (do_send_request()) {
+                            state_ = OcspQuery::ST_RESP_RECEIVED;
+                            continue;
+                        }
+                        if (state_ == OcspQuery::ST_REQ_INPROGRESS)
+                            return true;
+                        if (state_ == OcspQuery::ST_CONNECTING)
+                            continue;
+                        state_ = OcspQuery::ST_FINISHED;
+                        yield_ = OcspQuery::RET_UNKNOWN;
+                        return false;
 
-                case OcspQuery::ST_CONNECTED:
+                    case OcspQuery::ST_REQ_SENT:
+                    case OcspQuery::ST_RESP_RECEIVED:
+                        do_process_response();
+                        return false;
 
-                    [[ fallthrough ]];
+                    case OcspQuery::ST_FINISHED:
+                    case OcspQuery::ST_CLOSED:
+                        return false;
+                }
 
-                case OcspQuery::ST_REQ_INPROGRESS:
-
-                    // break on IO retry
-                    if (!do_send_request()) {
-                        break;
-                    } else {
-                        state_ = ST_REQ_SENT;
-                    }
-
-                    [[ fallthrough ]];
-
-                case OcspQuery::ST_RESP_RECEIVED:
-                    do_process_response();
-                    // processing response is not blocking operation - transit to next
-
-                    [[ fallthrough ]];
-
-                case OcspQuery::ST_FINISHED:
-                    return false;
+                state_ = OcspQuery::ST_FINISHED;
+                yield_ = OcspQuery::RET_UNKNOWN;
+                return false;
             }
-
-            return true;
         }
     }
 }

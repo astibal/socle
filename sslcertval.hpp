@@ -228,8 +228,8 @@ namespace inet {
             inline socket_state &io () { return socket; }
 
             OcspQuery(X509 *cert, X509 *issuer, uint64_t ref_id):
-              cert_check(X509_dup(cert), &X509_free),
-              cert_issuer(X509_dup(issuer), &X509_free),
+              cert_check(cert ? X509_dup(cert) : nullptr, &X509_free),
+              cert_issuer(issuer ? X509_dup(issuer) : nullptr, &X509_free),
               ref_id(ref_id) {
                 timer_ = time(nullptr);
             };
