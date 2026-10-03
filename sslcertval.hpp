@@ -272,10 +272,14 @@ namespace inet {
 
             [[nodiscard]] int yield() const { return yield_; };
             [[nodiscard]] const char*yield_str() const { return yield_str(yield_); }
+            [[nodiscard]] std::uint64_t connection_generation() const {
+                return connection_generation_;
+            }
 
         private:
             int state_ = OcspQuery::ST_INIT;
             int yield_ = RET_UNKNOWN;
+            std::uint64_t connection_generation_ = 0;
         };
 
     }

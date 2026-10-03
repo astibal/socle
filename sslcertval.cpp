@@ -898,6 +898,7 @@ namespace inet {
                 conn_bio = BIO_new_connect(host_port.c_str());
 
                 if (conn_bio && !ocsp_ssl) {
+                    ++connection_generation_;
                     state_ = OcspQuery::ST_CONNECTING;
                     _dia("OcspQuery::do_prepare_target[0x%lx]: state CONNECTING", ref_id);
                     BIO_set_nbio(conn_bio, 1);
