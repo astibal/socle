@@ -72,7 +72,7 @@ public:
     };
     void shutdown(int _fd) override {
         int r = ::shutdown(_fd, SHUT_RDWR);
-        if(r > 0)
+        if(r < 0 && errno != ENOTCONN)
             _dia("%s::shutdown[%d]: %s", c_type(), _fd, string_error().c_str());
     };
     

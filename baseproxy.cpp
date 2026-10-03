@@ -627,7 +627,7 @@ bool baseProxy::handle_cx_write_once(unsigned char side, baseCom* xcom, baseHost
         auto  orig_bytes_sz = cx->writebuf()->size();
         auto  pending_bytes_sz = orig_bytes_sz;
 
-        if(! handle_cx_write(side, cx)) {
+        if(!handle_cx_write(side, cx) || cx->error()) {
             handle_cx_events(side,cx);
             return false;
         }

@@ -263,8 +263,19 @@ int ThreadedReceiver<Worker>::add_first_datagrams(int sock, SocketInfo& pinfo) {
 
     // crate sockets only for new entries
     if(new_entry) {
-        entry->socket_left = pinfo.create_socket_left(com()->l4_proto());
-        hint_push_all(session_key);
+        try {
+            entry->socket_left = pinfo.create_socket_left(
+                com()->l4_proto(), !proxy_type().is_proxy());
+            hint_push_all(session_key);
+        }
+        catch(...) {
+            // Do not leave a half-created flow behind. Otherwise every later
+            // datagram matches this entry but no worker is ever notified.
+            udpc->datagrams_received.erase(session_key);
+            udpc->flow_to_virtual.erase(flow_key);
+            udpc->in_virt_set.erase(session_key);
+            throw;
+        }
     }
 
     _dia("ThreadedReceiver::add_first_datagrams[%d]: early %dB, sk %d, is_new %d", sock, red, session_key, new_entry);
@@ -432,6 +443,7 @@ int ThreadedReceiverProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
 
         parent_fd_handler->update_load(worker_id_, proxies().size());
         virtual_socket = parent_fd_handler->pop(worker_id_);
+
 
         if (virtual_socket == 0) {
             _dia("ThreadedReceiverProxy::handle_sockets_once: somebody was faster, nothing to pop");

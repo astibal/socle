@@ -690,6 +690,15 @@ int baseHostCX::write() {
         }
     }
 
+    // A transport-level negative result is fatal (non-blocking retry states
+    // are normalized to zero by TCPCom/SSLCom).  Classify it independently
+    // of batch progress: a successful prefix followed by a fatal tail error
+    // still has to terminate the connection.
+    if(last_result < 0) {
+        _dia("baseHostCX::write[%s] write failed: %s, unrecoverable.", c_type(), string_error().c_str());
+        error(true);
+    }
+
     if(total_written > 0) {
         if(!incremental_flush) {
             _dum("baseHostCX::write[%s]: calling batched post_write", c_type());
@@ -699,7 +708,7 @@ int baseHostCX::write() {
             writebuf_.flush(total_written);
         }
 
-        if(not writebuf_.empty()) {
+        if(not writebuf_.empty() && last_result >= 0) {
             _dia("baseHostCX::write[%s]: %zu bytes written, %zu pending -> setting socket write monitor",
                  c_type(), total_written, writebuf_.size());
             com()->set_write_monitor(socket());
@@ -728,10 +737,6 @@ int baseHostCX::write() {
         com()->rescan_write(socket());
         rescan_out_flag_ = true;
     }
-    else if(last_result < 0) {
-        _dia("baseHostCX::write[%s] write failed: %s, unrecoverable.", c_type(), string_error().c_str());
-    }
-
     if(last_result < 0 && total_written == 0) {
         return down_cast<int>(last_result).value_or(-1);
     }
