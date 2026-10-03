@@ -429,8 +429,15 @@ public:
 
     // certificate store common across all SSCom instances
     static inline SSLFactory* factory_ {nullptr};
-    static SSLFactory* factory() { return factory_; };
-    static void factory(SSLFactory* c) { delete factory_; factory_ = c; };
+    // Diagnostics and the HTTP API are available before the first TLS
+    // connection constructs an SSLCom. The process-wide SSLFactory singleton
+    // is already initialized by main, so it is also the safe lazy fallback.
+    static SSLFactory* factory() {
+        return factory_ ? factory_ : &SSLFactory::factory();
+    };
+    // SSLFactory::factory() is a function-local singleton; this pointer is a
+    // non-owning alias and must never delete it.
+    static void factory(SSLFactory* c) { factory_ = c; };
 	
     //called just once
 	void static_init() override;

@@ -1035,7 +1035,13 @@ namespace inet {
             switch (state_) {
                 case OcspQuery::ST_INIT:
 
-                    do_init();
+                    // A certificate without an OCSP endpoint is a completed
+                    // query, not a connection to retry. Ignoring do_init()'s
+                    // terminal result moved the state back to CONNECTED and
+                    // attempted to build a request on a null BIO forever.
+                    if(!do_init()) {
+                        return false;
+                    }
 
                     [[ fallthrough ]];
 

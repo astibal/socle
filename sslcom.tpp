@@ -2181,6 +2181,7 @@ void baseSSLCom<L4Proto>::accept_socket (int sockfd) {
     if (sslcom_ret > 0) {
         _dia("SSLCom::accept_socket[%d]: success at 1st attempt.", sockfd);
         sslcom_op_state = sslcom_op_state_t::READY;
+        sslcom_status(true);
         counters.prof_accept_ok++;
         sslcom_waiting = false;
 
@@ -2593,6 +2594,17 @@ ret_handshake baseSSLCom<L4Proto>::handshake() {
     }
     if(SSL_session_reused(sslcom_ssl)) {
         flags_ |= HSK_REUSED;
+    }
+
+
+    // This is the resumed non-blocking success path.  The immediate paths
+    // update readiness themselves; without the matching update here a server
+    // stayed permanently not-ready after WANT_READ/WANT_WRITE.
+    sslcom_status(true);
+    if(is_server()) {
+        counters.prof_accept_ok++;
+    } else {
+        counters.prof_connect_ok++;
     }
 
 
