@@ -31,6 +31,7 @@
 
 #include <log/logger.hpp>
 #include <ptr_cache.hpp>
+#include <socle_buildprofile.hpp>
 #include <mpstd.hpp>
 #include <sslcertval.hpp>
 #include <socle_size.hpp>
@@ -262,10 +263,22 @@ public:
 
         constexpr static size_t SSLCERTSTORE_BUFSIZE = 512;
 
-        constexpr static size_t CERTSTORE_CACHE_SIZE = socle::size::base_table * cert_multi;
-        constexpr static size_t VERIFY_CACHE_SIZE = socle::size::base_table * verify_multi;
-        constexpr static size_t SESSION_CACHE_SIZE = socle::size::base_table * session_multi;
-        constexpr static size_t CRL_CACHE_SIZE = socle::size::base_table * crl_multi;
+        constexpr static size_t CERTSTORE_CACHE_SIZE =
+            socle::build_profile::configured_cache_entries(
+                socle::size::base_table * cert_multi,
+                socle::build_profile::tls_certificate_cache_entries);
+        constexpr static size_t VERIFY_CACHE_SIZE =
+            socle::build_profile::configured_cache_entries(
+                socle::size::base_table * verify_multi,
+                socle::build_profile::tls_verify_cache_entries);
+        constexpr static size_t SESSION_CACHE_SIZE =
+            socle::build_profile::configured_cache_entries(
+                socle::size::base_table * session_multi,
+                socle::build_profile::tls_session_cache_entries);
+        constexpr static size_t CRL_CACHE_SIZE =
+            socle::build_profile::configured_cache_entries(
+                socle::size::base_table * crl_multi,
+                socle::build_profile::tls_crl_cache_entries);
     };
     SSLFactory::config_t config;
 
