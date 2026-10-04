@@ -163,7 +163,7 @@ namespace socle::com::ssl {
                 auto const *rssl = dynamic_cast<SSLCom const*>(right);
 
                 if (rssl) {
-                    auto sni = rssl->get_sni();
+                    auto const& sni = rssl->get_sni();
                     ss << "->[sni:" << sni << "]" << right->owner_cx()->name();
                 } else {
                     ss << "->" << right->owner_cx()->name();

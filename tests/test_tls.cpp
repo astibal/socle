@@ -169,9 +169,23 @@ static void init_log() {
 
 struct SSLCom_Buddy : public SSLCom {
     void test_peer_hello_buffer(buffer const& b) { sslcom_peer_hello_buffer.assign( (void*)b.data(), b.size(), b.size(), false); }
+    const unsigned char* test_peer_hello_data() const { return sslcom_peer_hello_buffer.data(); }
     int test_parse_sni() { return parse_peer_hello(); }
     unsigned short test_parse_extension(buffer& b) { return parse_peer_hello_extensions(b, 0); }
+    int test_normalize_records() { return static_cast<int>(normalize_peer_hello_records()); }
 };
+
+TEST(TLS_Tests, CompleteClientHelloNormalizationReusesInputBuffer) {
+    buffer complete(tls_sni_smithproxy, sizeof(tls_sni_smithproxy));
+    SSLCom_Buddy s;
+    s.test_peer_hello_buffer(complete);
+    const auto* before = s.test_peer_hello_data();
+
+    EXPECT_EQ(s.test_normalize_records(), 1); // client_hello_peek_t::READY
+    EXPECT_EQ(s.test_peer_hello_data(), before);
+    EXPECT_EQ(s.test_parse_sni(), 1);
+    EXPECT_EQ(s.get_sni(), "smithproxy.org");
+}
 
 
 
@@ -199,6 +213,107 @@ TEST(TLS_Tests, ParseClientHello_SNI) {
     std::cout << s.hr() << " SNI: " << s.get_sni() << "\n";
 
     ASSERT_TRUE(s.get_sni() == "smithproxy.org");
+}
+
+TEST(TLS_Tests, ParseClientHelloSplitAcrossRecords) {
+    constexpr std::size_t header_size = 5;
+    const std::size_t payload_size = sizeof(tls_sni_smithproxy) - header_size;
+
+    for (const std::size_t first_payload_size : {1U, 2U, 3U, 4U, 40U}) {
+        ASSERT_GT(payload_size, first_payload_size);
+        std::vector<unsigned char> split;
+        auto add_record = [&](const unsigned char* payload, std::size_t size) {
+            split.push_back(0x16);
+            split.push_back(0x03);
+            split.push_back(0x01);
+            split.push_back(static_cast<unsigned char>((size >> 8U) & 0xffU));
+            split.push_back(static_cast<unsigned char>(size & 0xffU));
+            split.insert(split.end(), payload, payload + size);
+        };
+        add_record(tls_sni_smithproxy + header_size, first_payload_size);
+        add_record(tls_sni_smithproxy + header_size + first_payload_size,
+                   payload_size - first_payload_size);
+
+        buffer fragmented(split.data(), split.size());
+        SSLCom_Buddy s;
+        s.test_peer_hello_buffer(fragmented);
+
+        EXPECT_EQ(s.test_normalize_records(), 1); // client_hello_peek_t::READY
+        EXPECT_EQ(s.test_parse_sni(), 1);
+        EXPECT_EQ(s.get_sni(), "smithproxy.org");
+    }
+}
+
+TEST(TLS_Tests, PartialTlsRecordWaitsInsteadOfBecomingBypassCandidate) {
+    buffer partial(tls_sni_smithproxy, 17);
+    SSLCom_Buddy s;
+    s.test_peer_hello_buffer(partial);
+
+    EXPECT_EQ(s.test_normalize_records(), 0); // client_hello_peek_t::WAIT
+}
+
+TEST(TLS_Tests, EveryClientHelloPrefixWaitsUntilComplete) {
+    for (std::size_t visible = 1; visible < sizeof(tls_sni_smithproxy); ++visible) {
+        buffer partial(tls_sni_smithproxy, visible);
+        SSLCom_Buddy s;
+        s.test_peer_hello_buffer(partial);
+
+        EXPECT_EQ(s.test_normalize_records(), 0) // client_hello_peek_t::WAIT
+            << "visible bytes: " << visible;
+    }
+
+    buffer complete(tls_sni_smithproxy, sizeof(tls_sni_smithproxy));
+    SSLCom_Buddy s;
+    s.test_peer_hello_buffer(complete);
+    EXPECT_EQ(s.test_normalize_records(), 1); // client_hello_peek_t::READY
+}
+
+TEST(TLS_Tests, FragmentedClientHelloPrefixesNeverBecomeBypassCandidates) {
+    constexpr std::size_t header_size = 5;
+    constexpr std::size_t cut = 4;
+    std::vector<unsigned char> fragmented;
+    auto add_record = [&](const unsigned char* payload, std::size_t size) {
+        fragmented.insert(fragmented.end(), {0x16, 0x03, 0x01,
+            static_cast<unsigned char>((size >> 8U) & 0xffU),
+            static_cast<unsigned char>(size & 0xffU)});
+        fragmented.insert(fragmented.end(), payload, payload + size);
+    };
+    add_record(tls_sni_smithproxy + header_size, cut);
+    add_record(tls_sni_smithproxy + header_size + cut,
+               sizeof(tls_sni_smithproxy) - header_size - cut);
+
+    for (std::size_t visible = 1; visible < fragmented.size(); ++visible) {
+        buffer partial(fragmented.data(), visible);
+        SSLCom_Buddy s;
+        s.test_peer_hello_buffer(partial);
+
+        EXPECT_EQ(s.test_normalize_records(), 0) // client_hello_peek_t::WAIT
+            << "visible bytes: " << visible;
+    }
+}
+
+TEST(TLS_Tests, MalformedTlsRecordIsInvalidInsteadOfBypassCandidate) {
+    unsigned char malformed[] = {0x16, 0x03, 0x01, 0x00, 0x04, 0x02, 0x00, 0x00, 0x00};
+    buffer input(malformed, sizeof(malformed));
+    SSLCom_Buddy s;
+    s.test_peer_hello_buffer(input);
+
+    EXPECT_EQ(s.test_normalize_records(), 3); // client_hello_peek_t::INVALID
+}
+
+TEST(TLS_Tests, TruncatedAlertCallbackFailsClosed) {
+    SSLCom_Buddy s;
+    const unsigned char truncated_alert = 2;
+
+    SSLCom::ssl_msg_callback(0, TLS1_2_VERSION, SSL3_RT_ALERT,
+                             &truncated_alert, 1, nullptr, &s);
+
+    EXPECT_TRUE(s.error());
+}
+
+TEST(TLS_Tests, EmptyHandshakeCallbackIsSafeWithoutConnectionObject) {
+    SSLCom::ssl_msg_callback(0, TLS1_2_VERSION, SSL3_RT_HANDSHAKE,
+                             nullptr, 0, nullptr, nullptr);
 }
 
 TEST(TLS_Tests, ParseClientHello_SNI_NoExtensions) {

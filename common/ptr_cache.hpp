@@ -25,6 +25,8 @@
 #include <deque>
 #include <mutex>
 #include <unordered_map>
+#include <type_traits>
+#include <utility>
 
 #include <ctime>
 #include <cstring>
@@ -176,11 +178,13 @@ public:
 
     unsigned int opportunistic_removal() const { return opportunistic_removal_; };
 
-    static std::string k2str(K& k) {return "";}
-    static std::string k2str(std::string const& r) { return r; }
-    static std::string k2str(const char* r) { return r; }
+    static std::string k2str(K const& k) {
+        if constexpr (std::is_same_v<K, std::string>) return k;
+        else if constexpr (std::is_convertible_v<K, const char*>) return k;
+        else return "";
+    }
 
-    bool erase(K k) {
+    bool erase(K const& k) {
         auto lc_ = std::scoped_lock(lock_);
 
         auto it = cache().find(k);
@@ -204,7 +208,7 @@ public:
         return cache().erase(i);
     }
 
-    std::shared_ptr<T> get(K k) {
+    std::shared_ptr<T> get(K const& k) {
         auto lc_ = std::scoped_lock(lock_);
 
         auto it = cache().find(k);
@@ -230,9 +234,9 @@ public:
         return it->second->ptr();
     }
 
-    bool set(const K k, T* v) {
+    bool set(K k, T* v) {
         std::shared_ptr<T> p(v);
-        return set(k, p);
+        return set(std::move(k), std::move(p));
     }
 
     std::size_t size() const {
@@ -241,7 +245,7 @@ public:
     }
 
     // set the key->value. Return true if other value had been replaced.
-    bool set(const K k, std::shared_ptr<T> v) {
+    bool set(K k, std::shared_ptr<T> v) {
         auto lc_ = std::scoped_lock(lock_);
 
         bool ret = false;
@@ -276,7 +280,7 @@ public:
             }
             _dia("ptr_cache::set[%s]: new entry '%s' added", c_type(), k2str(k).c_str());
             cache().emplace(k, std::make_unique<DataBlock>(dbs_, std::move(v)));
-            items().push_front(k);
+            items().push_front(std::move(k));
         }
 
         return ret;

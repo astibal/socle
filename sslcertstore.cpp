@@ -17,6 +17,7 @@
 */
 
 #include <cstdio>
+#include <cstring>
 #include <ctime>
 #include <regex>
 #include <array>
@@ -77,7 +78,7 @@ bool SSLFactory::load_from_files() {
     
     OpenSSL_add_all_algorithms();
     
-    serial += time(nullptr);
+    serial.fetch_add(time(nullptr), std::memory_order_relaxed);
 
     if (not (load_ca_cert() and load_def_cl_cert() and load_def_sr_cert())) {
         _err("SSLFactory::load: key/certs: ca(%x/%x) def_cl(%x/%x) def_sr(%x/%x)", ca_key,ca_cert,
@@ -480,13 +481,13 @@ SSL_CTX* SSLFactory::client_ctx_setup(const char* ciphers) {
         exit(3);
     }
 
-    ciphers == nullptr ? SSL_CTX_set_cipher_list(ctx,"ALL:!ADH:!LOW:!aNULL:!EXP:!MD5:@STRENGTH") : SSL_CTX_set_cipher_list(ctx,ciphers);
+    ciphers == nullptr ? SSL_CTX_set_cipher_list(ctx, SSLCom::ci_default_filter) : SSL_CTX_set_cipher_list(ctx,ciphers);
 
     auto ctx_options = def_cl_options;
 #ifdef USE_OPENSSL300
     if (options::ktls) {
         _dia("SSLFactory::client_ctx_setup: KTLS on");
-        ctx_options += SSL_OP_ENABLE_KTLS;
+        ctx_options |= SSL_OP_ENABLE_KTLS;
     }
     else {
         _dia("SSLFactory::client_ctx_setup: KTLS off");
@@ -497,6 +498,9 @@ SSL_CTX* SSLFactory::client_ctx_setup(const char* ciphers) {
     SSL_CTX_set_session_cache_mode(ctx, SSL_SESS_CACHE_NO_INTERNAL);
 
     SSL_CTX_sess_set_new_cb(ctx, SSLCom::new_session_callback);
+    SSL_CTX_set_client_cert_cb(ctx, SSLCom::ssl_client_cert_callback);
+    SSL_CTX_set_tlsext_status_cb(ctx, SSLCom::status_resp_callback);
+    SSL_CTX_set_tlsext_status_arg(ctx, nullptr);
 
     #ifdef USE_OPENSSL111
     SSL_CTX_set_keylog_callback(ctx, SSLCom::ssl_keylog_callback);
@@ -533,7 +537,7 @@ SSL_CTX* SSLFactory::client_dtls_ctx_setup(const char* ciphers) {
         exit(3);
     }
 
-    ciphers == nullptr ? SSL_CTX_set_cipher_list(ctx,"ALL:!ADH:!LOW:!aNULL:!EXP:!MD5:@STRENGTH") : SSL_CTX_set_cipher_list(ctx,ciphers);
+    ciphers == nullptr ? SSL_CTX_set_cipher_list(ctx, SSLCom::ci_default_filter) : SSL_CTX_set_cipher_list(ctx,ciphers);
 
     SSL_CTX_set_session_cache_mode(ctx, SSL_SESS_CACHE_NO_INTERNAL);
 
@@ -554,13 +558,13 @@ SSL_CTX* SSLFactory::server_ctx_setup(EVP_PKEY* priv, X509* cert, const char* ci
         exit(2);
     }
 
-    ciphers == nullptr ? SSL_CTX_set_cipher_list(ctx,"ALL:!ADH:!LOW:!EXP:!MD5:@STRENGTH") : SSL_CTX_set_cipher_list(ctx,ciphers);
+    ciphers == nullptr ? SSL_CTX_set_cipher_list(ctx, SSLCom::ci_default_filter) : SSL_CTX_set_cipher_list(ctx,ciphers);
 
     auto ctx_options = def_sr_options;
 #ifdef USE_OPENSSL300
     if (options::ktls) {
         _dia("SSLFactory::server_ctx_setup: KTLS on");
-        ctx_options += SSL_OP_ENABLE_KTLS;
+        ctx_options |= SSL_OP_ENABLE_KTLS;
     }
     else {
         _dia("SSLFactory::server_ctx_setup: KTLS off");
@@ -573,6 +577,7 @@ SSL_CTX* SSLFactory::server_ctx_setup(EVP_PKEY* priv, X509* cert, const char* ci
     SSL_CTX_sess_set_new_cb(ctx, SSLCom::new_session_callback);
     // set server callback on internal cache miss
     SSL_CTX_sess_set_get_cb(ctx, SSLCom::server_get_session_callback);
+    SSL_CTX_set_alpn_select_cb(ctx, SSLCom::ssl_alpn_select_callback, nullptr);
 
     _deb("SSLCom::server_ctx_setup: loading default key/cert");
     priv == nullptr ? SSL_CTX_use_PrivateKey(ctx, def_sr_key) : SSL_CTX_use_PrivateKey(ctx,priv);
@@ -607,7 +612,7 @@ SSL_CTX* SSLFactory::server_dtls_ctx_setup(EVP_PKEY* priv, X509* cert, const cha
         exit(2);
     }
 
-    ciphers == nullptr ? SSL_CTX_set_cipher_list(ctx,"ALL:!ADH:!LOW:!EXP:!MD5:@STRENGTH") : SSL_CTX_set_cipher_list(ctx,ciphers);
+    ciphers == nullptr ? SSL_CTX_set_cipher_list(ctx, SSLCom::ci_default_filter) : SSL_CTX_set_cipher_list(ctx,ciphers);
 
     SSL_CTX_set_session_cache_mode(ctx, SSL_SESS_CACHE_NO_INTERNAL);
 
@@ -842,7 +847,7 @@ bool SSLFactory::add_to_cache(SSLFactory::X509_CACHE &cache, std::string const& 
     bool op_status = true;
 
     if (parek.chain.key == nullptr || parek.chain.cert == nullptr) {
-        _dia("SSLFactory::add_to_cache<%s>[%X]: one of about to be stored components is nullptr", cache.info.c_str() ,serial);
+        _dia("SSLFactory::add_to_cache<%s>[%X]: one of about to be stored components is nullptr", cache.info.c_str() ,serial.load());
 
         return false;
     }
@@ -888,28 +893,31 @@ std::string SSLFactory::make_store_key(X509* cert_orig, const SpoofOptions& spo)
 
     char tmp[512];
     X509_NAME_oneline( X509_get_subject_name(cert_orig) , tmp, 512);
-    std::string subject(tmp);
+    std::vector<std::string> const cert_sans = SSLFactory::get_sans(cert_orig);
 
-    std::stringstream store_key_ss;
+    std::size_t key_size = std::strlen(tmp) + (spo.self_signed ? 12 : 0);
+    for(auto const& san: cert_sans) key_size += 5 + san.size();
+    for(auto const& san: spo.sans) key_size += 5 + san.size();
 
-    store_key_ss << subject;
+    std::string store_key;
+    store_key.reserve(key_size);
+    store_key.append(tmp);
 
     if(spo.self_signed) {
-        store_key_ss << "+self_signed";
+        store_key.append("+self_signed");
     }
 
-    std::vector<std::string> cert_sans = SSLFactory::get_sans(cert_orig);
     for(auto const& s1: cert_sans) {
-        store_key_ss << string_format("+san:%s",s1.c_str());
+        store_key.append("+san:").append(s1);
     }
 
     if( ! spo.sans.empty() ) {
         for(auto const& san: spo.sans) {
-            store_key_ss << string_format("+san:%s",san.c_str());
+            store_key.append("+san:").append(san);
         }
     }
 
-    return store_key_ss.str();
+    return store_key;
 
 }
 
@@ -927,28 +935,32 @@ std::string SSLFactory::make_store_key(X509* cert_orig, const SpoofOptions& spo)
     //TODO: add signature as part of the key, to cover new orig certificates with also new spoofed ones
 
     X509_NAME_oneline( X509_get_subject_name(cert_orig) , tmp.data(), 512);
-    std::string const subject(tmp.data());
+    std::vector<std::string> const cert_sans = SSLFactory::get_sans(cert_orig);
 
-    std::stringstream store_key_ss;
+    std::size_t key_size = 5 + std::strlen(tmp.data()) + (spo.self_signed ? 12 : 0);
+    for(auto const& san: cert_sans) key_size += 5 + san.size();
+    for(auto const& san: spo.sans) key_size += 5 + san.size();
 
-    store_key_ss << "subj:" << subject;
+    std::string store_key;
+    store_key.reserve(key_size);
+    store_key.append("subj:");
+    store_key.append(tmp.data());
 
     if(spo.self_signed) {
-        store_key_ss << "+self_signed";
+        store_key.append("+self_signed");
     }
 
-    std::vector<std::string> const cert_sans = SSLFactory::get_sans(cert_orig);
     for(auto const& s1: cert_sans) {
-        store_key_ss << string_format("+san:%s",s1.c_str());
+        store_key.append("+san:").append(s1);
     }
 
     if( ! spo.sans.empty() ) {
         for(auto const& san: spo.sans) {
-            store_key_ss << string_format("+san:%s",san.c_str());
+            store_key.append("+san:").append(san);
         }
     }
 
-    return store_key_ss.str();
+    return store_key;
 
 }
 
@@ -956,9 +968,11 @@ std::string SSLFactory::make_store_key(X509* cert_orig, const SpoofOptions& spo)
 
 std::optional<const CertificateChainCtx> SSLFactory::find(X509_CACHE& cache, std::string const& subject) {
 
-    auto lc_ = std::scoped_lock(lock());
     auto const& log = get_log();
 
+    // ptr_cache protects its own lookup and returns a shared_ptr which keeps
+    // the entry alive after the cache lock is released.  Taking the factory-
+    // wide write lock here only serialized otherwise independent handshakes.
     auto it = cache.get(subject);
     if (not it) {
         _deb("SSLFactory::find<%s>[%x]: NOT cached '%s'", cache.info.c_str(), this, subject.c_str());
@@ -1109,75 +1123,43 @@ std::string SSLFactory::get_sans_csv(X509 *x) {
 }
 
 
-std::optional<X509_REQ*> SSLFactory::sign_csr(X509_REQ*&& corpus) const {
-
-    auto* own_corpus = std::move(corpus);
-    auto const& log = get_log();
-
-    EVP_PKEY *pkey = def_sr_key;
-
-    EVP_MD const* digest = EVP_sha256();
-
-    if (!(X509_REQ_sign( own_corpus, pkey, digest))) {
-        _err("SSLFactory::spoof[%X]: error signing request", serial);
-        return std::nullopt;
-    }
-
-    return own_corpus;
-}
-
 std::optional<X509_REQ*> SSLFactory::create_csr_from(X509* cert_orig, bool self_sign, std::vector<std::string>* additional_sans) {
 
     auto const& log = get_log();
 
-    auto a_tmp = std::array<char,2048>();
-    auto* tmp = a_tmp.data();
 
-
-    _deb("SSLFactory::spoof[%X]: about to spoof certificate!", serial);
+    _deb("SSLFactory::spoof[%X]: about to spoof certificate!", serial.load());
 
     if(self_sign) {
-        _dia("SSLFactory::spoof[%X]: about to spoof certificate (self-signed)!", serial);
+        _dia("SSLFactory::spoof[%X]: about to spoof certificate (self-signed)!", serial.load());
     }
     if(additional_sans != nullptr && ! additional_sans->empty()) {
-        _dia("SSLFactory::spoof[%X]: about to spoof certificate (+sans):", serial);
+        _dia("SSLFactory::spoof[%X]: about to spoof certificate (+sans):", serial.load());
         std::vector<std::string>const & sans = *additional_sans;
         for (auto const& san: sans) {
-            _dia("SSLFactory::spoof[%X]:  SAN: %s", serial, san.c_str());
+            _dia("SSLFactory::spoof[%X]:  SAN: %s", serial.load(), san.c_str());
         }
     }
 
-    // get info from the peer certificate
-    X509_NAME_get_text_by_NID(X509_get_subject_name(cert_orig),NID_commonName, tmp,2048);
-    std::string cn(tmp);
-
-    X509_NAME_oneline(X509_get_subject_name(cert_orig), tmp, 2048);
-    std::string subject(tmp);
-
-
-    _deb("SSLFactory::spoof[%X]: generating CSR for '%s'", serial, subject.c_str());
+    _deb("SSLFactory::spoof[%X]: generating internal CSR", serial.load());
 
     auto* copy = X509_REQ_new();
-    X509_NAME* copy_subj = X509_NAME_new();
+    if( not copy) {
+        _err("SSLFactory::spoof[%X]: cannot init request", serial.load());
+        return std::nullopt;
+    }
 
+    auto g_copy = raw::guard([&copy]{
+        if(copy) X509_REQ_free(copy);
+    });
 
     EVP_PKEY* pub_sr_cert = X509_get_pubkey(def_sr_cert);
-    X509_REQ_set_pubkey(copy, pub_sr_cert);
+    if (not pub_sr_cert || X509_REQ_set_pubkey(copy, pub_sr_cert) != 1) {
+        if (pub_sr_cert) EVP_PKEY_free(pub_sr_cert);
+        _err("SSLFactory::spoof[%X]: cannot set request public key", serial.load());
+        return std::nullopt;
+    }
     EVP_PKEY_free(pub_sr_cert);
-
-    if( not copy) {
-        _err("SSLFactory::spoof[%X]: cannot init request", serial);
-        return std::nullopt;
-    }
-
-    if (not copy_subj) {
-        _err("SSLFactory::spoof[%X]: cannot init subject for request", serial);
-        return std::nullopt;
-    }
-
-    auto g_copy_sub = raw::guard([&copy_subj]{
-        if(copy_subj) X509_NAME_free(copy_subj);
-    });
 
     X509_NAME* n_dup = X509_NAME_dup(X509_get_subject_name(cert_orig));
     auto g_n_dup = raw::guard([&n_dup]{
@@ -1185,7 +1167,7 @@ std::optional<X509_REQ*> SSLFactory::create_csr_from(X509* cert_orig, bool self_
     });
 
     if (X509_REQ_set_subject_name(copy, n_dup) != 1) {
-        _err("SSLFactory::spoof[%X]: error copying subject to request", serial);
+        _err("SSLFactory::spoof[%X]: error copying subject to request", serial.load());
         return std::nullopt;
     }
 
@@ -1203,7 +1185,7 @@ std::optional<X509_REQ*> SSLFactory::create_csr_from(X509* cert_orig, bool self_
     std::string san_add;
     if(additional_sans != nullptr and not additional_sans->empty()) {
         san_add = string_csv(*additional_sans);
-        _dia("SSLFactory::spoof[%X]: additional sans = '%s'", serial, san_add.c_str());
+        _dia("SSLFactory::spoof[%X]: additional sans = '%s'", serial.load(), san_add.c_str());
     }
 
     bool san_added = false;
@@ -1216,23 +1198,23 @@ std::optional<X509_REQ*> SSLFactory::create_csr_from(X509* cert_orig, bool self_
             for (int i=0; i < num_of_exts; i++) {
                 X509_EXTENSION *ex = sk_X509_EXTENSION_value(exts, i);
                 if(!ex) {
-                    _err("SSLFactory::spoof[%X]: error obtaining certificate extension [%d] value ", serial, i);
+                    _err("SSLFactory::spoof[%X]: error obtaining certificate extension [%d] value ", serial.load(), i);
                     continue;
                 }
                 ASN1_OBJECT *obj = X509_EXTENSION_get_object(ex);
                 if(!obj) {
-                    _err("SSLFactory::spoof[%X]: unable to extract ASN1 object from extension [%d]", serial, i);
+                    _err("SSLFactory::spoof[%X]: unable to extract ASN1 object from extension [%d]", serial.load(), i);
                     continue;
                 }
 
                 unsigned nid = OBJ_obj2nid(obj);
                 if(nid == NID_subject_alt_name) {
-                    _deb("SSLFactory::spoof[%X]: adding subjAltName to extensions", serial);
+                    _deb("SSLFactory::spoof[%X]: adding subjAltName to extensions", serial.load());
 
 #ifdef USE_OPENSSL11
                     // it'ext_stack easier to get san list with different call, instead of diging it out from here.
                     std::string san = get_sans_csv(cert_orig);
-                    _deb("SSLFactory::spoof[%X]: original cert sans to be added: %ext_stack", serial, san.c_str());
+                    _deb("SSLFactory::spoof[%X]: original cert sans to be added: %ext_stack", serial.load(), san.c_str());
 
 #else
 
@@ -1259,7 +1241,7 @@ std::optional<X509_REQ*> SSLFactory::create_csr_from(X509* cert_orig, bool self_
                     }
 
                     int a_r = add_ext(ext_stack, NID_subject_alt_name, san.data());
-                    _deb("SSLFactory::spoof[%X]: add_ext returned %d", serial, a_r);
+                    _deb("SSLFactory::spoof[%X]: add_ext returned %d", serial.load(), a_r);
 
                     san_added = true;
                 }
@@ -1269,17 +1251,22 @@ std::optional<X509_REQ*> SSLFactory::create_csr_from(X509* cert_orig, bool self_
         if(not san_added) {
 
             int a_r = add_ext(ext_stack, NID_subject_alt_name, san_add.data());
-            _dum("SSLFactory::spoof[%X]: add_ext returned %d", serial, a_r);
+            _dum("SSLFactory::spoof[%X]: add_ext returned %d", serial.load(), a_r);
 
         }
 
         int r = X509_REQ_add_extensions(copy, ext_stack);
-        _dum("SSLFactory::spoof[%X]: X509_REQ_add_extensions returned %d", serial, r);
+        _dum("SSLFactory::spoof[%X]: X509_REQ_add_extensions returned %d", serial.load(), r);
     }
 
-    _deb("SSLFactory::spoof[%X]: generating CSR finished", serial);
+    _deb("SSLFactory::spoof[%X]: generating CSR finished", serial.load());
 
-    return sign_csr(std::move(copy));
+    // This request is an internal container for the subject, public key and
+    // extensions.  It is never transmitted or verified, so signing it would
+    // add a private-key operation to every cold MITM certificate generation.
+    auto* result = copy;
+    copy = nullptr;
+    return result;
 }
 
 bool SSLFactory::validate_spoof_requirements(X509 const* cert, X509_NAME const* cert_name, X509_NAME const* issuer_name, EVP_PKEY const* pkey) const {
@@ -1287,19 +1274,19 @@ bool SSLFactory::validate_spoof_requirements(X509 const* cert, X509_NAME const* 
 
     // init new certificate
     if (not cert) {
-        _err("SSLFactory::spoof[%X]: validate - error creating X509 object", serial);
+        _err("SSLFactory::spoof[%X]: validate - error creating X509 object", serial.load());
         return false;
     }
     if (not cert_name) {
-        _err("SSLFactory::spoof[%X]: validate - subjectName cannot be extracted from CSR", serial);
+        _err("SSLFactory::spoof[%X]: validate - subjectName cannot be extracted from CSR", serial.load());
         return false;
     }
     if (not issuer_name) {
-        _cri("SSLFactory::spoof[%X]: validate - subjectName cannot be extracted from CA!",  serial);
+        _cri("SSLFactory::spoof[%X]: validate - subjectName cannot be extracted from CA!",  serial.load());
         return false;
     }
     if (not pkey) {
-        _err("SSLFactory::spoof[%X]: validate - error getting public key from request", serial);
+        _err("SSLFactory::spoof[%X]: validate - signing public key is unavailable", serial.load());
         return false;
     }
 
@@ -1310,67 +1297,39 @@ std::optional<CertificateChainCtx> SSLFactory::spoof(X509* cert_orig, bool self_
 
     auto const& log = get_log();
 
-    ++serial;
-    auto copy = create_csr_from(cert_orig, self_sign, additional_sans);
-    if(not copy) {
-
-        _err("SSLFactory::spoof[%X]: no CSR generated", serial);
-        return std::nullopt;
-    }
-
+    const long certificate_serial = serial.fetch_add(1, std::memory_order_relaxed) + 1;
     auto* cert = X509_new();
-    auto* name = X509_REQ_get_subject_name(copy.value());
-    auto* issuer_name = X509_get_subject_name(ca_cert);
-    EVP_PKEY* pkey = X509_REQ_get_pubkey(copy.value());
-
-
-    if(not validate_spoof_requirements(cert, name, issuer_name, pkey)) {
+    auto g_cert = raw::guard([&cert]{
+        if(cert) X509_free(cert);
+    });
+    auto* name = cert_orig ? X509_get_subject_name(cert_orig) : nullptr;
+    auto* issuer_name = ca_cert ? X509_get_subject_name(ca_cert) : nullptr;
+    if(not validate_spoof_requirements(cert, name, issuer_name, def_sr_key)) {
         return std::nullopt;
     }
-    auto g_pkey = raw::guard([&pkey]{
-        if(pkey) EVP_PKEY_free(pkey);
-    });
-    auto g_copy = raw::guard([&copy]{
-            X509_REQ_free(copy.value());
-    });
 
 
     // set version number for the certificate (X509v3) and then serial #
     if (X509_set_version (cert, 2L) != 1) {
-        _err("SSLFactory::spoof[%X]: cannot set X509 version!", serial);
+        _err("SSLFactory::spoof[%lX]: cannot set X509 version!", certificate_serial);
         return std::nullopt;
     }
 
-    ASN1_INTEGER_set(X509_get_serialNumber(cert), serial);
+    ASN1_INTEGER_set(X509_get_serialNumber(cert), certificate_serial);
 
     if (X509_set_subject_name(cert, name) != 1) {
-        _err("SSLFactory::spoof[%X]: error setting subject name of certificate", serial);
+        _err("SSLFactory::spoof[%X]: error setting subject name of certificate", serial.load());
         return std::nullopt;
     }     
 
-    int subjAltName_pos = -1;
-    X509_EXTENSION* subjAltName = nullptr;
-    
-    auto req_exts = X509_REQ_get_extensions(copy.value());
-    auto g_req_exts = raw::guard([&req_exts]{
-        sk_X509_EXTENSION_pop_free(req_exts, X509_EXTENSION_free);
-    });
-
-    if (not req_exts) {
-        _inf("SSLFactory::spoof[%X]: error getting the request's extension", serial);
-    } else {
-        subjAltName_pos = X509v3_get_ext_by_NID(req_exts,OBJ_sn2nid("subjectAltName"),-1);
-        subjAltName = X509v3_get_ext(req_exts, subjAltName_pos);
-    }
-
     if (X509_set_issuer_name(cert, issuer_name) != 1) {
-        _err("SSLFactory::spoof[%X]: error setting issuer name of certificate", serial);
+        _err("SSLFactory::spoof[%X]: error setting issuer name of certificate", serial.load());
         return std::nullopt;
         
     }
     // set public key in the certificate 
-    if ((X509_set_pubkey( cert, pkey)) != 1) {
-        _err("SSLFactory::spoof[%X]: error setting public key of the certificate", serial);
+    if ((X509_set_pubkey(cert, def_sr_key)) != 1) {
+        _err("SSLFactory::spoof[%X]: error setting public key of the certificate", serial.load());
         return std::nullopt;
     }
     
@@ -1380,12 +1339,12 @@ std::optional<CertificateChainCtx> SSLFactory::spoof(X509* cert_orig, bool self_
 
     // set duration for the certificate
     if (!(X509_gmtime_adj(X509_get_notBefore(cert), EXPIRE_START))) {
-        _err("SSLFactory::spoof[%X]: error setting beginning time of the certificate", serial);
+        _err("SSLFactory::spoof[%X]: error setting beginning time of the certificate", serial.load());
         return std::nullopt;
     }
 
     if (!(X509_gmtime_adj(X509_get_notAfter(cert), EXPIRE_SECS))) {
-        _err("SSLFactory::spoof[%X]: error setting ending time of the certificate", serial);
+        _err("SSLFactory::spoof[%X]: error setting ending time of the certificate", serial.load());
         return std::nullopt;
     }
 
@@ -1399,19 +1358,32 @@ std::optional<CertificateChainCtx> SSLFactory::spoof(X509* cert_orig, bool self_
         auto ga_ = raw::guard([&ext]{ if(ext) X509_EXTENSION_free(ext); });
 
         if (not ext) {
-            _war("SSLFactory::spoof[%X]: error on \"%s = %s\"", serial, ext_name.c_str(), ext_value.c_str());
-            _war("SSLFactory::spoof[%X]: error creating X509 extension object", serial);
+            _war("SSLFactory::spoof[%X]: error on \"%s = %s\"", serial.load(), ext_name.c_str(), ext_value.c_str());
+            _war("SSLFactory::spoof[%X]: error creating X509 extension object", serial.load());
             continue;
         }
         if (not X509_add_ext(cert, ext, -1)) {
-            _err("SSLFactory::spoof[%X]: error on \"%s = %s\"", serial, ext_name.c_str(), ext_value.c_str());
-            _err("SSLFactory::spoof[%X]: error adding X509 extension into certificate", serial);
+            _err("SSLFactory::spoof[%X]: error on \"%s = %s\"", serial.load(), ext_name.c_str(), ext_value.c_str());
+            _err("SSLFactory::spoof[%X]: error adding X509 extension into certificate", serial.load());
         }
     }
 
-    if(subjAltName != nullptr and not X509_add_ext(cert, subjAltName, -1)) {
-        _err("SSLFactory::spoof[%X]: error adding subjectAltName to certificate", serial);
-        return std::nullopt;
+    std::string sans = get_sans_csv(cert_orig);
+    if(additional_sans != nullptr and not additional_sans->empty()) {
+        const std::string extra_sans = string_csv(*additional_sans);
+        if(not sans.empty()) sans += ',';
+        sans += extra_sans;
+    }
+    if(not sans.empty()) {
+        X509_EXTENSION* san_ext = X509V3_EXT_conf_nid(
+            nullptr, &ctx, NID_subject_alt_name, sans.data());
+        auto g_san_ext = raw::guard([&san_ext]{
+            if(san_ext) X509_EXTENSION_free(san_ext);
+        });
+        if(not san_ext or X509_add_ext(cert, san_ext, -1) != 1) {
+            _err("SSLFactory::spoof[%X]: error adding subjectAltName to certificate", serial.load());
+            return std::nullopt;
+        }
     }
 
     EVP_PKEY* sign_key = ca_key;
@@ -1423,11 +1395,13 @@ std::optional<CertificateChainCtx> SSLFactory::spoof(X509* cert_orig, bool self_
 
     const EVP_MD* digest = EVP_sha256();
     if (!(X509_sign(cert, sign_key, digest))) {
-        _err("SSLFactory::spoof[%X]: error signing certificate", serial);
+        _err("SSLFactory::spoof[%X]: error signing certificate", serial.load());
         return std::nullopt;
     }
 
-    return CertificateChainCtx(def_sr_key, cert);
+    auto result = CertificateChainCtx(def_sr_key, cert);
+    cert = nullptr;
+    return result;
 }
 
 

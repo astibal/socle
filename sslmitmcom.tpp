@@ -32,7 +32,16 @@ bool baseSSLMitmCom<SSLProto>::check_cert(const char* peer_name) {
     
     _deb("SSLMitmCom::check_cert: called");
     bool r = SSLProto::check_cert(peer_name);
+#ifdef USE_OPENSSL300
+    X509* cert = const_cast<X509*>(SSL_get0_peer_certificate(SSLProto::sslcom_ssl));
+#else
     X509* cert = SSL_get_peer_certificate(SSLProto::sslcom_ssl);
+#endif
+
+    if (not cert) {
+        _err("SSLMitmCom::check_cert: upstream handshake provided no peer certificate");
+        return false;
+    }
     
     auto* remote = dynamic_cast<baseSSLMitmCom*>(this->peer());
     
@@ -64,79 +73,18 @@ bool baseSSLMitmCom<SSLProto>::check_cert(const char* peer_name) {
             // If certificate is formally valid, see if it also matches SNI. This is extra check,
             // to avoid SNI evasions.
 
-            std::vector<std::string> hostnames = SSLFactory::get_sans(cert);
-            hostnames.push_back("DNS:"+SSLFactory::print_cn(cert));
-
             bool validated = false;
-            std::string validated_san;
-
-            for(std::string const& candidate: hostnames) {
-                _dia("Target server SAN/CN line: %s",candidate.c_str());
-
-                std::vector<std::string> can_dns = string_split(candidate,',');
-                for(std::string const& can_dns_item: can_dns) {
-                    std::string item = string_trim(can_dns_item);
-                    _dia("           SAN/CN entry: '%s'",item.c_str());
-
-                    if(not this->sslcom_sni().empty()) {
-                        if(item.size() > 4 && item.find("DNS:") == 0) {
-                            item = item.substr(4);
-                            std::transform(item.begin(), item.end(), item.begin(), ::tolower);
-
-
-                            // wildcard
-                            if(item.find("*.") == 0) {
-                                std::string sni_wild;
-
-                                std::size_t firstdot = this->sslcom_sni().find(".");
-                                if( firstdot != std::string::npos) {
-                                    sni_wild = "*" + this->sslcom_sni().substr(firstdot);
-                                    std::transform(sni_wild.begin(), sni_wild.end(), sni_wild.begin(), ::tolower);
-                                }
-
-                                if(sni_wild == item) {
-                                    _dia("Matched sni wildcard: '%s' to cert san/cn wildcard: '%s'",sni_wild.c_str(),item.c_str());
-                                    validated = true;
-                                    validated_san = "DNS:" + item;
-                                    break;
-                                }
-                            }
-                            // FQDN
-                            else {
-
-                                std::string sni = this->sslcom_sni();
-                                std::transform(sni.begin(), sni.end(), sni.begin(), ::tolower);
-
-                                if(this->sslcom_sni() == item) {
-                                    _dia("Matched sni: '%s' to cert san/cn: '%s'", this->sslcom_sni().c_str(), item.c_str());
-                                    validated = true;
-                                    validated_san = "DNS:" + item;
-                                    break;
-                                }
-                            }
-                        }
-                    } else if(item.size() > 3 && item.find("IP:") == 0) {
-                        item = item.substr(3);
-
-                        if(this->owner_cx() && (this->owner_cx()->host() == item)) {
-                            _dia("Comparing IP: '%s' to cert san/cn: '%s'",this->owner_cx()->host().c_str(),item.c_str());
-                            validated = true;
-                            validated_san = "IP:" + item;
-                            break;
-                        }
-                    } else {
-                        _dia("   ignoring item: %s", item.c_str());
-                    }
-                }
-
-
-                if(validated){
-                    break;
-                }
+            if(not this->sslcom_sni().empty()) {
+                validated = X509_check_host(
+                    cert, this->sslcom_sni().c_str(), this->sslcom_sni().size(),
+                    X509_CHECK_FLAG_ALWAYS_CHECK_SUBJECT, nullptr) == 1;
+            } else if(this->owner_cx()) {
+                validated = X509_check_ip_asc(
+                    cert, this->owner_cx()->host().c_str(), 0) == 1;
             }
 
             if(validated) {
-                _dia("SSL hostname check succeeded on %s",validated_san.c_str());
+                _dia("SSL hostname check succeeded");
             }
             else {
                 _war("SSL hostname check failed (sni '%s').", this->sslcom_sni().c_str());
@@ -176,12 +124,18 @@ bool baseSSLMitmCom<SSLProto>::check_cert(const char* peer_name) {
                     if (remote->sslcom_waiting) {
                         if(not remote->upgraded()) {
                             remote->init_server();
-                            remote->upgraded(true);
+                            if (remote->sslcom_ssl) {
+                                remote->upgraded(true);
+                            } else {
+                                _err("SSLMitmCom::check_cert: failed to initialize client-facing TLS state");
+                                r = false;
+                            }
                         } else {
                             _dia("remote is already upgraded");
                         }
                     } else {
                         _war("Trying to init SSL server while it's already running!");
+                        r = false;
                     } 
                 }
             } else {
@@ -194,7 +148,9 @@ bool baseSSLMitmCom<SSLProto>::check_cert(const char* peer_name) {
         _war("SSLMitmCom::check_cert: cannot set peer's cert to spoof: peer is not SSLMitmCom type");
     }
     
+#ifndef USE_OPENSSL300
     X509_free(cert);
+#endif
     return r;
 }
 
@@ -274,6 +230,11 @@ bool baseSSLMitmCom<SSLProto>::use_cert_mitm(X509 *cert_orig, SpoofOptions &spo)
 
     std::string store_key = SSLFactory::make_store_key(cert_orig, spo);
 
+    // Serialize only callers creating the same (or same-shard) certificate.
+    // Unrelated cold SNI handshakes may sign in parallel, while the second
+    // lookup below still prevents duplicate generation for one cache key.
+    auto key_lock = std::scoped_lock(this->factory()->mitm_key_lock(store_key));
+
     auto parek = this->factory()->find_mitm(store_key);
     if (parek.has_value()) {
         _dia("SSLMitmCom::use_cert_mitm: factory found '%s'", store_key.c_str());
@@ -325,8 +286,6 @@ bool baseSSLMitmCom<SSLProto>::spoof_cert(X509* cert_orig, SpoofOptions& spo) {
     auto const& log = log::mitm();
 
 
-    auto lc_ = std::scoped_lock(this->factory()->lock());
-
     if(this->opt.cert.mitm_cert_sni_search && this->use_cert_sni(spo)) return true;
 
     if(this->opt.cert.mitm_cert_ip_search && this->use_cert_ip(spo)) return true;
@@ -342,4 +301,3 @@ bool baseSSLMitmCom<SSLProto>::spoof_cert(X509* cert_orig, SpoofOptions& spo) {
 
 
 #endif
-

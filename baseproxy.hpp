@@ -306,6 +306,7 @@ public:
 
     //bound sockets
     bool handle_sockets_accept(unsigned char side, baseCom* xcom, baseHostCX* thiscx);
+    unsigned int handle_sockets_accept_batch(unsigned char side, baseCom* xcom, baseHostCX* thiscx);
     
     int handle_sockets_once(baseCom*) override;
     void handle_event(baseCom* com) override {

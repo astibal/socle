@@ -185,6 +185,7 @@ public:
         static inline std::atomic<std::size_t> buffsize = 2048;        // initial buffer size
         static inline std::atomic<std::size_t> buffsize_maxmul = 1024; // maximum size as a multiple of initial
         static inline std::atomic<std::size_t> write_full = 200000;    // when to slightly delay our reads if this bytes is queued from their writing
+        static inline std::atomic<std::size_t> io_batch = 256 * 1024;  // maximum bytes drained by one read()/write() dispatch
         static inline uint16_t com_not_ready_slowdown = 20;            // when handshakes are not finished, how aggressive checking (higher, more aggressive)
         static inline std::atomic<std::size_t> fast_copy_start = 20*1024;      // how many bytes copy before moving whole buffers (too low may break detection)
         static inline std::atomic_uint16_t open_timeout = 7;              // seconds after opening connection is considered unsuccessful
@@ -496,6 +497,10 @@ public:
 	// pre- and post- functions/hooks called as the very first or last command in the write() function
 	virtual void pre_write();
 	virtual void post_write(); //note: write buffer is emptied AFTER this call, but data are already sent.
+	// POST-mode inspectors need to observe the historical per-write buffer
+	// layout.  Other users can defer the physical buffer compaction until the
+	// end of a bounded write drain.
+	virtual bool write_needs_incremental_flush();
 	
 	virtual void on_timer() {};
 	
