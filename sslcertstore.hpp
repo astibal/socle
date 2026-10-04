@@ -62,7 +62,7 @@ struct session_holder {
     explicit session_holder(SSL_SESSION* p): ptr(p) {};
     virtual ~session_holder() { if(ptr) SSL_SESSION_free(ptr); }
     
-    uint32_t cnt_loaded = {0};
+    std::atomic_uint32_t cnt_loaded {0};
 };
 
 struct SpoofOptions;
@@ -325,7 +325,7 @@ private:
     void is_ct_available(bool n) { is_ct_available_ = n; };
     bool is_ct_available_ = false;
     
-    long serial = 0xCABA1AL;
+    std::atomic_long serial {0xCABA1AL};
     
     X509*     ca_cert = nullptr; // ca certificate
     EVP_PKEY* ca_key = nullptr;  // ca key to self-sign 
@@ -371,6 +371,10 @@ private:
     X509_STORE* trust_store_ = nullptr;
 
     mutable std::recursive_mutex mutex_cache_write_;
+    static constexpr std::size_t MITM_KEY_LOCK_SHARDS = 64;
+    mutable std::array<std::mutex, MITM_KEY_LOCK_SHARDS> mitm_key_locks_;
+    static constexpr std::size_t CRL_KEY_LOCK_SHARDS = 64;
+    mutable std::array<std::mutex, CRL_KEY_LOCK_SHARDS> crl_key_locks_;
 
     SSLFactory() = default;
 
@@ -405,6 +409,12 @@ public:
 
     //always use locking when using this class!
     std::recursive_mutex& lock() const { return mutex_cache_write_; };
+    std::mutex& mitm_key_lock(std::string const& key) const {
+        return mitm_key_locks_[std::hash<std::string>{}(key) % MITM_KEY_LOCK_SHARDS];
+    }
+    std::mutex& crl_key_lock(std::string const& key) const {
+        return crl_key_locks_[std::hash<std::string>{}(key) % CRL_KEY_LOCK_SHARDS];
+    }
     std::atomic_bool is_initialized = false;
 
 
@@ -436,8 +446,6 @@ public:
     [[nodiscard]] inline SSL_CTX* default_dtls_client_cx() const  { return def_dtls_cl_ctx; }
 
 
-    // sign the CSR. CSR is consumed - if operation fails, CSR is destroyed.
-    std::optional<X509_REQ*> sign_csr(X509_REQ*&& corpus) const;
     // create CSR from original certificate
     std::optional<X509_REQ*> create_csr_from(X509* cert_orig, bool self_sign=false, std::vector<std::string>* additional_sans=nullptr);
 
@@ -477,7 +485,10 @@ public:
     struct options {
         static inline int ocsp_status_ttl = 1800;
         static inline int crl_status_ttl = 86400;
-        static inline bool ktls = true;
+        // Smithproxy cannot use SSL_sendfile(): inspected payloads already
+        // pass through userspace. Software KTLS therefore adds overhead on
+        // ordinary NICs; keep it as an explicit opt-in for HW-offload hosts.
+        static inline bool ktls = false;
     };
     static inline SSLFactory::options options_;
 

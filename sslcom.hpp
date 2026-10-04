@@ -20,7 +20,9 @@
 #define SSLCOM_HPP
 
 #include <map>
+#include <atomic>
 #include <string>
+#include <string_view>
 #include <thread>
 
 #include <openssl/rsa.h>
@@ -79,7 +81,7 @@ struct CompatThreading {
     static void dyn_destroy_function(CompatThreading::CRYPTO_dynlock_value *l, const char *file, int line);
 };
 
-enum class ret_handshake { FATAL=-2, ERROR=-1, AGAIN=0, SUCCESS=1, BYPASS=2 };
+enum class ret_handshake { FATAL=-2, ERROR=-1, AGAIN=0, SUCCESS=1 };
 
 namespace socle::ex {
         class SSL_clienthello_malformed : public std::exception {
@@ -154,6 +156,10 @@ struct SSLComOptions {
 
     // due to its upper level use, it must be statically available
     static inline bool server_hello_copy = false;
+    // Maximum plaintext bytes offered to one SSL_write(). OpenSSL may return
+    // less (notably with partial-write mode), so callers must honor the
+    // positive return value rather than assuming a record size.
+    static inline std::atomic<std::size_t> write_chunk = 20 * 1024;
 
     SSLComCryptoFeatures left {};
     SSLComCryptoFeatures right {};
@@ -241,16 +247,23 @@ public:
 
     // get_peer_* return values as captured on the network
     // note: get_peer* don't necessarily return used values
-    std::string get_sni() const { return sslcom_sni(); } //return copy of SNI
-    std::string get_peer_id() const { return sslcom_peer_hello_id(); } //return copy of SNI
-    std::string get_peer_alpn() const { return sslcom_peer_hello_alpn(); } //return copy of ALPN
+    std::string const& get_sni() const { return sslcom_sni(); }
+    std::string const& get_peer_id() const { return sslcom_peer_hello_id(); }
+    std::string const& get_peer_alpn() const { return sslcom_peer_hello_alpn(); }
 
     // does not indicate SSL state, but operational level of the socket
     // UNKNOWN - default value
     // READY - successful handshake by SSL_accept() or SSL_connect()
     enum class sslcom_op_state_t { UNKNOWN, READY } sslcom_op_state { sslcom_op_state_t::UNKNOWN };
 
-    static int extdata_index() { return sslcom_ssl_extdata_index; };
+    // Function-local static initialization is thread-safe since C++11.  Keeping
+    // the OpenSSL ex-data index here avoids racing the first concurrent TLS
+    // connections through a check-then-assign global integer.
+    static int extdata_index() {
+        static const int index = SSL_get_ex_new_index(
+            0, const_cast<char*>("sslcom object"), nullptr, nullptr, nullptr);
+        return index;
+    };
 
     SSL* get_SSL() const { return sslcom_ssl; }
     X509* target_cert() const { return sslcom_target_cert; }
@@ -271,9 +284,6 @@ protected:
     int      sslcom_ret = 0;  // return value of last SSL_get_error() capable calls:
                               // SSL_connect, SSL_accept, SSL_do_handshake, SSL_read, SSL_peek,
                               // SSL_shutdown, SSL_write - and their respective _ex variants.
-    
-    //SSL external data offset, used by openssl callbacks
-    static inline int sslcom_ssl_extdata_index {-1};
     
     //preferred key/cert pair to be loaded, instead of default one
     X509*     sslcom_pref_cert = nullptr;
@@ -357,6 +367,9 @@ protected:
     bool should_wait_for_peer_hello_ = false;
     //peeks peer socket for client_hello. For server side only (currently).
     bool waiting_peer_hello();
+
+    enum class client_hello_peek_t { WAIT, READY, NOT_TLS, INVALID };
+    client_hello_peek_t normalize_peer_hello_records();
     
     //parses peer hello and stores interesting data (e.g. SNI information). For server side only (currently).
     int parse_peer_hello();
@@ -371,13 +384,13 @@ protected:
     std::string& sslcom_sni() { return sslcom_sni_; }
 
     std::string sslcom_peer_hello_alpn_;
-    std::string sslcom_peer_hello_alpn() const { return sslcom_peer_hello_alpn_; }
+    std::string const& sslcom_peer_hello_alpn() const { return sslcom_peer_hello_alpn_; }
     std::string& sslcom_peer_hello_alpn() { return sslcom_peer_hello_alpn_; }
 
     std::string sslcom_alpn_;
 
     std::string sslcom_peer_hello_id_;
-    std::string sslcom_peer_hello_id() const { return sslcom_peer_hello_id_; }
+    std::string const& sslcom_peer_hello_id() const { return sslcom_peer_hello_id_; }
     std::string& sslcom_peer_hello_id() { return sslcom_peer_hello_id_; }
 
     std::shared_ptr<std::vector<std::string>> sni_filter_to_bypass_;
@@ -521,12 +534,16 @@ public:
     using verify_status_t = com::ssl::verify_status_t;
     using vrf_other_values_t = com::ssl::vrf_other_values_t;
 
-    static const int rescan_threshold_read = 30;
-    static const int rescan_threshold_write = 30;
-
     bool bypass_me_and_peer();
     static inline const char* ci_def_filter
         = "HIGH RC4 !aNULL !eNULL !LOW !3DES !MD5 !EXP !DSS !PSK !SRP !kECDH !CAMELLIA !IDEA !SEED @STRENGTH";
+    static inline const char* ci_default_filter
+        = "HIGH RC4 !aNULL !eNULL !LOW !3DES !MD5 !EXP !DSS !PSK !SRP !kECDH !CAMELLIA !IDEA !SEED @STRENGTH !RC4";
+
+    static constexpr bool uses_default_cipher_filter(const SSLComCryptoFeatures& features) {
+        return features.kex_dh && features.kex_rsa && features.allow_sha1 &&
+               !features.allow_rc4 && features.allow_aes128;
+    }
 
     int ocsp_cert_is_revoked = -1;
     [[maybe_unused]] static int certificate_status_ocsp_check(baseSSLCom* com);
@@ -568,6 +585,7 @@ public:
     static int ct_verify_callback(const CT_POLICY_EVAL_CTX *ctx, const STACK_OF(SCT) *scts, void *arg);
 
     static inline int SSLCOM_CLIENTHELLO_TIMEOUT = 3*1000; //in ms
+    static constexpr std::size_t SSLCOM_CLIENTHELLO_MAX_SIZE = 256 * 1024;
     static inline int SSLCOM_WRITE_TIMEOUT = 60*1000;      //in ms
     static inline int SSLCOM_READ_TIMEOUT = 60*1000;       //in ms
 
