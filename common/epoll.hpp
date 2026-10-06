@@ -127,6 +127,10 @@ struct epoll {
     set_type in_set;
     set_type out_set;
     set_type err_set;
+    // Clean peer shutdown is not a socket error. Keep it observable separately
+    // while routing it through the normal read path so buffered bytes and EOF
+    // are consumed in order.
+    set_type hup_set;
     set_type enforce_in_set;
 
     // this set is used for sockets where ARE already some data, but we wait for more.

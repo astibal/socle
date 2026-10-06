@@ -203,6 +203,10 @@ public:
     /// It is known UDPCom is using this feature.
     /// This base version is just returning back the original value.
     virtual int translate_socket(int vsock) const { return vsock; };
+    /// Distinguish a transport-owned virtual token from a syscall error.
+    /// Ordinary communications accept only real descriptors; transports
+    /// using negative identities override this method.
+    virtual bool descriptor_valid(int fd) const { return fd > 0; }
     virtual int socket() const { return fd_; }
 
     // sets a socket and closes previous socket if set
@@ -253,6 +257,9 @@ public:
     // sometimes do writes on themselves and another read is necessary
     virtual bool readable(int s) { return true; };
     virtual bool writable(int s) { return true; };
+    // A protocol state machine may require EPOLLOUT even with an empty
+    // application write buffer (for example TLS read -> WANT_WRITE).
+    virtual bool write_event_pending() const { return false; }
     
     // check if socket is changed
     virtual bool in_readset(int s) { return master()->poller.in_read_set(s); };

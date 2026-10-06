@@ -21,6 +21,8 @@
 
 #include <string>
 #include <vector>
+#include <cstring>
+#include <stdexcept>
 
 #include <cstdint>
 #include <arpa/inet.h>
@@ -28,13 +30,20 @@
 #include <buffer.hpp>
 #include <log/logan.hpp>
 
-inline uint32_t ltv_get_length(uint8_t const* data) { return ntohl(*((uint32_t*)data)); }
-inline void ltv_set_length(uint8_t* const data, uint32_t l) { *((uint32_t*)data) = htonl(l); }
+inline uint32_t ltv_get_length(uint8_t const* data) {
+    uint32_t value = 0;
+    std::memcpy(&value, data, sizeof(value));
+    return ntohl(value);
+}
+inline void ltv_set_length(uint8_t* const data, uint32_t l) {
+    const auto value = htonl(l);
+    std::memcpy(data, &value, sizeof(value));
+}
 
-inline uint8_t  ltv_get_id(uint8_t* const data) { return ((uint8_t*)data)[4]; }
+inline uint8_t  ltv_get_id(uint8_t const* const data) { return data[4]; }
 inline void  ltv_set_id(uint8_t* const data, uint8_t i) { ((uint8_t*)data)[4] = i; }
 
-inline uint8_t  ltv_get_type(uint8_t* const data) { return ((uint8_t*)data)[5]; }
+inline uint8_t  ltv_get_type(uint8_t const* const data) { return data[5]; }
 inline void  ltv_set_type(uint8_t* const data, uint8_t t) { ((uint8_t*)data)[5] = t; }
 
 
@@ -90,8 +99,10 @@ public:
 		return at(i);
 	}
 
-    [[nodiscard]] inline uint8_t* data() const { return ltv_get_data_ptr(data_); }
-    [[nodiscard]] inline size_t datalen() const { return len() -ltv_header_size(); };
+    [[nodiscard]] inline uint8_t* data() const { return data_ ? ltv_get_data_ptr(data_) : nullptr; }
+    [[nodiscard]] inline size_t datalen() const {
+        return len() >= ltv_header_size() ? len() - ltv_header_size() : 0;
+    };
 
     [[nodiscard]] inline uint8_t* buffer() const { return data_; }
     [[nodiscard]] inline uint32_t buflen() const { return len(); }
@@ -105,9 +116,19 @@ public:
 	void set_num(unsigned char id,unsigned char type,uint32_t);
 	void container(unsigned char id);
 
-    [[nodiscard]] inline unsigned long data_int() const { return ntohl(*(uint32_t*)data()); }
+    [[nodiscard]] inline unsigned long data_int() const {
+        if(datalen() < sizeof(uint32_t)) {
+            throw std::invalid_argument("data size too small to read uint32");
+        }
+        uint32_t value = 0;
+        std::memcpy(&value, data(), sizeof(value));
+        return ntohl(value);
+    }
     inline void write_int(uint32_t d) {
-        if(datalen() >= 4) { *(uint32_t*)data() = htonl(d); }
+        if(datalen() >= sizeof(uint32_t)) {
+            const auto value = htonl(d);
+            std::memcpy(data(), &value, sizeof(value));
+        }
         else { throw std::invalid_argument("data size too small to write uint32"); }
     }
 

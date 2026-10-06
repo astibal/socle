@@ -158,6 +158,63 @@ TEST(Text,HexDump) {
     std::cout << hex_dump(data, sizeof(data)).c_str();
 }
 
+TEST(Display, FormattingAndNumericBoundaries) {
+    EXPECT_EQ(string_format("%s:%d", "port", 443), "port:443");
+    EXPECT_EQ(string_format_old("%s:%d", "port", 443), "port:443");
+    EXPECT_EQ(number_suffixed(1023), "1023.0");
+    EXPECT_EQ(number_suffixed(1024), "1.00k");
+    EXPECT_EQ(number_suffixed(1024 * 1024), "1.00M");
+    EXPECT_EQ(number_suffixed(1024UL * 1024 * 1024), "1.00G");
+    EXPECT_EQ(number_suffixed(1024UL * 1024 * 1024 * 1024), "1.000T");
+    EXPECT_NE(string_error(EINVAL).find("error 22:"), std::string::npos);
+}
+
+TEST(Display, EscapingSplittingAndConversionsHandleCorners) {
+    EXPECT_EQ(escape("a b\\c\n", false, true), "a\\ b\\\\c\\n");
+    EXPECT_EQ(escape("100%", true, false), "100%%");
+    EXPECT_EQ(string_split("a::b", ':'), (std::vector<std::string>{"a", "", "b"}));
+    EXPECT_EQ(string_tolower("MiXeD"), "mixed");
+    EXPECT_EQ(string_csv({"a", "b", "c"}, ';'), "a;b;c");
+    EXPECT_EQ(safe_val("42", -1), 42);
+    EXPECT_EQ(safe_val("not-a-number", -1), -1);
+    EXPECT_EQ(safe_val("999999999999999999999", -1), -1);
+    EXPECT_EQ(safe_ull_value("18446744073709551615"), 18446744073709551615ULL);
+    EXPECT_FALSE(safe_ull_value("nope").has_value());
+    EXPECT_EQ(safe_ll_value("-42"), -42);
+    EXPECT_FALSE(safe_ll_value("999999999999999999999").has_value());
+}
+
+TEST(Display, TrimAndShortenRespectTheirDeclaredBounds) {
+    EXPECT_EQ(string_trim("  alpha beta  \t\n"), "alpha beta");
+    EXPECT_EQ(string_trim("\t\n"), "");
+    EXPECT_EQ(string_trim("plain"), "plain");
+
+    EXPECT_EQ(string_shorten("abcdefghij", 9), "abc...hij");
+    EXPECT_EQ(string_shorten("abcdefghij", 8), "abc...ij");
+    EXPECT_EQ(string_shorten("abcdefghij", 3), "abc");
+    EXPECT_EQ(string_shorten("abcdefghij", 0), "");
+    EXPECT_EQ(string_shorten("short", 9), "short");
+}
+
+TEST(Display, VersionArgumentsAndHexDumpAreDeterministic) {
+    EXPECT_TRUE(version_check("6.8.12", "6.8"));
+    EXPECT_TRUE(version_check("6.9", "6.8.99"));
+    EXPECT_FALSE(version_check("6.7.99", "6.8"));
+    EXPECT_TRUE(version_check("not-a-version", "6.8"));
+
+    char arg0[] = "smithproxy";
+    char arg1[] = "--help";
+    char* args[] = {arg0, arg1};
+    EXPECT_EQ(args_to_vec(args, 2),
+              (std::vector<std::string>{"smithproxy", "--help"}));
+
+    const std::array<unsigned char, 3> bytes{0x41, 0x00, 0xff};
+    EXPECT_EQ(hex_print(bytes.data(), bytes.size()), "4100FF");
+    auto dump = hex_dump(bytes.data(), bytes.size(), 2, '>', true, 16);
+    EXPECT_NE(dump.find(">[0010]"), std::string::npos);
+    EXPECT_NE(dump.find("41 00 FF"), std::string::npos);
+}
+
 TEST(Text, TAGS_ADD) {
     std::string tstr1 = "+abc+def+ghi";
     std::vector<std::string> res1 = {"abc", "def", "ghi" };

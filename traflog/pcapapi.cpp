@@ -779,8 +779,10 @@ namespace socle::pcapng {
         if(timestamp_high == 0 and timestamp_low == 0) {
             timeval time{};
             gettimeofday(&time, nullptr);
-            timestamp_high = time.tv_sec;
-            timestamp_low = time.tv_usec;
+            auto const timestamp = static_cast<uint64_t>(time.tv_sec) * 1'000'000ULL
+                                   + static_cast<uint64_t>(time.tv_usec);
+            timestamp_high = static_cast<uint32_t>(timestamp >> 32U);
+            timestamp_low = static_cast<uint32_t>(timestamp);
         }
 
         out.append(timestamp_high);

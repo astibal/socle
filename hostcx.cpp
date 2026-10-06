@@ -102,6 +102,15 @@ int baseHostCX::connect() {
         return -1;
     }
 
+    // A reconnect reuses this context. Retire the descriptor saved by the
+    // preceding shutdown before it can be overwritten by another cycle, and
+    // reset directional state belonging to the old stream.
+    if(closing_fds_ > 0) {
+        com()->close(closing_fds_);
+        closing_fds_ = 0;
+    }
+    read_eof(false);
+
     opening(true);
 
     _deb("HostCX::connect[%s]: blocking=%d",c_type(), baseCom::GLOBAL_IO_BLOCKING());
@@ -416,7 +425,14 @@ int baseHostCX::read() {
 
     if(peer() && peer()->writebuf()->size() > baseHostCX::params_t::write_full) {
         _deb("baseHostCX::read[%d]: deferring read operation",socket());
-        com()->rescan_read(socket());
+        // rescan_read() temporarily removes the descriptor and restores it as
+        // EPOLLIN-only. Preserve an independent queued/protocol-level write
+        // (notably TLS WANT_WRITE) by using the IN|OUT rescan path instead.
+        if(opening() || !writebuf()->empty() || com()->write_event_pending()) {
+            com()->rescan_write(socket());
+        } else {
+            com()->rescan_read(socket());
+        }
         return -1;
     }
 
@@ -487,7 +503,7 @@ int baseHostCX::read() {
         }
         else if(cur_io_len == 0) {
             _dia("baseHostCX::read[%s]: error while reading. %d bytes read into buffer.", c_type(), buffer_written_len);
-            error(true);
+            read_eof(true);
 
             break;
         }
@@ -545,8 +561,8 @@ int baseHostCX::read() {
         after_read(static_cast<std::size_t>(buffer_written_len));
 
     } else if (buffer_written_len == 0) {
-        _dia("baseHostCX::read[%s]: error while reading", c_type());
-        error(true);
+        _dia("baseHostCX::read[%s]: end of input", c_type());
+        read_eof(true);
     } else {
         processed_in_ = 0;
     }
@@ -690,6 +706,15 @@ int baseHostCX::write() {
         }
     }
 
+    // A transport-level negative result is fatal (non-blocking retry states
+    // are normalized to zero by TCPCom/SSLCom).  Classify it independently
+    // of batch progress: a successful prefix followed by a fatal tail error
+    // still has to terminate the connection.
+    if(last_result < 0) {
+        _dia("baseHostCX::write[%s] write failed: %s, unrecoverable.", c_type(), string_error().c_str());
+        error(true);
+    }
+
     if(total_written > 0) {
         if(!incremental_flush) {
             _dum("baseHostCX::write[%s]: calling batched post_write", c_type());
@@ -699,15 +724,16 @@ int baseHostCX::write() {
             writebuf_.flush(total_written);
         }
 
-        if(not writebuf_.empty()) {
+        if(not writebuf_.empty() && last_result >= 0) {
             _dia("baseHostCX::write[%s]: %zu bytes written, %zu pending -> setting socket write monitor",
                  c_type(), total_written, writebuf_.size());
             com()->set_write_monitor(socket());
             rescan_out_flag_ = true;
-        } else if(rescan_out_flag_) {
+        } else if(rescan_out_flag_ || read_eof()) {
             rescan_out_flag_ = false;
             // stop monitoring write which results in unnecessary write() calls
-            com()->change_monitor(socket(), EPOLLIN);
+            if(read_eof()) com()->unset_monitor(socket());
+            else com()->change_monitor(socket(), EPOLLIN);
         }
 
         if(baseCom::debug_log_data_crc) {
@@ -728,10 +754,6 @@ int baseHostCX::write() {
         com()->rescan_write(socket());
         rescan_out_flag_ = true;
     }
-    else if(last_result < 0) {
-        _dia("baseHostCX::write[%s] write failed: %s, unrecoverable.", c_type(), string_error().c_str());
-    }
-
     if(last_result < 0 && total_written == 0) {
         return down_cast<int>(last_result).value_or(-1);
     }
@@ -788,10 +810,10 @@ lockbuffer& baseHostCX::to_read() {
     return *readbuf();
 }
 
-void baseHostCX::to_write(buffer& b) {
+void baseHostCX::to_write(buffer& b, bool consume_source) {
 
     bool fastlane = false;
-    if(writebuf()->empty()) {
+    if(consume_source && writebuf()->empty()) {
         if(meter_write_bytes > params_t::fast_copy_start) {
             _deb("baseHostCX::to_write(buf)[%s]: fastlane swap %dB buffer", c_type(), b.size());
 
@@ -816,20 +838,29 @@ void baseHostCX::to_write(buffer& b) {
              writebuf_.size());
     }
 
-    com()->set_write_monitor(socket());
+    if(read_eof()) {
+        com()->set_write_monitor_only(socket());
+    }
+    else com()->set_write_monitor(socket());
 }
 
 void baseHostCX::to_write(const std::string& s) {
 
     writebuf_.append(s.data(), s.size());
-    com()->set_write_monitor(socket());
+    if(read_eof()) {
+        com()->set_write_monitor_only(socket());
+    }
+    else com()->set_write_monitor(socket());
     _deb("baseHostCX::to_write(ptr)[%s]: appending %d bytes, buffer size now %d bytes", c_type(), s.size(), writebuf_.size());
 
 }
 
 void baseHostCX::to_write(unsigned char* c, unsigned int l) {
     writebuf_.append(c,l);
-    com()->set_write_monitor(socket());
+    if(read_eof()) {
+        com()->set_write_monitor_only(socket());
+    }
+    else com()->set_write_monitor(socket());
     _deb("baseHostCX::to_write(ptr)[%s]: appending %d bytes, buffer size now %d bytes", c_type(), l, writebuf_.size());
 }
 

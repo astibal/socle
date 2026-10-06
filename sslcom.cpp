@@ -153,7 +153,9 @@ namespace socle::com::ssl {
         baseCom const *left = reverse ? com->peer() : com;
         baseCom const *right = reverse ? com : com->peer();
 
-        if (left->owner_cx()) {
+        if (!left) {
+            ss << "<detached>";
+        } else if (left->owner_cx()) {
             ss << left->owner_cx()->name();
         } else {
             ss << left->shortname();

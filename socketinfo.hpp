@@ -87,7 +87,7 @@ struct SocketInfo {
     void pack_dst() { dst.pack(); };
 
 
-    int create_socket_left (int l4_proto);
+    int create_socket_left(int l4_proto, bool transparent_source = true);
 
 
     // create pseudo-unique session id. If @negative is true, returning value is "signed" (most significant bit set to 1)

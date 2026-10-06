@@ -107,7 +107,8 @@ int baseCom::namesocket(int sockfd, std::string& addr, unsigned short port, sa_f
         _err("cannot name socket: unsupported protocol family");
     }
 
-    int ret_bind = ::bind(sockfd, (sockaddr*)&sa, sizeof(sockaddr_storage));
+    const socklen_t address_size = family == AF_INET6 ? sizeof(sockaddr_in6) : sizeof(sockaddr_in);
+    int ret_bind = ::bind(sockfd, reinterpret_cast<sockaddr*>(&sa), address_size);
     if(ret_bind != 0) {
         err_errno(string_format("baseCom::namesocket[%d]: bind", sockfd).c_str(), "<nil>", ret_bind);
         ret_bind = errno;
@@ -281,7 +282,10 @@ int baseCom::poll() {
     
     _ext("baseCom::poll: called");
 
-    auto wait_time = poll_msec;
+    // Proxy lifecycle timers have one-second granularity.  A completely idle
+    // descriptor set must not postpone half-close/idle/opening deadlines until
+    // the legacy ten-second I/O poll timeout expires.
+    auto wait_time = std::min<long>(poll_msec, 1000);
     if(not poller.rescans_empty()) {
         _dia("baseCom::poll: rescans not empty, shorter poll cycle!");
         wait_time = rescan_msec;

@@ -62,55 +62,35 @@ std::string make_ts() {
 }
 
 std::string uptime_string(time_t uptime) {
-
-    double diff = uptime;
     std::ostringstream o;
 
-    if ( diff < 60 )
+    if (uptime < 60)
     {
-        o << diff <<"s";
+        o << uptime <<"s";
         return o.str();
     }
 
-    if ( diff < 3600 )
+    const auto seconds = uptime % 60;
+    const auto minutes = (uptime / 60) % 60;
+    const auto hours = (uptime / 3600) % 24;
+    const auto days = (uptime / 86400) % 365;
+
+    if (uptime < 3600)
     {
-        int min = (int)diff/60;
-        int sec= (int)diff%60;
-	
-        o << min <<"m "<< sec << "s";
+        o << minutes <<"m "<< seconds << "s";
     }
-    else if ( diff < 86400 ) /* DAY */
+    else if (uptime < 86400) /* DAY */
     {
-        int hours = (int) diff/3600;
-        int hourRemainder = (int)diff%3600;
-        int min = (int)hourRemainder/60;
-        int sec= (int)diff%60;
-	
-        o<< hours << "h "<< min << "m "<< sec << "s";
+        o << hours << "h "<< minutes << "m "<< seconds << "s";
     }
-    else if ( diff < 31536000 ) /* YEAR */
+    else if (uptime < 31536000) /* YEAR */
     {
-        int days = (int) diff/86400;
-        int daysRemainder = (int)diff%86400;
-        int hours = (int) daysRemainder/3600;
-        int hourRemainder = (int)(diff - 86400)%3600;
-        int min = (int)hourRemainder/60;
-        int sec= (int)diff%60;
-	
-        o << days << "d " << hours << "h "<< min << "m "<<sec<< "s";
+        o << days << "d " << hours << "h "<< minutes << "m "<< seconds << "s";
     }
     else
     {
-        int years = (int) diff/31536000;
-        int yearsRemainder = (int) diff%31536000;
-        int days = (int) yearsRemainder/86400;
-        int daysRemainder = (int)diff%86400;
-        int hours = (int) daysRemainder/3600;
-        int hourRemainder = (int)(diff - 86400)%3600;
-        int min = (int)hourRemainder/60;
-        int sec= (int)diff%60;
-        
-	o<< years << "y " << days << "d " << hours << "h " << min << "m " << sec << "s";
+        const auto years = uptime / 31536000;
+        o << years << "y " << days << "d " << hours << "h " << minutes << "m " << seconds << "s";
     }
 
 

@@ -165,7 +165,8 @@ int TCPCom::bind(unsigned short port) {
         }
     }
     
-    if (::bind(sock, (sockaddr *)&sa, sizeof(sa)) == -1) {
+    const socklen_t address_size = sa.ss_family == AF_INET ? sizeof(sockaddr_in) : sizeof(sockaddr_in6);
+    if (::bind(sock, reinterpret_cast<sockaddr*>(&sa), address_size) == -1) {
         ::close(sock);   // coverity: 1407959
         return -130;
     }
@@ -180,10 +181,13 @@ int TCPCom::bind(unsigned short port) {
 
 int TCPCom::accept ( int sockfd, sockaddr* addr, socklen_t* addrlen_ ) {
 
-    int news = ::accept4(sockfd, addr, addrlen_, SOCK_NONBLOCK | SOCK_CLOEXEC);
+    int news;
+    do {
+        news = ::accept4(sockfd, addr, addrlen_, SOCK_NONBLOCK | SOCK_CLOEXEC);
+    } while (news < 0 && errno == EINTR);
 
     if (news < 0) {
-        if (errno != EAGAIN) {
+        if (errno != EAGAIN && errno != EWOULDBLOCK) {
             _err("accept[%d]: failed: %s", sockfd, string_error().c_str());
             return -1;
         } else {

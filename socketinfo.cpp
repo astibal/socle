@@ -210,13 +210,21 @@ void SockOps::socket_transparent(int fd, int family) {
     }
 }
 
-int SocketInfo::create_socket_left(int l4_proto) {
+int SocketInfo::create_socket_left(int l4_proto, bool transparent_source) {
 
     int fd_left = SockOps::socket_create(src.family, l4_proto, 0);
-    SockOps::socket_transparent(fd_left, src.family);
 
-    src.pack();
-    dst.pack();
+    try {
+        // Explicit UDP proxies bind a local relay address and do not spoof a
+        // non-local source. Requiring IP_TRANSPARENT there needlessly makes
+        // SOCKS UDP root-only. Transparent and redirect listeners still need
+        // the option for their original-destination tuple.
+        if(transparent_source) {
+            SockOps::socket_transparent(fd_left, src.family);
+        }
+
+        src.pack();
+        dst.pack();
 
     auto plug_socket = [&](int fd, sockaddr* bind_ss, sockaddr* connect_ss) {
 
@@ -227,7 +235,9 @@ int SocketInfo::create_socket_left(int l4_proto) {
 
         bool is_six = connect_ss->sa_family == AF_INET6;
 
-        if (0 != ::setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, bind_connect_race_hack_iface, bcrhi_sz)) {
+        if (transparent_source &&
+            0 != ::setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE,
+                              bind_connect_race_hack_iface, bcrhi_sz)) {
             throw socket_info_error("cannot bind to device - bind-connect races may occur");
         }
 
@@ -248,7 +258,7 @@ int SocketInfo::create_socket_left(int l4_proto) {
             // socket before becoming visible on other interfaces. Reconnecting
             // an already-connected UDP socket changes the peer inside the
             // kernel and avoids a userspace bind-to-connect race window.
-            if(is_six) {
+            if(transparent_source && is_six) {
                 auto dummy = *reinterpret_cast<sockaddr_in6*>(connect_ss);
                 dummy.sin6_addr = in6addr_loopback;
                 dummy.sin6_scope_id = 0;
@@ -269,14 +279,19 @@ int SocketInfo::create_socket_left(int l4_proto) {
             }
         }
 
-        if(not is_six) {
+        if(transparent_source && not is_six) {
             if (0 != ::setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, "", 0)) {
                 throw socket_info_error("cannot bind to 'any' device - socket inoperable");
             }
         }
     };
 
-    plug_socket(fd_left, (sockaddr *) &dst.ss.value(), (sockaddr *) &src.ss.value());
+        plug_socket(fd_left, (sockaddr *) &dst.ss.value(), (sockaddr *) &src.ss.value());
+    }
+    catch(...) {
+        ::close(fd_left);
+        throw;
+    }
 
     return fd_left;
 }

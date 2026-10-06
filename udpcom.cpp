@@ -87,6 +87,20 @@ int UDPCom::translate_socket(int vsock) const {
     return baseCom::translate_socket(vsock);
 }
 
+bool UDPCom::descriptor_valid(int fd) const {
+    if(fd > 0) return true;
+    if(fd == 0) return false;
+
+    auto datagrams = datagram_com();
+    auto lock = std::scoped_lock(datagrams->lock);
+    auto const found = datagrams->datagrams_received.find(static_cast<uint32_t>(fd));
+    if(found == datagrams->datagrams_received.end() || !found->second) return false;
+
+    auto const& record = found->second;
+    return (record->cx != nullptr && record->cx == owner_cx())
+           || (record->owner_token != 0 && record->owner_token == owner_token());
+}
+
 
 int UDPCom::accept(int sockfd, sockaddr* addr, socklen_t* addrlen_) {
     return sockfd;
@@ -140,7 +154,8 @@ int UDPCom::bind(short unsigned int port) {
         }
     }
     
-    if (::bind(new_socket, (sockaddr *)&sa, sizeof(sa)) == -1) {
+    const socklen_t address_size = sa.ss_family == AF_INET ? sizeof(sockaddr_in) : sizeof(sockaddr_in6);
+    if (::bind(new_socket, reinterpret_cast<sockaddr*>(&sa), address_size) == -1) {
         ::close(new_socket);  // coverity: 1408014
         return -130;
     }
@@ -564,21 +579,20 @@ int UDPCom::read_from_pool(int _fd, void* _buf, size_t _n, int _flags) {
                 //_cons(string_format("read_from_pool: copying %dB from buffer of size %d", to_copy, elem_size).c_str());
 
                 if(! (_flags & MSG_PEEK)) {
+                    // Match recv(2) datagram semantics: when the caller's
+                    // buffer is short, the unread tail of this packet is
+                    // discarded. It must not reappear as another datagram.
+                    queue_elem.clear();
+                    _dia("UDPCom::read_from_pool[%d]: retrieved %d bytes and consumed datagram", _fd, copied);
 
-                    queue_elem.flush(to_copy);
-                    _dia("UDPCom::read_from_pool[%d]: retrieved %d bytes from receive pool, in buffer left %d bytes", _fd, copied, queue_elem.size());
+                    int rem_count = 0;
+                    {
+                        auto ul_ = std::scoped_lock(datagram_com()->lock);
+                        rem_count = datagram_com()->in_virt_set.erase(_fd);
+                    }
 
-                    if(copied >= elem_size) {
-
-                        int rem_count = 0;
-                        {
-                            auto ul_ = std::scoped_lock(datagram_com()->lock);
-                            rem_count = datagram_com()->in_virt_set.erase(_fd);
-                        }
-
-                        if(rem_count > 0) {
-                            _dia("buffer read to zero, erased %d entries in in_virt_set", rem_count);
-                        }
+                    if(rem_count > 0) {
+                        _dia("datagram consumed, erased %d entries in in_virt_set", rem_count);
                     }
 
                 } else {
@@ -634,7 +648,8 @@ ssize_t UDPCom::write(int _fd, const void* _buf, size_t _n, int _flags)
         unsigned short port;
         int fa = SockOps::ss_address_unpack(&udpcom_addr, &rps, &port);
         
-        ssize_t ret =  ::sendto(_fd, _buf, _n, _flags, (sockaddr*)&udpcom_addr, sizeof(sockaddr_storage));
+        ssize_t ret = ::sendto(_fd, _buf, _n, _flags,
+                               reinterpret_cast<sockaddr*>(&udpcom_addr), udpcom_addrlen);
         _deb("write[%d]: sendto %s/%s:%d returned %d", _fd, SockOps::family_str(fa).c_str(), rps.c_str(), port, ret);
         
         if(ret < 0) {
@@ -672,7 +687,7 @@ ssize_t UDPCom::write_to_pool(int _fd, const void* _buf, size_t _n, int _flags) 
 
         if(record->socket_left.has_value()) {
             _dia("UDPCom::write_to_pool[%d]: about to write %d bytes into real socket %d", _fd, _n, record->socket_left.value());
-            ssize_t l = ::send(record->socket_left.value(), _buf, _n, 0);
+            ssize_t l = ::send(record->socket_left.value(), _buf, _n, _flags);
 
             //_deb("UDPCom::write_to_pool[%d]: %d written to socket %d", _fd , l, record->socket_left.value());
 
@@ -965,6 +980,12 @@ int UDPCom::remove_datagram_entry(int fd) {
             return 0;
         }
 
+        if(it->reuse) {
+            _dia("UDPCom::remove_datagram_entry[%d]: reuse flag set, preserving entry once.", fd);
+            it->reuse = false;
+            return 0;
+        }
+
         if(not it->flow_key.empty()) {
             auto flow_it = datagram_com()->flow_to_virtual.find(it->flow_key);
             if(flow_it != datagram_com()->flow_to_virtual.end() && flow_it->second == key) {
@@ -972,20 +993,14 @@ int UDPCom::remove_datagram_entry(int fd) {
             }
         }
 
-        if(not it->reuse) {
-            if(it->socket_left.has_value() && it->socket_left.value() > 0) {
-                int left = it->socket_left.value();
+        if(it->socket_left.has_value() && it->socket_left.value() > 0) {
+            int left = it->socket_left.value();
 
-                if(kill_socket(left) != 0) {
-                    _war("UDPCom::remove_datagram_entry[%d]/[%d]: socket close error", fd, left);
-                } else {
-                    _deb("UDPCom::remove_datagram_entry[%d]/[%d]: socket closed", fd, left);
-                }
+            if(kill_socket(left) != 0) {
+                _war("UDPCom::remove_datagram_entry[%d]/[%d]: socket close error", fd, left);
+            } else {
+                _deb("UDPCom::remove_datagram_entry[%d]/[%d]: socket closed", fd, left);
             }
-
-        } else {
-            _dia("UDPCom::remove_datagram_entry[%d]: datagrams_received entry reuse flag set, entry not deleted.", fd);
-            it->reuse = false;
         }
 
         _dia("UDPCom::remove_datagram_entry[%d]: datagrams_received entry erased", fd);

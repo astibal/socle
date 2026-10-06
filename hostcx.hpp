@@ -257,6 +257,7 @@ private:
 
     // after writing all data into the socket we should shutdown the socket
     bool close_after_write_ = false;
+    bool read_eof_ = false;
 
     // larval connection facility
     bool opening_ = false;
@@ -481,11 +482,13 @@ public:
 	virtual std::size_t process_in();
     virtual std::size_t process_out();
 
-	virtual void to_write(buffer& b);
+	virtual void to_write(buffer& b, bool consume_source = true);
     virtual void to_write(const std::string&);
 	virtual void to_write(unsigned char* c, unsigned int l); 
 	inline bool close_after_write() const { return close_after_write_; };
 	inline void close_after_write(bool b) { close_after_write_ = b; };
+    [[nodiscard]] inline bool read_eof() const { return read_eof_; }
+    inline void read_eof(bool value) { read_eof_ = value; }
 	
 	virtual lockbuffer& to_read();
 	virtual std::size_t finish();

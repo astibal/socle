@@ -112,6 +112,8 @@ namespace {
 
 BIO* BIO_new_string(std::string* out) {
 
+    if (out == nullptr) return nullptr;
+
 #ifdef USE_OPENSSL11
     BIO* bio = BIO_new(bio_string_methods());
     if (!bio) return nullptr;

@@ -1,9 +1,41 @@
 #include <gtest/gtest.h>
 
 #include <socketinfo.hpp>
+#include <tcpcom.hpp>
 #include <traflog/pcapapi.hpp>
+#include <traflog/pcaplog.hpp>
+
+#include <cstring>
+#include <filesystem>
 
 using namespace socle::pcap;
+
+namespace socle::pcap {
+bool lock_fd(int fd);
+bool unlock_fd(int fd);
+}
+
+namespace {
+
+class CaptureProxy : public baseProxy {
+public:
+    CaptureProxy() : baseProxy(new TCPCom()) {}
+    void attach(baseHostCX* left, baseHostCX* right) {
+        left_sockets.push_back(left);
+        right_sockets.push_back(right);
+    }
+};
+
+class CountingPacketHook : public socle::pcapng::IP_Hook {
+public:
+    bool execute(connection_details const&, buffer const& packet) override {
+        if (!packet.empty()) ++packets;
+        return true;
+    }
+    std::size_t packets = 0;
+};
+
+} // namespace
 
 
 // NOTE: it's not really practical to check generated PCAP content automatically packet by packet,
@@ -46,6 +78,186 @@ TEST(PcapTest, GreHeaderWithKeyUsesRfc2890WireFormat) {
     EXPECT_EQ(0x04, bytes[7]);
 }
 
+TEST(PcapTest, GreTunnelEncapsulationUsesOuterFamilyAndInnerDirection) {
+    SocketInfo inner4;
+    inner4.src.str_host = "192.0.2.10";
+    inner4.dst.str_host = "198.51.100.20";
+    inner4.src.port = 12345;
+    inner4.dst.port = 53;
+    ASSERT_TRUE(inner4.src.pack());
+    ASSERT_TRUE(inner4.dst.pack());
+
+    SocketInfo tunnel4;
+    tunnel4.src.str_host = "203.0.113.1";
+    tunnel4.dst.str_host = "203.0.113.2";
+    ASSERT_TRUE(tunnel4.src.pack());
+    ASSERT_TRUE(tunnel4.dst.pack());
+
+    connection_details details4 {};
+    details4.source = *inner4.src.ss;
+    details4.destination = *inner4.dst.ss;
+    details4.ip_version = 4;
+    details4.next_proto = connection_details::UDP;
+    details4.tun_proto = connection_details::GRE;
+    details4.tun_ttl = 7;
+    details4.tun_details = &tunnel4;
+
+    buffer outbound4;
+    append_IPv4_header(outbound4, details4, 0, 3);
+    ASSERT_EQ(outbound4.size(), sizeof(iphdr) + sizeof(grehdr) + sizeof(iphdr));
+    iphdr outer4 {};
+    iphdr inner_header4 {};
+    std::memcpy(&outer4, outbound4.data(), sizeof(outer4));
+    std::memcpy(&inner_header4,
+                static_cast<unsigned char const*>(outbound4.data())
+                    + sizeof(outer4) + sizeof(grehdr),
+                sizeof(inner_header4));
+    EXPECT_EQ(outer4.protocol, IPPROTO_GRE);
+    EXPECT_EQ(outer4.ttl, details4.tun_ttl);
+    EXPECT_EQ(outer4.saddr, tunnel4.src.as_v4()->sin_addr.s_addr);
+    EXPECT_EQ(outer4.daddr, tunnel4.dst.as_v4()->sin_addr.s_addr);
+    EXPECT_EQ(inner_header4.protocol, connection_details::UDP);
+
+    buffer inbound4;
+    append_IPv4_header(inbound4, details4, 1, 3);
+    std::memcpy(&outer4, inbound4.data(), sizeof(outer4));
+    std::memcpy(&inner_header4,
+                static_cast<unsigned char const*>(inbound4.data())
+                    + sizeof(outer4) + sizeof(grehdr),
+                sizeof(inner_header4));
+    // The GRE exporter endpoints stay fixed; only the encapsulated flow reverses.
+    EXPECT_EQ(outer4.saddr, tunnel4.src.as_v4()->sin_addr.s_addr);
+    EXPECT_EQ(outer4.daddr, tunnel4.dst.as_v4()->sin_addr.s_addr);
+    EXPECT_EQ(inner_header4.saddr, inner4.dst.as_v4()->sin_addr.s_addr);
+    EXPECT_EQ(inner_header4.daddr, inner4.src.as_v4()->sin_addr.s_addr);
+
+    SocketInfo inner6;
+    inner6.src.str_host = "2001:db8::10";
+    inner6.dst.str_host = "2001:db8::20";
+    inner6.src.family = AF_INET6;
+    inner6.dst.family = AF_INET6;
+    inner6.src.port = 12345;
+    inner6.dst.port = 53;
+    ASSERT_TRUE(inner6.src.pack());
+    ASSERT_TRUE(inner6.dst.pack());
+
+    SocketInfo tunnel6;
+    tunnel6.src.str_host = "2001:db8:1::1";
+    tunnel6.dst.str_host = "2001:db8:1::2";
+    tunnel6.src.family = AF_INET6;
+    tunnel6.dst.family = AF_INET6;
+    ASSERT_TRUE(tunnel6.src.pack());
+    ASSERT_TRUE(tunnel6.dst.pack());
+
+    connection_details details6 {};
+    details6.source = *inner6.src.ss;
+    details6.destination = *inner6.dst.ss;
+    details6.ip_version = 6;
+    details6.next_proto = connection_details::UDP;
+    details6.tun_proto = connection_details::GRE;
+    details6.tun_ttl = 9;
+    details6.tun_details = &tunnel6;
+
+    buffer outbound6;
+    append_IPv6_header(outbound6, details6, 0, 5);
+    ASSERT_EQ(outbound6.size(), sizeof(ip6_hdr) + sizeof(grehdr) + sizeof(ip6_hdr));
+    ip6_hdr outer6 {};
+    ip6_hdr inner_header6 {};
+    std::memcpy(&outer6, outbound6.data(), sizeof(outer6));
+    std::memcpy(&inner_header6,
+                static_cast<unsigned char const*>(outbound6.data())
+                    + sizeof(outer6) + sizeof(grehdr),
+                sizeof(inner_header6));
+    EXPECT_EQ(outer6.ip6_nxt, IPPROTO_GRE);
+    EXPECT_EQ(outer6.ip6_hops, details6.tun_ttl);
+    EXPECT_EQ(std::memcmp(&outer6.ip6_src, &tunnel6.src.as_v6()->sin6_addr,
+                          sizeof(in6_addr)), 0);
+    EXPECT_EQ(std::memcmp(&outer6.ip6_dst, &tunnel6.dst.as_v6()->sin6_addr,
+                          sizeof(in6_addr)), 0);
+    EXPECT_EQ(inner_header6.ip6_nxt, connection_details::UDP);
+
+    buffer inbound6;
+    append_IPv6_header(inbound6, details6, 1, 5);
+    std::memcpy(&outer6, inbound6.data(), sizeof(outer6));
+    std::memcpy(&inner_header6,
+                static_cast<unsigned char const*>(inbound6.data())
+                    + sizeof(outer6) + sizeof(grehdr),
+                sizeof(inner_header6));
+    EXPECT_EQ(std::memcmp(&outer6.ip6_src, &tunnel6.src.as_v6()->sin6_addr,
+                          sizeof(in6_addr)), 0);
+    EXPECT_EQ(std::memcmp(&outer6.ip6_dst, &tunnel6.dst.as_v6()->sin6_addr,
+                          sizeof(in6_addr)), 0);
+    EXPECT_EQ(std::memcmp(&inner_header6.ip6_src, &inner6.dst.as_v6()->sin6_addr,
+                          sizeof(in6_addr)), 0);
+    EXPECT_EQ(std::memcmp(&inner_header6.ip6_dst, &inner6.src.as_v6()->sin6_addr,
+                          sizeof(in6_addr)), 0);
+
+    details4.tun_details = &tunnel6;
+    buffer inner4_outer6;
+    append_IPv4_header(inner4_outer6, details4, 0, 1);
+    ASSERT_EQ(inner4_outer6.size(), sizeof(ip6_hdr) + sizeof(grehdr) + sizeof(iphdr));
+
+    details6.tun_details = &tunnel4;
+    buffer inner6_outer4;
+    append_IPv6_header(inner6_outer4, details6, 0, 1);
+    ASSERT_EQ(inner6_outer4.size(), sizeof(iphdr) + sizeof(grehdr) + sizeof(ip6_hdr));
+}
+
+TEST(PcapTest, HeaderBuildersRejectUnsupportedProtocolsAndFamilies) {
+    connection_details details {};
+    iphdr header4 {};
+    ip6_hdr header6 {};
+
+    details.next_proto = 255;
+    EXPECT_THROW(create_IPv4_header(header4, details, 0, 0), std::invalid_argument);
+    EXPECT_THROW(create_IPv6_header(header6, details, 0, 0), std::invalid_argument);
+
+    details.next_proto = connection_details::UDP;
+    details.tun_proto = connection_details::GRE;
+    details.ip_version = 255;
+    EXPECT_THROW(create_IPv4_header(header4, details, 2, 0), std::invalid_argument);
+    EXPECT_THROW(create_IPv6_header(header6, details, 2, 0), std::invalid_argument);
+
+    details.ip_version = 4;
+    details.tun_proto = connection_details::NONE;
+    EXPECT_THROW(create_IPv4_header(header4, details, 2, 0), std::invalid_argument);
+    EXPECT_THROW(create_IPv6_header(header6, details, 2, 0), std::invalid_argument);
+}
+
+TEST(PcapTest, FileHelpersReportLockAndWriteFailures) {
+    auto* file = std::tmpfile();
+    ASSERT_NE(file, nullptr);
+    auto const fd = ::fileno(file);
+    ASSERT_GE(fd, 0);
+
+    EXPECT_TRUE(lock_fd(fd));
+    EXPECT_TRUE(unlock_fd(fd));
+    std::fclose(file);
+
+    EXPECT_FALSE(lock_fd(-1));
+    EXPECT_FALSE(unlock_fd(-1));
+    save_payload(-1, "x", 1);
+}
+
+TEST(PcapTest, FrameBuildersRejectNegativeAndEmptyPayloads) {
+    tcp_details tcp {};
+    connection_details udp {};
+    buffer output;
+
+    EXPECT_EQ(append_TCP_frame(output, nullptr, -1, 0, 0, tcp),
+              static_cast<size_t>(-1));
+    EXPECT_EQ(append_UDP_frame(output, nullptr, -1, 0, udp),
+              static_cast<size_t>(-1));
+
+    socle::pcapng::pcapng_epb frame;
+    EXPECT_EQ(frame.append_TCP(output, nullptr, -1, 0, 0, tcp),
+              static_cast<size_t>(-1));
+    EXPECT_EQ(frame.append_TCP(output, nullptr, 0, 0, 0, tcp),
+              static_cast<size_t>(-1));
+    EXPECT_EQ(frame.append_UDP(output, nullptr, -1, 0, udp),
+              static_cast<size_t>(-1));
+}
+
 
 TEST(PcapTest, BasicHttp) {
 
@@ -66,7 +278,8 @@ TEST(PcapTest, BasicHttp) {
     d.source = s.src.ss.value();
     d.destination = s.dst.ss.value();
 
-    auto f = fopen("/tmp/ipv4_tcp.pcap", "w");
+    auto* f = std::tmpfile();
+    ASSERT_NE(f, nullptr);
 
     std::stringstream req;
     req << "GET /ipv4/tcp HTTP/1.0\r\n";
@@ -119,7 +332,8 @@ TEST(PcapTest, BasicHttp_v6) {
     d.destination = s.dst.ss.value();
     d.ip_version = 6;
 
-    auto f = fopen("/tmp/ipv6_tcp.pcap", "w");
+    auto* f = std::tmpfile();
+    ASSERT_NE(f, nullptr);
 
     std::stringstream req;
     req << "GET /ipv6/tcp HTTP/1.0\r\n";
@@ -169,7 +383,8 @@ TEST(PcapTest, BasicUDP) {
     d.source = s.src.ss.value();
     d.destination = s.dst.ss.value();
 
-    auto f = fopen("/tmp/ipv4_udp.pcap", "w");
+    auto* f = std::tmpfile();
+    ASSERT_NE(f, nullptr);
 
     std::stringstream req;
     req << "/ipv4/udp";
@@ -214,7 +429,8 @@ TEST(PcapTest, BasicUDP_v6) {
     d.destination = s.dst.ss.value();
     d.ip_version = 6;
 
-    auto f = fopen("/tmp/ipv6_udp.pcap", "w");
+    auto* f = std::tmpfile();
+    ASSERT_NE(f, nullptr);
 
     std::stringstream req;
     req << "/ipv6/udp";
@@ -234,6 +450,42 @@ TEST(PcapTest, BasicUDP_v6) {
     save_UDP_frame(fd, response.data(), response.size(), 1, d);
 
     fclose(f);
+}
+
+TEST(PcapLogTest, WritesTcpAndUdpFlowsThroughHighLevelLogger) {
+    auto directory = std::filesystem::temp_directory_path()
+                     / ("socle-pcaplog-" + std::to_string(::getpid()));
+    std::filesystem::remove_all(directory);
+    std::filesystem::create_directories(directory);
+
+    CaptureProxy proxy;
+    proxy.attach(new baseHostCX(new TCPCom(), "127.0.0.1", "12345"),
+                 new baseHostCX(new TCPCom(), "127.0.0.2", "443"));
+
+    std::filesystem::path output;
+    auto packets = std::make_shared<CountingPacketHook>();
+    {
+        socle::traflog::PcapLog capture(
+            &proxy, directory.c_str(), "coverage-", "pcapng", true);
+        capture.ip_packet_hook = packets;
+        output = capture.FS.filename_full;
+        ASSERT_FALSE(output.empty());
+        buffer payload;
+        payload.append("request", 7);
+        capture.write(socle::side_t::LEFT, std::string("test frame"));
+        capture.write(socle::side_t::LEFT, payload);
+        capture.write(socle::side_t::RIGHT, payload);
+        EXPECT_TRUE(capture.tcp_start_written);
+
+        capture.details.next_proto = connection_details::UDP;
+        capture.write(socle::side_t::LEFT, payload);
+        EXPECT_GT(capture.stat_bytes_written, 0);
+    }
+
+    ASSERT_TRUE(std::filesystem::exists(output));
+    // Three synthetic TCP handshake packets plus the two payload writes.
+    EXPECT_GE(packets->packets, 5U);
+    std::filesystem::remove_all(directory);
 }
 
 // UDP

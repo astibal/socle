@@ -30,6 +30,7 @@
 #include <unistd.h>
  
 #include <string>
+#include <limits>
 #include <sstream>
 #include <vector>
 #include <iostream>
@@ -38,6 +39,11 @@
 #include <log/logan.hpp>
 
 namespace inet {
+
+    struct transfer_limits {
+        std::size_t max_header_bytes = std::numeric_limits<std::size_t>::max();
+        std::size_t max_body_bytes = std::numeric_limits<std::size_t>::max();
+    };
 
     struct Factory {
         static logan_lite& log() {
@@ -60,6 +66,8 @@ namespace inet {
     /// @param timout 'timeout' timeout of the operation
     /// @return returns the size of retrieved content bytes (not size of data received on socket). Negative on error.
     int download(const std::string& url, buffer& buf, int timout, int ipv = 4);
+    int download(const std::string& url, buffer& buf, int timout,
+                 transfer_limits limits, int ipv = 4);
 
     /// @brief Opens a socket to IP address and sends raw bytes. Expects HTTP response.
     /// @param request 'request' raw string with request body
@@ -68,6 +76,8 @@ namespace inet {
     /// @param timout 'timeout' timeout of the operation
     /// @return returns the size of retrieved content bytes (not size of data received on socket). Negative on error.
     int http_get(const std::string& request, const std::string& ip_address, int port, buffer& buf, int timout=10);
+    int http_get(const std::string& request, const std::string& ip_address,
+                 int port, buffer& buf, int timout, transfer_limits limits);
 
     /// @brief is it IPv4?
     bool is_ipv4_address(const std::string& str);
