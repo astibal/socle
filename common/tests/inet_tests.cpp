@@ -18,29 +18,47 @@ namespace {
 
 class LoopbackServer {
 public:
-    explicit LoopbackServer(std::vector<std::string> response_chunks) {
-        listener_ = ::socket(AF_INET, SOCK_STREAM, 0);
+    explicit LoopbackServer(std::vector<std::string> response_chunks,
+                            int family = AF_INET,
+                            std::chrono::milliseconds chunk_delay =
+                                std::chrono::milliseconds(5)) {
+        listener_ = ::socket(family, SOCK_STREAM, 0);
         if (listener_ < 0) throw std::runtime_error("cannot create loopback listener");
 
         int reuse = 1;
         ::setsockopt(listener_, SOL_SOCKET, SO_REUSEADDR, &reuse, sizeof(reuse));
-        sockaddr_in address{};
-        address.sin_family = AF_INET;
-        address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-        address.sin_port = 0;
-        if (::bind(listener_, reinterpret_cast<sockaddr*>(&address), sizeof(address)) != 0 ||
+        sockaddr_storage address{};
+        socklen_t address_size = 0;
+        if (family == AF_INET6) {
+            auto* address6 = reinterpret_cast<sockaddr_in6*>(&address);
+            address6->sin6_family = AF_INET6;
+            address6->sin6_addr = in6addr_loopback;
+            address6->sin6_port = 0;
+            address_size = sizeof(*address6);
+        }
+        else {
+            auto* address4 = reinterpret_cast<sockaddr_in*>(&address);
+            address4->sin_family = AF_INET;
+            address4->sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+            address4->sin_port = 0;
+            address_size = sizeof(*address4);
+        }
+        if (::bind(listener_, reinterpret_cast<sockaddr*>(&address), address_size) != 0 ||
             ::listen(listener_, 1) != 0) {
             ::close(listener_);
             throw std::runtime_error("cannot bind loopback listener");
         }
-        socklen_t address_size = sizeof(address);
+        address_size = sizeof(address);
         if (::getsockname(listener_, reinterpret_cast<sockaddr*>(&address), &address_size) != 0) {
             ::close(listener_);
             throw std::runtime_error("cannot read loopback listener address");
         }
-        port_ = ntohs(address.sin_port);
+        port_ = family == AF_INET6
+            ? ntohs(reinterpret_cast<sockaddr_in6*>(&address)->sin6_port)
+            : ntohs(reinterpret_cast<sockaddr_in*>(&address)->sin_port);
 
-        worker_ = std::thread([this, chunks = std::move(response_chunks)] {
+        worker_ = std::thread([this, chunks = std::move(response_chunks),
+                               chunk_delay] {
             const int client = ::accept(listener_, nullptr, nullptr);
             if (client < 0) return;
             std::array<char, 4096> request_buffer{};
@@ -56,7 +74,7 @@ public:
                     if (count <= 0) break;
                     sent += static_cast<std::size_t>(count);
                 }
-                std::this_thread::sleep_for(std::chrono::milliseconds(5));
+                std::this_thread::sleep_for(chunk_delay);
             }
             ::shutdown(client, SHUT_RDWR);
             ::close(client);
@@ -143,6 +161,16 @@ TEST(InetLocalTest, HttpGetEnforcesContentLengthBoundaries) {
     }
     {
         LoopbackServer server({
+            "HTTP/1.0 200 OK\r\nX-Content-Length: 1\r\n"
+            "content-length: 4\r\n\r\nbodyextra",
+        });
+        buffer body;
+        EXPECT_EQ(inet::http_get(
+                      request, "127.0.0.1", server.port(), body, 2), 4);
+        EXPECT_EQ(body.string_view(), "body");
+    }
+    {
+        LoopbackServer server({
             "HTTP/1.0 200 OK\r\nContent-Length: 10\r\n\r\nshort",
         });
         buffer body;
@@ -156,6 +184,77 @@ TEST(InetLocalTest, HttpGetEnforcesContentLengthBoundaries) {
         EXPECT_EQ(inet::http_get(request, "127.0.0.1", server.port(), body, 2), 15);
         EXPECT_EQ(body.string_view(), "close-delimited");
     }
+    for(const auto& response : {
+            std::string("HTTP/1.0 404 Not Found\r\nContent-Length: 4\r\n\r\nbody"),
+            std::string("HTTP/1.0 200 OK\r\nContent-Length: 4\r\n"
+                        "Content-Length: 5\r\n\r\nbody!"),
+            std::string("HTTP/1.1 200 OK\r\nTransfer-Encoding: chunked\r\n\r\n"
+                        "4\r\nbody\r\n0\r\n\r\n"),
+            std::string("HTTP/1.0 200 OK\r\nContent-Length: nope\r\n\r\nbody")}) {
+        LoopbackServer server({response});
+        buffer body;
+        EXPECT_EQ(inet::http_get(
+                      request, "127.0.0.1", server.port(), body, 2), -1);
+        EXPECT_EQ(body.size(), 0);
+    }
+}
+
+TEST(InetLocalTest, HttpGetEnforcesConfiguredTransferLimits) {
+    const auto request = std::string("GET /bounded HTTP/1.0\r\nHost: localhost\r\n\r\n");
+    const inet::transfer_limits limits{64, 5};
+    {
+        LoopbackServer server({
+            "HTTP/1.0 200 OK\r\nContent-Length: 6\r\n\r\ntoolong",
+        });
+        buffer body;
+        EXPECT_EQ(inet::http_get(
+                      request, "127.0.0.1", server.port(), body, 2, limits), -1);
+        EXPECT_EQ(body.size(), 0);
+    }
+    {
+        LoopbackServer server({
+            "HTTP/1.0 200 OK\r\nConnection: close\r\n\r\n123456",
+        });
+        buffer body;
+        EXPECT_EQ(inet::http_get(
+                      request, "127.0.0.1", server.port(), body, 2, limits), -1);
+        EXPECT_LE(body.size(), 5);
+    }
+    {
+        LoopbackServer server({
+            "HTTP/1.0 200 OK\r\nX-Padding: " + std::string(64, 'x') + "\r\n\r\n",
+        });
+        buffer body;
+        EXPECT_EQ(inet::http_get(
+                      request, "127.0.0.1", server.port(), body, 2, limits), -1);
+        EXPECT_EQ(body.size(), 0);
+    }
+    {
+        LoopbackServer server({
+            "HTTP/1.0 200 OK\r\nContent-Length: 5\r\n\r\n12345",
+        });
+        buffer body;
+        EXPECT_EQ(inet::http_get(
+                      request, "127.0.0.1", server.port(), body, 2, limits), 5);
+        EXPECT_EQ(body.string_view(), "12345");
+    }
+}
+
+TEST(InetLocalTest, HttpGetTimeoutIsOneMonotonicOperationDeadline) {
+    LoopbackServer server({
+        "HTTP/1.0 200 OK\r\nContent-Length: 4\r\n\r\n",
+        "late",
+    }, AF_INET, std::chrono::milliseconds(1600));
+    const auto request = std::string("GET /slow HTTP/1.0\r\nHost: localhost\r\n\r\n");
+    buffer body;
+
+    const auto started = std::chrono::steady_clock::now();
+    EXPECT_EQ(inet::http_get(
+                  request, "127.0.0.1", server.port(), body, 1), -1);
+    const auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now() - started);
+
+    EXPECT_LT(elapsed, std::chrono::milliseconds(1400));
 }
 
 TEST(InetLocalTest, DownloadParsesPortPathQueryAndFragment) {
@@ -170,7 +269,9 @@ TEST(InetLocalTest, DownloadParsesPortPathQueryAndFragment) {
     EXPECT_EQ(inet::download(url, body, 2, 4), 7);
     EXPECT_EQ(body.string_view(), "payload");
     EXPECT_NE(server.request().find("GET /resource?q=answer HTTP/1.0\r\n"), std::string::npos);
-    EXPECT_NE(server.request().find("Host: 127.0.0.1\r\n"), std::string::npos);
+    EXPECT_NE(server.request().find(
+                  "Host: 127.0.0.1:" + std::to_string(server.port()) + "\r\n"),
+              std::string::npos);
 }
 
 TEST(InetLocalTest, DownloadHonorsExplicitPortWithSchemeAndRejectsInvalidPorts) {
@@ -183,10 +284,34 @@ TEST(InetLocalTest, DownloadHonorsExplicitPortWithSchemeAndRejectsInvalidPorts) 
     EXPECT_EQ(inet::download(url, body, 2, 4), 7);
     EXPECT_EQ(body.string_view(), "payload");
     EXPECT_NE(server.request().find("GET /explicit HTTP/1.0\r\n"), std::string::npos);
+    EXPECT_NE(server.request().find(
+                  "Host: 127.0.0.1:" + std::to_string(server.port()) + "\r\n"),
+              std::string::npos);
 
     buffer unused;
     EXPECT_EQ(inet::download("http://127.0.0.1:not-a-port/", unused, 1, 4), 0);
     EXPECT_EQ(inet::download("http://127.0.0.1:70000/", unused, 1, 4), 0);
+}
+
+TEST(InetLocalTest, DownloadBracketsIpv6LiteralInHostAuthority) {
+    std::unique_ptr<LoopbackServer> server;
+    try {
+        server = std::make_unique<LoopbackServer>(
+            std::vector<std::string>{
+                "HTTP/1.0 200 OK\r\nContent-Length: 3\r\n\r\ncrl"},
+            AF_INET6);
+    }
+    catch (const std::runtime_error&) {
+        GTEST_SKIP() << "IPv6 loopback is unavailable";
+    }
+
+    buffer body;
+    const auto url = "http://[::1]:" + std::to_string(server->port()) + "/crl";
+    ASSERT_EQ(inet::download(url, body, 2, 6), 3);
+    EXPECT_EQ(body.string_view(), "crl");
+    EXPECT_NE(server->request().find(
+                  "Host: [::1]:" + std::to_string(server->port()) + "\r\n"),
+              std::string::npos);
 }
 
 TEST(InetTest, CanResolveVany) {

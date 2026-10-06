@@ -240,9 +240,14 @@ bool baseProxy::on_cx_timer(baseHostCX* cx) {
 
 bool baseProxy::clicker::reset_timer() {
 
-    time(&clock_);
+	time(&clock_);
 
-	if( static_cast<long unsigned int>(clock_) - static_cast<long unsigned int>(last_tick_) > timer_interval) {
+	if(clock_ < last_tick_) {
+		last_tick_ = clock_;
+		return false;
+	}
+
+	if(std::difftime(clock_, last_tick_) >= timer_interval) {
 		time(&last_tick_);
 
 		return true;
@@ -353,25 +358,22 @@ bool baseProxy::handle_cx_events(unsigned char side, baseHostCX* cx) {
         return true;
 }
 
-bool baseProxy::handle_cx_read(unsigned char side, baseHostCX* cx) {
+bool baseProxy::handle_cx_read(unsigned char side, baseHostCX* cx,
+                               bool cross_direction_retry) {
     
     _ext("%c in R fdset: %d", side, cx->socket());
     
     bool proceed = cx->readable();
-    if(cx->com()->forced_read_on_write_reset()) {
+    if(cross_direction_retry && cx->com()->forced_read_on_write_reset()) {
         _dia("baseProxy::handle_cx_read[%c]: read overridden on write socket event", side);
         proceed = true;
     }
     
-    if (proceed) {
+    if (proceed && !cx->read_eof()) {
         _ext("%c in R fdset and readable: %d", side, cx->socket());
         int red = cx->read();
         
-        if (red == 0) {
-            cx->shutdown();
-            //left_sockets.erase(i);
-
-
+        auto handle_eof = [&]() -> bool {
             if(side == 'l' || side == 'x') {
                 handle_last_status |= HANDLE_LEFT_ERROR;
                 state().error_on_left_read = true;
@@ -385,10 +387,34 @@ bool baseProxy::handle_cx_read(unsigned char side, baseHostCX* cx) {
             else if(side == 'r') { on_right_error(cx); }
             else if(side == 'x')  { on_left_pc_error(cx); }
             else if(side == 'y')  { on_right_pc_error(cx); }
-           
-            _deb("baseProxy::handle_cx_read[%c]: error processed", side);
-           
-            return false;
+
+            // Permanent/reconnecting contexts use EOF as a reconnect signal,
+            // not an end-to-end stream half-close.
+            if(side == 'x' || side == 'y') {
+                cx->shutdown();
+                return false;
+            }
+
+            // A read EOF is a half-close, not permission to destroy the write
+            // half of the same full-duplex stream. Stop read readiness while
+            // retaining any independent queued/protocol-level output.
+            if(!state().dead() && cx->socket() != 0) {
+                if(cx->opening() || !cx->writebuf()->empty() ||
+                   cx->com()->write_event_pending()) {
+                    cx->com()->set_write_monitor_only(cx->socket());
+                } else {
+                    cx->com()->unset_monitor(cx->socket());
+                }
+            } else {
+                cx->shutdown();
+            }
+
+            _deb("baseProxy::handle_cx_read[%c]: EOF processed", side);
+            return !state().dead();
+        };
+
+        if (red == 0) {
+            return handle_eof();
         }
         
         if (red > 0) {
@@ -399,18 +425,23 @@ bool baseProxy::handle_cx_read(unsigned char side, baseHostCX* cx) {
             else if(side == 'y')  { on_right_bytes(cx); }
             
             _deb("baseProxy::handle_cx_read[%c]: %d bytes processed", side, red);
+
+            // Preserve the final application bytes when EOF follows them in
+            // the same drain batch, then transition to half-closed state.
+            if(cx->read_eof() && !handle_eof()) return false;
         }
     }
     
     return true;
 }
 
-bool baseProxy::handle_cx_write(unsigned char side, baseHostCX* cx) {
+bool baseProxy::handle_cx_write(unsigned char side, baseHostCX* cx,
+                                bool cross_direction_retry) {
     
     _ext("baseProxy::handle_cx_write[%c]: in write fdset: %d",side, cx->socket());
     
     bool proceed = cx->writable();
-    if(cx->com()->forced_write_on_read_reset()) {
+    if(cross_direction_retry && cx->com()->forced_write_on_read_reset()) {
         _dia("baseProxy::handle_cx_read[%c]: write overridden on read socket event", side);
         proceed = true;
     }
@@ -503,7 +534,7 @@ bool baseProxy::handle_cx_read_once(unsigned char side, baseCom* xcom, baseHostC
             
             if(cx->com()->forced_write_on_read()) {
                 _dia("baseProxy::handle_cx_read_once[%c]: write on read enforced on socket %d", side, cx->socket());
-                if(! handle_cx_write(side,cx)) {
+                if(! handle_cx_write(side, cx, true)) {
                     ret = false;
                     goto failure;
                 }
@@ -531,7 +562,9 @@ bool baseProxy::handle_cx_read_once(unsigned char side, baseCom* xcom, baseHostC
 //                     greater than 0 - pause read or write
 //                     lesser than 0 - unpause read or write
 
-unsigned int baseProxy::change_monitor_for_cx_vec(std::vector<baseHostCX*>* cx_vec, bool ifread, bool ifwrite, int pause_read, int pause_write) {
+unsigned int baseProxy::change_monitor_for_cx_vec(std::vector<baseHostCX*>* cx_vec, bool ifread, bool ifwrite,
+                                                   int pause_read, int pause_write,
+                                                   bool preserve_connection_write) {
 
     unsigned int sockets_changed = 0;
 
@@ -539,12 +572,20 @@ unsigned int baseProxy::change_monitor_for_cx_vec(std::vector<baseHostCX*>* cx_v
     if(cx_vec) {
         std::vector<baseHostCX *>& nnn = *cx_vec;
         for(auto cx: nnn) {
-            if(ifread && ifwrite) {
+            // Pausing reads for backpressure must not discard an independent
+            // write already queued on the same full-duplex connection.  That
+            // used to remove EPOLLOUT as a side effect and could delay the
+            // opposite direction until an unrelated event or timer tick.
+            auto const monitor_write = ifwrite ||
+                (preserve_connection_write &&
+                 (cx->opening() || !cx->writebuf()->empty() || cx->com()->write_event_pending()));
+
+            if(ifread && monitor_write) {
                 cx->com()->change_monitor(cx->socket(),EPOLLIN|EPOLLOUT);
             } else {
                 if (ifread) {
                     cx->com()->change_monitor(cx->socket(), EPOLLIN);
-                } else if (ifwrite) {
+                } else if (monitor_write) {
                     cx->com()->change_monitor(cx->socket(), EPOLLOUT);
                 } else {
                     cx->com()->unset_monitor(cx->socket());
@@ -590,7 +631,10 @@ unsigned int baseProxy::change_side_monitoring(unsigned char side, bool ifread, 
         sockets_changed += change_monitor_for_cx_vec(normal,ifread,ifwrite, pause_read, pause_write);
     }
     if(bound) {
-        sockets_changed += change_monitor_for_cx_vec(bound,ifread,ifwrite, pause_read, pause_write);
+        // Listening sockets never carry proxy output. Their `opening` flag is
+        // not a reason to subscribe to EPOLLOUT (which would stay ready and
+        // spin the event loop while the peer side is backpressured).
+        sockets_changed += change_monitor_for_cx_vec(bound,ifread,ifwrite, pause_read, pause_write, false);
     }
     _inf("side-wide monitor change for side %c|%s [r %d:w %d - pr %d: pw %d]: %d sockets changed.",
                                               side,str_side.c_str(),
@@ -636,7 +680,7 @@ bool baseProxy::handle_cx_write_once(unsigned char side, baseCom* xcom, baseHost
 
         if(cx->com()->forced_read_on_write()) {
             _dia("baseProxy::handle_cx_write_once[%c]: read on write enforced on socket %d", side, cx->socket());
-            if(! handle_cx_read(side, cx)) {
+            if(! handle_cx_read(side, cx, true)) {
 
                 handle_cx_events(side,cx);
                 return false;
@@ -704,7 +748,12 @@ bool baseProxy::handle_sockets_accept(unsigned char side, baseCom* xcom, baseHos
         else if(side == 'r') { on_right_new_raw(client); }
     }
     else {
-        auto* cx = new_cx(client);
+        auto cx = std::unique_ptr<baseHostCX>(new_cx(client));
+
+        if(not cx) {
+            com()->close(client);
+            return false;
+        }
 
         if(!cx->read_waiting_for_peercom()) {
             _dia("baseProxy::handle_sockets_accept[%c]: new unpaused socket %d -> accepting", side, client);
@@ -715,8 +764,8 @@ bool baseProxy::handle_sockets_accept(unsigned char side, baseCom* xcom, baseHos
             cx->on_delay_socket(client);
         }
         
-        if     (side == 'l') { on_left_new(cx); }
-        else if(side == 'r') { on_right_new(cx); }
+        if     (side == 'l') { on_left_new(std::move(cx)); }
+        else if(side == 'r') { on_right_new(std::move(cx)); }
     }
     
     return true;
@@ -1068,13 +1117,15 @@ void baseProxy::on_right_pc_restore(baseHostCX* cx) {
 }
 
 
-void baseProxy::on_left_new(baseHostCX* cx) {
-	ladd(cx);
+void baseProxy::on_left_new(std::unique_ptr<baseHostCX> cx) {
+	ladd(cx.get());
+    cx.release();
 }
 
 
-void baseProxy::on_right_new(baseHostCX* cx) {
-	radd(cx);
+void baseProxy::on_right_new(std::unique_ptr<baseHostCX> cx) {
+	radd(cx.get());
+    cx.release();
 }
 
 auto baseProxy::run_poll_socket_null_handler(int cur_socket, epoll::set_type& real_set, socket_set_type set_type) -> metering::poll {
@@ -1358,14 +1409,14 @@ int baseProxy::connect ( const char* host, const char* port, char side) {
 
 int baseProxy::left_connect ( const char* host, const char* port)
 {
-	baseHostCX* cx = new_cx(host,port);
+	auto cx = std::unique_ptr<baseHostCX>(new_cx(host,port));
 	
 	int sock = cx->connect();
         if(sock > 0) {
             _dia("baseProxy::left_connect: successfully created socket %d", sock);
-            lpcadd(cx);
+            lpcadd(cx.release());
         } else {
-            _err("baseProxy::left_connect: socket not created, returned %s", sock);
+            _err("baseProxy::left_connect: socket not created, returned %d", sock);
         } 
         
         return sock;
@@ -1373,13 +1424,13 @@ int baseProxy::left_connect ( const char* host, const char* port)
 
 int baseProxy::right_connect ( const char* host, const char* port)
 {
-	baseHostCX* cx = new_cx(host,port);
+	auto cx = std::unique_ptr<baseHostCX>(new_cx(host,port));
         int sock = cx->connect();
         if(sock > 0) {
-            _dia("baseProxy::left_connect: successfully created socket %d", sock);
-            rpcadd(cx);
+            _dia("baseProxy::right_connect: successfully created socket %d", sock);
+            rpcadd(cx.release());
         } else {
-            _err("baseProxy::left_connect: socket not created, returned %s", sock);
+            _err("baseProxy::right_connect: socket not created, returned %d", sock);
         } 
         
         return sock;

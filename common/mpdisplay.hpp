@@ -83,7 +83,7 @@ namespace mp {
     }
 
 
-    mp::vector<mp::string>
+    inline mp::vector<mp::string>
     string_split(mp::string const& str, char delimiter) {
         mp::vector<mp::string> internal;
         mp::stringstream ss(str); // Turn the string into a stream.

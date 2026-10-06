@@ -87,6 +87,20 @@ int UDPCom::translate_socket(int vsock) const {
     return baseCom::translate_socket(vsock);
 }
 
+bool UDPCom::descriptor_valid(int fd) const {
+    if(fd > 0) return true;
+    if(fd == 0) return false;
+
+    auto datagrams = datagram_com();
+    auto lock = std::scoped_lock(datagrams->lock);
+    auto const found = datagrams->datagrams_received.find(static_cast<uint32_t>(fd));
+    if(found == datagrams->datagrams_received.end() || !found->second) return false;
+
+    auto const& record = found->second;
+    return (record->cx != nullptr && record->cx == owner_cx())
+           || (record->owner_token != 0 && record->owner_token == owner_token());
+}
+
 
 int UDPCom::accept(int sockfd, sockaddr* addr, socklen_t* addrlen_) {
     return sockfd;

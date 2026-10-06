@@ -124,7 +124,7 @@ int ThreadedAcceptorProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
                 cx->com()->resolve_redirected_dst_socket(s);
             }
 
-            this->on_left_new(cx.release());
+            this->on_left_new(std::move(cx));
 
         } catch (socle::com_error const& e) {
             _err("cannot handover cx to proxy: %s", e.what());

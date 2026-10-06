@@ -287,8 +287,33 @@ public:
             { return new expiring_verify_result(VerifyStatus(result, ttl, VerifyStatus::status_origin::CRL), ttl); };
 
 
-    static expiring_crl* make_expiring_crl(X509_CRL* crl)
-                                { return new SSLFactory::expiring_crl(new crl_holder(crl), SSLFactory::options::crl_status_ttl); }
+    static expiring_crl* make_expiring_crl(X509_CRL* crl) {
+        const unsigned int ttl = SSLFactory::options::crl_status_ttl > 0
+            ? static_cast<unsigned int>(SSLFactory::options::crl_status_ttl)
+            : 86400U;
+        auto* entry = new SSLFactory::expiring_crl(new crl_holder(crl), ttl);
+
+        // A cached CRL must become refreshable no later than its own
+        // nextUpdate. Verification rejects a stale CRL, but retaining it
+        // until a longer configured cache TTL would suppress redownload and
+        // turn every subsequent check into UNKNOWN for that entire gap.
+        const ASN1_TIME* next_update = crl ? X509_CRL_get0_nextUpdate(crl) : nullptr;
+        int days = 0;
+        int seconds = 0;
+        if(next_update && ASN1_TIME_diff(
+                &days, &seconds, nullptr, next_update) == 1) {
+            const long long remaining =
+                static_cast<long long>(days) * 24 * 60 * 60 + seconds;
+            if(remaining <= 0) {
+                entry->set_expiry(::time(nullptr));
+            }
+            else if(static_cast<unsigned long long>(remaining) < ttl) {
+                entry->set_expiry(
+                    ::time(nullptr) + static_cast<time_t>(remaining));
+            }
+        }
+        return entry;
+    }
 
     // default path for CA trust-store. It's marked as CL, since CL side will use it (sx -> real server)
     std::string ca_path_;
@@ -356,6 +381,7 @@ private:
     session_cache_t session_cache_ = session_cache_t("ssl_session_cache", config_t::SESSION_CACHE_SIZE,true, ptr_cache<std::string,session_holder>::mode_t::LRU);
 
     X509_STORE* trust_store_ = nullptr;
+    bool trust_store_loaded_ = false;
 
     mutable std::recursive_mutex mutex_cache_write_;
     static constexpr std::size_t MITM_KEY_LOCK_SHARDS = 64;
@@ -441,7 +467,7 @@ public:
     std::optional<CertificateChainCtx> spoof(X509* cert_orig, bool self_sign=false, std::vector<std::string>* additional_sans=nullptr);
     bool validate_spoof_requirements(X509 const* cert, X509_NAME const* cert_name, X509_NAME const* issuer_name, EVP_PKEY const* pkey) const;
      
-    static int convert_ASN1TIME(ASN1_TIME*, char*, size_t);
+    static int convert_ASN1TIME(const ASN1_TIME*, char*, size_t);
     static std::string print_cert(X509* cert, int indent=4, bool add_cr=false);
 
     [[maybe_unused]] static std::string print_cn(X509*);

@@ -299,8 +299,10 @@ public:
     // handle_ functions returning false to indicate we should break socket loop. Always call this one in your override.
 
     virtual bool handle_cx_events(unsigned char side, baseHostCX* cx);
-    virtual bool handle_cx_read(unsigned char side, baseHostCX* cx);
-    virtual bool handle_cx_write(unsigned char side, baseHostCX* cx);
+    virtual bool handle_cx_read(unsigned char side, baseHostCX* cx,
+                                bool cross_direction_retry = false);
+    virtual bool handle_cx_write(unsigned char side, baseHostCX* cx,
+                                 bool cross_direction_retry = false);
     virtual bool handle_cx_read_once(unsigned char side, baseCom* xcom, baseHostCX* cx);
     virtual bool handle_cx_write_once(unsigned char side, baseCom* xcom, baseHostCX* cx);
 
@@ -334,8 +336,8 @@ public:
     virtual void on_right_pc_restore(baseHostCX*);
     
     // on_*_new events are run only on client sockets!
-    virtual void on_left_new(baseHostCX*);
-    virtual void on_right_new(baseHostCX*);
+    virtual void on_left_new(std::unique_ptr<baseHostCX>);
+    virtual void on_right_new(std::unique_ptr<baseHostCX>);
 
     // empty virtual to allow the logic without need to implement it via abstract mechanisms
     virtual void on_left_new_raw(int sock) {};
@@ -344,7 +346,9 @@ public:
     virtual bool run_timers ();
 
 
-    unsigned int change_monitor_for_cx_vec(std::vector<baseHostCX*>* cx_vec, bool ifread, bool ifwrite,int pause_read, int pause_write);
+    unsigned int change_monitor_for_cx_vec(std::vector<baseHostCX*>* cx_vec, bool ifread, bool ifwrite,
+                                           int pause_read, int pause_write,
+                                           bool preserve_connection_write = true);
     unsigned int change_side_monitoring(unsigned char side, bool ifread, bool ifwrite, int pause_read, int pause_write);
 
     std::string to_string(int verbosity) const override;

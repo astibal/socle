@@ -153,6 +153,8 @@ struct SSLComOptions {
     bool ct_enable = true;
     bool alpn_block = false;
     bool no_fallback_bypass = false;
+    int client_hello_timeout = 3000; // milliseconds
+    int handshake_timeout = 10000;   // milliseconds, until TLS READY
 
     // due to its upper level use, it must be statically available
     static inline bool server_hello_copy = false;
@@ -272,6 +274,17 @@ public:
 
     // return ALPN (next protocol) really negotiated
     std::string const& alpn() const { return sslcom_alpn_; }
+    std::string negotiated_alpn() const {
+        if(sslcom_ssl) {
+            unsigned char const* selected = nullptr;
+            unsigned int selected_length = 0;
+            SSL_get0_alpn_selected(sslcom_ssl, &selected, &selected_length);
+            if(selected && selected_length > 0) {
+                return {reinterpret_cast<char const*>(selected), selected_length};
+            }
+        }
+        return sslcom_alpn_;
+    }
     std::string const& sslcom_sni() const { return sslcom_sni_; }
     buffer const& client_hello_buffer() const { return sslcom_peer_hello_buffer; }
     buffer const& server_hello_buffer() const { return sslcom_server_hello_buffer; }
@@ -324,6 +337,8 @@ protected:
 
     // SNI
     struct timeval timer_start{};
+    struct timeval timer_handshake_start{};
+    bool handshake_timer_started = false;
     
     //SSL_write or SSL_read checked timer. Successful read will reset also write timer and vice versa.
     struct timeval timer_write_timeout{};
@@ -477,6 +492,9 @@ public:
 	
 	bool readable (int s) override;
 	bool writable (int s) override;
+    bool write_event_pending() const override {
+        return sslcom_read_blocked_on_write > 0 || sslcom_write_blocked_on_write > 0;
+    }
 	
 	void accept_socket (int sockfd) override;
     void delay_socket (int sockfd) override;
@@ -550,6 +568,39 @@ public:
     static constexpr bool uses_default_cipher_filter(const SSLComCryptoFeatures& features) {
         return features.kex_dh && features.kex_rsa && features.allow_sha1 &&
                !features.allow_rc4 && features.allow_aes128;
+    }
+
+    static std::string session_policy_fingerprint(SSLComOptions const& options) {
+        // A resumed handshake does not present a certificate again. Keep the
+        // cache partitioned by every option which can change whether that
+        // abbreviated connection is acceptable.
+        std::string result;
+        result.reserve(32);
+        auto add_bool = [&result](bool value) {
+            result.push_back(value ? '1' : '0');
+        };
+        add_bool(options.bypass);
+        add_bool(options.ct_enable);
+        add_bool(options.alpn_block);
+        add_bool(options.no_fallback_bypass);
+        add_bool(options.cert.allow_unknown_issuer);
+        add_bool(options.cert.allow_self_signed_chain);
+        add_bool(options.cert.allow_not_valid);
+        add_bool(options.cert.allow_self_signed);
+        result.push_back(':');
+        result += std::to_string(options.cert.client_cert_action);
+        result.push_back(':');
+        add_bool(options.ocsp.stapling_enabled);
+        result += std::to_string(options.ocsp.stapling_mode);
+        result.push_back(':');
+        result += std::to_string(options.ocsp.mode);
+        result.push_back(':');
+        add_bool(options.right.kex_dh);
+        add_bool(options.right.kex_rsa);
+        add_bool(options.right.allow_sha1);
+        add_bool(options.right.allow_rc4);
+        add_bool(options.right.allow_aes128);
+        return result;
     }
 
     int ocsp_cert_is_revoked = -1;

@@ -23,6 +23,7 @@
 
 #include <sslmitmcom.hpp>
 #include <hostcx.hpp>
+#include <internet.hpp>
 
 
 
@@ -32,24 +33,41 @@ bool baseSSLMitmCom<SSLProto>::check_cert(const char* peer_name) {
     
     _deb("SSLMitmCom::check_cert: called");
     bool r = SSLProto::check_cert(peer_name);
+    if (not r) {
+        return false;
+    }
 #ifdef USE_OPENSSL300
     X509* cert = const_cast<X509*>(SSL_get0_peer_certificate(SSLProto::sslcom_ssl));
 #else
     X509* cert = SSL_get_peer_certificate(SSLProto::sslcom_ssl);
 #endif
+    auto* remote = dynamic_cast<baseSSLMitmCom*>(this->peer());
+    const std::string& client_sni = remote && !remote->sslcom_sni().empty()
+        ? remote->sslcom_sni() : this->sslcom_sni();
 
     if (not cert) {
         _err("SSLMitmCom::check_cert: upstream handshake provided no peer certificate");
         return false;
     }
-    
-    auto* remote = dynamic_cast<baseSSLMitmCom*>(this->peer());
-    
+
     if(remote) {
         remote->sslcom_server_ = true;
         
         SpoofOptions spo;
-        spo.sni = this->sslcom_sni();
+        spo.sni = client_sni;
+        auto add_client_sni = [&]() {
+            if(client_sni.empty()) return;
+            const bool sni_is_ip = inet::is_ipv4_address(client_sni) ||
+                                   inet::is_ipv6_address(client_sni);
+            const std::string san = (sni_is_ip ? "IP:" : "DNS:") + client_sni;
+            if(std::find(spo.sans.begin(), spo.sans.end(), san) == spo.sans.end())
+                spo.sans.push_back(san);
+        };
+
+        // Routing may rewrite only the origin-facing SNI. The certificate
+        // presented back to the client must retain the identity it requested.
+        if(client_sni != this->sslcom_sni())
+            add_client_sni();
 
         if (this->verify_get() != verify_status_t::VRF_OK) {
             if(not this->opt.cert.failed_check_replacement) {
@@ -61,9 +79,7 @@ bool baseSSLMitmCom<SSLProto>::check_cert(const char* peer_name) {
 
                 // there is problem, and we do relaxed cert check. Add DNS and IP SAN,
                 // to raise significantly possibility to pass e.g. browser checks
-                if(this->sslcom_sni().size() > 0) {
-                    spo.sans.push_back(string_format("DNS:%s", this->sslcom_sni().c_str()));
-                }
+                add_client_sni();
                 if(this->owner_cx()) {
                     spo.sans.push_back(string_format("IP:%s",this->owner_cx()->host().c_str()));
                 }
@@ -75,9 +91,15 @@ bool baseSSLMitmCom<SSLProto>::check_cert(const char* peer_name) {
 
             bool validated = false;
             if(not this->sslcom_sni().empty()) {
-                validated = X509_check_host(
-                    cert, this->sslcom_sni().c_str(), this->sslcom_sni().size(),
-                    X509_CHECK_FLAG_ALWAYS_CHECK_SUBJECT, nullptr) == 1;
+                if(inet::is_ipv4_address(this->sslcom_sni()) ||
+                   inet::is_ipv6_address(this->sslcom_sni())) {
+                    validated = X509_check_ip_asc(
+                        cert, this->sslcom_sni().c_str(), 0) == 1;
+                } else {
+                    validated = X509_check_host(
+                        cert, this->sslcom_sni().c_str(), this->sslcom_sni().size(),
+                        0, nullptr) == 1;
+                }
             } else if(this->owner_cx()) {
                 validated = X509_check_ip_asc(
                     cert, this->owner_cx()->host().c_str(), 0) == 1;
@@ -96,8 +118,8 @@ bool baseSSLMitmCom<SSLProto>::check_cert(const char* peer_name) {
                     // if neither DNS nor IP could be added, fallback to self-signed cert
                     spo.self_signed = true;
 
-                    if(not this->sslcom_sni().empty()) {
-                        spo.sans.push_back(string_format("DNS:%s", this->sslcom_sni().c_str()));
+                    if(not client_sni.empty()) {
+                        add_client_sni();
                         spo.self_signed = false;
                     }
                     else if(this->owner_cx()) {
@@ -291,6 +313,13 @@ bool baseSSLMitmCom<SSLProto>::spoof_cert(X509* cert_orig, SpoofOptions& spo) {
     if(this->opt.cert.mitm_cert_ip_search && this->use_cert_ip(spo)) return true;
 
     if(this->opt.cert.mitm_cert_searched_only) {
+        use_cert_null();
+        this->error(baseCom::ERROR_UNSPEC);
+        return false;
+    }
+
+    if(not cert_orig) {
+        _err("SSLMitmCom::spoof_cert: missing original certificate");
         use_cert_null();
         this->error(baseCom::ERROR_UNSPEC);
         return false;

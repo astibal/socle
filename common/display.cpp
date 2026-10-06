@@ -317,7 +317,7 @@ void chr_cstrlit(unsigned char u, char *buffer, size_t buflen, bool to_print = f
     
     if (buflen < 2)
         buffer[0] = '\0';
-    else if (isprint(u) && u != '\'' && u != '\"' && u != '\\' && u != '\?')
+    else if (isprint(u) && u != '\'' && u != '\"' && u != '\\' && u != '\?' && u != '%')
         sprintf(buffer, "%c", u);
     else if (buflen < 3)
         *buffer = '\0';

@@ -183,6 +183,7 @@ public:
     int bind([[maybe_unused]] const char* path) override { return -1; };
     int accept ( int sockfd, sockaddr* addr, socklen_t* addrlen_ ) override;
     int translate_socket(int vsock) const override;
+    bool descriptor_valid(int fd) const override;
     
     bool in_readset(int s) override;
     bool in_writeset(int s) override;

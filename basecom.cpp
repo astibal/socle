@@ -282,7 +282,10 @@ int baseCom::poll() {
     
     _ext("baseCom::poll: called");
 
-    auto wait_time = poll_msec;
+    // Proxy lifecycle timers have one-second granularity.  A completely idle
+    // descriptor set must not postpone half-close/idle/opening deadlines until
+    // the legacy ten-second I/O poll timeout expires.
+    auto wait_time = std::min<long>(poll_msec, 1000);
     if(not poller.rescans_empty()) {
         _dia("baseCom::poll: rescans not empty, shorter poll cycle!");
         wait_time = rescan_msec;

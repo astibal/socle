@@ -59,7 +59,10 @@ bool MasterProxy::run_timers()
                     auto lcx = logan_context(p->to_string(iNOT));
                     p->run_timers();
                 }
-                else {
+
+                // A child timer may have expired the proxy in this call. Do
+                // not wait for another master tick before shutting it down.
+                if(p->state().dead()) {
                     defer_proxy_ul(std::move(*i));
                     i = proxies().erase(i);
                     continue;
@@ -77,6 +80,11 @@ bool MasterProxy::run_timers()
 
 
 void MasterProxy::defer_proxy_ul(proxy_entry&& entry) {
+    // Deferring object destruction protects callbacks which may still hold a
+    // pointer for the current dispatch. It must not defer transport teardown:
+    // an idle worker may not get the future traffic-driven reap ticks at all.
+    if(entry) entry->shutdown();
+
     {
         auto l_ = std::scoped_lock(deferred_lock_);
         deferred().push_back({std::move(entry), std::chrono::steady_clock::now()});

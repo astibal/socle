@@ -28,6 +28,7 @@ void epoll::_debug_sockets(int nfds) {
             if (events[xi].events & EPOLLOUT) ports += "w";
             if (events[xi].events & EPOLLERR) ports += "e";
             if (events[xi].events & EPOLLHUP) ports += "h";
+            if (events[xi].events & EPOLLRDHUP) ports += "H";
             ports += " ";
 
         }
@@ -74,10 +75,20 @@ int epoll::process_epoll_events(int nfds) {
             handled = true;
         }
 
-        if( eventset & EPOLLERR or eventset & EPOLLHUP ) {
+        if(eventset & EPOLLERR) {
             _dia("epoll::wait: error event %d for socket %d", eventset, socket);
             err_set.insert(socket);
 
+            handled = true;
+        }
+
+        if(eventset & (EPOLLHUP | EPOLLRDHUP)) {
+            _dia("epoll::wait: peer shutdown event %d for socket %d", eventset, socket);
+            hup_set.insert(socket);
+            // EPOLLHUP can arrive without EPOLLIN. The read path must still get
+            // one chance to drain remaining bytes and observe recv() == 0.
+            in_set.insert(socket);
+            clear_idle_watch(socket);
             handled = true;
         }
 
@@ -190,6 +201,7 @@ void epoll::clear() {
     out_set.clear();
     idle_set.clear();
     err_set.clear();
+    hup_set.clear();
 }
 
 int epoll::wait(long timeout) {
@@ -242,7 +254,10 @@ bool epoll::add(int socket, int mask) {
     struct epoll_event ev;
     memset(&ev,0,sizeof ev);
     
-    ev.events = mask;
+    // Ask Linux to report a directional peer close. EPOLLHUP alone describes
+    // only a fully hung-up file description and is too late for half-close.
+    ev.events = static_cast<uint32_t>(mask);
+    if(mask & EPOLLIN) ev.events |= EPOLLRDHUP;
     ev.data.fd = socket;
 
     int fd = epoll_socket();
@@ -268,7 +283,8 @@ bool epoll::modify(int socket, int mask) {
 
     int fd = epoll_socket();
     epoll_event ev{};
-    ev.events = mask;
+    ev.events = static_cast<uint32_t>(mask);
+    if(mask & EPOLLIN) ev.events |= EPOLLRDHUP;
     ev.data.fd = socket;
 
     _deb("epoll:modify:%x: epoll_ctl(%d): called to modify socket %d, epollin=%d,epollout=%d ",this, fd, socket,flag_check<int>(mask,EPOLLIN),flag_check<int>(mask,EPOLLOUT));

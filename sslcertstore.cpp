@@ -19,6 +19,7 @@
 #include <cstdio>
 #include <cstring>
 #include <ctime>
+#include <arpa/inet.h>
 #include <regex>
 #include <array>
 #include <filesystem>
@@ -557,6 +558,10 @@ SSL_CTX* SSLFactory::server_ctx_setup(EVP_PKEY* priv, X509* cert, const char* ci
         _err("SSLCom::server_ctx_setup: Error creating SSL context!");
         exit(2);
     }
+    if (not set_verify_locations(ctx)) {
+        _err("SSLFactory::server_ctx_setup: cannot attach central trust store!");
+        exit(3);
+    }
 
     ciphers == nullptr ? SSL_CTX_set_cipher_list(ctx, SSLCom::ci_default_filter) : SSL_CTX_set_cipher_list(ctx,ciphers);
 
@@ -611,6 +616,10 @@ SSL_CTX* SSLFactory::server_dtls_ctx_setup(EVP_PKEY* priv, X509* cert, const cha
         _err("SSLCom::server_dtls_ctx_setup: Error creating SSL context!");
         exit(2);
     }
+    if (not set_verify_locations(ctx)) {
+        _err("SSLFactory::server_dtls_ctx_setup: cannot attach central trust store!");
+        exit(3);
+    }
 
     ciphers == nullptr ? SSL_CTX_set_cipher_list(ctx, SSLCom::ci_default_filter) : SSL_CTX_set_cipher_list(ctx,ciphers);
 
@@ -637,11 +646,25 @@ SSL_CTX* SSLFactory::server_dtls_ctx_setup(EVP_PKEY* priv, X509* cert, const cha
 bool SSLFactory::load_trust_store() {
     auto const& log = SSLFactory::get_log();
 
+    auto lc_ = std::scoped_lock(lock());
+
+    // A store already attached to SSL_CTX objects must keep its identity.
+    // Repeated callers share the successfully initialized central instance.
+    if(trust_store_ && trust_store_loaded_)
+        return true;
+
     // initialize trust store
     if(trust_store_) {
         X509_STORE_free(trust_store_);
     }
     trust_store_ = X509_STORE_new();
+    trust_store_loaded_ = false;
+    stats.ca_store_use_file = false;
+    stats.ca_verify_use_file = false;
+    if(!trust_store_) {
+        _err("SSLFactory::load_trust_store: cannot allocate central trust store");
+        return false;
+    }
 
     bool bundle_loaded = false;
     bool ca_path_loaded = false;
@@ -655,6 +678,7 @@ bool SSLFactory::load_trust_store() {
         }
         else {
             stats.ca_store_use_file = true;
+            stats.ca_verify_use_file = true;
             bundle_loaded = true;
         }
     }
@@ -674,50 +698,44 @@ bool SSLFactory::load_trust_store() {
         _war("SSLFactory::load_trust_store: loading default certification store: path not set!");
     }
 
-    return ( ca_path_loaded or bundle_loaded );
+    trust_store_loaded_ = (ca_path_loaded or bundle_loaded);
+    return trust_store_loaded_;
 
 }
 bool SSLFactory::set_verify_locations(SSL_CTX *ctx) {
 
     auto const& log = SSLFactory::get_log();
-
-    bool bundle_loaded = false;
-    bool ca_path_loaded = false;
-
-    if (not ca_file().empty()) {
-        const int r = SSL_CTX_load_verify_locations(ctx, ca_file().c_str(), nullptr);
-        _deb("SSLFactory::set_verify_locations: loading certificate bundle file: %s", r > 0 ? "ok" : "failed");
-
-        if(r <= 0) {
-            _err("SSLFactory::set_verify_locations: failed to load certificate bundle file: %d", r);
-        }
-        else {
-            stats.ca_verify_use_file = true;
-            bundle_loaded = true;
-        }
+    if(!ctx) {
+        _err("SSLFactory::set_verify_locations: missing SSL context");
+        return false;
     }
 
-    if(not bundle_loaded and not ca_path().empty()) {
-        const int r = SSL_CTX_load_verify_locations(ctx, nullptr, ca_path().c_str());
-        _deb("SSLFactory::set_verify_locations: loading default certificate store: %s", r > 0 ? "ok" : "failed");
+    auto lc_ = std::scoped_lock(lock());
+    if(!trust_store_loaded_ && !load_trust_store())
+        return false;
 
-        if(r <= 0) {
-            _err("SSLFactory::set_verify_locations: failed to load verify location: %d", r);
-        }
-        else {
-            ca_path_loaded = true;
-        }
-    }
-    else {
-        _war("SSLFactory::set_verify_locations: loading default certification store: path not set!");
-    }
-
-    return ( ca_path_loaded or bundle_loaded );
+    // set1 increments the store reference count. The factory and every TLS,
+    // DTLS or QUIC context therefore observe one identical trust database and
+    // may be destroyed independently without ownership ambiguity.
+#ifdef USE_OPENSSL11
+    SSL_CTX_set1_cert_store(ctx, trust_store_);
+#else
+    // OpenSSL 1.0 has no set1 helper; take the context-owned reference
+    // explicitly before transferring it with set_cert_store().
+    CRYPTO_add(&trust_store_->references, 1, CRYPTO_LOCK_X509_STORE);
+    SSL_CTX_set_cert_store(ctx, trust_store_);
+#endif
+    const bool attached = SSL_CTX_get_cert_store(ctx) == trust_store_;
+    if(!attached)
+        _err("SSLFactory::set_verify_locations: cannot attach central trust store");
+    return attached;
 }
 
 bool SSLFactory::reset_caches() {
     verify_cache().clear();
     verify_cache().expiration_check(expiring_verify_result::is_expired);
+    crl_cache().clear();
+    session_cache().clear();
 
     return true;
 }
@@ -767,6 +785,10 @@ void SSLFactory::destroy() {
 
     auto lc_ = std::scoped_lock(lock());
     auto const& log = get_log();
+
+    // A new trust store must never inherit authentication decisions or TLS
+    // sessions established under the previous trust generation.
+    reset_caches();
 
     if(ca_cert) {
         _deb("SSLFactory::destroy: ca_cert");
@@ -829,6 +851,7 @@ void SSLFactory::destroy() {
         X509_STORE_free(trust_store_);
         trust_store_ = nullptr;
     }
+    trust_store_loaded_ = false;
 
     _deb("SSLFactory::destroy: finished");
 }
@@ -895,13 +918,16 @@ std::string SSLFactory::make_store_key(X509* cert_orig, const SpoofOptions& spo)
     X509_NAME_oneline( X509_get_subject_name(cert_orig) , tmp, 512);
     std::vector<std::string> const cert_sans = SSLFactory::get_sans(cert_orig);
 
-    std::size_t key_size = std::strlen(tmp) + (spo.self_signed ? 12 : 0);
+    const std::string cert_fingerprint = fingerprint(cert_orig);
+    std::size_t key_size = std::strlen(tmp) + 6 + cert_fingerprint.size()
+                           + (spo.self_signed ? 12 : 0);
     for(auto const& san: cert_sans) key_size += 5 + san.size();
     for(auto const& san: spo.sans) key_size += 5 + san.size();
 
     std::string store_key;
     store_key.reserve(key_size);
     store_key.append(tmp);
+    store_key.append("+cert:").append(cert_fingerprint);
 
     if(spo.self_signed) {
         store_key.append("+self_signed");
@@ -937,7 +963,9 @@ std::string SSLFactory::make_store_key(X509* cert_orig, const SpoofOptions& spo)
     X509_NAME_oneline( X509_get_subject_name(cert_orig) , tmp.data(), 512);
     std::vector<std::string> const cert_sans = SSLFactory::get_sans(cert_orig);
 
-    std::size_t key_size = 5 + std::strlen(tmp.data()) + (spo.self_signed ? 12 : 0);
+    const std::string cert_fingerprint = fingerprint(cert_orig);
+    std::size_t key_size = 5 + std::strlen(tmp.data()) + 6 + cert_fingerprint.size()
+                           + (spo.self_signed ? 12 : 0);
     for(auto const& san: cert_sans) key_size += 5 + san.size();
     for(auto const& san: spo.sans) key_size += 5 + san.size();
 
@@ -945,6 +973,7 @@ std::string SSLFactory::make_store_key(X509* cert_orig, const SpoofOptions& spo)
     store_key.reserve(key_size);
     store_key.append("subj:");
     store_key.append(tmp.data());
+    store_key.append("+cert:").append(cert_fingerprint);
 
     if(spo.self_signed) {
         store_key.append("+self_signed");
@@ -1023,7 +1052,10 @@ int add_ext(STACK_OF(X509_EXTENSION) *sk, int nid, char *value) {
   if (!ex)
       return 0;
 
-  sk_X509_EXTENSION_push(sk, ex);
+  if (!sk || sk_X509_EXTENSION_push(sk, ex) != 1) {
+      X509_EXTENSION_free(ex);
+      return 0;
+  }
   return 1;
 }
 
@@ -1031,6 +1063,7 @@ std::vector<std::string> SSLFactory::get_sans(X509* x) {
 
     auto const& log = get_log();
     std::vector<std::string> ret;
+    if(not x) return ret;
     
     // Copy extensions
 #ifdef USE_OPENSSL11
@@ -1075,17 +1108,31 @@ std::vector<std::string> SSLFactory::get_sans(X509* x) {
                 void* name_ptr = GENERAL_NAME_get0_value(gn, &name_type);
                 if(name_type == GEN_DNS) {
                     auto* dns_name = static_cast<ASN1_STRING*>(name_ptr); //in ASN1 we trust
-
-                    std::string san((const char *) ASN1_STRING_get0_data(dns_name),
-                                    (unsigned long) ASN1_STRING_length(dns_name));
+                    if (!dns_name)
+                        continue;
+                    const auto* data = ASN1_STRING_get0_data(dns_name);
+                    const int length = ASN1_STRING_length(dns_name);
+                    if (!data || length <= 0 ||
+                        std::memchr(data, '\0', static_cast<std::size_t>(length)))
+                        continue;
+                    std::string san(reinterpret_cast<const char*>(data),
+                                    static_cast<std::size_t>(length));
                     ret.emplace_back("DNS:"+san);
 
                     _deb("SSLFactory::get_sans: adding GEN_DNS: %s", san.c_str());
                 }
                 else if(name_type == GEN_IPADD) {
                     auto* ip = static_cast<ASN1_STRING*>(name_ptr);
-                    std::string str_ip((const char *) ASN1_STRING_get0_data(ip),
-                                    (unsigned long) ASN1_STRING_length(ip));
+                    if (!ip)
+                        continue;
+                    const auto* data = ASN1_STRING_get0_data(ip);
+                    const int length = ASN1_STRING_length(ip);
+                    const int family = length == 4 ? AF_INET : length == 16 ? AF_INET6 : 0;
+                    std::array<char, INET6_ADDRSTRLEN> text {};
+                    if (!data || family == 0 ||
+                        !::inet_ntop(family, data, text.data(), text.size()))
+                        continue;
+                    std::string str_ip(text.data());
                     ret.emplace_back("IP:"+str_ip);
 
                     _deb("SSLFactory::get_sans: adding GEN_IP: %s", str_ip.c_str());
@@ -1405,10 +1452,13 @@ std::optional<CertificateChainCtx> SSLFactory::spoof(X509* cert_orig, bool self_
 }
 
 
-int SSLFactory::convert_ASN1TIME(ASN1_TIME *t, char* buf, size_t len) {
-    int rc;
+int SSLFactory::convert_ASN1TIME(const ASN1_TIME *t, char* buf, size_t len) {
+    if(not t or not buf or len == 0) return EXIT_FAILURE;
+    buf[0] = '\0';
+
     BIO *b = BIO_new(BIO_s_mem());
-    rc = ASN1_TIME_print(b, t);
+    if(not b) return EXIT_FAILURE;
+    int rc = ASN1_TIME_print(b, t);
     if (rc <= 0) {
         BIO_free(b);
         return EXIT_FAILURE;
@@ -1424,37 +1474,47 @@ int SSLFactory::convert_ASN1TIME(ASN1_TIME *t, char* buf, size_t len) {
 
 
 std::string SSLFactory::print_cn(X509* x) {
+    if(not x) return {};
     auto a_tmp = std::array<char,config_t::SSLCERTSTORE_BUFSIZE>();
     auto* tmp = a_tmp.data();
 
     std::string s;
 
     // get info from the peer certificate
-    X509_NAME_get_text_by_NID(X509_get_subject_name(x),NID_commonName, tmp, config_t::SSLCERTSTORE_BUFSIZE - 1);
+    auto* subject = X509_get_subject_name(x);
+    if(not subject or X509_NAME_get_text_by_NID(
+            subject, NID_commonName, tmp,
+            config_t::SSLCERTSTORE_BUFSIZE - 1) < 0) return {};
     s.append(tmp);
     
     return s;
 }
 
 std::string SSLFactory::print_issuer(X509* x) {
+    if(not x) return {};
     auto a_tmp = std::array<char,config_t::SSLCERTSTORE_BUFSIZE>();
     auto* tmp = a_tmp.data();
     std::string s;
 
     // get info from the peer certificate
-    X509_NAME_get_text_by_NID(X509_get_issuer_name(x),NID_commonName, tmp, config_t::SSLCERTSTORE_BUFSIZE - 1);
+    auto* issuer = X509_get_issuer_name(x);
+    if(not issuer or X509_NAME_get_text_by_NID(
+            issuer, NID_commonName, tmp,
+            config_t::SSLCERTSTORE_BUFSIZE - 1) < 0) return {};
     s.append(tmp);
     
     return s;
 }
 
 std::string SSLFactory::print_not_before(X509* x) {
+    if(not x) return {};
     auto a_tmp = std::array<char,config_t::SSLCERTSTORE_BUFSIZE>();
     auto* tmp = a_tmp.data();
     std::string s;
     ASN1_TIME *not_before = X509_get_notBefore(x);
     
-    convert_ASN1TIME(not_before, tmp, config_t::SSLCERTSTORE_BUFSIZE - 1);
+    if(convert_ASN1TIME(not_before, tmp,
+                        config_t::SSLCERTSTORE_BUFSIZE - 1) != EXIT_SUCCESS) return {};
     s.append(tmp);
     
     return s;
@@ -1462,12 +1522,14 @@ std::string SSLFactory::print_not_before(X509* x) {
 
 
 std::string SSLFactory::print_not_after(X509* x) {
+    if(not x) return {};
     auto a_tmp = std::array<char,config_t::SSLCERTSTORE_BUFSIZE>();
     auto* tmp = a_tmp.data();
     std::string s;
     ASN1_TIME *not_after = X509_get_notAfter(x);
     
-    convert_ASN1TIME(not_after, tmp, config_t::SSLCERTSTORE_BUFSIZE - 1);
+    if(convert_ASN1TIME(not_after, tmp,
+                        config_t::SSLCERTSTORE_BUFSIZE - 1) != EXIT_SUCCESS) return {};
     s.append(tmp);
     
     return s;
@@ -1679,6 +1741,8 @@ std::string SSLFactory::fingerprint(X509* cert) {
 
 
 std::string SSLFactory::print_ASN1_OCTET_STRING(ASN1_OCTET_STRING* ostr) {
+
+    if(not ostr or not ostr->data or ostr->length <= 0) return {};
 
     auto ret = hex_print(ostr->data, ostr->length);
     return ret;

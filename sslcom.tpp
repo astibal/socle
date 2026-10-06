@@ -54,9 +54,49 @@ inline void set_timer_now(struct timeval* t) {
     gettimeofday(t,nullptr);
 }
 
+namespace {
+std::optional<unsigned long> session_freshness_timeout(
+        SSL_SESSION* session, X509* certificate,
+        SSLComOptions const& options) {
+    if(!session) return std::nullopt;
+
+    unsigned long timeout = SSL_SESSION_get_timeout(session);
+    if(certificate) {
+        int days = 0;
+        int seconds = 0;
+        if(ASN1_TIME_diff(&days, &seconds, nullptr,
+                          X509_get0_notAfter(certificate)) != 1 ||
+           days < 0 || (days == 0 && seconds <= 0)) {
+            return std::nullopt;
+        }
+        const auto certificate_seconds =
+            static_cast<unsigned long>(days) * 86400UL +
+            static_cast<unsigned long>(seconds);
+        if(timeout == 0 || certificate_seconds < timeout)
+            timeout = certificate_seconds;
+    }
+
+    if(options.ocsp.stapling_enabled || options.ocsp.mode > 0) {
+        const auto ocsp_ttl = static_cast<unsigned long>(
+            SSLFactory::options::ocsp_status_ttl > 0
+                ? SSLFactory::options::ocsp_status_ttl : 1800);
+        const auto crl_ttl = static_cast<unsigned long>(
+            SSLFactory::options::crl_status_ttl > 0
+                ? SSLFactory::options::crl_status_ttl : 86400);
+        const auto revocation_ttl = std::min(ocsp_ttl, crl_ttl);
+        if(timeout == 0 || revocation_ttl < timeout)
+            timeout = revocation_ttl;
+    }
+    return timeout;
+}
+}
+
 template <class L4Proto>
 baseSSLCom<L4Proto>::baseSSLCom(): L4Proto() {
 
+    // Preserve the legacy process-wide override as the construction default;
+    // a subsequently applied TLS profile may replace it per connection.
+    opt.client_hello_timeout = SSLCOM_CLIENTHELLO_TIMEOUT;
     sslcom_peer_hello_buffer.capacity(1500);
     sslcom_server_hello_buffer.capacity(0); // don't waste memory for optional collection
     set_timer_now(&timer_start);
@@ -130,6 +170,9 @@ SSL_SESSION* baseSSLCom<L4Proto>::server_get_session_callback(SSL* ssl, const un
 
     auto const& log = log_cb_session();
 
+    if (!ssl)
+        return ret;
+
     void* data = SSL_get_ex_data(ssl, baseSSLCom::extdata_index());
     std::string name = "unknown_cx";
     auto* com = static_cast<baseSSLCom*>(data);
@@ -144,6 +187,9 @@ template <class L4Proto>
 int baseSSLCom<L4Proto>::new_session_callback(SSL* ssl, SSL_SESSION* session) {
 
     auto const& log = log_cb_session();
+
+    if (!ssl || !session)
+        return 0;
 
     void* data = SSL_get_ex_data(ssl, baseSSLCom::extdata_index());
     std::string name = "unknown_cx";
@@ -382,8 +428,6 @@ void baseSSLCom<L4Proto>::ssl_msg_callback(int write_p, int version, int content
                 com->log_profiling_stats(iDEB);
             }
 
-            auto state = SSL_get_state(com->sslcom_ssl);
-
             // if handsake is finished and there is decode error, it's in vast majority
             // cases abruptly closed socket from the peer.
             bool skip_this_one = ((not com->opt.alerts.decode_error_in_operational)
@@ -394,7 +438,8 @@ void baseSSLCom<L4Proto>::ssl_msg_callback(int write_p, int version, int content
             // if level is Fatal, log com error and close.
             if(level > 1) {
                 const char* side_comment = com->is_server() ? "left" : "right";
-                const char* state_comment = SSL_state_string(com->sslcom_ssl);
+                const char* state_comment = ssl ? SSL_state_string(ssl)
+                                                : "no SSL state";
 
                 _err("[%s|%s|%s]: TLS alert: %s/%s [%d/%d]", name.c_str(), side_comment, state_comment,
                         SSL_alert_type_string_long(int_code),SSL_alert_desc_string_long(int_code),level,code);
@@ -413,7 +458,10 @@ void baseSSLCom<L4Proto>::ssl_msg_callback(int write_p, int version, int content
                         if (com->peer()) details_com = dynamic_cast<baseSSLCom *>(com->peer());
                     }
 
-                    if (details_com) log.event_detail(event.eid, "%s", details_com->ssl_error_details().c_str());
+                    if (details_com && details_com->sslcom_ssl) {
+                        log.event_detail(event.eid, "%s",
+                                         details_com->ssl_error_details().c_str());
+                    }
                 }
             }
             
@@ -575,17 +623,32 @@ void baseSSLCom<L4Proto>::report_certificate_problem(X509* err_cert, int err_cod
 template <class L4Proto>
 int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int lib_preverify, X509_STORE_CTX *ctx) {
 
+    auto const& log = log_cb_verify();
+
+    if(ctx == nullptr) {
+        log.err("SSLCom::ssl_client_vrfy_callback: missing store context, failing validation!");
+        return 0;
+    }
+
     X509 * err_cert = X509_STORE_CTX_get_current_cert(ctx);
     int err_code =   X509_STORE_CTX_get_error(ctx);
     int depth = X509_STORE_CTX_get_error_depth(ctx);
     int idx = SSL_get_ex_data_X509_STORE_CTX_idx();
     int callback_return = lib_preverify;
 
-    auto const& log = log_cb_verify();
-
     _deb("SSLCom::ssl_client_vrfy_callback: data index = %d, lib_preverify = %d, depth = %d", idx, lib_preverify, depth);
 
-    auto const* ssl = static_cast<SSL*>(X509_STORE_CTX_get_ex_data(ctx, SSL_get_ex_data_X509_STORE_CTX_idx()));
+    if(idx < 0) {
+        log.err("SSLCom::ssl_client_vrfy_callback: invalid SSL ex-data index, failing validation!");
+        return 0;
+    }
+
+    auto const* ssl = static_cast<SSL*>(X509_STORE_CTX_get_ex_data(
+        ctx, idx));
+    if(ssl == nullptr) {
+        log.err("SSLCom::ssl_client_vrfy_callback: missing SSL object, failing validation!");
+        return 0;
+    }
     void* data = SSL_get_ex_data(ssl, extdata_index());
     std::string name = "unknown_cx";
 
@@ -603,11 +666,15 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int lib_preverify, X509_STORE_
         }
     }
 
-    if(not com or not ssl) {
+    if(not com) {
         _err("SSLCom::ssl_client_vrfy_callback: cannot get associated com object, failing validation!");
         return 0;
     }
-    // now we don't need check com and ssl anymore
+    if(err_cert == nullptr) {
+        _err("SSLCom::ssl_client_vrfy_callback: missing current certificate, failing validation!");
+        return 0;
+    }
+    // now we don't need check com, ssl, or err_cert anymore
 
     X509* xcert = X509_STORE_CTX_get_current_cert(ctx);
 
@@ -714,10 +781,6 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int lib_preverify, X509_STORE_
             }
 
             break;
-        case X509_V_ERR_NO_EXPLICIT_POLICY:
-            _dia("[%s]: SSLCom::ssl_client_vrfy_callback: no explicit policy", name.c_str());
-            break;
-
         default:
 
             // if not OK and no specific handling was treated by switch-case above, mark connection
@@ -725,7 +788,7 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int lib_preverify, X509_STORE_
             if(err_code > X509_V_OK) {
                 com->verify_bitset(verify_status_t::VRF_INVALID);
                 com->report_certificate_problem(err_cert, err_code);
-                if(com->opt.cert.allow_not_valid || com->opt.cert.failed_check_replacement) {
+                if(com->opt.cert.failed_check_replacement) {
                     callback_return = 1;
                 }
             }
@@ -766,6 +829,9 @@ int baseSSLCom<L4Proto>::ssl_alpn_select_callback(SSL *s, const unsigned char **
 
     auto const& log = log_cb_alpn();
 
+    if (!s || !out || !outlen)
+        return SSL_TLSEXT_ERR_NOACK;
+
     auto* this_com = static_cast<baseSSLCom*>(SSL_get_ex_data(s, baseSSLCom<L4Proto>::extdata_index()));
     if(not this_com) {
 
@@ -785,7 +851,8 @@ int baseSSLCom<L4Proto>::ssl_alpn_select_callback(SSL *s, const unsigned char **
             return SSL_TLSEXT_ERR_OK;
         }
 
-        if(auto* peer_com = dynamic_cast<baseSSLCom*>(this_com->peer()); peer_com) {
+        if(auto* peer_com = dynamic_cast<baseSSLCom*>(this_com->peer());
+           peer_com && peer_com->sslcom_ssl) {
             SSL_get0_alpn_selected(peer_com->sslcom_ssl, &in, &inlen);
 
             if(inlen > 0) {
@@ -959,15 +1026,32 @@ int baseSSLCom<L4Proto>::certificate_status_ocsp_check(baseSSLCom* com) {
             _not("Connection from %s: certificate OCSP revocation status cannot be obtained)",name.c_str());
 
             std::vector<std::string> crls = inet::crl::crl_urls(com->sslcom_target_cert);
+            const auto crl_download_deadline = std::chrono::steady_clock::now() +
+                std::chrono::seconds(9);
 
             for(auto crl_url: crls) {
 
+                // inet::download() is an HTTP/1 clear-text transport. It used
+                // to recognize an https:// prefix only to select port 443 and
+                // then send plaintext there. Never downgrade a certificate-
+                // supplied HTTPS distribution point this way.
+                if(crl_url.rfind("http://", 0) != 0) {
+                    _war("unsupported CRL distribution-point transport: %s",
+                         printable(crl_url).c_str());
+                    continue;
+                }
+
                 std::string crl_printable = printable(crl_url);
-                auto crl_url_guard = std::scoped_lock(com->factory()->crl_key_lock(crl_url));
-                auto crl_cache_entry = factory()->crl_cache().get(crl_url);
+                const std::string crl_cache_key = crl_url + ";issuer=" +
+                    SSLFactory::fingerprint(com->sslcom_target_issuer);
+                auto crl_url_guard = std::scoped_lock(
+                    com->factory()->crl_key_lock(crl_cache_key));
+                auto crl_cache_entry = factory()->crl_cache().get(crl_cache_key);
                 X509_CRL* crl_struct = nullptr;
+                bool crl_from_cache = false;
 
                 if(crl_cache_entry != nullptr) {
+                    crl_from_cache = true;
                     auto crl_struct_e = crl_cache_entry->value()->ptr;
                     crl_struct = crl_struct_e;
                     _dia("found cached crl: %s",crl_printable.c_str());
@@ -990,7 +1074,23 @@ int baseSSLCom<L4Proto>::certificate_status_ocsp_check(baseSSLCom* com) {
 
                     buffer b;
                     bool dnld_failed = false;
-                    int bytes = inet::download(crl_url.c_str(),b,tolerated_dnld_time*3);
+                    constexpr inet::transfer_limits crl_transfer_limits{
+                        64U * 1024U,
+                        64U * 1024U * 1024U
+                    };
+                    const auto remaining_ms = std::chrono::duration_cast<
+                        std::chrono::milliseconds>(
+                            crl_download_deadline -
+                            std::chrono::steady_clock::now()).count();
+                    if(remaining_ms <= 0) {
+                        _war("CRL download deadline exhausted");
+                        break;
+                    }
+                    const int download_timeout = static_cast<int>(
+                        std::max<long long>(1, (remaining_ms + 999) / 1000));
+                    int bytes = inet::download(
+                        crl_url.c_str(), b, download_timeout,
+                        crl_transfer_limits);
                     if(bytes < 0) dnld_failed = true;
 
                     if(! dnld_failed ) {
@@ -1010,16 +1110,16 @@ int baseSSLCom<L4Proto>::certificate_status_ocsp_check(baseSSLCom* com) {
 
                             _dia("Caching CRL 0x%x", crl_struct);
                             crl_cache_entry.reset(SSLFactory::make_expiring_crl(crl_struct));
-                            factory()->crl_cache().set(crl_url, crl_cache_entry);
+                            factory()->crl_cache().set(crl_cache_key, crl_cache_entry);
                         } else {
                             _war("downloaded CRL from %s cannot be parsed", crl_printable.c_str());
                             crl_cache_entry.reset(SSLFactory::make_expiring_crl(nullptr));
-                            factory()->crl_cache().set(crl_url, crl_cache_entry);
+                            factory()->crl_cache().set(crl_cache_key, crl_cache_entry);
                         }
                     } else {
                         _war("downloading CRL from %s failed.",crl_printable.c_str());
                         crl_cache_entry.reset(SSLFactory::make_expiring_crl(nullptr));
-                        factory()->crl_cache().set(crl_url, crl_cache_entry);
+                        factory()->crl_cache().set(crl_cache_key, crl_cache_entry);
                     }
 
                 }
@@ -1058,7 +1158,8 @@ int baseSSLCom<L4Proto>::certificate_status_ocsp_check(baseSSLCom* com) {
                 res.revoked = is_revoked_by_crl;
 
                 if(is_revoked_by_crl >= 0) {
-                    origin = verify_origin_t::CRL;
+                    if(!crl_from_cache)
+                        origin = verify_origin_t::CRL;
                     break;
                 }
             }
@@ -1088,6 +1189,74 @@ int baseSSLCom<L4Proto>::certificate_status_ocsp_check(baseSSLCom* com) {
             com->verify_bitreset(verify_status_t::VRF_OK);
             com->verify_bitset(verify_status_t::VRF_DEFERRED);
         }
+    }
+
+    // Mode 2 promises revocation validation for the complete verified chain,
+    // not merely more verbose logging for the leaf result.  The trust anchor
+    // itself is intentionally excluded: its revocation is a trust-store
+    // administration decision, and it has no higher issuer to query.
+    if(com && res.revoked == 0 && com->opt.ocsp.mode > 1) {
+        std::vector<std::pair<X509*, X509*>> chain_pairs;
+#ifdef USE_OPENSSL11
+        STACK_OF(X509)* verified_chain = com->sslcom_ssl
+            ? SSL_get0_verified_chain(com->sslcom_ssl) : nullptr;
+        const int chain_size = verified_chain
+            ? sk_X509_num(verified_chain) : 0;
+        for(int i = 1; i + 1 < chain_size; ++i) {
+            X509* certificate = sk_X509_value(verified_chain, i);
+            X509* issuer = sk_X509_value(verified_chain, i + 1);
+            if(certificate && issuer)
+                chain_pairs.emplace_back(certificate, issuer);
+        }
+#endif
+        // Unit-level and legacy-OpenSSL fallback. The callback already keeps
+        // the first intermediate and its issuer for diagnostics.
+        if(chain_pairs.empty() && com->sslcom_target_issuer &&
+           com->sslcom_target_issuer_issuer) {
+            chain_pairs.emplace_back(com->sslcom_target_issuer,
+                                     com->sslcom_target_issuer_issuer);
+        }
+
+        // If the captured issuer is not itself a trust anchor, an empty pair
+        // list means that the promised full-chain check cannot be completed.
+        // Treat missing chain state as UNKNOWN rather than silently reducing
+        // mode 2 to a leaf-only check. A leaf issued directly by a self-issued
+        // root legitimately has no intermediate pair to query.
+        const bool incomplete_chain = chain_pairs.empty() &&
+            com->sslcom_target_issuer &&
+            X509_check_issued(com->sslcom_target_issuer,
+                              com->sslcom_target_issuer) != X509_V_OK;
+
+        X509* const leaf = com->sslcom_target_cert;
+        X509* const leaf_issuer = com->sslcom_target_issuer;
+        X509* const leaf_issuer_issuer = com->sslcom_target_issuer_issuer;
+        const int requested_mode = com->opt.ocsp.mode;
+        com->opt.ocsp.mode = 1; // prevent recursion while checking one pair
+
+        if(incomplete_chain) {
+            _war("full-chain OCSP validation cannot enumerate the issuer chain");
+            res.revoked = -1;
+            com->verify_bitreset(verify_status_t::VRF_OK);
+            com->verify_bitset(verify_status_t::VRF_DEFERRED);
+        }
+        else {
+            for(const auto& [certificate, issuer] : chain_pairs) {
+                com->sslcom_target_cert = certificate;
+                com->sslcom_target_issuer = issuer;
+                com->sslcom_target_issuer_issuer = nullptr;
+                const int chain_result = certificate_status_ocsp_check(com);
+                if(chain_result != 0) {
+                    res.revoked = chain_result;
+                    break;
+                }
+            }
+        }
+
+        com->sslcom_target_cert = leaf;
+        com->sslcom_target_issuer = leaf_issuer;
+        com->sslcom_target_issuer_issuer = leaf_issuer_issuer;
+        com->opt.ocsp.mode = requested_mode;
+        com->ocsp_cert_is_revoked = res.revoked;
     }
     _dia("ocsp_explicit_check__: final result %d", res.revoked);
     return res.revoked;
@@ -1177,11 +1346,22 @@ std::pair<typename baseSSLCom<L4Proto>::staple_code_t, int> baseSSLCom<L4Proto>:
 
     auto const& log = log_ocsp();
 
+    if (!com || !ssl)
+        return std::make_pair(staple_code_t::NOT_PROCESSED, -1);
+
+    // OpenSSL's error queue is thread-local and shared by all operations on
+    // this worker. Preserve errors owned by the caller, while ensuring that
+    // expected parser/verification failures from an untrusted staple cannot
+    // poison the subsequent fallback query or handshake state machine.
+    const bool error_queue_marked = ERR_set_mark() == 1;
+
     const unsigned char *stapling_body = nullptr;
+    const unsigned char *stapling_end = nullptr;
 
     auto proc_status = staple_code_t::NOT_PROCESSED;
     int  ocsp_status = -1;
     int  ocsp_reason = -1;
+    bool status_found = false;
 
     STACK_OF(X509*) signers = nullptr;
     OCSP_RESPONSE *ocsp_response = nullptr;
@@ -1194,9 +1374,11 @@ std::pair<typename baseSSLCom<L4Proto>::staple_code_t, int> baseSSLCom<L4Proto>:
 
     bool opt_ocsp_strict = (com->opt.ocsp.stapling_mode >= 1);
     bool opt_ocsp_require = (com->opt.ocsp.stapling_mode >= 2);
+    const long ocsp_max_age = SSLFactory::options::ocsp_status_ttl > 0
+        ? SSLFactory::options::ocsp_status_ttl : 1800;
 
     auto stapling_len = SSL_get_tlsext_status_ocsp_resp(ssl, &stapling_body);
-    if (!stapling_body) {
+    if (!stapling_body || stapling_len <= 0) {
         if(opt_ocsp_strict)
             _dia("[%s]: no OCSP stapling status response", name.c_str());
 
@@ -1208,8 +1390,9 @@ std::pair<typename baseSSLCom<L4Proto>::staple_code_t, int> baseSSLCom<L4Proto>:
 
     _dum("[%s]: OCSP Response:  \r\n%s",name.c_str(),hex_dump((unsigned char*) stapling_body, stapling_len, 4, 0, true).c_str());
 
+    stapling_end = stapling_body + stapling_len;
     ocsp_response = d2i_OCSP_RESPONSE(nullptr, &stapling_body, stapling_len);
-    if (!ocsp_response) {
+    if (!ocsp_response || stapling_body != stapling_end) {
         _err("[%s] failed to parse OCSP response",name.c_str());
 
         com->opt.ocsp.enforce_in_verify = true;
@@ -1239,23 +1422,27 @@ std::pair<typename baseSSLCom<L4Proto>::staple_code_t, int> baseSSLCom<L4Proto>:
     }
 
     signers = sk_X509_new_null();
-    sk_X509_push(signers, com->sslcom_target_issuer);
+    if (!signers || !com->sslcom_target_issuer ||
+        sk_X509_push(signers, com->sslcom_target_issuer) != 1) {
+        com->opt.ocsp.enforce_in_verify = true;
+        proc_status = staple_code_t::BASIC_VERIFY_FAILED;
+        goto the_end;
+    }
     ocsp_status = OCSP_basic_verify(basic_response, signers , com->factory()->trust_store() , 0);
 
     if (ocsp_status <= 0) {
-
-        int err = SSL_get_error(ssl, ocsp_status);
-        _dia("    error: %s",ERR_error_string(err,nullptr));
-
+        const unsigned long err = ERR_peek_last_error();
+        if(err != 0)
+            _dia("    error: %s", ERR_error_string(err, nullptr));
 
         if(not opt_ocsp_strict) {
             _not("[%s] OCSP stapling response failed verification",name.c_str());
-            ERR_clear_error();
         }
         else {
             _err("[%s] OCSP stapling response failed verification",name.c_str());
         }
 
+        com->opt.ocsp.enforce_in_verify = true;
         proc_status = staple_code_t::BASIC_VERIFY_FAILED;
         goto the_end;
     }
@@ -1266,9 +1453,6 @@ std::pair<typename baseSSLCom<L4Proto>::staple_code_t, int> baseSSLCom<L4Proto>:
     if (!cert_id) {
         _err("[%s] could not create OCSP certificate identifier",name.c_str());
 
-        if(not opt_ocsp_strict)
-            ERR_clear_error();
-
         com->opt.ocsp.enforce_in_verify = true;
 
         proc_status = staple_code_t::CERT_TO_ID_FAILED;
@@ -1276,12 +1460,48 @@ std::pair<typename baseSSLCom<L4Proto>::staple_code_t, int> baseSSLCom<L4Proto>:
     }
 
 
-    if (!OCSP_resp_find_status(basic_response, cert_id, & ocsp_status, &ocsp_reason, &produced_at, &this_update, &next_update)) {
+    status_found = OCSP_resp_find_status(
+        basic_response, cert_id, &ocsp_status, &ocsp_reason,
+        &produced_at, &this_update, &next_update) == 1;
+
+    // OCSP_cert_to_id(nullptr, ...) uses OpenSSL's default digest (normally
+    // SHA-1), while responders are free to use another CertID hash algorithm.
+    // If the default ID did not match, rebuild it with each digest advertised
+    // by the response instead of rejecting a valid SHA-256 (or newer) staple.
+    for(int i = 0; !status_found && i < OCSP_resp_count(basic_response); ++i) {
+        const OCSP_SINGLERESP* single = OCSP_resp_get0(basic_response, i);
+        const OCSP_CERTID* response_id = single
+            ? OCSP_SINGLERESP_get0_id(single) : nullptr;
+        ASN1_OBJECT* digest_object = nullptr;
+        if(!response_id || OCSP_id_get0_info(
+                nullptr, &digest_object, nullptr, nullptr,
+                const_cast<OCSP_CERTID*>(response_id)) != 1 || !digest_object)
+            continue;
+
+        const EVP_MD* digest = EVP_get_digestbyobj(digest_object);
+        OCSP_CERTID* candidate = digest
+            ? OCSP_cert_to_id(digest, com->sslcom_target_cert,
+                              com->sslcom_target_issuer)
+            : nullptr;
+        if(!candidate)
+            continue;
+
+        if(OCSP_id_cmp(candidate, response_id) == 0 &&
+           OCSP_resp_find_status(
+               basic_response, candidate, &ocsp_status, &ocsp_reason,
+               &produced_at, &this_update, &next_update) == 1) {
+            OCSP_CERTID_free(cert_id);
+            cert_id = candidate;
+            status_found = true;
+        }
+        else {
+            OCSP_CERTID_free(candidate);
+        }
+    }
+
+    if (!status_found) {
         _err("[%s] could not find current server certificate from OCSP stapling response %s", name.c_str(),
              (opt_ocsp_require) ? "" : " (OCSP not required)");
-
-        if(!opt_ocsp_require)
-            ERR_clear_error();
 
         com->opt.ocsp.enforce_in_verify = true;
 
@@ -1289,11 +1509,48 @@ std::pair<typename baseSSLCom<L4Proto>::staple_code_t, int> baseSSLCom<L4Proto>:
         goto the_end;
     }
 
-    if (!OCSP_check_validity(this_update, next_update, 5 * 60, -1)) {
-        _err("[%s] OCSP stapling times invalid", name.c_str());
+    // A BasicOCSPResponse must provide one unambiguous status for the peer
+    // certificate.  OCSP_resp_find_status() returns the first match, which
+    // would otherwise make contradictory duplicate SingleResponses depend on
+    // their wire order.  Rebuild the expected CertID using each response's
+    // advertised digest so duplicates using different hashes are caught too.
+    {
+        int matching_statuses = 0;
+        for(int i = 0; i < OCSP_resp_count(basic_response); ++i) {
+            const OCSP_SINGLERESP* single = OCSP_resp_get0(basic_response, i);
+            const OCSP_CERTID* response_id = single
+                ? OCSP_SINGLERESP_get0_id(single) : nullptr;
+            ASN1_OBJECT* digest_object = nullptr;
+            if(!response_id || OCSP_id_get0_info(
+                    nullptr, &digest_object, nullptr, nullptr,
+                    const_cast<OCSP_CERTID*>(response_id)) != 1 ||
+               !digest_object)
+                continue;
 
-        if(not opt_ocsp_strict)
-            ERR_clear_error();
+            const EVP_MD* digest = EVP_get_digestbyobj(digest_object);
+            OCSP_CERTID* expected_id = digest
+                ? OCSP_cert_to_id(digest, com->sslcom_target_cert,
+                                  com->sslcom_target_issuer)
+                : nullptr;
+            if(expected_id) {
+                if(OCSP_id_cmp(expected_id, response_id) == 0)
+                    ++matching_statuses;
+                OCSP_CERTID_free(expected_id);
+            }
+        }
+
+        if(matching_statuses != 1) {
+            _err("[%s] OCSP stapling response contains %d matching statuses",
+                 name.c_str(), matching_statuses);
+            com->opt.ocsp.enforce_in_verify = true;
+            proc_status = staple_code_t::NO_FIND_STATUS;
+            goto the_end;
+        }
+    }
+
+    if (!OCSP_check_validity(
+            this_update, next_update, 5 * 60, ocsp_max_age)) {
+        _err("[%s] OCSP stapling times invalid", name.c_str());
 
         com->opt.ocsp.enforce_in_verify = true;
 
@@ -1312,6 +1569,11 @@ std::pair<typename baseSSLCom<L4Proto>::staple_code_t, int> baseSSLCom<L4Proto>:
         OCSP_RESPONSE_free(ocsp_response);
 
     if(signers) sk_X509_free(signers);
+
+    if(error_queue_marked)
+        ERR_pop_to_mark();
+    else
+        ERR_clear_error();
 
     if(proc_status == staple_code_t::NOT_PROCESSED) {
         proc_status = staple_code_t::SUCCESS;
@@ -1381,6 +1643,9 @@ int baseSSLCom<L4Proto>::status_resp_callback(SSL* ssl, void* arg) {
 
     auto const& log = inet::ocsp::OcspFactory::log();
 
+    if (!ssl)
+        return -1;
+
     void* data = SSL_get_ex_data(ssl, extdata_index());
     std::string name = "unknown_cx";
 
@@ -1398,7 +1663,10 @@ int baseSSLCom<L4Proto>::status_resp_callback(SSL* ssl, void* arg) {
 
     if(not com->opt.ocsp.stapling_enabled and com->opt.ocsp.mode == 0) {
         _dia("status_resp_callback[%s]: OCSP is completely disabled", name.c_str());
-        com->verify_reset(verify_status_t::VRF_OK);
+        // Certificate verification and the status callback have no guaranteed
+        // ordering. Disabling revocation checks must not erase an INVALID,
+        // UNKNOWN_ISSUER or SELF_SIGNED result already published by the X.509
+        // callback (nor pre-approve a callback that has not run yet).
         com->verify_origin(verify_origin_t::NONE);
         return 1;
     }
@@ -1477,6 +1745,71 @@ int baseSSLCom<L4Proto>::status_resp_callback(SSL* ssl, void* arg) {
             com->ocsp_cert_is_revoked = 0;
             _dia("Connection from %s: certificate %s is valid (stapling OCSP))",name.c_str(),cn.c_str());
 
+            // A staple proves only the leaf status. Continue with each
+            // non-root intermediate without querying the already-proven leaf
+            // again. Do not persist the staple in the generic cache here: its
+            // nextUpdate may be earlier than the configured cache interval.
+            if(com->opt.ocsp.mode > 1) {
+                std::vector<std::pair<X509*, X509*>> chain_pairs;
+#ifdef USE_OPENSSL11
+                STACK_OF(X509)* verified_chain = com->sslcom_ssl
+                    ? SSL_get0_verified_chain(com->sslcom_ssl) : nullptr;
+                const int chain_size = verified_chain
+                    ? sk_X509_num(verified_chain) : 0;
+                for(int i = 1; i + 1 < chain_size; ++i) {
+                    X509* certificate = sk_X509_value(verified_chain, i);
+                    X509* issuer = sk_X509_value(verified_chain, i + 1);
+                    if(certificate && issuer)
+                        chain_pairs.emplace_back(certificate, issuer);
+                }
+#endif
+                if(chain_pairs.empty() && com->sslcom_target_issuer &&
+                   com->sslcom_target_issuer_issuer) {
+                    chain_pairs.emplace_back(com->sslcom_target_issuer,
+                                             com->sslcom_target_issuer_issuer);
+                }
+                const bool incomplete_chain = chain_pairs.empty() &&
+                    com->sslcom_target_issuer &&
+                    X509_check_issued(com->sslcom_target_issuer,
+                                      com->sslcom_target_issuer) != X509_V_OK;
+
+                X509* const leaf = com->sslcom_target_cert;
+                X509* const leaf_issuer = com->sslcom_target_issuer;
+                X509* const leaf_issuer_issuer =
+                    com->sslcom_target_issuer_issuer;
+                const int requested_mode = com->opt.ocsp.mode;
+                int chain_status = incomplete_chain ? -1 : 0;
+                com->opt.ocsp.mode = 1;
+                if(incomplete_chain) {
+                    _war("full-chain stapling validation cannot enumerate the issuer chain");
+                }
+                else {
+                    for(const auto& [certificate, issuer] : chain_pairs) {
+                        com->sslcom_target_cert = certificate;
+                        com->sslcom_target_issuer = issuer;
+                        com->sslcom_target_issuer_issuer = nullptr;
+                        chain_status =
+                            baseSSLCom::certificate_status_ocsp_check(com);
+                        if(chain_status != 0)
+                            break;
+                    }
+                }
+                com->sslcom_target_cert = leaf;
+                com->sslcom_target_issuer = leaf_issuer;
+                com->sslcom_target_issuer_issuer = leaf_issuer_issuer;
+                com->opt.ocsp.mode = requested_mode;
+                com->ocsp_cert_is_revoked = chain_status;
+                if(chain_status != 0) {
+                    if(chain_status < 0) {
+                        com->verify_bitreset(verify_status_t::VRF_OK);
+                        com->verify_bitset(verify_status_t::VRF_ALLFAILED);
+                    }
+                    _war("[%s] full-chain OCSP validation failed after a valid leaf staple: %d",
+                         name.c_str(), chain_status);
+                    return com->opt.cert.failed_check_replacement;
+                }
+            }
+
             return 1;
         } else
         if (stap_result.second == V_OCSP_CERTSTATUS_REVOKED) {
@@ -1523,6 +1856,9 @@ int baseSSLCom<L4Proto>::ssl_client_cert_callback(SSL* ssl, X509** x509, EVP_PKE
     //if yes, x509 and pkey has to point to pointers with cert.
 
     auto const& log = log_cb_ccert();
+
+    if (!ssl || !x509 || !pkey)
+        return 0;
     
     void* data = SSL_get_ex_data(ssl, extdata_index());
     std::string name = "unknown_cx";
@@ -1555,7 +1891,11 @@ int baseSSLCom<L4Proto>::ssl_client_cert_callback(SSL* ssl, X509** x509, EVP_PKE
                     _dia("[%s]: client certificate requested - configured to drop connection", name.c_str());
                     log.event(INF,"[%s]: client certificate requested - configured to drop connection", name.c_str());
                     com->error(ERROR_UNSPEC);
-                    return 1;
+                    // The callback contract reserves 1 for a real certificate
+                    // and private key in *x509/*pkey.  The proxy-level block is
+                    // carried by VRF_CLIENT_CERT_RQ and the local error state;
+                    // this handshake response itself is an empty certificate.
+                    return 0;
                 }
                 break;
 
@@ -1565,7 +1905,9 @@ int baseSSLCom<L4Proto>::ssl_client_cert_callback(SSL* ssl, X509** x509, EVP_PKE
                 return 0;
                 
             case 2:
-                return 1;
+                // Bypass applies to the next connection.  Complete this
+                // CertificateRequest correctly with an empty certificate.
+                return 0;
 
             case 3: {
                 int found = 0;
@@ -1618,8 +1960,10 @@ int baseSSLCom<L4Proto>::ct_verify_callback(const CT_POLICY_EVAL_CTX *ctx, const
 
     bool result = true;
 
-    auto sc_num = sk_SCT_num(scts);
     auto* sslcom = static_cast<baseSSLCom*>(arg);
+    if (!sslcom)
+        return 0;
+    auto sc_num = sk_SCT_num(scts);
 
     if(sslcom) {
         auto const& log = log_cb_ct();
@@ -1698,6 +2042,8 @@ int baseSSLCom<L4Proto>::ct_verify_callback(const CT_POLICY_EVAL_CTX *ctx, const
                 sslcom->verify_extended_info().emplace_back(vrf_other_values_t::VRF_OTHER_CT_INVALID);
             }
             else if(res_ok < 2) {
+                result = false;
+
                 // announce error and insufficient understood
                 sslcom->verify_bitreset(verify_status_t::VRF_OK);
                 sslcom->verify_bitset(verify_status_t::VRF_CT_MISSING);
@@ -1760,8 +2106,11 @@ void baseSSLCom<L4Proto>::init_ssl_callbacks() {
                 SSL_set_tlsext_status_type(sslcom_ssl, TLSEXT_STATUSTYPE_ocsp);
             }
             else {
-                _err("cannot load trusted store for OCSP. Fail-open.");
-                opt.ocsp.stapling_mode = 0;
+                _err("cannot load trusted store for requested OCSP validation; failing closed");
+                opt.ocsp.enforce_in_verify = true;
+                verify_bitreset(verify_status_t::VRF_OK);
+                verify_bitset(verify_status_t::VRF_ALLFAILED);
+                error(ERROR_UNSPEC);
             }
         }
         else {
@@ -1770,18 +2119,21 @@ void baseSSLCom<L4Proto>::init_ssl_callbacks() {
         }
 
         if (opt.ct_enable) {
-
-            if(SSLFactory::factory().is_ct_available()) {
-
-                _dia("setting up certificate transparency mode to strict");
-                SSL_enable_ct(sslcom_ssl, SSL_CT_VALIDATION_STRICT);
-                _dia("setting up certificate transparency callback");
-                SSL_set_ct_validation_callback(sslcom_ssl, ct_verify_callback, this);
-
-            } else {
-                _war("certificate transparency desired but not available");
+            if(!SSLFactory::factory().is_ct_available()) {
+                _war("certificate transparency log list is unavailable; validation remains fail-closed");
             }
 
+            _dia("setting up certificate transparency mode to strict");
+            const int ct_enabled = SSL_enable_ct(sslcom_ssl, SSL_CT_VALIDATION_STRICT);
+            _dia("setting up certificate transparency callback");
+            const int callback_set = SSL_set_ct_validation_callback(
+                sslcom_ssl, ct_verify_callback, this);
+            if(ct_enabled != 1 || callback_set != 1) {
+                _err("cannot enable certificate transparency validation");
+                verify_bitreset(verify_status_t::VRF_OK);
+                verify_bitset(verify_status_t::VRF_CT_MISSING);
+                error(ERROR_UNSPEC);
+            }
         }
 
     }
@@ -1834,7 +2186,26 @@ void baseSSLCom<L4Proto>::init_client() {
                     my_filter += " !kRSA";
 
         _dia("right ciphers: %s",my_filter.c_str());
-        SSL_set_cipher_list(sslcom_ssl,my_filter.c_str());
+        if(SSL_set_cipher_list(sslcom_ssl,my_filter.c_str()) != 1) {
+            _err("cannot apply right-side TLS cipher policy");
+            error(ERROR_UNSPEC);
+            return;
+        }
+#ifdef USE_OPENSSL111
+        if(!opt.right.allow_aes128 && SSL_set_ciphersuites(
+                sslcom_ssl,
+                "TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256") != 1) {
+            _err("cannot apply right-side TLS 1.3 cipher policy");
+            error(ERROR_UNSPEC);
+            return;
+        }
+        if(!opt.right.kex_dh && SSL_set_max_proto_version(
+                sslcom_ssl, TLS1_2_VERSION) != 1) {
+            _err("cannot apply right-side TLS key-exchange policy");
+            error(ERROR_UNSPEC);
+            return;
+        }
+#endif
     }
     
     if(opt.right.no_tickets) {
@@ -1931,7 +2302,26 @@ void baseSSLCom<L4Proto>::init_server() {
                     my_filter += " !kRSA";
 
         _dia("left ciphers: %s",my_filter.c_str());
-        SSL_set_cipher_list(sslcom_ssl,my_filter.c_str());
+        if(SSL_set_cipher_list(sslcom_ssl,my_filter.c_str()) != 1) {
+            _err("cannot apply left-side TLS cipher policy");
+            error(ERROR_UNSPEC);
+            return;
+        }
+#ifdef USE_OPENSSL111
+        if(!opt.left.allow_aes128 && SSL_set_ciphersuites(
+                sslcom_ssl,
+                "TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256") != 1) {
+            _err("cannot apply left-side TLS 1.3 cipher policy");
+            error(ERROR_UNSPEC);
+            return;
+        }
+        if(!opt.left.kex_dh && SSL_set_max_proto_version(
+                sslcom_ssl, TLS1_2_VERSION) != 1) {
+            _err("cannot apply left-side TLS key-exchange policy");
+            error(ERROR_UNSPEC);
+            return;
+        }
+#endif
     }
 
     if(opt.left.kex_dh) {
@@ -2003,6 +2393,11 @@ void baseSSLCom<L4Proto>::init_server() {
 
 template <class L4Proto>
 bool baseSSLCom<L4Proto>::check_cert (const char* host) {
+    if (not sslcom_ssl) {
+        _err("check_cert: missing SSL state");
+        return false;
+    }
+
     if ( !is_server() && SSL_get_verify_result ( sslcom_ssl ) !=X509_V_OK ) {
         _dia( "check_cert: ssl client: target server's certificate cannot be verified!" );
     }
@@ -2027,9 +2422,18 @@ bool baseSSLCom<L4Proto>::check_cert (const char* host) {
 
     if(host) {
     	_dia("peer host: %s",host);
-        if (X509_check_host(peer, host, 0,
-                            X509_CHECK_FLAG_ALWAYS_CHECK_SUBJECT, nullptr) != 1) {
-            _dia( "Common name doesn't match host name" );
+        const bool host_is_ip = inet::is_ipv4_address(host) ||
+                                inet::is_ipv6_address(host);
+        const bool identity_matches = host_is_ip
+            ? X509_check_ip_asc(peer, host, 0) == 1
+            : X509_check_host(peer, host, 0, 0, nullptr) == 1;
+        if (!identity_matches) {
+            _dia("certificate identity doesn't match host name");
+            verify_bitset(verify_status_t::VRF_HOSTNAME_FAILED);
+#ifndef USE_OPENSSL300
+            X509_free(peer);
+#endif
+            return false;
         }
     }
 
@@ -2287,6 +2691,9 @@ int baseSSLCom<L4Proto>::upgrade_server_socket(int sockfd) {
         return sockfd;
     }
 
+    set_timer_now(&timer_handshake_start);
+    handshake_timer_started = true;
+
     if(not upgraded()) {
         init_server();
         if (not sslcom_ssl) {
@@ -2347,7 +2754,11 @@ bool baseSSLCom<L4Proto>::handshake_peer_client() {
                 socket(owner_cx()->socket());
                 _dia("SSLCom::waiting[%d]: socket 0 has been auto-upgraded to owner's socket", socket());
             }
-            upgrade_client_socket(socket());
+            if(upgrade_client_socket(socket()) < 0) {
+                _err("SSLCom::waiting[%d]: client TLS upgrade failed", socket());
+                error(ERROR_UNSPEC);
+                return false;
+            }
         }
     }
 
@@ -2379,7 +2790,10 @@ bool baseSSLCom<L4Proto>::handshake_peer_client() {
 
                         //ok, we know SNI ends with the filter entry. We need to check if the character BEFORE match pos in SNI is '.' to prevent
                         // match www.mycnn.com with cnn.com SNI entry.
-                        bool cont = true;
+                        // A planted wildcard must consume at least one label;
+                        // `*.example.test` must not broaden the bypass to the
+                        // apex `example.test`.
+                        bool cont = !wildcard_planted || pos > 0;
 
                         if (pos > 0) {
                             if (sslcom_sni().at(pos - 1) != '.') {
@@ -2423,6 +2837,12 @@ template <class L4Proto>
 int baseSSLCom<L4Proto>::handshake_client() {
 
     _deb("SSLCom::waiting: before SSL_connect");
+
+    if(sslcom_ssl == nullptr) {
+        _err("SSLCom::handshake_client: missing SSL object");
+        error(ERROR_UNSPEC);
+        return -1;
+    }
 
     ERR_clear_error();
     sslcom_ret = SSL_connect(sslcom_ssl);
@@ -2489,6 +2909,16 @@ ret_handshake baseSSLCom<L4Proto>::handshake() {
         }
     };
 
+    if(handshake_timer_started && opt.handshake_timeout > 0 &&
+       timeval_msdelta_now(&timer_handshake_start) > opt.handshake_timeout) {
+        _err("SSLCom::handshake: TLS handshake timed out after %d ms on socket %d",
+             opt.handshake_timeout, socket());
+        log.event(ERR, "[%s] TLS handshake timed out after %d ms",
+                  to_string(iINF).c_str(), opt.handshake_timeout);
+        fail_both_sides(true);
+        return ret_handshake::FATAL;
+    }
+
     if (sslcom_ssl == nullptr and ! auto_upgrade()) {
         _war("SSLCom::handshake: sslcom_ssl is NULL and auto_upgrade is not set");
         return ret_handshake::ERROR;
@@ -2503,6 +2933,11 @@ ret_handshake baseSSLCom<L4Proto>::handshake() {
         op_descr = op_connect;
 
         if(! handshake_peer_client() ) {
+            if(error()) {
+                _err("SSLCom::handshake: %s setup failed on socket %d", op_descr, socket());
+                fail_both_sides(true);
+                return ret_handshake::FATAL;
+            }
             _dia("SSLCom::handshake: %s on socket %d: waiting for the peer...", op_descr, socket());
 
 
@@ -2676,6 +3111,7 @@ bool baseSSLCom<L4Proto>::store_session_if_needed() {
             key.append(owner_cx()->host()).push_back(':');
             key.append(owner_cx()->port());
         }
+        key.append("|policy:").append(session_policy_fingerprint(opt));
 
         if(!SSL_session_reused(sslcom_ssl)) {
             _dia("ticketing: key %s: full key exchange, connect attempt %d on socket %d", key.c_str(),
@@ -2698,6 +3134,19 @@ bool baseSSLCom<L4Proto>::store_session_if_needed() {
                 return ret;
             }
             if(verify_bitcheck(verify_status_t::VRF_OK)) {
+
+                // A resumed handshake does not present the peer certificate.
+                // Never let the cached authentication decision outlive the
+                // certificate or the locally accepted revocation evidence.
+                auto* session = SSL_get0_session(sslcom_ssl);
+                auto const freshness_timeout = session_freshness_timeout(
+                    session, sslcom_target_cert, opt);
+                if(!freshness_timeout) {
+                    _war("ticketing: peer certificate is already expired or invalid; session not stored");
+                    return false;
+                }
+                if(*freshness_timeout > 0)
+                    SSL_SESSION_set_timeout(session, *freshness_timeout);
 
 #if defined USE_OPENSSL111
                 if(SSL_SESSION_is_resumable(SSL_get0_session(sslcom_ssl))) {
@@ -2804,6 +3253,7 @@ bool baseSSLCom<L4Proto>::load_session_if_needed() {
             key.append(owner_cx()->host()).push_back(':');
             key.append(owner_cx()->port());
         }
+        key.append("|policy:").append(session_policy_fingerprint(opt));
 
         auto h = factory()->session_cache().get(key);
         
@@ -2951,7 +3401,7 @@ bool baseSSLCom<L4Proto>::waiting_peer_hello() {
                                 SSLCOM_CLIENTHELLO_MAX_SIZE,
                                 sslcom_peer_hello_buffer.capacity() * 2));
                         }
-                        if (timeval_msdelta_now(&timer_start) > SSLCOM_CLIENTHELLO_TIMEOUT) {
+                        if (timeval_msdelta_now(&timer_start) > opt.client_hello_timeout) {
                             _err("handshake timeout: waiting for complete ClientHello");
                             peer_scom->error(ERROR_READ);
                             error(ERROR_UNSPEC);
@@ -3275,7 +3725,7 @@ int baseSSLCom<L4Proto>::parse_peer_hello() {
                 master()->poller.rescan_in(p->socket());
             
             _dia("SSLCom::parse_peer_hello: only %d bytes in peek:\n%s",b.size(),hex_dump(b.data(),b.size(), 4, 0, true).c_str());
-            if(timeval_msdelta_now(&timer_start) > SSLCOM_CLIENTHELLO_TIMEOUT) {
+            if(timeval_msdelta_now(&timer_start) > opt.client_hello_timeout) {
                 _err("handshake timeout: waiting for ClientHello");
                 error(ERROR_UNSPEC);
             }
@@ -3322,20 +3772,36 @@ unsigned short baseSSLCom<L4Proto>::parse_peer_hello_extensions(buffer& b, unsig
         if (sn_list_length != ext_length - sizeof(unsigned short))
             throw socle::ex::SSL_clienthello_malformed();
 
-        unsigned char sn_type = b.get_at<unsigned char>(curpos);
-        curpos += sizeof(unsigned char);
-
-        /* type is hostname*/
-        if (sn_type == 0) {
-            unsigned short sn_hostname_length = ntohs(b.get_at<unsigned short>(curpos));
-            curpos += sizeof(unsigned short);
-            if (sn_hostname_length > ext_end - curpos)
+        bool hostname_seen = false;
+        while(curpos < ext_end) {
+            if(ext_end - curpos < sizeof(unsigned char) + sizeof(unsigned short))
                 throw socle::ex::SSL_clienthello_malformed();
 
-            sslcom_sni_.assign(reinterpret_cast<char const*>(b.data()) + curpos,
-                               sn_hostname_length);
-            _dia("SSLCom::parse_peer_hello_extensions:    SNI hostname: %s",
-                 sslcom_sni_.c_str());
+            unsigned char sn_type = b.get_at<unsigned char>(curpos);
+            curpos += sizeof(unsigned char);
+            unsigned short sn_length = ntohs(b.get_at<unsigned short>(curpos));
+            curpos += sizeof(unsigned short);
+            if(sn_length > ext_end - curpos)
+                throw socle::ex::SSL_clienthello_malformed();
+
+            /* RFC 6066 permits at most one name of each type. Embedded NUL
+             * would be interpreted differently by std::string policy code
+             * and OpenSSL's C-string SNI API, so it is never a valid identity.
+             */
+            if(sn_type == 0) {
+                const auto* hostname = b.data() + curpos;
+                if(hostname_seen || sn_length == 0 ||
+                   std::find(hostname, hostname + sn_length, '\0') !=
+                       hostname + sn_length)
+                    throw socle::ex::SSL_clienthello_malformed();
+
+                sslcom_sni_.assign(reinterpret_cast<char const*>(hostname),
+                                   sn_length);
+                hostname_seen = true;
+                _dia("SSLCom::parse_peer_hello_extensions:    SNI hostname: %s",
+                     sslcom_sni_.c_str());
+            }
+            curpos += sn_length;
         }
     }
     else if(ext_id == 16) {
@@ -3347,6 +3813,15 @@ unsigned short baseSSLCom<L4Proto>::parse_peer_hello_extensions(buffer& b, unsig
         curpos += sizeof(unsigned short);
         if (alpn_length != ext_end - curpos)
             throw socle::ex::SSL_clienthello_malformed();
+
+        unsigned int protocol_pos = curpos;
+        while(protocol_pos < ext_end) {
+            const unsigned int protocol_length =
+                b.get_at<unsigned char>(protocol_pos++);
+            if(protocol_length == 0 || protocol_length > ext_end - protocol_pos)
+                throw socle::ex::SSL_clienthello_malformed();
+            protocol_pos += protocol_length;
+        }
 
         sslcom_peer_hello_alpn_.assign(
             reinterpret_cast<char const*>(b.data()) + curpos, alpn_length);
@@ -3419,7 +3894,11 @@ ssize_t baseSSLCom<L4Proto>::read (int _fd, void* _buf, size_t _n, int _flags ) 
             _dum("SSLCom::read[%d]: peek returned %d", _fd, sslcom_ret);
 
             auto errc = SSL_get_error(sslcom_ssl, sslcom_ret);
-            if(errc == SSL_ERROR_SYSCALL or errc == SSL_ERROR_ZERO_RETURN or errc == SSL_ERROR_SSL) {
+            if(errc == SSL_ERROR_ZERO_RETURN) {
+                _dia("SSLCom::read[%d]: clean TLS close_notify while peeking", _fd);
+                return 0;
+            }
+            if(errc == SSL_ERROR_SYSCALL or errc == SSL_ERROR_SSL) {
                 sslcom_fatal = true;
                 // this is bad
                 _dia("SSLCom:: read[%d]: ssl_peek() returned %d: unexpected termination!", _fd, sslcom_ret);
@@ -3495,10 +3974,10 @@ ssize_t baseSSLCom<L4Proto>::read (int _fd, void* _buf, size_t _n, int _flags ) 
                 break;
 
             case SSL_ERROR_ZERO_RETURN:
-                _deb("SSLCom::read[%d]: zero returned", _fd);
-                error(ERROR_READ);
-
-                // we used to return sslcom_ret, but it may be -1 (we don't want that - it indicates "try later")
+                // close_notify is an orderly TLS half-close. Report EOF to the
+                // host context without poisoning the opposite write half; it
+                // may still have a final response queued for the peer.
+                _deb("SSLCom::read[%d]: clean TLS close_notify", _fd);
                 return 0;
 
             case SSL_ERROR_WANT_READ:
@@ -3584,8 +4063,20 @@ ssize_t baseSSLCom<L4Proto>::read (int _fd, void* _buf, size_t _n, int _flags ) 
                 }
                 else {
                     // we used to return sslcom_ret (but it can be -1, we don't want that - it indicates "try later")
+                    error(ERROR_READ);
                     return 0;
                 }
+
+            case SSL_ERROR_SSL:
+                // A protocol error (including an unexpected transport EOF
+                // without close_notify on current OpenSSL) is terminal. Do
+                // not return the raw -1 as if another readiness edge could
+                // make progress; that creates an endless retry loop.
+                _dia("SSLCom::read[%d]: fatal TLS protocol error", _fd);
+                sslcom_fatal = true;
+                if(total_r > 0) return total_r;
+                error(ERROR_READ);
+                return 0;
 
             default:
                 if (sslcom_ret != -1 && err != 1) {
@@ -3860,6 +4351,9 @@ int baseSSLCom<L4Proto>::upgrade_client_socket(int sock) {
             return sock;
         }
 
+        set_timer_now(&timer_handshake_start);
+        handshake_timer_started = true;
+
 
         init_client();
 
@@ -3870,19 +4364,34 @@ int baseSSLCom<L4Proto>::upgrade_client_socket(int sock) {
 
         if(not sslcom_sni_.empty()) {
             _dia("SSLCom::upgrade_client_socket[%d]: set sni extension to: %s", sock, sslcom_sni_.c_str());
-            SSL_set_tlsext_host_name(sslcom_ssl, sslcom_sni_.c_str());
+            if(SSL_set_tlsext_host_name(sslcom_ssl, sslcom_sni_.c_str()) != 1) {
+                _err("SSLCom::upgrade_client_socket[%d]: invalid outbound SNI", sock);
+                error(ERROR_UNSPEC);
+                sslcom_waiting = false;
+                return -1;
+            }
         }
 
         if(not opt.alpn_block and not sslcom_peer_hello_alpn_.empty()) {
             _dia("SSLCom::upgrade_client_socket[%d]: set alpn extension to: %s",sock,
                  hex_print(sslcom_peer_hello_alpn_.data(), sslcom_peer_hello_alpn_.size()).c_str());
 
-            SSL_set_alpn_protos(sslcom_ssl, reinterpret_cast<unsigned char*>(sslcom_peer_hello_alpn_.data()), sslcom_peer_hello_alpn_.size());
+            if(SSL_set_alpn_protos(sslcom_ssl,
+                                   reinterpret_cast<unsigned char*>(sslcom_peer_hello_alpn_.data()),
+                                   sslcom_peer_hello_alpn_.size()) != 0) {
+                _err("SSLCom::upgrade_client_socket[%d]: invalid outbound ALPN", sock);
+                error(ERROR_UNSPEC);
+                sslcom_waiting = false;
+                return -1;
+            }
         }
 
         sslcom_sbio = BIO_new_socket(sock,BIO_NOCLOSE);
         if (sslcom_sbio == nullptr) {
             _err("SSLCom::upgrade_client_socket[%d]: BIO allocation failed! ",sock);
+            error(ERROR_UNSPEC);
+            sslcom_waiting = false;
+            return -1;
         }
 
         SSL_set_bio(sslcom_ssl,sslcom_sbio,sslcom_sbio);
@@ -4043,6 +4552,5 @@ void baseSSLCom<L4Proto>::shutdown(int _fd) {
     }
     L4Proto::shutdown(_fd);
 }
-
 
 #endif // SSLCOM_INCL

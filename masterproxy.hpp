@@ -97,10 +97,6 @@ public:
     deferred_queue& deferred() { return deferred_; };
     deferred_queue const& deferred() const { return deferred_; };
 
-    void add_proxy(baseProxy* p) {
-        auto lc_ = std::scoped_lock(proxies_lock_);
-        proxies_.emplace_back(p);
-    }
     void add_proxy(std::unique_ptr<baseProxy> upx) {
         auto lc_ = std::scoped_lock(proxies_lock_);
         proxies_.emplace_back(std::move(upx));

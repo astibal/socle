@@ -599,7 +599,8 @@ int ThreadedReceiverProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
         _dia("ThreadedReceiverProxy::handle_sockets_once[%d]: CX created, bound socket %d ,nonlocal: %s:%u",
              virtual_socket, _record_socket_left, cx->com()->nonlocal_dst_host().c_str(),
              cx->com()->nonlocal_dst_port());
-        this->on_left_new(cx);
+        this->on_left_new(std::unique_ptr<baseHostCX>(cx));
+        cx = nullptr;
     }
 
     return MasterProxy::handle_sockets_once(com());

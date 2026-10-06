@@ -5,6 +5,7 @@
 #include <traflog/pcaplog.hpp>
 
 #include <cstring>
+#include <sys/time.h>
 
 using namespace socle::pcapng;
 
@@ -40,7 +41,8 @@ public:
 } // namespace
 
 TEST(NgTest, Empty) {
-    auto f = fopen("/tmp/ng_empty.pcapng", "w");
+    auto* f = std::tmpfile();
+    ASSERT_NE(f, nullptr);
     auto fd = fileno(f);
     save_NG_magic(fd);
     fclose(f);
@@ -48,7 +50,8 @@ TEST(NgTest, Empty) {
 
 
 TEST(NgTest, Empty_Ipb) {
-    auto f = fopen("/tmp/ng_empty_ifb.pcapng", "w");
+    auto* f = std::tmpfile();
+    ASSERT_NE(f, nullptr);
     auto fd = fileno(f);
     save_NG_magic(fd);
 
@@ -113,6 +116,53 @@ TEST(NgTest, MultipleOptionsKeepEnhancedPacketBlockLengthConsistent) {
     EXPECT_EQ(trailing_length, output.size());
 }
 
+TEST(NgTest, SectionAndInterfaceBlocksAppendSerializedOptions) {
+    uint32_t const option_footer = 0;
+    auto options = std::make_shared<buffer>(&option_footer, sizeof(option_footer));
+    pcapng_shb section;
+    pcapng_ifb interface;
+    section.options = options;
+    interface.options = options;
+    buffer output;
+
+    auto const section_size = section.append(output);
+    auto const interface_size = interface.append(output);
+
+    EXPECT_EQ(section_size, section.size());
+    EXPECT_EQ(interface_size, interface.size());
+    EXPECT_EQ(output.size(), section_size + interface_size);
+}
+
+TEST(NgTest, EnhancedPacketBlockAutomaticTimestampUsesUnixMicroseconds) {
+    auto const unix_microseconds = [](timeval const& time) {
+        return static_cast<uint64_t>(time.tv_sec) * 1'000'000ULL
+               + static_cast<uint64_t>(time.tv_usec);
+    };
+
+    timeval before {};
+    ASSERT_EQ(::gettimeofday(&before, nullptr), 0);
+
+    pcapng_epb frame;
+    frame.packet_data = std::make_shared<buffer>("x", 1);
+    buffer output;
+    frame.append(output);
+
+    timeval after {};
+    ASSERT_EQ(::gettimeofday(&after, nullptr), 0);
+
+    ASSERT_GE(output.size(), 20U);
+    auto const* bytes = static_cast<unsigned char const*>(output.data());
+    uint32_t timestamp_high = 0;
+    uint32_t timestamp_low = 0;
+    std::memcpy(&timestamp_high, bytes + 12, sizeof(timestamp_high));
+    std::memcpy(&timestamp_low, bytes + 16, sizeof(timestamp_low));
+    auto const timestamp = (static_cast<uint64_t>(timestamp_high) << 32U)
+                           | timestamp_low;
+
+    EXPECT_GE(timestamp, unix_microseconds(before));
+    EXPECT_LE(timestamp, unix_microseconds(after));
+}
+
 TEST(NgTest, DecryptionSecretsBlockContainsTlsKeyLog) {
     std::string const line =
         "CLIENT_HANDSHAKE_TRAFFIC_SECRET 00112233 aabbccdd\n";
@@ -139,8 +189,7 @@ TEST(NgTest, DecryptionSecretsBlockContainsTlsKeyLog) {
     EXPECT_EQ(secrets_length, line.size());
     EXPECT_EQ(std::memcmp(bytes + 16, line.data(), line.size()), 0);
 
-    // Keep a complete sample for compatibility checks with Wireshark/editcap.
-    auto* file = std::fopen("/tmp/ng_tls_secrets.pcapng", "wb");
+    auto* file = std::tmpfile();
     ASSERT_NE(file, nullptr);
     buffer capture;
     pcapng_shb section;
@@ -175,10 +224,14 @@ TEST(NgTest, CompleteIpPacketIsNotSynthesizedOrTransformed) {
                           ip_packet.data(), ip_packet.size()), 0);
     EXPECT_EQ(hook->bytes, ip_packet);
     EXPECT_EQ(hook->origin, connection_details::record_origin::packet);
+
+    buffer reused_output;
+    EXPECT_GT(frame.append_IP_packet(reused_output, packet, 1, details), 0U);
 }
 
 TEST(NgTest, GreExporterCanSelectCaptureRecordOrigin) {
     socle::traflog::GreExporter exporter(AF_INET, "127.0.0.1");
+    exporter.bind_if("lo");
 
     EXPECT_TRUE(exporter.accepts(connection_details::record_origin::synthetic));
     EXPECT_TRUE(exporter.accepts(connection_details::record_origin::packet));
@@ -294,7 +347,8 @@ TEST(NgTest, BasicHttp) {
     d.source = s.src.ss.value();
     d.destination = s.dst.ss.value();
 
-    auto f = fopen("/tmp/ng_ipv4_tcp.pcapng", "w");
+    auto* f = std::tmpfile();
+    ASSERT_NE(f, nullptr);
 
     std::stringstream req;
     req << "GET /ng/ipv4/tcp HTTP/1.0\r\n";
@@ -326,6 +380,7 @@ TEST(NgTest, BasicHttp) {
 
     pcapng_epb frame1;
     frame1.save_TCP(fd, "", 0, 1, TCPFLAG_SYN | TCPFLAG_ACK, d);
+    frame1.save_TCP(fd, "reused", 6, 1, TCPFLAG_ACK, d);
 
     pcapng_epb frame2;
     frame2.save_TCP(fd, "", 0, 0, TCPFLAG_ACK, d);
@@ -370,7 +425,8 @@ TEST(NgTest, BasicUDP) {
     d.source = s.src.ss.value();
     d.destination = s.dst.ss.value();
 
-    auto f = fopen("/tmp/ng_ipv4_udp.pcapng", "w");
+    auto* f = std::tmpfile();
+    ASSERT_NE(f, nullptr);
 
     std::stringstream req;
     req << "/ng/ipv4/udp";
@@ -390,6 +446,7 @@ TEST(NgTest, BasicUDP) {
     save_NG_ifb(fd, hdr);
 
     pcapng_epb frame1;
+    frame1.save_UDP(fd, (const char*) request.data(), request.size(), 0, d);
     frame1.save_UDP(fd, (const char*) request.data(), request.size(), 0, d);
 
     pcapng_epb frame2;
@@ -420,7 +477,8 @@ TEST(NgTest, BasicUDP_v6) {
     d.destination = s.dst.ss.value();
     d.ip_version = 6;
 
-    auto f = fopen("/tmp/ng_ipv6_udp.pcapng", "w");
+    auto* f = std::tmpfile();
+    ASSERT_NE(f, nullptr);
 
     std::stringstream req;
     req << "/ng/ipv6/udp";
