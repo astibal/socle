@@ -1,5 +1,6 @@
 #include <gtest/gtest.h>
 
+#include <array>
 #include <cerrno>
 #include <chrono>
 #include <cstddef>
@@ -38,6 +39,62 @@ TEST_F(PrivilegedSocketTest, DirectFacadePreservesSyscallSemantics) {
     EXPECT_GE(actual, requested);
     ::close(sockets[0]);
     ::close(sockets[1]);
+}
+
+TEST_F(PrivilegedSocketTest, RejectsTruncatedDataFrame) {
+    int channels[2] = {-1, -1};
+    ASSERT_EQ(socle::privsep::make_channel_pair(channels), 0);
+    socle::privsep::SeqPacketChannel receiver(channels[1]);
+    ::close(channels[1]);
+
+    std::vector<std::byte> oversized(128U * 1024U);
+    ASSERT_EQ(::send(channels[0], oversized.data(), oversized.size(), MSG_NOSIGNAL),
+              static_cast<ssize_t>(oversized.size()));
+    ::close(channels[0]);
+
+    socle::privsep::Message message;
+    errno = 0;
+    EXPECT_EQ(receiver.receive(message), -1);
+    EXPECT_EQ(errno, EMSGSIZE);
+    EXPECT_TRUE(message.data.empty());
+    EXPECT_EQ(message.fd, -1);
+}
+
+TEST_F(PrivilegedSocketTest, RejectsTruncatedDescriptorFrame) {
+    int channels[2] = {-1, -1};
+    ASSERT_EQ(socle::privsep::make_channel_pair(channels), 0);
+    socle::privsep::SeqPacketChannel receiver(channels[1]);
+    ::close(channels[1]);
+
+    int descriptors[3] = {-1, -1, -1};
+    for(int& descriptor : descriptors) {
+        descriptor = ::open("/dev/null", O_RDONLY | O_CLOEXEC);
+        ASSERT_GE(descriptor, 0);
+    }
+    std::byte payload{std::byte{'X'}};
+    iovec iov{&payload, sizeof(payload)};
+    std::array<std::byte, CMSG_SPACE(sizeof(descriptors))> control{};
+    msghdr outbound{};
+    outbound.msg_iov = &iov;
+    outbound.msg_iovlen = 1;
+    outbound.msg_control = control.data();
+    outbound.msg_controllen = control.size();
+    auto* cmsg = CMSG_FIRSTHDR(&outbound);
+    ASSERT_NE(cmsg, nullptr);
+    cmsg->cmsg_level = SOL_SOCKET;
+    cmsg->cmsg_type = SCM_RIGHTS;
+    cmsg->cmsg_len = CMSG_LEN(sizeof(descriptors));
+    std::memcpy(CMSG_DATA(cmsg), descriptors, sizeof(descriptors));
+    ASSERT_EQ(::sendmsg(channels[0], &outbound, MSG_NOSIGNAL), 1);
+    ::close(channels[0]);
+    for(const int descriptor : descriptors) ::close(descriptor);
+
+    socle::privsep::Message message;
+    errno = 0;
+    EXPECT_EQ(receiver.receive(message), -1);
+    EXPECT_EQ(errno, EMSGSIZE);
+    EXPECT_TRUE(message.data.empty());
+    EXPECT_EQ(message.fd, -1);
 }
 
 TEST_F(PrivilegedSocketTest, PassesDescriptorAndAppliesSocketOption) {

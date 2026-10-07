@@ -200,19 +200,30 @@ int SeqPacketChannel::receive(Message& output, int flags) const {
     if(received < 0) return -1;
 
     int received_fd = -1;
+    bool invalid_control = false;
     for(auto* cmsg = CMSG_FIRSTHDR(&message); cmsg != nullptr; cmsg = CMSG_NXTHDR(&message, cmsg)) {
         if(cmsg->cmsg_level == SOL_SOCKET && cmsg->cmsg_type == SCM_RIGHTS
-           && cmsg->cmsg_len == CMSG_LEN(sizeof(int)) && received_fd < 0) {
+           && cmsg->cmsg_len == CMSG_LEN(sizeof(int)) && received_fd < 0 && !invalid_control) {
             std::memcpy(&received_fd, CMSG_DATA(cmsg), sizeof(received_fd));
         } else {
-            if(received_fd >= 0) ::close(received_fd);
-            errno = EPROTO;
-            return -1;
+            invalid_control = true;
+            if(cmsg->cmsg_level == SOL_SOCKET && cmsg->cmsg_type == SCM_RIGHTS
+               && cmsg->cmsg_len >= CMSG_LEN(0)) {
+                const auto descriptor_count =
+                    (cmsg->cmsg_len - CMSG_LEN(0)) / sizeof(int);
+                auto* descriptors = reinterpret_cast<int*>(CMSG_DATA(cmsg));
+                for(std::size_t i = 0; i < descriptor_count; ++i) ::close(descriptors[i]);
+            }
         }
     }
     if((message.msg_flags & (MSG_TRUNC | MSG_CTRUNC)) != 0) {
         if(received_fd >= 0) ::close(received_fd);
         errno = EMSGSIZE;
+        return -1;
+    }
+    if(invalid_control) {
+        if(received_fd >= 0) ::close(received_fd);
+        errno = EPROTO;
         return -1;
     }
 
