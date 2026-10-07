@@ -1,4 +1,5 @@
 #include <internet.hpp>
+#include <privileged_socket.hpp>
 #include <log/logger.hpp>
 #include <epoll.hpp>
 
@@ -69,7 +70,7 @@ namespace inet {
                 return -1;
             }
 
-            const int sd = ::socket(family, SOCK_STREAM, 0);
+            const int sd = socle::socket(family, SOCK_STREAM, 0);
             if(sd < 0)
                 return -1;
 
@@ -191,7 +192,7 @@ namespace inet {
             return -1;
         }
 
-        const int sd = ::socket(family, SOCK_STREAM, 0);
+        const int sd = socle::socket(family, SOCK_STREAM, 0);
         if(sd < 0)
             return -1;
         const socklen_t address_size = family == AF_INET

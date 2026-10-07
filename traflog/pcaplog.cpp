@@ -17,6 +17,7 @@
 */
 
 #include <traflog/pcaplog.hpp>
+#include <privileged_socket.hpp>
 #include <traflog/filewriter.hpp>
 #include <xorshift.hpp>
 
@@ -31,7 +32,7 @@ namespace socle::traflog {
     int raw_socket_gre(int family, int ttl, std::string const& iface) {
         auto const& log = log::pcaplog;
 
-        int sock = socket(family, SOCK_RAW, IPPROTO_GRE);
+        int sock = socle::socket(family, SOCK_RAW, IPPROTO_GRE);
 
         if(sock < 0) {
             _err("raw_socket_gre: cannot create raw socket: %s", string_error().c_str());
@@ -41,7 +42,7 @@ namespace socle::traflog {
         int none = 0;
 
         if(not iface.empty()) {
-            if (setsockopt(sock, SOL_SOCKET, SO_BINDTODEVICE, iface.c_str(), iface.length()) == -1) {
+            if (socle::setsockopt(sock, SOL_SOCKET, SO_BINDTODEVICE, iface.c_str(), iface.length()) == -1) {
                 _err("raw_socket_gre: failed to bind raw socket to interface '%s'", iface.c_str());
                 close(sock);
                 return -1;
@@ -51,7 +52,7 @@ namespace socle::traflog {
             }
         }
 
-        if (setsockopt (sock,
+        if (socle::setsockopt (sock,
                         family == AF_INET6 ? IPPROTO_IPV6 : IPPROTO_IP,
                         family == AF_INET6 ? IPV6_HDRINCL : IP_HDRINCL,
                         &none, sizeof (none)) < 0) {
@@ -63,7 +64,7 @@ namespace socle::traflog {
 
         int n_ttl = ttl;
 
-        if(setsockopt(sock, family == AF_INET6 ? IPPROTO_IPV6 : IPPROTO_IP,
+        if(socle::setsockopt(sock, family == AF_INET6 ? IPPROTO_IPV6 : IPPROTO_IP,
                          family == AF_INET6 ? IPV6_HOPLIMIT : IP_TTL, &n_ttl, sizeof(n_ttl)) < 0) {
 
             _err("raw_socket_gre: cannot set TTL");

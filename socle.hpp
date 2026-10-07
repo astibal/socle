@@ -37,6 +37,7 @@
 #include <tcpcom.hpp>
 #include <sslcom.hpp>
 #include <uxcom.hpp>
+#include <privileged_socket.hpp>
 
 #include <sslmitmcom.hpp>
 #include <sslcertstore.hpp>
@@ -50,4 +51,3 @@
 #include <threadedacceptor.hpp>
 
 #include <traflog/traflog.hpp>
-
