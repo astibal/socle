@@ -1192,6 +1192,7 @@ struct SSLMitmCom_Buddy : public SSLMitmCom {
     void test_take_ssl(SSL* ssl) { sslcom_ssl = ssl; }
     void test_sni(std::string value) { sslcom_sni() = std::move(value); }
     void test_peer_sni_shortcut(bool value) { sslcom_peer_sni_shortcut = value; }
+    void test_resume_delayed_accept() { resume_delayed_accept(this); }
     bool spoof_cert(X509* certificate, SpoofOptions& options) override {
         if(capture_spoof_options) {
             captured_spoof_options = options;
@@ -2599,9 +2600,12 @@ TEST(TLS_Tests, VerifyCallbackMapsCertificateErrorsAndPolicyExceptions) {
     };
 
     connection.opt.cert.failed_check_replacement = false;
-    connection.verify_reset(SSLCom::verify_status_t::VRF_NOTTESTED);
+    connection.verify_reset(static_cast<SSLCom::verify_status_t>(
+        SSLCom::verify_status_t::VRF_NOTTESTED |
+        SSLCom::verify_status_t::VRF_OK));
     EXPECT_EQ(verify(X509_V_OK, 1), 1);
     EXPECT_NE(connection.target_cert(), nullptr);
+    EXPECT_EQ(connection.verify_get(), SSLCom::verify_status_t::VRF_OK);
 
     connection.verify_reset(SSLCom::verify_status_t::VRF_NOTTESTED);
     EXPECT_EQ(verify(X509_V_ERR_UNABLE_TO_GET_ISSUER_CERT_LOCALLY), 0);
@@ -2645,6 +2649,16 @@ TEST(TLS_Tests, VerifyCallbackMapsCertificateErrorsAndPolicyExceptions) {
     X509_STORE_CTX_set_error_depth(verify_context.get(), 2);
     EXPECT_EQ(verify(X509_V_OK, 1), 1);
     EXPECT_NE(connection.target_issuer_issuer(), nullptr);
+}
+
+TEST(TLS_Tests, DelayedMitmAcceptGetsAReplacementReadEdge) {
+    SSLMitmCom_Buddy downstream;
+    EXPECT_FALSE(downstream.forced_read_reset());
+
+    downstream.test_resume_delayed_accept();
+
+    EXPECT_TRUE(downstream.forced_read_reset());
+    EXPECT_FALSE(downstream.forced_read_reset());
 }
 
 TEST(TLS_Tests, ClientCertificateAndSessionCallbacksRespectPolicyState) {

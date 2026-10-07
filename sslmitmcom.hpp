@@ -32,6 +32,9 @@ struct SpoofOptions {
 
 template <class SSLProto>
 class baseSSLMitmCom : public SSLProto {
+protected:
+    static void resume_delayed_accept(baseSSLMitmCom* remote);
+
 public:
     using verify_status_t = SSLCom::verify_status_t;
 
@@ -71,5 +74,4 @@ using DTLSMitmCom = baseSSLMitmCom<DTLSCom>;
 #endif // __SSLMITMCOM_HPP__
 
 #include <sslmitmcom.tpp>
-
 
