@@ -17,6 +17,7 @@
 */
 #include <tcpcom.hpp>
 #include <socketinfo.hpp>
+#include <privileged_socket.hpp>
 #include <internet.hpp>
 
 #include <vars.hpp>
@@ -74,7 +75,7 @@ int TCPCom::connect(const char* host, const char* port) {
     for (rp = gai_result; rp != nullptr; rp = rp->ai_next) {
         _deb("TCPCom::connect[%s:%s]: gai info found", host, port);
 
-        sfd = ::socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
+        sfd = socle::socket(rp->ai_family, rp->ai_socktype, rp->ai_protocol);
 
         if(sfd < 0) {
             _err("TCPCom::connect[%s:%s]:cannot create socket: family %d, socktype %d, protocol %d", host, port,
@@ -143,7 +144,7 @@ int TCPCom::bind(unsigned short port) {
         inet::to_sockaddr_in6(&sa)->sin6_addr = in6addr_any;
     }
 
-    int sock = ::socket(bind_sock_family, bind_sock_type, bind_sock_protocol);
+    int sock = socle::socket(bind_sock_family, bind_sock_type, bind_sock_protocol);
 
     if (sock == -1)
         return -129;
@@ -166,11 +167,11 @@ int TCPCom::bind(unsigned short port) {
     }
     
     const socklen_t address_size = sa.ss_family == AF_INET ? sizeof(sockaddr_in) : sizeof(sockaddr_in6);
-    if (::bind(sock, reinterpret_cast<sockaddr*>(&sa), address_size) == -1) {
+    if (socle::bind(sock, reinterpret_cast<sockaddr*>(&sa), address_size) == -1) {
         ::close(sock);   // coverity: 1407959
         return -130;
     }
-    if (listen(sock, config.listen_backlog) == -1) {
+    if (socle::listen(sock, config.listen_backlog) == -1) {
         ::close(sock);
         return -131;
     }

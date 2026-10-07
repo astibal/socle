@@ -20,6 +20,7 @@
 #include <udpcom.hpp>
 #include <display.hpp>
 #include <socketinfo.hpp>
+#include <privileged_socket.hpp>
 #include <internet.hpp>
 #include <linux/in6.h>
 
@@ -122,7 +123,7 @@ int UDPCom::bind(short unsigned int port) {
         inet::to_sockaddr_in6(&sa)->sin6_addr = in6addr_any;
     }
 
-    if ((new_socket = ::socket(sa.ss_family, bind_sock_type, bind_sock_protocol)) == -1)
+    if ((new_socket = socle::socket(sa.ss_family, bind_sock_type, bind_sock_protocol)) == -1)
         return -129;
 
     so_reuseaddr(new_socket);
@@ -155,7 +156,7 @@ int UDPCom::bind(short unsigned int port) {
     }
     
     const socklen_t address_size = sa.ss_family == AF_INET ? sizeof(sockaddr_in) : sizeof(sockaddr_in6);
-    if (::bind(new_socket, reinterpret_cast<sockaddr*>(&sa), address_size) == -1) {
+    if (socle::bind(new_socket, reinterpret_cast<sockaddr*>(&sa), address_size) == -1) {
         ::close(new_socket);  // coverity: 1408014
         return -130;
     }
@@ -761,7 +762,7 @@ ssize_t UDPCom::write_to_pool(int _fd, const void* _buf, size_t _n, int _flags) 
                 pktinfo6->ipi6_addr = record->dst_in_addr6();
                 pktinfo6->ipi6_ifindex = 0;
                 message_header.msg_controllen = CMSG_SPACE(sizeof(struct in6_pktinfo));
-                da_socket = ::socket (record->dst_family(), SOCK_DGRAM, 0);
+                da_socket = socle::socket(record->dst_family(), SOCK_DGRAM, 0);
             }
         }
         else { //AF_INET and others - we assume AF_INET
@@ -786,7 +787,7 @@ ssize_t UDPCom::write_to_pool(int _fd, const void* _buf, size_t _n, int _flags) 
                 pktinfo->ipi_ifindex = 0;
                 message_header.msg_controllen = CMSG_SPACE(sizeof(struct in_pktinfo));
 
-                da_socket = ::socket (record->dst_family(), SOCK_DGRAM, 0);
+                da_socket = socle::socket(record->dst_family(), SOCK_DGRAM, 0);
             }
         }
 
@@ -819,7 +820,7 @@ ssize_t UDPCom::write_to_pool(int _fd, const void* _buf, size_t _n, int _flags) 
         so_reuseaddr(da_socket);
         so_broadcast(da_socket);
 
-        ret_bind = ::bind (da_socket, (struct sockaddr*)&(ss_d), sizeof (struct sockaddr_storage));
+        ret_bind = socle::bind(da_socket, (struct sockaddr*)&(ss_d), sizeof(struct sockaddr_storage));
         if(0 != ret_bind) {
             err_errno(string_format("UDPCom::write_to_pool[%d]: bind:", da_socket).c_str(), "<nil>", ret_bind);
         }
