@@ -44,6 +44,8 @@ add_library(socle_lib
         threadedreceiver.cpp
         socketinfo.hpp
         socketinfo.cpp
+        privileged_socket.hpp
+        privileged_socket.cpp
         fdq.hpp
         fdq.cpp
         peering.hpp

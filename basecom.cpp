@@ -19,6 +19,7 @@
 #include <basecom.hpp>
 #include <hostcx.hpp>
 #include <internet.hpp>
+#include <privileged_socket.hpp>
 
 #include <vars.hpp>
 
@@ -108,7 +109,7 @@ int baseCom::namesocket(int sockfd, std::string& addr, unsigned short port, sa_f
     }
 
     const socklen_t address_size = family == AF_INET6 ? sizeof(sockaddr_in6) : sizeof(sockaddr_in);
-    int ret_bind = ::bind(sockfd, reinterpret_cast<sockaddr*>(&sa), address_size);
+    int ret_bind = socle::bind(sockfd, reinterpret_cast<sockaddr*>(&sa), address_size);
     if(ret_bind != 0) {
         err_errno(string_format("baseCom::namesocket[%d]: bind", sockfd).c_str(), "<nil>", ret_bind);
         ret_bind = errno;
@@ -334,7 +335,7 @@ void baseCom::err_errno(const char* fn, const char* params, int rv) const {
 
 int baseCom::so_reuseaddr(int sock) const {
     constexpr int optval = 1;
-    int sso = setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof optval);
+    int sso = socle::setsockopt(sock, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof optval);
     if(sso != 0) err_errno(string_format("baseCom::so_reuseaddr: setsockopt[%d]", sock).c_str(),
                            "SOL_SOCKET/SO_REUSEADDR", sso);
 
@@ -343,7 +344,7 @@ int baseCom::so_reuseaddr(int sock) const {
 
 int baseCom::so_broadcast(int sock) const {
     constexpr int optval = 1;
-    int sso = setsockopt(sock, SOL_SOCKET, SO_BROADCAST, &optval, sizeof optval);
+    int sso = socle::setsockopt(sock, SOL_SOCKET, SO_BROADCAST, &optval, sizeof optval);
     if(sso != 0) err_errno(string_format("baseCom::so_broadcast: setsockopt[%d]", sock).c_str(),
                            "SOL_SOCKET/SO_BROADCAST", sso);
 
@@ -352,7 +353,7 @@ int baseCom::so_broadcast(int sock) const {
 
 int baseCom::so_nodelay(int sock) const {
     constexpr int optval = 1;
-    int sso = setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, &optval, sizeof optval);
+    int sso = socle::setsockopt(sock, IPPROTO_TCP, TCP_NODELAY, &optval, sizeof optval);
     if(sso != 0) err_errno(string_format("baseCom::so_nodelay: setsockopt[%d]", sock).c_str(),
                            "IPPROTO_TCP/TCP_NODELAY", sso);
 
@@ -361,7 +362,7 @@ int baseCom::so_nodelay(int sock) const {
 
 int baseCom::so_quickack(int sock) const {
     constexpr int optval = 1;
-    int sso = setsockopt(sock, IPPROTO_TCP, TCP_QUICKACK , &optval, sizeof optval);
+    int sso = socle::setsockopt(sock, IPPROTO_TCP, TCP_QUICKACK , &optval, sizeof optval);
     if(sso != 0) err_errno(string_format("baseCom::so_quickack: setsockopt[%d]", sock).c_str(),
                             "IPPROTO_TCP/TCP_QUICKACK", sso);
 
@@ -370,7 +371,7 @@ int baseCom::so_quickack(int sock) const {
 
 int baseCom::so_keepalive(int sock) const {
     constexpr int optval = 1;
-    int sso = setsockopt(sock, SOL_SOCKET, SO_KEEPALIVE , &optval, sizeof optval);
+    int sso = socle::setsockopt(sock, SOL_SOCKET, SO_KEEPALIVE , &optval, sizeof optval);
     if(sso != 0) err_errno(string_format("baseCom::so_keepalive: setsockopt[%d]", sock).c_str(),
                            "SOL_SOCKET/SO_KEEPALIVE", sso);
 
@@ -379,7 +380,7 @@ int baseCom::so_keepalive(int sock) const {
 
 int baseCom::so_transparent_v4(int sock) const {
     constexpr int optval = 1;
-    int sso = setsockopt(sock, SOL_IP, IP_TRANSPARENT, &optval, sizeof(optval));
+    int sso = socle::setsockopt(sock, SOL_IP, IP_TRANSPARENT, &optval, sizeof(optval));
     if(sso != 0) err_errno(string_format("baseCom::so_transparent_v4: setsockopt[%d]", sock).c_str(),
                            "SOL_IP/IP_TRANSPARENT", sso);
 
@@ -388,7 +389,7 @@ int baseCom::so_transparent_v4(int sock) const {
 
 int baseCom::so_transparent_v6(int sock) const {
     constexpr int optval = 1;
-    int sso = setsockopt(sock, SOL_IPV6, IPV6_TRANSPARENT, &optval, sizeof(optval));
+    int sso = socle::setsockopt(sock, SOL_IPV6, IPV6_TRANSPARENT, &optval, sizeof(optval));
     if(sso != 0) err_errno(string_format("baseCom::so_transparent_v6: setsockopt[%d]", sock).c_str(),
                            "SOL_IPV6/IPV6_TRANSPARENT", sso);
 
@@ -410,7 +411,7 @@ int baseCom::so_transparent(int sock) const {
 
 int baseCom::so_recvorigdstaddr_v4(int sock) const {
     constexpr int optval = 1;
-    int sso = setsockopt(sock, SOL_IP, IP_RECVORIGDSTADDR, &optval, sizeof optval);
+    int sso = socle::setsockopt(sock, SOL_IP, IP_RECVORIGDSTADDR, &optval, sizeof optval);
     if (sso != 0)
         err_errno(string_format("baseCom::so_recvorigdstaddr_v4[%d]", sock).c_str(),
                   "SOL_IP/IP_RECVORIGDSTADDR", sso);
@@ -420,7 +421,7 @@ int baseCom::so_recvorigdstaddr_v4(int sock) const {
 
 int baseCom::so_recvorigdstaddr_v6(int sock) const {
     constexpr int optval = 1;
-    int sso = setsockopt(sock, SOL_IPV6, IPV6_RECVORIGDSTADDR, &optval, sizeof optval);
+    int sso = socle::setsockopt(sock, SOL_IPV6, IPV6_RECVORIGDSTADDR, &optval, sizeof optval);
     if (sso != 0)
         err_errno(string_format("baseCom::so_recvorigdstaddr_v6[%d]", sock).c_str(),
                   "SOL_IPV6/IPV6_RECVORIGDSTADDR", sso);
