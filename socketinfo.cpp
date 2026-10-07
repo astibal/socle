@@ -20,6 +20,7 @@
 #include <random>
 
 #include <socketinfo.hpp>
+#include <privileged_socket.hpp>
 #include <common/internet.hpp>
 
 sockaddr_storage pack_ss(int family, const char* host, unsigned short port);
@@ -160,7 +161,7 @@ uint32_t SocketInfo::create_session_key6(sockaddr_storage* from, sockaddr_storag
 }
 
 int SockOps::socket_create(int family, int l4proto, int protocol, bool reuse_addr) {
-    int fd = socket(family, l4proto, protocol);
+    int fd = socle::socket(family, l4proto, protocol);
 
     if (fd < 0) {
         throw socket_info_error("socket call failed");
@@ -168,15 +169,15 @@ int SockOps::socket_create(int family, int l4proto, int protocol, bool reuse_add
     }
     int n;
 
-    if (n = reuse_addr ? 1 : 0; 0 != ::setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &n, sizeof(int))) {
+    if (n = reuse_addr ? 1 : 0; 0 != socle::setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &n, sizeof(int))) {
         throw socket_info_error(string_format("cannot set socket %d option SO_REUSEADDR\n", fd).c_str());
     }
 
-    if (n = 1; 0 != ::setsockopt(fd, SOL_IP, IP_RECVORIGDSTADDR, &n, sizeof(int))) {
+    if (n = 1; 0 != socle::setsockopt(fd, SOL_IP, IP_RECVORIGDSTADDR, &n, sizeof(int))) {
         throw socket_info_error(string_format("cannot set socket %d option IP_RECVORIGDSTADDR\n", fd).c_str());
     }
 
-    if (n = 1; 0 != ::setsockopt(fd, SOL_IP, SO_BROADCAST, &n, sizeof(int))) {
+    if (n = 1; 0 != socle::setsockopt(fd, SOL_IP, SO_BROADCAST, &n, sizeof(int))) {
         throw socket_info_error(string_format("cannot set socket %d option SO_BROADCAST\n", fd).c_str());
     }
 
@@ -196,12 +197,12 @@ void SockOps::socket_transparent(int fd, int family) {
     int n = 1;
 
     if(family == AF_INET) {
-        if (n = 1; 0 != ::setsockopt(fd, SOL_IP, IP_TRANSPARENT, &n, sizeof(int))) {
+        if (n = 1; 0 != socle::setsockopt(fd, SOL_IP, IP_TRANSPARENT, &n, sizeof(int))) {
             throw socket_info_error(string_format("cannot set socket %d option IP_TRANSPARENT\n", fd).c_str());
         }
     }
     else if (family == AF_INET6) {
-        if (n = 1; 0 != ::setsockopt(fd, SOL_IPV6, IPV6_TRANSPARENT, &n, sizeof(int))) {
+        if (n = 1; 0 != socle::setsockopt(fd, SOL_IPV6, IPV6_TRANSPARENT, &n, sizeof(int))) {
             throw socket_info_error(string_format("cannot set socket %d option IPV6_TRANSPARENT\n", fd).c_str());
         }
     }
@@ -236,7 +237,7 @@ int SocketInfo::create_socket_left(int l4_proto, bool transparent_source) {
         bool is_six = connect_ss->sa_family == AF_INET6;
 
         if (transparent_source &&
-            0 != ::setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE,
+            0 != socle::setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE,
                               bind_connect_race_hack_iface, bcrhi_sz)) {
             throw socket_info_error("cannot bind to device - bind-connect races may occur");
         }
@@ -248,7 +249,7 @@ int SocketInfo::create_socket_left(int l4_proto, bool transparent_source) {
             // Also note this won't prevent system-wide binding race condition, ie in case of multi-tenant configurations.
 
             auto l_ = std::scoped_lock(like_a_barrier);
-            if (::bind(fd, bind_ss, sizeof(struct sockaddr_storage))) {
+            if (socle::bind(fd, bind_ss, sizeof(struct sockaddr_storage))) {
                 throw socket_info_error(
                         string_format("cannot bind socket %d to %s:%d - %s", fd, dst.str_host.c_str(), dst.port,
                                       string_error().c_str()).c_str());
@@ -267,7 +268,7 @@ int SocketInfo::create_socket_left(int l4_proto, bool transparent_source) {
                             string_format("cannot park IPv6 socket %d on loopback - %s", fd,
                                           string_error().c_str()).c_str());
                 }
-                if (0 != ::setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, "", 0)) {
+                if (0 != socle::setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, "", 0)) {
                     throw socket_info_error("cannot bind to 'any' device - socket inoperable");
                 }
             }
@@ -280,7 +281,7 @@ int SocketInfo::create_socket_left(int l4_proto, bool transparent_source) {
         }
 
         if(transparent_source && not is_six) {
-            if (0 != ::setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, "", 0)) {
+            if (0 != socle::setsockopt(fd, SOL_SOCKET, SO_BINDTODEVICE, "", 0)) {
                 throw socket_info_error("cannot bind to 'any' device - socket inoperable");
             }
         }

@@ -17,6 +17,7 @@
 */
 
 #include <uxcom.hpp>
+#include <privileged_socket.hpp>
 
 UxCom::~UxCom() = default;
 
@@ -24,7 +25,7 @@ UxCom::~UxCom() = default;
 int UxCom::connect(const char* host, const char* noop_port) {
 
     const char* port = "";
-    int sfd = ::socket(connect_sock_family, connect_sock_type, 0);
+    int sfd = socle::socket(connect_sock_family, connect_sock_type, 0);
 
     if (sfd == -1) {
         _deb("UxCom::connect[%s:%s]: socket[%d]: failed to create socket", host, port, sfd);
@@ -79,20 +80,18 @@ int UxCom::bind(const char* name) {
     server.sun_family = bind_sock_family;
     strncpy(server.sun_path, name, sizeof(server.sun_path)-1);
 
-    if ((s = ::socket(bind_sock_family, bind_sock_type, bind_sock_protocol)) == -1) return -129;
+    if ((s = socle::socket(bind_sock_family, bind_sock_type, bind_sock_protocol)) == -1) return -129;
 
     so_reuseaddr(s);
 
-    if (::bind(s, reinterpret_cast<sockaddr*>(&server), sizeof(server)) == -1) {
+    if (socle::bind(s, reinterpret_cast<sockaddr*>(&server), sizeof(server)) == -1) {
         ::close(s);
         return -130;
     }
-    if (listen(s, 10) == -1) {
+    if (socle::listen(s, 10) == -1) {
         ::close(s);
         return -131;
     }
     
     return s;
 }
-
-
