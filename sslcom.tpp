@@ -795,6 +795,12 @@ int baseSSLCom<L4Proto>::ssl_client_vrfy_callback(int lib_preverify, X509_STORE_
 
             _dia("[%s]: SSLCom::ssl_client_vrfy_callback: unknown verify status %d", name.c_str(), err_code);
     }
+
+    // Reaching the leaf callback completes ordinary chain validation. OCSP
+    // and CT may still add independent verdicts, but if revocation checks are
+    // deliberately disabled no later callback clears this sentinel.
+    if(depth == 0)
+        com->verify_bitreset(verify_status_t::VRF_NOTTESTED);
     
     
     _if_dia {

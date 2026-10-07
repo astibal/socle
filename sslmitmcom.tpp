@@ -26,6 +26,17 @@
 #include <internet.hpp>
 
 
+template <class SSLProto>
+void baseSSLMitmCom<SSLProto>::resume_delayed_accept(baseSSLMitmCom* remote) {
+    if(!remote)
+        return;
+    if(auto* owner = remote->owner_cx())
+        owner->waiting_for_peercom(false);
+    remote->forced_read(true);
+    if(remote->master() && remote->socket() > 0)
+        remote->rescan_read(remote->socket());
+}
+
 
 template <class SSLProto>
 bool baseSSLMitmCom<SSLProto>::check_cert(const char* peer_name) {
@@ -148,6 +159,11 @@ bool baseSSLMitmCom<SSLProto>::check_cert(const char* peer_name) {
                             remote->init_server();
                             if (remote->sslcom_ssl) {
                                 remote->upgraded(true);
+                                // ClientHello was already observed with
+                                // MSG_PEEK while this side waited for the
+                                // origin certificate. Edge-triggered polling
+                                // will not report those bytes a second time.
+                                resume_delayed_accept(remote);
                             } else {
                                 _err("SSLMitmCom::check_cert: failed to initialize client-facing TLS state");
                                 r = false;
