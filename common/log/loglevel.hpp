@@ -162,7 +162,10 @@ struct logdata_t {
     std::optional<std::string> optional() const { return hr_; }  \
 
     mutable std::optional<std::string> hr_;
-    static inline loglevel lg_ {socle::log::level::NON };
+    // Keep static initialization independent of loglevel.cpp. Referring to
+    // the global NON object here can read it before its dynamic constructor
+    // has run when another translation unit initializes logdata_t first.
+    static inline loglevel lg_ {iNON, iNON};
 };
 
 #endif
