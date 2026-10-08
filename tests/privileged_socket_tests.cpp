@@ -97,6 +97,28 @@ TEST_F(PrivilegedSocketTest, RejectsTruncatedDescriptorFrame) {
     EXPECT_EQ(message.fd, -1);
 }
 
+TEST_F(PrivilegedSocketTest, HelperSurvivesTruncatedDatagramAndServesNextRequest) {
+    int channels[2] = {-1, -1};
+    ASSERT_EQ(socle::privsep::make_channel_pair(channels), 0);
+    socle::privsep::Server server(channels[1]);
+    std::thread helper([&server] { EXPECT_EQ(server.run(), 0); });
+
+    std::vector<std::byte> oversized(128U * 1024U, std::byte{'X'});
+    ASSERT_EQ(::send(channels[0], oversized.data(), oversized.size(), MSG_NOSIGNAL),
+              static_cast<ssize_t>(oversized.size()));
+    {
+        socle::privsep::Client client(channels[0], std::chrono::seconds(1));
+        ::close(channels[0]);
+        ::close(channels[1]);
+        EXPECT_EQ(client.ping(), 0);
+    }
+    helper.join();
+    const auto stats = server.stats();
+    EXPECT_EQ(stats.ping, 1U);
+    EXPECT_EQ(stats.protocol_errors, 1U);
+    EXPECT_EQ(stats.transport_errors, 0U);
+}
+
 TEST_F(PrivilegedSocketTest, PassesDescriptorAndAppliesSocketOption) {
     int channels[2] = {-1, -1};
     ASSERT_EQ(socle::privsep::make_channel_pair(channels), 0);
