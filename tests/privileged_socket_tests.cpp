@@ -17,6 +17,7 @@
 #include <unistd.h>
 
 #include <privileged_socket.hpp>
+#include "security/hostile_peer.hpp"
 
 namespace {
 
@@ -117,6 +118,33 @@ TEST_F(PrivilegedSocketTest, HelperSurvivesTruncatedDatagramAndServesNextRequest
     EXPECT_EQ(stats.ping, 1U);
     EXPECT_EQ(stats.protocol_errors, 1U);
     EXPECT_EQ(stats.transport_errors, 0U);
+}
+
+TEST_F(PrivilegedSocketTest, HostileFrameCorpusPreservesAvailabilityAndDescriptors) {
+    int channels[2] = {-1, -1};
+    ASSERT_EQ(socle::privsep::make_channel_pair(channels), 0);
+    socle::privsep::Server server(channels[1]);
+    std::thread helper([&server] { EXPECT_EQ(server.run(), 0); });
+    const auto descriptors_before = socle::test::hostile::open_fd_count();
+
+    const auto corpus = socle::test::hostile::frame_corpus(
+        {0x50524956U, 512, 4096});
+    for(const auto& frame: corpus) {
+        ASSERT_EQ(socle::test::hostile::send_and_drain(channels[0], frame),
+                  socle::test::hostile::DrainResult::Reply);
+    }
+
+    {
+        socle::privsep::Client client(channels[0], std::chrono::seconds(1));
+        ::close(channels[0]);
+        ::close(channels[1]);
+        EXPECT_EQ(client.ping(), 0);
+    }
+    helper.join();
+    const auto descriptors_after = socle::test::hostile::open_fd_count();
+    if(descriptors_before != 0 && descriptors_after != 0) {
+        EXPECT_EQ(descriptors_after, descriptors_before - 2U);
+    }
 }
 
 TEST_F(PrivilegedSocketTest, PassesDescriptorAndAppliesSocketOption) {
