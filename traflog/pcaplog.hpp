@@ -95,6 +95,13 @@ namespace socle::traflog {
 
 
 
+    class GreTransport {
+    public:
+        virtual ~GreTransport() = default;
+        // The buffer already contains a complete GRE frame.
+        virtual bool submit(buffer const& frame) = 0;
+    };
+
     struct GreExporter : public pcapng::IP_Hook, public pcapng::Record_Hook {
         enum class payload_format { ip_packet, pcapng_record };
         static constexpr uint16_t pcapng_gre_protocol = 0x88B5;
@@ -106,21 +113,16 @@ namespace socle::traflog {
                 return true;
             }
 
-            if(sock < 0) {
-                sock = traflog::raw_socket_gre(target.dst.family, tun_ttl, bind_interface);
-            }
-
-            if(not target.dst.ss) return false;
-            if(sock < 0) return false;
-
             auto send_data = encapsulate(det, buf);
+            return transport_ ? transport_->submit(send_data) : send_encapsulated(send_data);
+        }
 
-            auto r = sendto(sock, send_data.data(), send_data.size(), 0, (sockaddr*) target.dst.as_ss(), sizeof(sockaddr_storage));
-            if(r <= 0) {
-                return false;
-            }
-
-            return true;
+        /** Direct backend used by the local broker and standalone mode. */
+        bool send_encapsulated(buffer const& send_data) {
+            if(sock < 0) sock = traflog::raw_socket_gre(target.dst.family, tun_ttl, bind_interface);
+            if(not target.dst.ss || sock < 0) return false;
+            return sendto(sock, send_data.data(), send_data.size(), 0,
+                          (sockaddr*)target.dst.as_ss(), sizeof(sockaddr_storage)) > 0;
         }
 
         /** Build the GRE payload independently of the raw socket transport. */
@@ -148,12 +150,13 @@ namespace socle::traflog {
             : target(other.target), sock(-1), tun_ttl(other.tun_ttl),
               bind_interface(other.bind_interface),
               format_(other.format_),
-              record_origin_filter(other.record_origin_filter) {}
+              record_origin_filter(other.record_origin_filter), transport_(other.transport_) {}
         GreExporter(GreExporter&& other) noexcept
             : target(std::move(other.target)), sock(other.sock), tun_ttl(other.tun_ttl),
               bind_interface(std::move(other.bind_interface)),
               format_(other.format_),
-              record_origin_filter(other.record_origin_filter) { other.sock = -1; }
+              record_origin_filter(other.record_origin_filter),
+              transport_(std::move(other.transport_)) { other.sock = -1; }
 
         GreExporter& operator=(GreExporter const& other) {
             if(&other != this) {
@@ -163,6 +166,7 @@ namespace socle::traflog {
                 bind_interface = other.bind_interface;
                 format_ = other.format_;
                 record_origin_filter = other.record_origin_filter;
+                transport_ = other.transport_;
                 sock = -1;
             }
 
@@ -177,6 +181,7 @@ namespace socle::traflog {
                 bind_interface = std::move(other.bind_interface);
                 format_ = other.format_;
                 record_origin_filter = other.record_origin_filter;
+                transport_ = std::move(other.transport_);
 
                 other.sock = -1;
             }
@@ -189,6 +194,7 @@ namespace socle::traflog {
 
         void ttl(uint8_t ttl) { tun_ttl = ttl; }
         void bind_if(std::string_view ifa) { bind_interface=ifa; }
+        void transport(std::shared_ptr<GreTransport> value) { transport_ = std::move(value); }
         void format(payload_format value) { format_ = value; }
         [[nodiscard]] payload_format format() const { return format_; }
         /** Restrict export to reconstructed or complete capture records. */
@@ -205,6 +211,7 @@ namespace socle::traflog {
         std::string bind_interface{};
         payload_format format_ {payload_format::ip_packet};
         std::optional<pcap::connection_details::record_origin> record_origin_filter;
+        std::shared_ptr<GreTransport> transport_;
     };
 
 }
