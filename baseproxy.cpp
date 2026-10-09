@@ -1239,8 +1239,13 @@ auto baseProxy::run_poll_socket(int cur_socket, epoll::set_type& real_set, socke
         ret += nh;
     }
 
-    // locked, erase currently handled socket from the set
-    real_set.erase(cur_socket);
+    // Real epoll result sets are one-shot snapshots. UDP virtual readiness is
+    // transport-managed instead: read_from_pool() clears it after the last
+    // queued datagram or keeps/reinserts it while packets remain. Do not
+    // overwrite that decision after the handler returns.
+    if(set_type != socket_set_type::VIRTSET) {
+        real_set.erase(cur_socket);
+    }
     return ret;
 }
 
