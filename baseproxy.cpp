@@ -1177,6 +1177,20 @@ auto baseProxy::run_poll_socket(int cur_socket, epoll::set_type& real_set, socke
 
     epoll_handler* p_handler = com()->poller.get_handler(cur_socket);
 
+    // UDP readiness is shared by all receiver workers, while handlers are
+    // registered only in the poller which owns the flow.  A non-owning
+    // worker must leave a live virtual event for its owner; treating the
+    // missing local handler as an orphan steals the datagram notification.
+    if(p_handler == nullptr && set_type == socket_set_type::VIRTSET && cur_socket < 0) {
+        auto udpc = UDPCom::datagram_com_static();
+        auto lc_ = std::scoped_lock(udpc->lock);
+        auto const record = udpc->datagrams_received.find(static_cast<uint32_t>(cur_socket));
+        if(record != udpc->datagrams_received.end() && record->second != nullptr) {
+            _ext("baseProxy::run_poll: virtual socket %d belongs to another worker", cur_socket);
+            return ret;
+        }
+    }
+
     if(p_handler != nullptr) {
 
         auto seg = p_handler->fence_S;

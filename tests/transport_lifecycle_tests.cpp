@@ -221,6 +221,28 @@ TEST(UDPComLifecycle, PeekPreservesPacketAndShortReadDiscardsItsTail) {
     EXPECT_FALSE(scope.pool->in_virt_set.find(fd));
 }
 
+TEST(UDPComLifecycle, HostReadDoesNotCoalesceQueuedDatagrams) {
+    DatagramPoolScope scope;
+    constexpr int fd = -1014;
+    auto datagram = add_datagram(scope, fd);
+    unsigned char first[] = "first";
+    unsigned char second[] = "second";
+    ASSERT_EQ(datagram->enqueue(first, 5), 5U);
+    ASSERT_EQ(datagram->enqueue(second, 6), 6U);
+    scope.pool->in_virt_set.insert(fd);
+
+    baseHostCX connection(new UDPCom(), fd);
+    EXPECT_EQ(connection.read(), 5);
+    EXPECT_EQ(connection.meter_read_count, 1U);
+    EXPECT_EQ(connection.meter_read_bytes, 5U);
+    EXPECT_EQ(connection.readbuf()->size(), 5U);
+    EXPECT_EQ(std::string_view(
+                  reinterpret_cast<char const*>(connection.readbuf()->data()), 5),
+              "first");
+    EXPECT_EQ(datagram->queue_bytes_l(), 6U);
+    EXPECT_TRUE(scope.pool->in_virt_set.find(fd));
+}
+
 TEST(UDPComLifecycle, EmbryonicReadDrainsPoolBeforeRealSocket) {
     DatagramPoolScope scope;
     UDPCom com;
@@ -253,6 +275,39 @@ TEST(UDPComLifecycle, DescriptorValidityDistinguishesLiveVirtualTokensFromErrors
     EXPECT_TRUE(com.descriptor_valid(fd));
     scope.clear();
     EXPECT_FALSE(com.descriptor_valid(fd));
+}
+
+TEST(UDPComLifecycle, ForeignWorkerPreservesSharedVirtualReadiness) {
+    DatagramPoolScope scope;
+    constexpr int fd = -1012;
+    add_datagram(scope, fd);
+    scope.pool->in_virt_set.insert(fd);
+
+    auto* com = new UDPCom();
+    com->poller.init_if_null();
+    baseProxy worker(com);
+
+    auto result = worker.run_poll_socket(
+        fd, scope.pool->in_virt_set, baseProxy::socket_set_type::VIRTSET);
+
+    EXPECT_EQ(result.null_count, 0U);
+    EXPECT_TRUE(scope.pool->in_virt_set.find(fd));
+}
+
+TEST(UDPComLifecycle, OrphanedVirtualReadinessIsRemoved) {
+    DatagramPoolScope scope;
+    constexpr int fd = -1013;
+    scope.pool->in_virt_set.insert(fd);
+
+    auto* com = new UDPCom();
+    com->poller.init_if_null();
+    baseProxy worker(com);
+
+    auto result = worker.run_poll_socket(
+        fd, scope.pool->in_virt_set, baseProxy::socket_set_type::VIRTSET);
+
+    EXPECT_EQ(result.null_count, 1U);
+    EXPECT_FALSE(scope.pool->in_virt_set.find(fd));
 }
 
 TEST(UDPComLifecycle, ReusePreservesEntryAndFlowMappingExactlyOnce) {
