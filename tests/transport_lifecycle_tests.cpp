@@ -56,6 +56,12 @@ public:
     std::string receive_data = "socket-data";
 };
 
+class NoopEpollHandler : public epoll_handler {
+public:
+    void handle_event(baseCom*) override { ++calls; }
+    std::size_t calls = 0;
+};
+
 std::shared_ptr<Datagram> add_datagram(DatagramPoolScope& scope, int fd) {
     auto datagram = std::make_shared<Datagram>();
     scope.pool->datagrams_received[virtual_key(fd)] = datagram;
@@ -291,6 +297,26 @@ TEST(UDPComLifecycle, ForeignWorkerPreservesSharedVirtualReadiness) {
         fd, scope.pool->in_virt_set, baseProxy::socket_set_type::VIRTSET);
 
     EXPECT_EQ(result.null_count, 0U);
+    EXPECT_TRUE(scope.pool->in_virt_set.find(fd));
+}
+
+TEST(UDPComLifecycle, OwningWorkerLeavesVirtualReadinessToTransport) {
+    DatagramPoolScope scope;
+    constexpr int fd = -1015;
+    add_datagram(scope, fd);
+    scope.pool->in_virt_set.insert(fd);
+
+    NoopEpollHandler handler;
+    auto* com = new UDPCom();
+    com->poller.init_if_null();
+    com->poller.set_handler(fd, &handler);
+    baseProxy worker(com);
+
+    auto result = worker.run_poll_socket(
+        fd, scope.pool->in_virt_set, baseProxy::socket_set_type::VIRTSET);
+
+    EXPECT_EQ(result.generic_count, 1U);
+    EXPECT_EQ(handler.calls, 1U);
     EXPECT_TRUE(scope.pool->in_virt_set.find(fd));
 }
 
