@@ -457,7 +457,11 @@ int baseHostCX::read() {
     ssize_t buffer_written_len = 0;
     auto this_read_op_limit = read_limit().value_or(0);
     auto const io_batch = baseHostCX::params_t::io_batch.load();
-    auto const drain_socket = socket() < 0 || !baseCom::is_blocking(socket());
+    // A datagram read is one message. Draining multiple ready UDP packets
+    // into the stream-oriented read buffer coalesces them and the peer sends
+    // one larger datagram, destroying the original packet boundaries.
+    auto const drain_socket = com()->l4_proto() != SOCK_DGRAM
+                              && (socket() < 0 || !baseCom::is_blocking(socket()));
 
     while(true) {
 
