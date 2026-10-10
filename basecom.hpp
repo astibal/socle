@@ -35,6 +35,7 @@
 
 #include <epoll.hpp>
 #include <log/logger.hpp>
+#include <protocoltracer.hpp>
 
 
 class baseHostCX;
@@ -74,6 +75,7 @@ public:
     baseCom* slave() { 
         baseCom* r = replicate(); 
         r->master(master());
+        r->protocol_tracer(protocol_tracer_);
         return r;
     }
 
@@ -136,6 +138,16 @@ protected:
     void forced_write_always(bool b) { forced_write(b); forced_write_always_ = b; }
   
 public:
+    void protocol_tracer(socle::ProtocolTracer* tracer) noexcept { protocol_tracer_ = tracer; }
+    [[nodiscard]] socle::ProtocolTracer* protocol_tracer() const noexcept { return protocol_tracer_; }
+    void protocol_trace(socle::trace_component component,
+                        socle::trace_scope scope,
+                        socle::trace_event event,
+                        socle::trace_status status = socle::trace_status::info,
+                        std::string_view detail = {},
+                        uint64_t subject_id = 0,
+                        bool has_subject_id = false) const noexcept;
+
     void forced_read(bool b)  { forced_read_ = b; }
     void forced_write(bool b) { forced_write_ = b; }    
 
@@ -493,6 +505,7 @@ public:
     DECLARE_LOGGING(to_string)
 
 private:
+    socle::ProtocolTracer* protocol_tracer_ = nullptr;
     logan_lite log {"com.base"};
 };
 

@@ -339,6 +339,28 @@ protected:
     struct timeval timer_start{};
     struct timeval timer_handshake_start{};
     bool handshake_timer_started = false;
+    bool handshake_trace_started_ = false;
+    bool handshake_trace_finished_ = false;
+    void trace_handshake_started_once() noexcept {
+        if(handshake_trace_started_) return;
+        handshake_trace_started_ = true;
+        protocol_trace(socle::trace_component::tls,
+                       socle::trace_scope::connection,
+                       socle::trace_event::handshake_started,
+                       socle::trace_status::pending);
+    }
+    void trace_handshake_finished_once(bool success,
+                                       std::string_view detail = {}) noexcept {
+        if(handshake_trace_finished_) return;
+        handshake_trace_finished_ = true;
+        protocol_trace(socle::trace_component::tls,
+                       socle::trace_scope::connection,
+                       success ? socle::trace_event::handshake_ready
+                               : socle::trace_event::handshake_failed,
+                       success ? socle::trace_status::ok
+                               : socle::trace_status::failed,
+                       detail);
+    }
     
     //SSL_write or SSL_read checked timer. Successful read will reset also write timer and vice versa.
     struct timeval timer_write_timeout{};

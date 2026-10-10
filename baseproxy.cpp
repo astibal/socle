@@ -47,6 +47,16 @@ baseProxy::~baseProxy() {
     }
 }
 
+void baseProxy::protocol_tracer(socle::ProtocolTracer* tracer) noexcept {
+    protocol_tracer_ = tracer;
+    for(auto* group : {&left_sockets, &right_sockets, &left_bind_sockets,
+                       &right_bind_sockets, &left_pc_cx, &right_pc_cx,
+                       &left_delayed_accepts, &right_delayed_accepts}) {
+        for(auto* context : *group)
+            if(context && context->com()) context->com()->protocol_tracer(tracer);
+    }
+}
+
 
 
 void baseProxy::ladd(baseHostCX* cs) {
@@ -1409,12 +1419,16 @@ int baseProxy::bind(std::string const& path, unsigned char side) {
 
 
 baseHostCX* baseProxy::new_cx(int s) {
-	return new baseHostCX(com()->replicate(),s);
+	auto* result = new baseHostCX(com()->replicate(),s);
+    result->com()->protocol_tracer(protocol_tracer_);
+    return result;
 }
 
 
 baseHostCX* baseProxy::new_cx(const char* host, const char* port) {
-	return new baseHostCX(com()->replicate(),host,port);
+	auto* result = new baseHostCX(com()->replicate(),host,port);
+    result->com()->protocol_tracer(protocol_tracer_);
+    return result;
 }
 
 

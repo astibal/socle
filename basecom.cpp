@@ -39,6 +39,28 @@
 
 using namespace socle;
 
+void baseCom::protocol_trace(socle::trace_component component,
+                             socle::trace_scope scope,
+                             socle::trace_event event,
+                             socle::trace_status status,
+                             std::string_view detail,
+                             uint64_t subject_id,
+                             bool has_subject_id) const noexcept {
+    auto* tracer = protocol_tracer_;
+    if(!tracer) return;
+
+    auto side = socle::trace_side::proxy;
+    if(owner_cx_) {
+        switch(owner_cx_->parent_flag()) {
+            case 'L': case 'l': side = socle::trace_side::left; break;
+            case 'R': case 'r': side = socle::trace_side::right; break;
+            default: break;
+        }
+    }
+    tracer->trace({side, component, scope, subject_id, has_subject_id,
+                   event, status, detail});
+}
+
 void baseCom::init(baseHostCX* owner) {
 
 	if(!_static_init) {

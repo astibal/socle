@@ -7,11 +7,13 @@
 #include <epoll.hpp>
 #include <traflog/filewriter.hpp>
 #include <mpdisplay.hpp>
+#include <protocoltracer.hpp>
 
 #include <array>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <vector>
 
 namespace {
 
@@ -76,6 +78,55 @@ void set_ipv4(sockaddr_storage& storage, const char* address, uint16_t port) {
 }
 
 } // namespace
+
+TEST(ProtocolTracer, StableWireNamesAndTypedEvent) {
+    class recorder final : public socle::ProtocolTracer {
+    public:
+        void trace(socle::protocol_trace_event const& value) noexcept override {
+            event = value;
+            called = true;
+        }
+        socle::protocol_trace_event event;
+        bool called = false;
+    } trace;
+
+    trace.trace({socle::trace_side::right, socle::trace_component::load_balancer,
+                 socle::trace_scope::stream, 6, true,
+                 socle::trace_event::selected, socle::trace_status::ok,
+                 "backend=3"});
+
+    ASSERT_TRUE(trace.called);
+    EXPECT_EQ(socle::to_string(trace.event.side), "R");
+    EXPECT_EQ(socle::to_string(trace.event.component), "load_balancer");
+    EXPECT_EQ(socle::to_string(trace.event.scope), "stream");
+    EXPECT_EQ(socle::to_string(trace.event.event), "SELECTED");
+    EXPECT_EQ(socle::to_string(trace.event.status), "ok");
+    EXPECT_EQ(trace.event.subject_id, 6U);
+}
+
+TEST(ProtocolTracer, BaseComDerivesSideAndSlaveInheritsTracer) {
+    class recorder final : public socle::ProtocolTracer {
+    public:
+        void trace(socle::protocol_trace_event const& value) noexcept override {
+            events.push_back(value);
+        }
+        std::vector<socle::protocol_trace_event> events;
+    } trace;
+
+    baseHostCX context(new TCPCom(), -1);
+    context.parent_proxy(nullptr, 'R');
+    context.com()->protocol_tracer(&trace);
+    context.com()->protocol_trace(socle::trace_component::routing,
+                                  socle::trace_scope::connection,
+                                  socle::trace_event::decision,
+                                  socle::trace_status::ok, "route=3");
+    auto slave = std::unique_ptr<baseCom>(context.com()->slave());
+
+    ASSERT_EQ(trace.events.size(), 1U);
+    EXPECT_EQ(trace.events.front().side, socle::trace_side::right);
+    EXPECT_EQ(trace.events.front().detail, "route=3");
+    EXPECT_EQ(slave->protocol_tracer(), &trace);
+}
 
 TEST(EpollLifecycle, PeerHalfCloseIsReadableButNotSocketError) {
     int pair[2] {-1, -1};

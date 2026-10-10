@@ -46,6 +46,10 @@ bool TCPCom::make_transparent(int sfd) {
 }
 
 int TCPCom::connect(const char* host, const char* port) {
+    protocol_trace(socle::trace_component::tcp,
+                   socle::trace_scope::connection,
+                   socle::trace_event::connect_started,
+                   socle::trace_status::pending);
     struct addrinfo hints{};
     struct addrinfo *gai_result, *rp;
     int sfd = -1;
@@ -99,6 +103,7 @@ int TCPCom::connect(const char* host, const char* port) {
             if (::connect(sfd, rp->ai_addr, rp->ai_addrlen) == 0) {
                 _deb("TCPCom::connect[%s:%s]: socket[%d]: connect successful", host, port, sfd);
                 connect_proven = true;
+                trace_connected_once();
                 break;
             }
 
@@ -123,6 +128,11 @@ int TCPCom::connect(const char* host, const char* port) {
     
     if(sfd < 0) {
         _err("TCPCom::connect[%s:%s]: socket[%d]: connect failed", host, port, sfd);
+        protocol_trace(socle::trace_component::tcp,
+                       socle::trace_scope::connection,
+                       socle::trace_event::closed,
+                       socle::trace_status::failed,
+                       "connect failed");
     }
 
     return socket(sfd);
@@ -267,6 +277,7 @@ bool TCPCom::is_connected(int s) {
                 if(is_socket_writable(s)) {
                     _deb("TCPCom::is_connected[%d]: epoll sees this socket writable, returning OK", s);
                     connect_proven = true;
+                    trace_connected_once();
                 }
                 else {
                     _deb("TCPCom::is_connected[%d]: epoll sees this socket as non-writable, returning NOK", s);
@@ -288,6 +299,7 @@ bool TCPCom::is_connected(int s) {
 
                 // aye, don't check connection status anymore
                 connect_proven = true;
+                trace_connected_once();
                 return true;
             }
             _deb("TCPCom::is_connected[%d]: in progress, waiting for poller sets presence", s);
