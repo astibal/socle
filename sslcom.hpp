@@ -622,6 +622,7 @@ public:
     vrf_other_list vrf_other_;
 
     vrf_other_list& verify_extended_info() { return vrf_other_; }
+    vrf_other_list const& verify_extended_info() const { return vrf_other_; }
 
     [[maybe_unused]] inline void verify_reset(verify_status_t s) { verify_status_ = s; }
     [[maybe_unused]] inline int verify_get() const { return static_cast<int>(verify_status_); }
