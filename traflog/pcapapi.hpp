@@ -43,6 +43,7 @@
 
 #include <cstdint>
 #include <cstdio>
+#include <array>
 #include <sys/time.h>
 #include <unistd.h>
 
@@ -307,6 +308,8 @@ uint16_t L4_chksum (connection_details const &details, int in, NextHeader *next_
 namespace socle::pcapng {
     using namespace socle::pcap;
 
+    enum class byte_order { little, big };
+
     // section header block
     struct pcapng_shb {
         uint32_t  type = 0x0A0D0D0AL;
@@ -349,6 +352,27 @@ namespace socle::pcapng {
 
         size_t size() const;
         size_t append(buffer& out);
+    };
+
+    /**
+     * PCAPNG non-copyable Custom Block using the shared ecosystem envelope:
+     * PEN, four raw namespace bytes, uint16 type/version and uint32 payload
+     * length. Numeric fields follow the containing section byte order.
+     */
+    struct pcapng_custom_block {
+        static constexpr uint32_t non_copyable_type = 0x40000BADU;
+        static constexpr size_t fixed_size = 28U;
+
+        uint32_t pen = 0;
+        std::array<uint8_t, 4> name_space {};
+        uint16_t entry_type = 0;
+        uint16_t version = 0;
+        std::shared_ptr<buffer> payload;
+        byte_order order = byte_order::little;
+
+        [[nodiscard]] bool valid() const;
+        [[nodiscard]] size_t size() const;
+        size_t append(buffer& out) const;
     };
 
     struct pcapng_options;

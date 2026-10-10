@@ -598,4 +598,38 @@ namespace socle::traflog {
             self->stat_bytes_written += written;
         }
     }
+
+    void PcapLog::write_metadata(buffer const& block) {
+        if(not status() || block.empty()) return;
+
+        PcapLog* self = single_only ? &single_instance() : this;
+        auto const local_output = not ip_packet_hook_only;
+        if(not local_output && not self->pcapng_record_hook) return;
+
+        auto const& fs = self->FS;
+        baseFileWriter* writer = nullptr;
+        if(local_output) {
+            if(not self->writer_) self->init_writer();
+            writer = self->writer_;
+            if(not writer->opened() && not writer->open(fs.filename_full)) {
+                _err("write '%s' failed to open dump file!", fs.filename_full.c_str());
+                return;
+            }
+            if(not writer->opened()) return;
+
+            bool const is_recreated = prepare_file();
+            if(is_recreated) self->stat_bytes_written = 0LL;
+            self->write_pcap_header(is_recreated);
+        }
+
+        if(self->pcapng_record_hook) {
+            auto record_details = pcap::connection_details(details);
+            record_details.origin = pcap::connection_details::record_origin::packet;
+            self->pcapng_record_hook->execute(record_details, block);
+        }
+        if(local_output) {
+            auto const written = writer->write(fs.filename_full, block);
+            self->stat_bytes_written += written;
+        }
+    }
 }

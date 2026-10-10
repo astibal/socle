@@ -60,6 +60,57 @@ TEST(NgTest, Empty_Ipb) {
     fclose(f);
 }
 
+TEST(NgTest, CustomEnvelopeMatchesLittleEndianCzvwVector) {
+    pcapng_custom_block block;
+    block.pen = 67005;
+    block.name_space = {'C', 'Z', 'V', 'W'};
+    block.entry_type = 1;
+    block.version = 1;
+    block.payload = std::make_shared<buffer>("abc", 3);
+    block.order = byte_order::little;
+    buffer output;
+
+    ASSERT_EQ(block.append(output), 32U);
+    std::array<uint8_t, 32> const expected {
+        0xAD,0x0B,0x00,0x40, 0x20,0x00,0x00,0x00,
+        0xBD,0x05,0x01,0x00, 0x43,0x5A,0x56,0x57,
+        0x01,0x00,0x01,0x00, 0x03,0x00,0x00,0x00,
+        0x61,0x62,0x63,0x00, 0x20,0x00,0x00,0x00,
+    };
+    EXPECT_EQ(std::memcmp(output.data(), expected.data(), expected.size()), 0);
+}
+
+TEST(NgTest, CustomEnvelopeMatchesBigEndianCzvwVector) {
+    pcapng_custom_block block;
+    block.pen = 67005;
+    block.name_space = {'C', 'Z', 'V', 'W'};
+    block.entry_type = 1;
+    block.version = 1;
+    block.payload = std::make_shared<buffer>("abc", 3);
+    block.order = byte_order::big;
+    buffer output;
+
+    ASSERT_EQ(block.append(output), 32U);
+    std::array<uint8_t, 32> const expected {
+        0x40,0x00,0x0B,0xAD, 0x00,0x00,0x00,0x20,
+        0x00,0x01,0x05,0xBD, 0x43,0x5A,0x56,0x57,
+        0x00,0x01,0x00,0x01, 0x00,0x00,0x00,0x03,
+        0x61,0x62,0x63,0x00, 0x00,0x00,0x00,0x20,
+    };
+    EXPECT_EQ(std::memcmp(output.data(), expected.data(), expected.size()), 0);
+}
+
+TEST(NgTest, CustomEnvelopeRejectsUnregisteredIdentityFields) {
+    pcapng_custom_block block;
+    block.pen = 67005;
+    block.name_space = {'S', 'X', 'M', 'E'};
+    buffer output;
+
+    EXPECT_FALSE(block.valid());
+    EXPECT_EQ(block.append(output), 0U);
+    EXPECT_TRUE(output.empty());
+}
+
 TEST(NgTest, MultipleOptionsHaveOneFooterAndZeroPadding) {
     pcapng_options options;
     std::string const first_data = "abc";
@@ -314,17 +365,31 @@ TEST(NgTest, NativePacketAndSecretsProduceRemotePcapngRecords) {
     buffer secret(key.data(), key.size());
     logger.write_secret(socle::traffic_secret_format::tls_key_log, secret);
 
-    ASSERT_EQ(sink->records.size(), 2U);
-    ASSERT_EQ(sink->origins.size(), 2U);
+    pcapng_custom_block metadata;
+    metadata.pen = 67005;
+    metadata.name_space = {'S', 'X', 'M', 'E'};
+    metadata.entry_type = 1;
+    metadata.version = 1;
+    metadata.payload = std::make_shared<buffer>("{}", 2);
+    buffer metadata_record;
+    ASSERT_NE(metadata.append(metadata_record), 0U);
+    logger.write_metadata(metadata_record);
+
+    ASSERT_EQ(sink->records.size(), 3U);
+    ASSERT_EQ(sink->origins.size(), 3U);
     EXPECT_EQ(sink->origins[0], connection_details::record_origin::packet);
     EXPECT_EQ(sink->origins[1], connection_details::record_origin::packet);
+    EXPECT_EQ(sink->origins[2], connection_details::record_origin::packet);
 
     uint32_t first_type = 0;
     uint32_t second_type = 0;
+    uint32_t third_type = 0;
     std::memcpy(&first_type, sink->records[0].data(), sizeof(first_type));
     std::memcpy(&second_type, sink->records[1].data(), sizeof(second_type));
+    std::memcpy(&third_type, sink->records[2].data(), sizeof(third_type));
     EXPECT_EQ(first_type, 0x00000006U);
     EXPECT_EQ(second_type, 0x0000000AU);
+    EXPECT_EQ(third_type, pcapng_custom_block::non_copyable_type);
 }
 
 

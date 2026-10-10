@@ -39,6 +39,7 @@
 
 
 #include <algorithm>
+#include <limits>
 
 #include <traflog/pcapapi.hpp>
 #include <unistd.h>
@@ -640,6 +641,19 @@ namespace socle::pcap {
 
 namespace socle::pcapng {
 
+    namespace {
+        template<typename T>
+        void append_ordered(buffer& out, T value, byte_order order) {
+            std::array<uint8_t, sizeof(T)> bytes {};
+            for(size_t i = 0; i < bytes.size(); ++i) {
+                auto const shift = order == byte_order::little
+                    ? i * 8U : (bytes.size() - i - 1U) * 8U;
+                bytes[i] = static_cast<uint8_t>(value >> shift);
+            }
+            out.append(bytes.data(), bytes.size());
+        }
+    }
+
     size_t padding_sz32(size_t s) {
         size_t padding_sz = 4 - (s + 4) % 4;
         if(padding_sz == 4) padding_sz = 0;
@@ -748,6 +762,40 @@ namespace socle::pcapng {
         if (secrets_data) out.append(secrets_data.get());
         padding::append(out, padding_sz32(secrets_length), 0);
         out.append(total_length);
+        return out.size() - original_size;
+    }
+
+    bool pcapng_custom_block::valid() const {
+        auto const payload_size = payload ? payload->size() : 0U;
+        return pen != 0U && pen != std::numeric_limits<uint32_t>::max()
+               && entry_type != 0U && version != 0U
+               && payload_size <= std::numeric_limits<uint32_t>::max()
+               && payload_size <= std::numeric_limits<uint32_t>::max()
+                                     - fixed_size - 3U;
+    }
+
+    size_t pcapng_custom_block::size() const {
+        if(!valid()) return 0U;
+        auto const payload_size = payload ? payload->size() : 0U;
+        return fixed_size + payload_size + padding_sz32(payload_size);
+    }
+
+    size_t pcapng_custom_block::append(buffer& out) const {
+        auto const total_length = size();
+        if(total_length == 0U) return 0U;
+
+        auto const original_size = out.size();
+        auto const payload_size = payload ? payload->size() : 0U;
+        append_ordered(out, non_copyable_type, order);
+        append_ordered(out, static_cast<uint32_t>(total_length), order);
+        append_ordered(out, pen, order);
+        out.append(name_space.data(), name_space.size());
+        append_ordered(out, entry_type, order);
+        append_ordered(out, version, order);
+        append_ordered(out, static_cast<uint32_t>(payload_size), order);
+        if(payload) out.append(payload.get());
+        padding::append(out, padding_sz32(payload_size), 0);
+        append_ordered(out, static_cast<uint32_t>(total_length), order);
         return out.size() - original_size;
     }
 
