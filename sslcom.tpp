@@ -2125,10 +2125,6 @@ void baseSSLCom<L4Proto>::init_ssl_callbacks() {
         }
 
         if (opt.ct_enable) {
-            if(!SSLFactory::factory().is_ct_available()) {
-                _war("certificate transparency log list is unavailable; validation remains fail-closed");
-            }
-
             _dia("setting up certificate transparency mode to strict");
             const int ct_enabled = SSL_enable_ct(sslcom_ssl, SSL_CT_VALIDATION_STRICT);
             _dia("setting up certificate transparency callback");
