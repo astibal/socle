@@ -7,6 +7,7 @@
 #include <epoll.hpp>
 #include <traflog/filewriter.hpp>
 #include <mpdisplay.hpp>
+#include <ancillary_address.hpp>
 
 #include <array>
 #include <cstring>
@@ -14,6 +15,64 @@
 #include <fstream>
 
 namespace {
+
+TEST(AncillaryAddress, CopiesOnlyTheDeclaredIpv4OrIpv6Address) {
+    alignas(cmsghdr) std::array<unsigned char, CMSG_SPACE(sizeof(sockaddr_in6))>
+        storage{};
+    auto* control = reinterpret_cast<cmsghdr*>(storage.data());
+    sockaddr_storage copied{};
+
+    control->cmsg_level = SOL_IP;
+    control->cmsg_type = IP_RECVORIGDSTADDR;
+    control->cmsg_len = CMSG_LEN(sizeof(sockaddr_in));
+    sockaddr_in ipv4{};
+    ipv4.sin_family = AF_INET;
+    ipv4.sin_port = htons(8443);
+    ASSERT_EQ(inet_pton(AF_INET, "192.0.2.55", &ipv4.sin_addr), 1);
+    std::memcpy(CMSG_DATA(control), &ipv4, sizeof(ipv4));
+
+    ASSERT_TRUE(socle_detail::copy_original_destination(copied, control));
+    auto const* copied4 = reinterpret_cast<const sockaddr_in*>(&copied);
+    EXPECT_EQ(copied4->sin_family, AF_INET);
+    EXPECT_EQ(copied4->sin_port, htons(8443));
+    EXPECT_EQ(copied4->sin_addr.s_addr, ipv4.sin_addr.s_addr);
+
+    storage.fill(0);
+    control = reinterpret_cast<cmsghdr*>(storage.data());
+    control->cmsg_level = SOL_IPV6;
+    control->cmsg_type = IPV6_RECVORIGDSTADDR;
+    control->cmsg_len = CMSG_LEN(sizeof(sockaddr_in6));
+    sockaddr_in6 ipv6{};
+    ipv6.sin6_family = AF_INET6;
+    ipv6.sin6_port = htons(9443);
+    ASSERT_EQ(inet_pton(AF_INET6, "2001:db8::55", &ipv6.sin6_addr), 1);
+    std::memcpy(CMSG_DATA(control), &ipv6, sizeof(ipv6));
+
+    ASSERT_TRUE(socle_detail::copy_original_destination(copied, control));
+    auto const* copied6 = reinterpret_cast<const sockaddr_in6*>(&copied);
+    EXPECT_EQ(copied6->sin6_family, AF_INET6);
+    EXPECT_EQ(copied6->sin6_port, htons(9443));
+    EXPECT_EQ(std::memcmp(&copied6->sin6_addr, &ipv6.sin6_addr,
+                          sizeof(ipv6.sin6_addr)), 0);
+}
+
+TEST(AncillaryAddress, RejectsTruncatedAndMismatchedAddresses) {
+    alignas(cmsghdr) std::array<unsigned char, CMSG_SPACE(sizeof(sockaddr_in6))>
+        storage{};
+    auto* control = reinterpret_cast<cmsghdr*>(storage.data());
+    sockaddr_storage copied{};
+
+    control->cmsg_level = SOL_IP;
+    control->cmsg_type = IP_RECVORIGDSTADDR;
+    control->cmsg_len = CMSG_LEN(sizeof(sockaddr_in) - 1);
+    EXPECT_FALSE(socle_detail::copy_original_destination(copied, control));
+
+    sockaddr_in6 ipv6{};
+    ipv6.sin6_family = AF_INET6;
+    EXPECT_FALSE(socle_detail::copy_socket_address(
+        copied, &ipv6, sizeof(sockaddr_in)));
+    EXPECT_FALSE(socle_detail::copy_socket_address(copied, nullptr, 0));
+}
 
 uint64_t virtual_key(int fd) {
     return static_cast<uint32_t>(fd);
