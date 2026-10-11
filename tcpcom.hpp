@@ -104,6 +104,10 @@ protected:
     DECLARE_LOGGING(to_string)
 
 private:
+    static int writability_epoll_flags() noexcept;
+    friend class TCPComStateTestProbe;
+    friend bool is_socket_writable(int sock);
+
     static inline logan_lite log {"com.tcp"};
     static inline logan_lite log_state {"com.tcp.state"};
 };

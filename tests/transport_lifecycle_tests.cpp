@@ -14,6 +14,17 @@
 #include <filesystem>
 #include <fstream>
 
+class TCPComStateTestProbe {
+public:
+    static int writability_epoll_flags() {
+        return TCPCom::writability_epoll_flags();
+    }
+};
+
+TEST(TCPComLifecycle, WritabilityProbeEpollIsCloseOnExec) {
+    EXPECT_NE(TCPComStateTestProbe::writability_epoll_flags() & EPOLL_CLOEXEC, 0);
+}
+
 namespace {
 
 TEST(AncillaryAddress, CopiesOnlyTheDeclaredIpv4OrIpv6Address) {
@@ -771,4 +782,55 @@ TEST(MpDisplay, FormatsBinaryCsvSplitAndLongStrings) {
     EXPECT_EQ(formatted.size(), long_value.size() + 2);
     EXPECT_EQ(formatted.front(), '[');
     EXPECT_EQ(formatted.back(), ']');
+}
+
+TEST(EpollLifecycle, ErrorReadinessRetractsIdleWatchGenerations) {
+    epoll poller;
+    poller.idle_watched_pre.insert(42);
+    poller.idle_watched.insert(42);
+    poller.idle_set.insert(42);
+    poller.events[0].data.fd = 42;
+    poller.events[0].events = EPOLLERR;
+
+    ASSERT_EQ(poller.process_epoll_events(1), 1);
+    EXPECT_TRUE(poller.err_set.find(42));
+    EXPECT_FALSE(poller.idle_watched_pre.find(42));
+    EXPECT_FALSE(poller.idle_watched.find(42));
+    EXPECT_FALSE(poller.idle_set.find(42));
+}
+
+TEST(EpollLifecycle, SameWaitReadActivityRetractsPublishedIdleTimeout) {
+    epoll poller;
+    constexpr int descriptor = 43;
+    poller.idle_set.insert(descriptor);
+    poller.events[0].data.fd = descriptor;
+    poller.events[0].events = EPOLLIN;
+
+    ASSERT_EQ(poller.process_epoll_events(1), 1);
+    EXPECT_TRUE(poller.in_set.find(descriptor));
+    EXPECT_FALSE(poller.idle_set.find(descriptor));
+}
+
+TEST(EpollLifecycle, DescriptorZeroIsValidAndClosed) {
+    int saved_stdin = ::fcntl(STDIN_FILENO, F_DUPFD_CLOEXEC, 1);
+    ASSERT_GE(saved_stdin, 0);
+    ASSERT_EQ(::close(STDIN_FILENO), 0);
+
+    int descriptor = -1;
+    int descriptor_flags = -1;
+    {
+        epoll poller;
+        descriptor = poller.init();
+        descriptor_flags = ::fcntl(descriptor, F_GETFD);
+    }
+    errno = 0;
+    const int closed_result = ::fcntl(STDIN_FILENO, F_GETFD);
+    const int closed_error = errno;
+    ASSERT_EQ(::dup2(saved_stdin, STDIN_FILENO), STDIN_FILENO);
+    ::close(saved_stdin);
+
+    EXPECT_EQ(descriptor, STDIN_FILENO);
+    EXPECT_NE(descriptor_flags & FD_CLOEXEC, 0);
+    EXPECT_EQ(closed_result, -1);
+    EXPECT_EQ(closed_error, EBADF);
 }

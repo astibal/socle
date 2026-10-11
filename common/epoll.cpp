@@ -3,8 +3,7 @@
 
 
 int epoll::init() {
-    // size in epoll_create is ignored since 2.6.8, but has to be greater than 0
-    int s = epoll_create(1);
+    int s = epoll_create1(EPOLL_CLOEXEC);
     epoll_fd_ = s;
 
     _dia("epoll::init: epoll socket created: %d", s);
@@ -78,6 +77,7 @@ int epoll::process_epoll_events(int nfds) {
         if(eventset & EPOLLERR) {
             _dia("epoll::wait: error event %d for socket %d", eventset, socket);
             err_set.insert(socket);
+            clear_idle_watch(socket);
 
             handled = true;
         }
@@ -467,15 +467,13 @@ unsigned long epoll::clear_idle_watch(int check) {
     unsigned long ret = 0L;
 
     unsigned long ip = idle_watched_pre.erase(check);
-    unsigned long iw = 0;
-    if (ip <= 0) {
-        iw = idle_watched.erase(check);
-    }
-    if (ip > 0) {
+    unsigned long iw = idle_watched.erase(check);
+    unsigned long is = idle_set.erase(check);
+    if (ip > 0 || iw > 0) {
         _deb("epoll::clear_handler %d -> clearing idle watchlist [pre: %ld list: %ld]", check, ip, iw);
     }
 
-    ret = iw + ip;
+    ret = iw + ip + is;
 
     return ret;
 }
