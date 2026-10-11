@@ -79,6 +79,8 @@ public:
     void cleanup() override {};
     
     bool is_connected(int s) override;
+    bool connect_failed() const noexcept { return connect_failed_; }
+    int connect_error() const noexcept { return connect_error_; }
     bool com_status() override;
 
     void on_new_socket(int _fd) override;
@@ -95,6 +97,8 @@ protected:
     int bind_sock_protocol = IPPROTO_TCP;
 
     bool connect_proven = false;
+    bool connect_failed_ = false;
+    int connect_error_ = 0;
 
     TYPENAME_OVERRIDE("TCPCom")
     DECLARE_LOGGING(to_string)
