@@ -208,7 +208,7 @@ int TCPCom::accept ( int sockfd, sockaddr* addr, socklen_t* addrlen_ ) {
 
 bool is_socket_writable(int sock) {
     // Create an epoll instance
-    int epoll_fd = epoll_create1(0);
+    int epoll_fd = epoll_create1(TCPCom::writability_epoll_flags());
     if (epoll_fd == -1) {
         return false;
     }
@@ -234,6 +234,10 @@ bool is_socket_writable(int sock) {
     }
 
     return false;
+}
+
+int TCPCom::writability_epoll_flags() noexcept {
+    return EPOLL_CLOEXEC;
 }
 
 bool TCPCom::is_connected(int s) {

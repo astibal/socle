@@ -199,27 +199,37 @@ void AppHostCX::post_write() {
             auto b = this->writebuf();
 
             auto f_s = flow().flow_queue().size();
-            auto f_last_data_size = flow().flow_queue().back().size();
+            auto f_last_data_size = f_s > 0
+                ? flow().flow_queue().back().size() : 0;
 
             _deb("AppHostCX::post_write[%s]: peek_counter %d, written to socket %d, write buffer size %d, flow size %d, flow data size %d",
                  c_type(), peek_write_counter, meter_write_bytes, b->size(), f_s, f_last_data_size);
 
             // how many data I am missing?
-            auto delta = (meter_write_bytes + b->size()) - peek_write_counter;
-            buffer delta_b = b->view(b->size() - delta, b->size());
+            auto const observed = meter_write_bytes + b->size();
+            auto const delta = observed >= peek_write_counter
+                ? observed - peek_write_counter : 0;
+            bool updated = false;
 
-            if (delta > 0) {
+            if (delta > 0 && delta <= b->size()) {
+                buffer delta_b = b->view(b->size() - delta, delta);
                 _dia("AppHostCX::post_write[%s]: flow append new %d bytes", c_type(), delta_b.size());
                 this->flow().append('w', delta_b);
                 peek_write_counter += delta_b.size();
+                updated = true;
+            } else if(observed < peek_write_counter || delta > b->size()) {
+                _err("AppHostCX::post_write:[%s]: bytes are missing", c_type());
+                error(true);
             } else {
                 _dia("AppHostCX::post_write:[%s]: data are already copied in the flow", c_type());
             }
 
             // we can't detect starttls in POST mode
             _dia("AppHostCX::post_write[%s]: side %c, flow path: %s", c_type(), 'w', flow().hr().c_str());
-            detect();
-            inspect('w');
+            if(updated) {
+                detect();
+                inspect('w');
+            }
         }
         else {
             _deb("AppHostCX::post_write[%s]: OUT OF INSPECT WINDOW: side %c, flow path: %s", c_type(), 'w', flow().hr().c_str());
@@ -259,6 +269,12 @@ void AppHostCX::pre_read() {
                     meter_read_count, meter_read_bytes,peek_read_counter);
 
             std::size_t delta = this->meter_read_bytes - peek_read_counter;
+            if(delta > this->readbuf()->size()) {
+                _err("AppHostCX::pre_read[%s]: cannot recover %zu inspection bytes from %zu-byte read buffer",
+                     c_type(), delta, this->readbuf()->size());
+                error(true);
+                return;
+            }
             std::size_t w = this->readbuf()->size() - delta; // "+1" should be not there
 
             _deb("AppHostCX::pre_read[%s]: Creating readbuf view at <%d,%d>", c_type(), w, delta);
@@ -422,10 +438,12 @@ void AppHostCX::pre_write() {
                                             meter_write_bytes,b->size(), f_s,f_last_data_side,f_last_data_size);
 
             // how many data I am missing?
-            buffer::size_type delta  = (meter_write_bytes + b->size()) - peek_write_counter;
+            auto const observed = meter_write_bytes + b->size();
+            auto const delta = observed >= peek_write_counter
+                ? observed - peek_write_counter : 0;
 
             if(delta > 0 and delta <= b->size()) {
-                buffer delta_b = b->view(b->size()-delta,b->size());
+                buffer delta_b = b->view(b->size() - delta, delta);
                 
                 _dia("AppHostCX::pre_write[%s]: flow append new %d bytes",c_type(),delta_b.size());
                 flow().append('w',delta_b);
@@ -442,8 +460,10 @@ void AppHostCX::pre_write() {
                 _dia("AppHostCX::pre_write:[%s]: ...",c_type());
                 _dia("AppHostCX::pre_write:[%s]: peek_counter is now %d",c_type(),peek_write_counter);
             } else {
-                if(delta > b->size()) {
+                if(observed < peek_write_counter || delta > b->size()) {
                     _err("AppHostCX::pre_write:[%s]: bytes are missing",c_type());
+                    error(true);
+                    return;
                 }
                 else {
                     _dia("AppHostCX::pre_write:[%s]: data are already copied in the flow",c_type());

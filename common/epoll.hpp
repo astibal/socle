@@ -121,7 +121,7 @@ struct epoll {
     static constexpr int EPOLLER_MAX_EVENTS = 50;
 
     struct epoll_event events[EPOLLER_MAX_EVENTS];
-    std::atomic_int epoll_fd_ = 0;
+    std::atomic_int epoll_fd_ = -1;
     std::atomic_int hint_fd_ = 0;
     bool auto_epollout_remove = true;
     set_type in_set;
@@ -203,7 +203,7 @@ struct epoll {
     [[nodiscard]] inline int epoll_socket() const { return epoll_fd_.load(); }
 
     virtual ~epoll() {
-        if (epoll_socket() > 0) ::close(epoll_socket());
+        if (epoll_socket() >= 0) ::close(epoll_socket());
     };
 
     static inline loglevel log_level {iINF};
