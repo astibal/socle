@@ -162,7 +162,8 @@ public:
 
   template <std::size_t SZ>
   std::array<uint8_t, SZ> copy_from(std::size_t start) const {
-      if(start + SZ > size()) throw std::out_of_range("out of range");
+      if(start > size() || SZ > size() - start)
+          throw std::out_of_range("out of range");
 
       std::array<uint8_t, SZ> ret;
       std::memcpy(ret.data(), data() + start, SZ);

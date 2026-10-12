@@ -32,7 +32,7 @@ namespace socle::traflog {
     int raw_socket_gre(int family, int ttl, std::string const& iface) {
         auto const& log = log::pcaplog;
 
-        int sock = socle::socket(family, SOCK_RAW, IPPROTO_GRE);
+        int sock = socle::socket(family, SOCK_RAW | SOCK_CLOEXEC, IPPROTO_GRE);
 
         if(sock < 0) {
             _err("raw_socket_gre: cannot create raw socket: %s", string_error().c_str());
@@ -65,7 +65,8 @@ namespace socle::traflog {
         int n_ttl = ttl;
 
         if(socle::setsockopt(sock, family == AF_INET6 ? IPPROTO_IPV6 : IPPROTO_IP,
-                         family == AF_INET6 ? IPV6_HOPLIMIT : IP_TTL, &n_ttl, sizeof(n_ttl)) < 0) {
+                         family == AF_INET6 ? IPV6_UNICAST_HOPS : IP_TTL,
+                         &n_ttl, sizeof(n_ttl)) < 0) {
 
             _err("raw_socket_gre: cannot set TTL");
         }

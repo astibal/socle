@@ -1,8 +1,10 @@
 #include <gtest/gtest.h>
 
 #include <buffer.hpp>
+#include <mempool/mempool.hpp>
 
 #include <array>
+#include <limits>
 #include <sstream>
 
 TEST(Buffer, ConstructsAssignsAppendsAndFindsBytes) {
@@ -45,10 +47,14 @@ TEST(Buffer, TypedAccessViewsAndFlushBoundariesAreChecked) {
     std::memcpy(encoded.data(), &expected, sizeof(expected));
     EXPECT_EQ(value.copy_from<4>(2), encoded);
     EXPECT_THROW(value.copy_from<4>(5), std::out_of_range);
+    EXPECT_THROW(value.copy_from<4>(std::numeric_limits<std::size_t>::max()),
+                 std::out_of_range);
 
     buffer text("abcdef", 6);
     EXPECT_EQ(text.view(2, 2).str(), "cd");
     EXPECT_EQ(text.view(4, 20).str(), "ef");
+    EXPECT_EQ(text.view(2, std::numeric_limits<buffer::size_type>::max()).str(),
+              "cdef");
     EXPECT_EQ(text.view().str(), "abcdef");
     EXPECT_THROW(text.view(6, 1), std::out_of_range);
 
@@ -68,6 +74,10 @@ TEST(Buffer, CopyAssignmentHasStableOwnedAndBorrowedSemantics) {
 
     std::array<unsigned char, 8> external{'b', 'o', 'r', 'r', 'o', 'w', 'e', 'd'};
     buffer borrowed(external.data(), external.size(), external.size(), false);
+    EXPECT_THROW(borrowed.assign(external.data(), external.size(),
+                                 external.size() - 1, false),
+                 std::invalid_argument);
+    EXPECT_EQ(borrowed.str(), "borrowed");
 
     buffer target("stale-data", 10);
     target = borrowed;
@@ -90,6 +100,15 @@ TEST(Buffer, CopyAssignmentHasStableOwnedAndBorrowedSemantics) {
     EXPECT_EQ(self_view_owner.str(), "payload");
     self_view_owner.append("!", 1);
     EXPECT_EQ(self_view_owner.str(), "payload!");
+
+    const bool previous_pool = buffer::use_pool;
+    buffer::use_pool = false;
+    {
+        buffer self_append("abc", 3);
+        self_append.append(self_append);
+        EXPECT_EQ(self_append.str(), "abcabc");
+    }
+    buffer::use_pool = previous_pool;
 }
 
 TEST(Buffer, MoveSwapStreamAndDetachPreserveOwnership) {
@@ -120,6 +139,22 @@ TEST(Buffer, MoveSwapStreamAndDetachPreserveOwnership) {
     buffer::use_pool = previous_pool;
 }
 
+TEST(Buffer, PooledAssignmentRetainsAllocatorCapacity) {
+    const bool previous_pool = buffer::use_pool;
+    buffer::use_pool = false;
+    buffer value;
+    buffer::use_pool = true;
+    {
+        std::array<unsigned char, 17> input{};
+        value.assign(input.data(), input.size());
+        const auto allocator_capacity = memPool::pool().find_ptr_size(value.data());
+        ASSERT_GT(allocator_capacity, 0U);
+        EXPECT_EQ(value.capacity(), allocator_capacity);
+    }
+    value.release();
+    buffer::use_pool = previous_pool;
+}
+
 TEST(Buffer, RegexReplacementReportsNoMatchAndPreservesRequestedLength) {
     EXPECT_FALSE(regex_replace_fill("alpha", "z+", "x", " ").has_value());
     EXPECT_EQ(regex_replace_fill("abc-abc", "abc", "x", nullptr), "x-x");
@@ -128,4 +163,5 @@ TEST(Buffer, RegexReplacementReportsNoMatchAndPreservesRequestedLength) {
     ASSERT_TRUE(filled.has_value());
     EXPECT_EQ(filled->size(), std::string("abc-abc").size());
     EXPECT_EQ(filled->substr(0, 3), "x-x");
+
 }

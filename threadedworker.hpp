@@ -99,10 +99,12 @@ public:
                 thread_worker.second->state().dead(true);
             }
 
+            fdq_->wake_all();
+
             for (unsigned int i = 0; i < tasks_.size(); i++) {
                 auto &t_w = tasks_.at(i);
 
-                if(t_w.first->joinable())
+                if(t_w.first && t_w.first->joinable())
                     t_w.first->join();
 
             }

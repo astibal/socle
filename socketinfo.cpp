@@ -177,7 +177,7 @@ int SockOps::socket_create(int family, int l4proto, int protocol, bool reuse_add
         throw socket_info_error(string_format("cannot set socket %d option IP_RECVORIGDSTADDR\n", fd).c_str());
     }
 
-    if (n = 1; 0 != socle::setsockopt(fd, SOL_IP, SO_BROADCAST, &n, sizeof(int))) {
+    if (n = 1; 0 != socle::setsockopt(fd, SOL_SOCKET, SO_BROADCAST, &n, sizeof(int))) {
         throw socket_info_error(string_format("cannot set socket %d option SO_BROADCAST\n", fd).c_str());
     }
 

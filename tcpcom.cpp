@@ -46,6 +46,10 @@ bool TCPCom::make_transparent(int sfd) {
 }
 
 int TCPCom::connect(const char* host, const char* port) {
+    connect_proven = false;
+    connect_failed_ = false;
+    connect_error_ = 0;
+
     struct addrinfo hints{};
     struct addrinfo *gai_result, *rp;
     int sfd = -1;
@@ -204,7 +208,7 @@ int TCPCom::accept ( int sockfd, sockaddr* addr, socklen_t* addrlen_ ) {
 
 bool is_socket_writable(int sock) {
     // Create an epoll instance
-    int epoll_fd = epoll_create1(0);
+    int epoll_fd = epoll_create1(TCPCom::writability_epoll_flags());
     if (epoll_fd == -1) {
         return false;
     }
@@ -232,12 +236,17 @@ bool is_socket_writable(int sock) {
     return false;
 }
 
+int TCPCom::writability_epoll_flags() noexcept {
+    return EPOLL_CLOEXEC;
+}
+
 bool TCPCom::is_connected(int s) {
     auto& log = log_state;
 
 
     // we already **know** connection was established
     if(connect_proven) return true;
+    if(connect_failed_) return false;
 
     if(socket() == 0) {
         _deb("TCPCom::is_connected: called for non-connecting socket");
@@ -295,6 +304,9 @@ bool TCPCom::is_connected(int s) {
             return false;
         }
         else {
+            connect_failed_ = true;
+            connect_error_ = error_code;
+
             // optimized-out in Release
             _if_deb {
                 if (master()->poller.in_write_set(s)) {
