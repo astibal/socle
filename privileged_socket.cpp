@@ -552,6 +552,10 @@ int Server::serve_once() { return serve_once(0); }
 int Server::serve_once(int flags) {
     Message request;
     const int received = channel_.receive(request, flags);
+    if(received < 0 && (errno == EMSGSIZE || errno == EPROTO)) {
+        record_error(ErrorKind::Protocol);
+        return 1;
+    }
     if(received <= 0) {
         if(received < 0 && errno != EAGAIN && errno != EWOULDBLOCK) record_error(ErrorKind::Transport);
         return received;
