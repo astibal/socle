@@ -852,6 +852,7 @@ void SSLFactory::destroy() {
         trust_store_ = nullptr;
     }
     trust_store_loaded_ = false;
+    is_initialized = false;
 
     _deb("SSLFactory::destroy: finished");
 }

@@ -7,13 +7,83 @@
 #include <epoll.hpp>
 #include <traflog/filewriter.hpp>
 #include <mpdisplay.hpp>
+#include <ancillary_address.hpp>
 
 #include <array>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
 
+class TCPComStateTestProbe {
+public:
+    static int writability_epoll_flags() {
+        return TCPCom::writability_epoll_flags();
+    }
+};
+
+TEST(TCPComLifecycle, WritabilityProbeEpollIsCloseOnExec) {
+    EXPECT_NE(TCPComStateTestProbe::writability_epoll_flags() & EPOLL_CLOEXEC, 0);
+}
+
 namespace {
+
+TEST(AncillaryAddress, CopiesOnlyTheDeclaredIpv4OrIpv6Address) {
+    alignas(cmsghdr) std::array<unsigned char, CMSG_SPACE(sizeof(sockaddr_in6))>
+        storage{};
+    auto* control = reinterpret_cast<cmsghdr*>(storage.data());
+    sockaddr_storage copied{};
+
+    control->cmsg_level = SOL_IP;
+    control->cmsg_type = IP_RECVORIGDSTADDR;
+    control->cmsg_len = CMSG_LEN(sizeof(sockaddr_in));
+    sockaddr_in ipv4{};
+    ipv4.sin_family = AF_INET;
+    ipv4.sin_port = htons(8443);
+    ASSERT_EQ(inet_pton(AF_INET, "192.0.2.55", &ipv4.sin_addr), 1);
+    std::memcpy(CMSG_DATA(control), &ipv4, sizeof(ipv4));
+
+    ASSERT_TRUE(socle_detail::copy_original_destination(copied, control));
+    auto const* copied4 = reinterpret_cast<const sockaddr_in*>(&copied);
+    EXPECT_EQ(copied4->sin_family, AF_INET);
+    EXPECT_EQ(copied4->sin_port, htons(8443));
+    EXPECT_EQ(copied4->sin_addr.s_addr, ipv4.sin_addr.s_addr);
+
+    storage.fill(0);
+    control = reinterpret_cast<cmsghdr*>(storage.data());
+    control->cmsg_level = SOL_IPV6;
+    control->cmsg_type = IPV6_RECVORIGDSTADDR;
+    control->cmsg_len = CMSG_LEN(sizeof(sockaddr_in6));
+    sockaddr_in6 ipv6{};
+    ipv6.sin6_family = AF_INET6;
+    ipv6.sin6_port = htons(9443);
+    ASSERT_EQ(inet_pton(AF_INET6, "2001:db8::55", &ipv6.sin6_addr), 1);
+    std::memcpy(CMSG_DATA(control), &ipv6, sizeof(ipv6));
+
+    ASSERT_TRUE(socle_detail::copy_original_destination(copied, control));
+    auto const* copied6 = reinterpret_cast<const sockaddr_in6*>(&copied);
+    EXPECT_EQ(copied6->sin6_family, AF_INET6);
+    EXPECT_EQ(copied6->sin6_port, htons(9443));
+    EXPECT_EQ(std::memcmp(&copied6->sin6_addr, &ipv6.sin6_addr,
+                          sizeof(ipv6.sin6_addr)), 0);
+}
+
+TEST(AncillaryAddress, RejectsTruncatedAndMismatchedAddresses) {
+    alignas(cmsghdr) std::array<unsigned char, CMSG_SPACE(sizeof(sockaddr_in6))>
+        storage{};
+    auto* control = reinterpret_cast<cmsghdr*>(storage.data());
+    sockaddr_storage copied{};
+
+    control->cmsg_level = SOL_IP;
+    control->cmsg_type = IP_RECVORIGDSTADDR;
+    control->cmsg_len = CMSG_LEN(sizeof(sockaddr_in) - 1);
+    EXPECT_FALSE(socle_detail::copy_original_destination(copied, control));
+
+    sockaddr_in6 ipv6{};
+    ipv6.sin6_family = AF_INET6;
+    EXPECT_FALSE(socle_detail::copy_socket_address(
+        copied, &ipv6, sizeof(sockaddr_in)));
+    EXPECT_FALSE(socle_detail::copy_socket_address(copied, nullptr, 0));
+}
 
 uint64_t virtual_key(int fd) {
     return static_cast<uint32_t>(fd);
@@ -54,6 +124,12 @@ public:
     int last_fd = 0;
     int last_flags = 0;
     std::string receive_data = "socket-data";
+};
+
+class NoopEpollHandler : public epoll_handler {
+public:
+    void handle_event(baseCom*) override { ++calls; }
+    std::size_t calls = 0;
 };
 
 std::shared_ptr<Datagram> add_datagram(DatagramPoolScope& scope, int fd) {
@@ -221,6 +297,28 @@ TEST(UDPComLifecycle, PeekPreservesPacketAndShortReadDiscardsItsTail) {
     EXPECT_FALSE(scope.pool->in_virt_set.find(fd));
 }
 
+TEST(UDPComLifecycle, HostReadDoesNotCoalesceQueuedDatagrams) {
+    DatagramPoolScope scope;
+    constexpr int fd = -1014;
+    auto datagram = add_datagram(scope, fd);
+    unsigned char first[] = "first";
+    unsigned char second[] = "second";
+    ASSERT_EQ(datagram->enqueue(first, 5), 5U);
+    ASSERT_EQ(datagram->enqueue(second, 6), 6U);
+    scope.pool->in_virt_set.insert(fd);
+
+    baseHostCX connection(new UDPCom(), fd);
+    EXPECT_EQ(connection.read(), 5);
+    EXPECT_EQ(connection.meter_read_count, 1U);
+    EXPECT_EQ(connection.meter_read_bytes, 5U);
+    EXPECT_EQ(connection.readbuf()->size(), 5U);
+    EXPECT_EQ(std::string_view(
+                  reinterpret_cast<char const*>(connection.readbuf()->data()), 5),
+              "first");
+    EXPECT_EQ(datagram->queue_bytes_l(), 6U);
+    EXPECT_TRUE(scope.pool->in_virt_set.find(fd));
+}
+
 TEST(UDPComLifecycle, EmbryonicReadDrainsPoolBeforeRealSocket) {
     DatagramPoolScope scope;
     UDPCom com;
@@ -253,6 +351,59 @@ TEST(UDPComLifecycle, DescriptorValidityDistinguishesLiveVirtualTokensFromErrors
     EXPECT_TRUE(com.descriptor_valid(fd));
     scope.clear();
     EXPECT_FALSE(com.descriptor_valid(fd));
+}
+
+TEST(UDPComLifecycle, ForeignWorkerPreservesSharedVirtualReadiness) {
+    DatagramPoolScope scope;
+    constexpr int fd = -1012;
+    add_datagram(scope, fd);
+    scope.pool->in_virt_set.insert(fd);
+
+    auto* com = new UDPCom();
+    com->poller.init_if_null();
+    baseProxy worker(com);
+
+    auto result = worker.run_poll_socket(
+        fd, scope.pool->in_virt_set, baseProxy::socket_set_type::VIRTSET);
+
+    EXPECT_EQ(result.null_count, 0U);
+    EXPECT_TRUE(scope.pool->in_virt_set.find(fd));
+}
+
+TEST(UDPComLifecycle, OwningWorkerLeavesVirtualReadinessToTransport) {
+    DatagramPoolScope scope;
+    constexpr int fd = -1015;
+    add_datagram(scope, fd);
+    scope.pool->in_virt_set.insert(fd);
+
+    NoopEpollHandler handler;
+    auto* com = new UDPCom();
+    com->poller.init_if_null();
+    com->poller.set_handler(fd, &handler);
+    baseProxy worker(com);
+
+    auto result = worker.run_poll_socket(
+        fd, scope.pool->in_virt_set, baseProxy::socket_set_type::VIRTSET);
+
+    EXPECT_EQ(result.generic_count, 1U);
+    EXPECT_EQ(handler.calls, 1U);
+    EXPECT_TRUE(scope.pool->in_virt_set.find(fd));
+}
+
+TEST(UDPComLifecycle, OrphanedVirtualReadinessIsRemoved) {
+    DatagramPoolScope scope;
+    constexpr int fd = -1013;
+    scope.pool->in_virt_set.insert(fd);
+
+    auto* com = new UDPCom();
+    com->poller.init_if_null();
+    baseProxy worker(com);
+
+    auto result = worker.run_poll_socket(
+        fd, scope.pool->in_virt_set, baseProxy::socket_set_type::VIRTSET);
+
+    EXPECT_EQ(result.null_count, 1U);
+    EXPECT_FALSE(scope.pool->in_virt_set.find(fd));
 }
 
 TEST(UDPComLifecycle, ReusePreservesEntryAndFlowMappingExactlyOnce) {
@@ -631,4 +782,55 @@ TEST(MpDisplay, FormatsBinaryCsvSplitAndLongStrings) {
     EXPECT_EQ(formatted.size(), long_value.size() + 2);
     EXPECT_EQ(formatted.front(), '[');
     EXPECT_EQ(formatted.back(), ']');
+}
+
+TEST(EpollLifecycle, ErrorReadinessRetractsIdleWatchGenerations) {
+    epoll poller;
+    poller.idle_watched_pre.insert(42);
+    poller.idle_watched.insert(42);
+    poller.idle_set.insert(42);
+    poller.events[0].data.fd = 42;
+    poller.events[0].events = EPOLLERR;
+
+    ASSERT_EQ(poller.process_epoll_events(1), 1);
+    EXPECT_TRUE(poller.err_set.find(42));
+    EXPECT_FALSE(poller.idle_watched_pre.find(42));
+    EXPECT_FALSE(poller.idle_watched.find(42));
+    EXPECT_FALSE(poller.idle_set.find(42));
+}
+
+TEST(EpollLifecycle, SameWaitReadActivityRetractsPublishedIdleTimeout) {
+    epoll poller;
+    constexpr int descriptor = 43;
+    poller.idle_set.insert(descriptor);
+    poller.events[0].data.fd = descriptor;
+    poller.events[0].events = EPOLLIN;
+
+    ASSERT_EQ(poller.process_epoll_events(1), 1);
+    EXPECT_TRUE(poller.in_set.find(descriptor));
+    EXPECT_FALSE(poller.idle_set.find(descriptor));
+}
+
+TEST(EpollLifecycle, DescriptorZeroIsValidAndClosed) {
+    int saved_stdin = ::fcntl(STDIN_FILENO, F_DUPFD_CLOEXEC, 1);
+    ASSERT_GE(saved_stdin, 0);
+    ASSERT_EQ(::close(STDIN_FILENO), 0);
+
+    int descriptor = -1;
+    int descriptor_flags = -1;
+    {
+        epoll poller;
+        descriptor = poller.init();
+        descriptor_flags = ::fcntl(descriptor, F_GETFD);
+    }
+    errno = 0;
+    const int closed_result = ::fcntl(STDIN_FILENO, F_GETFD);
+    const int closed_error = errno;
+    ASSERT_EQ(::dup2(saved_stdin, STDIN_FILENO), STDIN_FILENO);
+    ::close(saved_stdin);
+
+    EXPECT_EQ(descriptor, STDIN_FILENO);
+    EXPECT_NE(descriptor_flags & FD_CLOEXEC, 0);
+    EXPECT_EQ(closed_result, -1);
+    EXPECT_EQ(closed_error, EBADF);
 }
