@@ -602,7 +602,7 @@ TEST(UDPComLifecycle, ConnectsLoopbackAndDescribesRealSocket) {
     EXPECT_EQ(com.to_string(iINF), "UDPCom");
     EXPECT_TRUE(com.connections.gen_cache_key(fd).has_value());
     std::unique_ptr<baseCom> copy(com.replicate());
-    EXPECT_EQ(copy->c_type(), "UDPCom");
+    EXPECT_STREQ(copy->c_type(), "UDPCom");
 
     com.shutdown(fd);
     ::close(receiver);
