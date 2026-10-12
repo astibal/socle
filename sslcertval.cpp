@@ -535,7 +535,7 @@ namespace inet {
             }
 
             epoll epoller;
-            if ( epoller.init() <= 0) {
+            if ( epoller.init() < 0) {
                 _err("ocsp_query_responder: Can't initialize epoll");
                 goto err;
             }

@@ -41,6 +41,7 @@
 #include <vars.hpp>
 
 #include <cstdio>
+#include <bitset>
 #include <functional>
 
 #include <crc32.hpp>
@@ -61,11 +62,14 @@ std::optional<unsigned long> session_freshness_timeout(
     if(!session) return std::nullopt;
 
     unsigned long timeout = SSL_SESSION_get_timeout(session);
-    if(certificate) {
+    auto* freshness_certificate = certificate;
+    if(!freshness_certificate)
+        freshness_certificate = SSL_SESSION_get0_peer(session);
+    if(freshness_certificate) {
         int days = 0;
         int seconds = 0;
         if(ASN1_TIME_diff(&days, &seconds, nullptr,
-                          X509_get0_notAfter(certificate)) != 1 ||
+                          X509_get0_notAfter(freshness_certificate)) != 1 ||
            days < 0 || (days == 0 && seconds <= 0)) {
             return std::nullopt;
         }
@@ -88,6 +92,72 @@ std::optional<unsigned long> session_freshness_timeout(
             timeout = revocation_ttl;
     }
     return timeout;
+}
+
+bool session_is_fresh(SSL_SESSION* session,
+                      SSLComOptions const& options) {
+    auto const timeout = session_freshness_timeout(session, nullptr, options);
+    if(!timeout || *timeout == 0)
+        return false;
+
+    const auto now = std::time(nullptr);
+#if OPENSSL_VERSION_NUMBER >= 0x30400000L
+    const auto created = SSL_SESSION_get_time_ex(session);
+#else
+    const auto created = SSL_SESSION_get_time(session);
+#endif
+    if(now < 0 || created <= 0 || created > now)
+        return false;
+
+    const auto age = static_cast<unsigned long>(now - created);
+    return age < *timeout;
+}
+
+bool unambiguous_sni_hostname(std::string_view hostname) noexcept {
+    if(hostname.empty() || hostname.size() > 253) return false;
+
+    std::size_t label_size = 0;
+    bool label_starts_with_hyphen = false;
+    char previous = '\0';
+    for(unsigned char ch: hostname) {
+        if(ch == '.') {
+            if(label_size == 0 || label_size > 63 ||
+               label_starts_with_hyphen || previous == '-') return false;
+            label_size = 0;
+            label_starts_with_hyphen = false;
+            previous = static_cast<char>(ch);
+            continue;
+        }
+        const bool ascii_alnum = (ch >= 'a' && ch <= 'z') ||
+                                 (ch >= 'A' && ch <= 'Z') ||
+                                 (ch >= '0' && ch <= '9');
+        if(!(ascii_alnum || ch == '-' || ch == '_')) return false;
+        if(label_size == 0) label_starts_with_hyphen = ch == '-';
+        ++label_size;
+        previous = static_cast<char>(ch);
+    }
+    return label_size != 0 && label_size <= 63 &&
+           !label_starts_with_hyphen && previous != '-';
+}
+
+bool alpn_protocol_offered(std::string_view selected,
+                           const unsigned char* offered,
+                           unsigned int offered_size) {
+    if(selected.empty() || selected.size() > 255 || !offered)
+        return false;
+
+    std::size_t offset = 0;
+    bool matched = false;
+    while(offset < offered_size) {
+        const auto length = static_cast<std::size_t>(offered[offset++]);
+        if(length == 0 || length > offered_size - offset)
+            return false;
+        if(length == selected.size() &&
+           std::memcmp(offered + offset, selected.data(), length) == 0)
+            matched = true;
+        offset += length;
+    }
+    return matched;
 }
 }
 
@@ -200,6 +270,19 @@ int baseSSLCom<L4Proto>::new_session_callback(SSL* ssl, SSL_SESSION* session) {
             _inf("new session[%s]: SSL: 0x%x, SSL_SESSION: 0x%x", title.c_str(), ssl, session);
         }
 
+        // During SSL_connect() the client callback precedes Smithproxy's final
+        // hostname/revocation decision. Keep post-handshake TLS 1.3 ticket
+        // callbacks only after the validated connection is ready.
+        if (!com->is_server() &&
+            (com->sslcom_waiting || com->error() || !com->sslcom_status())) {
+            _if_inf {
+                const std::string title = com->hr();
+                _inf("new session[%s]: deferring client session until final certificate verdict",
+                     title.c_str());
+            }
+            return 0;
+        }
+
         if (com->verify_bitcheck(verify_status_t::VRF_REVOKED)) {
             _if_inf {
                 const std::string title = com->hr();
@@ -209,7 +292,10 @@ int baseSSLCom<L4Proto>::new_session_callback(SSL* ssl, SSL_SESSION* session) {
             return 0;
         }
 
-
+        com->sslcom_callback_session = session;
+        auto clear_callback_session = raw::guard([com] {
+            com->sslcom_callback_session = nullptr;
+        });
         if(com->store_session_if_needed()) {
 
             // we stored the session, return 1 to be used
@@ -849,6 +935,13 @@ int baseSSLCom<L4Proto>::ssl_alpn_select_callback(SSL *s, const unsigned char **
 
         if(not this_com->sslcom_alpn_.empty()) {
 
+            if(!alpn_protocol_offered(this_com->sslcom_alpn_, in, inlen)) {
+                *out = nullptr;
+                *outlen = 0;
+                _war("SSLCom::ssl_alpn_select_callback: selected ALPN was not offered by client");
+                return SSL_TLSEXT_ERR_NOACK;
+            }
+
             *out = reinterpret_cast<const unsigned char*>(this_com->sslcom_alpn_.data());
             *outlen = this_com->sslcom_alpn_.length();
 
@@ -859,23 +952,30 @@ int baseSSLCom<L4Proto>::ssl_alpn_select_callback(SSL *s, const unsigned char **
 
         if(auto* peer_com = dynamic_cast<baseSSLCom*>(this_com->peer());
            peer_com && peer_com->sslcom_ssl) {
-            SSL_get0_alpn_selected(peer_com->sslcom_ssl, &in, &inlen);
+            const unsigned char* selected = nullptr;
+            unsigned int selected_length = 0;
+            SSL_get0_alpn_selected(peer_com->sslcom_ssl,
+                                   &selected, &selected_length);
 
-            if(inlen > 0) {
+            if(selected_length > 0 && alpn_protocol_offered(
+                    std::string_view(reinterpret_cast<const char*>(selected),
+                                     selected_length), in, inlen)) {
 
                 _dia("SSLCom::ssl_alpn_select_callback: server offered alpn: \r\n%s",
-                     hex_dump((unsigned char *) in, inlen).c_str(), 4, 0, true);
+                     hex_dump(selected, selected_length).c_str(), 4, 0, true);
 
-                *out = in;
-                *outlen = inlen;
+                *out = selected;
+                *outlen = selected_length;
 
-                this_com->sslcom_alpn_.assign(reinterpret_cast<const char*>(in), inlen);
-                peer_com->sslcom_alpn_.assign(reinterpret_cast<const char*>(in), inlen);
+                this_com->sslcom_alpn_.assign(
+                    reinterpret_cast<const char*>(selected), selected_length);
+                peer_com->sslcom_alpn_.assign(
+                    reinterpret_cast<const char*>(selected), selected_length);
 
                 return SSL_TLSEXT_ERR_OK;
             } else {
 
-                _dia("SSLCom::ssl_alpn_select_callback: no alpn from server");
+                _dia("SSLCom::ssl_alpn_select_callback: no mutually offered alpn");
                 *out = nullptr;
                 *outlen = 0;
             }
@@ -1594,27 +1694,32 @@ std::pair<typename baseSSLCom<L4Proto>::staple_code_t, int> baseSSLCom<L4Proto>:
 template <class L4Proto>
 bool baseSSLCom<L4Proto>::is_verify_status_opt_allowed() {
     bool this_is_allowed_by_option = true;
+    bool certificate_exception_seen = false;
     auto problem_mask = verify_get();
 
     // do test run for cases the TLS problem is explicitly allowed by policy
     // and therefore are NOT eligible for replacement
 
     if(this_is_allowed_by_option and verify_bitcheck(verify_status_t::VRF_SELF_SIGNED)) {
+        certificate_exception_seen = true;
         this_is_allowed_by_option = opt.cert.allow_self_signed;
 
         problem_mask = flag_reset<decltype(problem_mask)>(problem_mask, verify_status_t::VRF_SELF_SIGNED);
     }
     if(this_is_allowed_by_option and verify_bitcheck(verify_status_t::VRF_SELF_SIGNED_CHAIN)) {
+        certificate_exception_seen = true;
         this_is_allowed_by_option = opt.cert.allow_self_signed_chain;
 
         problem_mask = flag_reset<decltype(problem_mask)>(problem_mask, verify_status_t::VRF_SELF_SIGNED_CHAIN);
     }
     if(this_is_allowed_by_option and verify_bitcheck(verify_status_t::VRF_INVALID)) {
+        certificate_exception_seen = true;
         this_is_allowed_by_option = opt.cert.allow_not_valid;
 
         problem_mask = flag_reset<decltype(problem_mask)>(problem_mask, verify_status_t::VRF_INVALID);
     }
     if(this_is_allowed_by_option and verify_bitcheck(verify_status_t::VRF_UNKNOWN_ISSUER)) {
+        certificate_exception_seen = true;
         this_is_allowed_by_option = opt.cert.allow_unknown_issuer;
 
         problem_mask = flag_reset<decltype(problem_mask)>(problem_mask, verify_status_t::VRF_UNKNOWN_ISSUER);
@@ -1627,8 +1732,10 @@ bool baseSSLCom<L4Proto>::is_verify_status_opt_allowed() {
         //  (even OCSP/CRL works, it doesn't make sense to use such information, they are officially not usable)
 
         problem_mask = flag_reset<decltype(problem_mask)>(problem_mask, verify_status_t::VRF_OK);
-        problem_mask = flag_reset<decltype(problem_mask)>(problem_mask, verify_status_t::VRF_DEFERRED);
-        problem_mask = flag_reset<decltype(problem_mask)>(problem_mask, verify_status_t::VRF_ALLFAILED);
+        if(certificate_exception_seen) {
+            problem_mask = flag_reset<decltype(problem_mask)>(problem_mask, verify_status_t::VRF_DEFERRED);
+            problem_mask = flag_reset<decltype(problem_mask)>(problem_mask, verify_status_t::VRF_ALLFAILED);
+        }
 
         if ((problem_mask == 0) or
             (problem_mask == verify_status_t::VRF_CLIENT_CERT_RQ)) {
@@ -1886,6 +1993,10 @@ int baseSSLCom<L4Proto>::ssl_client_cert_callback(SSL* ssl, X509** x509, EVP_PKE
         com->verify_bitset(verify_status_t::VRF_CLIENT_CERT_RQ);
         switch(com->opt.cert.client_cert_action) {
 
+            default:
+                _err("[%s]: invalid client certificate action %d; blocking",
+                     name.c_str(), com->opt.cert.client_cert_action);
+                [[fallthrough]];
             case 0:
                 _dia("[%s] sending empty client certificate disabled", name.c_str());
                 if(com->opt.cert.failed_check_replacement) {
@@ -2005,7 +2116,7 @@ int baseSSLCom<L4Proto>::ct_verify_callback(const CT_POLICY_EVAL_CTX *ctx, const
 
                     _deb("    : SCT info");
                     for(auto const& s: v_of_s) {
-                        _deb(s.c_str());
+                        _deb("%s", s.c_str());
                     }
                 }
 
@@ -2125,6 +2236,10 @@ void baseSSLCom<L4Proto>::init_ssl_callbacks() {
         }
 
         if (opt.ct_enable) {
+            if(!SSLFactory::factory().is_ct_available()) {
+                _war("certificate transparency log list is unavailable; validation remains fail-closed");
+            }
+
             _dia("setting up certificate transparency mode to strict");
             const int ct_enabled = SSL_enable_ct(sslcom_ssl, SSL_CT_VALIDATION_STRICT);
             _dia("setting up certificate transparency callback");
@@ -2143,6 +2258,28 @@ void baseSSLCom<L4Proto>::init_ssl_callbacks() {
 
 template <class L4Proto>
 void baseSSLCom<L4Proto>::init_client() {
+
+    // A connection object may be retried after an incomplete or rejected
+    // handshake. None of the peer evidence belongs to the new SSL object.
+    verify_reset(verify_status_t::VRF_NOTTESTED);
+    verify_extended_info().clear();
+    verify_origin(verify_origin_t::NONE);
+    ocsp_cert_is_revoked = -1;
+    opt.ocsp.enforce_in_verify = false;
+    sslcom_status(false);
+    sslcom_op_state = sslcom_op_state_t::UNKNOWN;
+    if(sslcom_target_cert) {
+        X509_free(sslcom_target_cert);
+        sslcom_target_cert = nullptr;
+    }
+    if(sslcom_target_issuer) {
+        X509_free(sslcom_target_issuer);
+        sslcom_target_issuer = nullptr;
+    }
+    if(sslcom_target_issuer_issuer) {
+        X509_free(sslcom_target_issuer_issuer);
+        sslcom_target_issuer_issuer = nullptr;
+    }
 
     if(sslcom_ssl) {
         _deb("SSLCom::init_client: freeing old sslcom_ssl");
@@ -2171,6 +2308,12 @@ void baseSSLCom<L4Proto>::init_client() {
         return;
     }
 
+    auto fail_client_initialization = [this]() {
+        SSL_free(sslcom_ssl);
+        sslcom_ssl = nullptr;
+        error(ERROR_UNSPEC);
+    };
+
     if (!uses_default_cipher_filter(opt.right)) {
         std::string my_filter = ci_def_filter;
 
@@ -2190,7 +2333,7 @@ void baseSSLCom<L4Proto>::init_client() {
         _dia("right ciphers: %s",my_filter.c_str());
         if(SSL_set_cipher_list(sslcom_ssl,my_filter.c_str()) != 1) {
             _err("cannot apply right-side TLS cipher policy");
-            error(ERROR_UNSPEC);
+            fail_client_initialization();
             return;
         }
 #ifdef USE_OPENSSL111
@@ -2198,13 +2341,13 @@ void baseSSLCom<L4Proto>::init_client() {
                 sslcom_ssl,
                 "TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256") != 1) {
             _err("cannot apply right-side TLS 1.3 cipher policy");
-            error(ERROR_UNSPEC);
+            fail_client_initialization();
             return;
         }
         if(!opt.right.kex_dh && SSL_set_max_proto_version(
                 sslcom_ssl, TLS1_2_VERSION) != 1) {
             _err("cannot apply right-side TLS key-exchange policy");
-            error(ERROR_UNSPEC);
+            fail_client_initialization();
             return;
         }
 #endif
@@ -2284,6 +2427,12 @@ void baseSSLCom<L4Proto>::init_server() {
         error(ERROR_UNSPEC);
         return;
     }
+
+    auto fail_server_initialization = [this]() {
+        SSL_free(sslcom_ssl);
+        sslcom_ssl = nullptr;
+        error(ERROR_UNSPEC);
+    };
     if(l4_proto() == SOCK_DGRAM)
         SSL_set_options(sslcom_ssl, SSL_OP_COOKIE_EXCHANGE);
 
@@ -2306,7 +2455,7 @@ void baseSSLCom<L4Proto>::init_server() {
         _dia("left ciphers: %s",my_filter.c_str());
         if(SSL_set_cipher_list(sslcom_ssl,my_filter.c_str()) != 1) {
             _err("cannot apply left-side TLS cipher policy");
-            error(ERROR_UNSPEC);
+            fail_server_initialization();
             return;
         }
 #ifdef USE_OPENSSL111
@@ -2314,13 +2463,13 @@ void baseSSLCom<L4Proto>::init_server() {
                 sslcom_ssl,
                 "TLS_AES_256_GCM_SHA384:TLS_CHACHA20_POLY1305_SHA256") != 1) {
             _err("cannot apply left-side TLS 1.3 cipher policy");
-            error(ERROR_UNSPEC);
+            fail_server_initialization();
             return;
         }
         if(!opt.left.kex_dh && SSL_set_max_proto_version(
                 sslcom_ssl, TLS1_2_VERSION) != 1) {
             _err("cannot apply left-side TLS key-exchange policy");
-            error(ERROR_UNSPEC);
+            fail_server_initialization();
             return;
         }
 #endif
@@ -2345,14 +2494,14 @@ void baseSSLCom<L4Proto>::init_server() {
 
         _deb("SSLCom::init_server[%x]: loading preferred cert and key", this);
 
-        if(SSL_use_certificate(sslcom_ssl, sslcom_pref_cert) != 1) {
-            int err = static_cast<int>(ERR_get_error());
-            _dia("    certificate error: %s",ERR_error_string(err, nullptr));
-        }
-
-        if(SSL_use_PrivateKey(sslcom_ssl, sslcom_pref_key) != 1) {
-            int err = static_cast<int>(ERR_get_error());
-            _dia("    private key error: %s",ERR_error_string(err, nullptr));
+        if(SSL_use_certificate(sslcom_ssl, sslcom_pref_cert) != 1 ||
+           SSL_use_PrivateKey(sslcom_ssl, sslcom_pref_key) != 1 ||
+           SSL_check_private_key(sslcom_ssl) != 1) {
+            const auto err = ERR_get_error();
+            _err("cannot apply preferred TLS server certificate identity: %s",
+                 ERR_error_string(err, nullptr));
+            fail_server_initialization();
+            return;
         }
 
 
@@ -2386,7 +2535,12 @@ void baseSSLCom<L4Proto>::init_server() {
 
     SSL_set_mode(sslcom_ssl, SSL_MODE_ENABLE_PARTIAL_WRITE|SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER|SSL_MODE_RELEASE_BUFFERS);
 
-    SSL_set_fd (sslcom_ssl, socket());
+    if(SSL_set_fd(sslcom_ssl, socket()) != 1) {
+        _err("SSLCom::init_server[%d]: cannot attach transport descriptor",
+             socket());
+        fail_server_initialization();
+        return;
+    }
 
 
     init_ssl_callbacks();
@@ -2512,50 +2666,74 @@ void baseSSLCom<L4Proto>::accept_socket (int sockfd) {
     L4Proto::on_new_socket(sockfd);
     L4Proto::accept_socket(sockfd);
 
+    int transport_fd = sockfd;
     if (l4_proto() == SOCK_DGRAM && sockfd < 0) {
         auto const* l4com = dynamic_cast<UDPCom *>(this);
         if (l4com) {
             _inf("underlying com is UDPCom using virtual sockets");
 
-            auto it_rec = l4com->datagram_com()->datagrams_received.find(sockfd);
-            if (it_rec != l4com->datagram_com()->datagrams_received.end()) {
+            std::shared_ptr<Datagram> record;
+            {
+                auto datagrams = l4com->datagram_com();
+                auto lock = std::scoped_lock(datagrams->lock);
+                auto it_rec = datagrams->datagrams_received.find(
+                    static_cast<uint32_t>(sockfd));
+                if (it_rec != datagrams->datagrams_received.end())
+                    record = it_rec->second;
+            }
+            if (record) {
                 _deb("datagram records found");
 
-                auto record = it_rec->second;
-                socket(::socket(record->dst_family(), SOCK_DGRAM, IPPROTO_UDP));
+                const auto family = record->dst_family();
+                const auto address_size = [](sa_family_t value) -> socklen_t {
+                    if(value == AF_INET) return sizeof(sockaddr_in);
+                    if(value == AF_INET6) return sizeof(sockaddr_in6);
+                    return 0;
+                };
+                const auto dst_size = address_size(family);
+                const auto src_size = address_size(record->src_family());
+                int masked_fd = dst_size != 0 && src_size != 0
+                    ? ::socket(family,
+                               SOCK_DGRAM | SOCK_NONBLOCK | SOCK_CLOEXEC,
+                               IPPROTO_UDP)
+                    : -1;
+                bool prepared = masked_fd >= 0;
+                if(prepared && (family == AF_INET || family == AF_INET6))
+                    prepared = so_transparent_v4(masked_fd) == 0;
+                if(prepared && family == AF_INET6)
+                    prepared = so_transparent_v6(masked_fd) == 0;
+                if(prepared)
+                    prepared = ::bind(masked_fd,
+                        reinterpret_cast<sockaddr*>(&record->dst), dst_size) == 0;
+                if(prepared)
+                    prepared = ::connect(masked_fd,
+                        reinterpret_cast<sockaddr*>(&record->src), src_size) == 0;
 
-                if(socket() > 0) {
-
-                    int ret_opt4 = 0;
-                    int ret_opt6 = 0;
-
-                    if(record->dst_family() == AF_INET or record->dst_family() == AF_INET6 or record->dst_family() == AF_UNSPEC) {
-                        ret_opt4 = so_transparent_v4(sockfd);
-                    }
-
-                    if(record->dst_family() == AF_INET6) {
-                        ret_opt6 = so_transparent_v6(sockfd);
-                    }
-
-                    int ret_con = ::connect(socket(), (sockaddr *) &record->src, sizeof(sockaddr_storage));
-                    int ret_bind = ::bind(socket(), (sockaddr *) &record->dst, sizeof(sockaddr_storage));
-                    _dia("Masked socket: connect=%d, bind=%d, transp4=%d, transp6=%d",
-                         ret_con == 0, ret_bind == 0, ret_opt4 == 0, ret_opt6 == 0);
-                }
-                else {
+                if(prepared) {
+                    transport_fd = masked_fd;
+                    _dia("masked DTLS socket %d prepared for virtual descriptor %d",
+                         masked_fd, sockfd);
+                } else {
+                    if(masked_fd >= 0) ::close(masked_fd);
                     _err("SSLCom<UDP>::accept_socket: cannot create real socket for %d", sockfd);
                     error(ERROR_SOCKET);
+                    return;
                 }
 
             } else {
-                _deb("datagram records not found");
+                _err("datagram record for virtual DTLS descriptor %d not found",
+                     sockfd);
+                error(ERROR_SOCKET);
+                return;
             }
         } else {
-            _inf("underlying com is UDPCom using real sockets");
+            _err("DTLS virtual descriptor has no UDP transport");
+            error(ERROR_SOCKET);
+            return;
         }
     }
 
-    upgrade_server_socket(sockfd);
+    if(upgrade_server_socket(transport_fd) < 0) return;
     if (opt.bypass) {
         counters.prof_accept_bypass_cnt++;
         return;
@@ -2686,11 +2864,18 @@ int baseSSLCom<L4Proto>::upgrade_server_socket(int sockfd) {
     socket(sockfd);
 
     sslcom_waiting = true;
-    unblock();
 
     if(opt.bypass) {
         _inf("SSLCom::upgrade_server_socket[%d]: bypassed", socket());
         return sockfd;
+    }
+
+    if(unblock() < 0) {
+        _err("SSLCom::upgrade_server_socket[%d]: unusable transport descriptor",
+             socket());
+        error(ERROR_UNSPEC);
+        sslcom_waiting = false;
+        return -1;
     }
 
     set_timer_now(&timer_handshake_start);
@@ -2772,9 +2957,16 @@ bool baseSSLCom<L4Proto>::handshake_peer_client() {
         // and check all entries in the filter.
 
         if (sni_filter_to_bypass()) {
-            _deb("SSLCom:waiting: check SNI filter for '%s'", sslcom_sni().c_str());
+            std::string const* bypass_sni = &sslcom_sni();
+            if(auto const* client_facing = dynamic_cast<baseSSLCom*>(peer());
+               client_facing && client_facing->is_server()) {
+                // Routing may rewrite the origin-facing SNI. Bypass policy is
+                // about the identity requested by the client, not that target.
+                bypass_sni = &client_facing->get_sni();
+            }
+            _deb("SSLCom:waiting: check SNI filter for '%s'", bypass_sni->c_str());
 
-            if (!sslcom_sni().empty()) {
+            if (!bypass_sni->empty()) {
 
                 for (std::string const& filter_element_raw: *sni_filter_to_bypass()) {
 
@@ -2783,12 +2975,25 @@ bool baseSSLCom<L4Proto>::handshake_peer_client() {
                     std::string_view filter_element = filter_element_raw;
                     if(wildcard_planted) filter_element.remove_prefix(2);
 
+                    // Empty entries (including the degenerate "*.") must not
+                    // become an accidental match-all bypass rule.
+                    if(filter_element.empty())
+                        continue;
+
                     _deb("SSLCom:waiting: check SNI filter: %.*s %s",
                          static_cast<int>(filter_element.size()), filter_element.data(),
                          wildcard_planted ? "(*.)" : "");
 
-                    std::size_t pos = sslcom_sni().rfind(filter_element);
-                    if (pos != std::string::npos && pos + filter_element.size() >= sslcom_sni().size()) {
+                    const std::size_t pos = bypass_sni->size() >= filter_element.size()
+                        ? bypass_sni->size() - filter_element.size()
+                        : std::string::npos;
+                    const bool suffix_matches = pos != std::string::npos &&
+                        std::equal(filter_element.begin(), filter_element.end(),
+                                   bypass_sni->begin() + pos,
+                                   [](unsigned char left, unsigned char right) {
+                                       return std::tolower(left) == std::tolower(right);
+                                   });
+                    if (suffix_matches) {
 
                         //ok, we know SNI ends with the filter entry. We need to check if the character BEFORE match pos in SNI is '.' to prevent
                         // match www.mycnn.com with cnn.com SNI entry.
@@ -2798,8 +3003,8 @@ bool baseSSLCom<L4Proto>::handshake_peer_client() {
                         bool cont = !wildcard_planted || pos > 0;
 
                         if (pos > 0) {
-                            if (sslcom_sni().at(pos - 1) != '.') {
-                                _deb("%s NOT bypassed with sni filter %.*s", sslcom_sni().c_str(),
+                            if (bypass_sni->at(pos - 1) != '.') {
+                                _deb("%s NOT bypassed with sni filter %.*s", bypass_sni->c_str(),
                                      static_cast<int>(filter_element.size()), filter_element.data());
                                 cont = false;
                             }
@@ -2812,7 +3017,7 @@ bool baseSSLCom<L4Proto>::handshake_peer_client() {
                             sni_filter_to_bypass_matched = true;
 
                             if (bypass_me_and_peer()) {
-                                _inf("%s bypassed with sni filter %.*s %s", sslcom_sni().c_str(),
+                                _inf("%s bypassed with sni filter %.*s %s", bypass_sni->c_str(),
                                      static_cast<int>(filter_element.size()), filter_element.data(),
                                      wildcard_planted ? " (*.)" : "");
                                 return false;
@@ -3031,6 +3236,11 @@ ret_handshake baseSSLCom<L4Proto>::handshake() {
     }
     if(SSL_session_reused(sslcom_ssl)) {
         flags_ |= HSK_REUSED;
+        // An abbreviated handshake does not invoke the certificate verify
+        // callback. Restore the verdict carried by the policy-scoped,
+        // freshness-bounded cache entry before check_cert() consumes it.
+        verify_bitreset(verify_status_t::VRF_NOTTESTED);
+        verify_bitset(verify_status_t::VRF_OK);
     }
 
 
@@ -3081,6 +3291,8 @@ bool baseSSLCom<L4Proto>::store_session_if_needed() {
     bool ret = false;
     bool proceed  = is_server() ? !opt.left.no_tickets : !opt.right.no_tickets;
     if(proceed and factory() && owner_cx()) {
+        auto* const active_session = sslcom_callback_session
+            ? sslcom_callback_session : SSL_get0_session(sslcom_ssl);
         std::string key = is_server() ? "l-" : "r-";
         std::string_view current_sni;
         key.reserve(key.size() + owner_cx()->host().size()
@@ -3093,39 +3305,56 @@ bool baseSSLCom<L4Proto>::store_session_if_needed() {
                 current_sni = peerscom->get_sni();
             }
 
-            auto sess = SSL_get0_session(sslcom_ssl);
             key.append(owner_cx()->host()).push_back('-');
 
-            if(sess) {
+            if(active_session) {
                 unsigned int sid_len = 0;
-                auto sid = SSL_SESSION_get_id(sess, &sid_len);
+                auto sid = SSL_SESSION_get_id(active_session, &sid_len);
                 key.append(hex_print(sid, sid_len)).push_back('-');
             }
 
 
         } else {
             current_sni = sslcom_sni();
+            key.append(owner_cx()->host()).push_back(':');
+            key.append(owner_cx()->port()).push_back('-');
         }
 
         if (not current_sni.empty()) {
             key.append(current_sni);
-        } else {
+        } else if(is_server()) {
             key.append(owner_cx()->host()).push_back(':');
             key.append(owner_cx()->port());
         }
         key.append("|policy:").append(session_policy_fingerprint(opt));
 
-        if(!SSL_session_reused(sslcom_ssl)) {
-            _dia("ticketing: key %s: full key exchange, connect attempt %d on socket %d", key.c_str(),
-                                                                    counters.prof_connect_cnt, owner_cx()->socket());
+        const bool connection_reused = SSL_session_reused(sslcom_ssl) == 1;
+        const bool callback_session = sslcom_callback_session != nullptr;
+
+        if(connection_reused) {
+            _dia("ticketing: key %s: abbreviated key exchange, connect attempt %d on socket %d",key.c_str(),
+                                                            counters.prof_connect_cnt,owner_cx()->socket());
+            flags_ |= HSK_REUSED;
+            _dia("verified by previous connection");
+            verify_bitreset(verify_status_t::VRF_NOTTESTED);
+            verify_bitset(verify_status_t::VRF_OK);
+        }
+
+        // TLS 1.3 can rotate ticket material after an abbreviated handshake.
+        // A callback session is new cache material even on a reused connection.
+        if(!connection_reused || callback_session) {
+            _dia("ticketing: key %s: %s session material, connect attempt %d on socket %d", key.c_str(),
+                 connection_reused ? "renewed" : "initial",
+                 counters.prof_connect_cnt, owner_cx()->socket());
 
 
             if(is_server()) {
-                if(SSL_SESSION_is_resumable(SSL_get0_session(sslcom_ssl))
+                if(active_session && SSL_SESSION_is_resumable(active_session)
                    and
-                   SSL_SESSION_has_ticket(SSL_get0_session(sslcom_ssl)) == 0) {
-                    auto ns = new session_holder(SSL_get0_session(sslcom_ssl));
-                    SSL_SESSION_up_ref(ns->ptr);
+                   SSL_SESSION_has_ticket(active_session) == 0) {
+                    if(!callback_session && SSL_SESSION_up_ref(active_session) != 1)
+                        return false;
+                    auto ns = new session_holder(active_session);
 
                     factory()->session_cache().set(key, ns);
                     _dia("left no ticket, saving sessionid: key %s: keying material stored, cache size = %d", key.c_str(),
@@ -3140,7 +3369,9 @@ bool baseSSLCom<L4Proto>::store_session_if_needed() {
                 // A resumed handshake does not present the peer certificate.
                 // Never let the cached authentication decision outlive the
                 // certificate or the locally accepted revocation evidence.
-                auto* session = SSL_get0_session(sslcom_ssl);
+                auto* session = active_session;
+                if(!session)
+                    return false;
                 auto const freshness_timeout = session_freshness_timeout(
                     session, sslcom_target_cert, opt);
                 if(!freshness_timeout) {
@@ -3151,17 +3382,19 @@ bool baseSSLCom<L4Proto>::store_session_if_needed() {
                     SSL_SESSION_set_timeout(session, *freshness_timeout);
 
 #if defined USE_OPENSSL111
-                if(SSL_SESSION_is_resumable(SSL_get0_session(sslcom_ssl))) {
+                if(SSL_SESSION_is_resumable(session)) {
                     _dia("ticketing: obtained session can be used for resumption");
 
                     // only resumable, crystal OK sessions will be trusted for resumption
                     if(verify_get() == verify_status_t::VRF_OK) {
-                        auto ns = new session_holder(SSL_get0_session(sslcom_ssl));
-                        SSL_SESSION_up_ref(ns->ptr);
+                        if(!callback_session && SSL_SESSION_up_ref(session) != 1)
+                            return false;
+                        auto ns = new session_holder(session);
 
                         factory()->session_cache().set(key, ns);
                         _dia("right ticketing: key %s: keying material stored, cache size = %d", key.c_str(),
                              factory()->session_cache().size());
+                        ret = true;
                     } else {
 
                         std::string ext_str;
@@ -3175,8 +3408,6 @@ bool baseSSLCom<L4Proto>::store_session_if_needed() {
 
                         _dia("ticketing: session not stored due to verify result 0x%04x%s", verify_get(), ext_str.c_str());
                     }
-
-                    ret = true;
 
                 } else {
                     _dia("session CANNOT be resumed");
@@ -3197,16 +3428,6 @@ bool baseSSLCom<L4Proto>::store_session_if_needed() {
                 ret = false;
             }
             
-        } else {
-            _dia("ticketing: key %s: abbreviated key exchange, connect attempt %d on socket %d",key.c_str(),
-                                                            counters.prof_connect_cnt,owner_cx()->socket());
-            flags_ |= HSK_REUSED;
-
-
-            // we trust sites we have already connected to!
-            _dia("verified by previous connection");
-            verify_bitreset(verify_status_t::VRF_NOTTESTED);
-            verify_bitset(verify_status_t::VRF_OK);
         }
     }
     
@@ -3247,11 +3468,13 @@ bool baseSSLCom<L4Proto>::load_session_if_needed() {
 
         } else {
             current_sni = sslcom_sni();
+            key.append(owner_cx()->host()).push_back(':');
+            key.append(owner_cx()->port()).push_back('-');
         }
 
         if (not current_sni.empty()) {
             key.append(current_sni);
-        } else {
+        } else if(is_server()) {
             key.append(owner_cx()->host()).push_back(':');
             key.append(owner_cx()->port());
         }
@@ -3261,7 +3484,15 @@ bool baseSSLCom<L4Proto>::load_session_if_needed() {
         
         if(h != nullptr) {
             _dia("ticketing: key %s:target server TLS ticket found!",key.c_str());
-            SSL_set_session(sslcom_ssl, h->ptr);
+            // Re-evaluate freshness when consuming the cached verdict. A
+            // configuration reload may have shortened OCSP/CRL TTLs.
+            if(!h->ptr || !session_is_fresh(h->ptr, opt) ||
+               SSL_set_session(sslcom_ssl, h->ptr) != 1) {
+                _war("ticketing: key %s: cached TLS session is unusable", key.c_str());
+                factory()->session_cache().erase(key);
+                SSL_set_session(sslcom_ssl, nullptr);
+                return false;
+            }
             h->cnt_loaded.fetch_add(1, std::memory_order_relaxed);
             
             ret = true;
@@ -3278,17 +3509,24 @@ template <class L4Proto>
 typename baseSSLCom<L4Proto>::client_hello_peek_t
 baseSSLCom<L4Proto>::normalize_peer_hello_records() {
     constexpr std::size_t record_header_size = 5;
-    constexpr std::size_t record_payload_max = 18432;
+    constexpr std::size_t record_payload_max = SSL3_RT_MAX_PLAIN_LENGTH;
     constexpr std::size_t handshake_header_size = 4;
+    constexpr std::size_t client_hello_min_size =
+        handshake_header_size + 2 + 32 + 1 + 2 + 2 + 1 + 1;
 
     auto& raw = sslcom_peer_hello_buffer;
     if (raw.size() < record_header_size)
         return client_hello_peek_t::WAIT;
 
-    if (raw.get_at<unsigned char>(0) != SSL3_RT_HANDSHAKE)
+    const auto content_type = raw.get_at<unsigned char>(0);
+    if (content_type != SSL3_RT_HANDSHAKE) {
+        if(content_type >= SSL3_RT_CHANGE_CIPHER_SPEC && content_type <= 24)
+            return client_hello_peek_t::INVALID;
         return client_hello_peek_t::NOT_TLS;
-    if (raw.get_at<unsigned char>(1) != 3)
-        return client_hello_peek_t::NOT_TLS;
+    }
+    if (raw.get_at<unsigned char>(1) != 3 ||
+        raw.get_at<unsigned char>(2) > 3)
+        return client_hello_peek_t::INVALID;
 
     // The normal case is one complete ClientHello in one TLS record.  The
     // buffer already has exactly the layout parse_peer_hello() consumes, so
@@ -3310,9 +3548,12 @@ baseSSLCom<L4Proto>::normalize_peer_hello_records() {
             (static_cast<std::size_t>(first[1]) << 16U) +
             (static_cast<std::size_t>(first[2]) << 8U) +
             static_cast<std::size_t>(first[3]);
-        if (expected > SSLCOM_CLIENTHELLO_MAX_SIZE - record_header_size)
+        if (expected < client_hello_min_size ||
+            expected > SSLCOM_CLIENTHELLO_MAX_SIZE - record_header_size)
             return client_hello_peek_t::INVALID;
-        if (expected <= first_payload_size) {
+        if (expected < first_payload_size)
+            return client_hello_peek_t::INVALID;
+        if (expected == first_payload_size) {
             raw.set_at<unsigned short>(record_header_size - 2,
                                        htons(static_cast<unsigned short>(expected)));
             raw.size(record_header_size + expected);
@@ -3329,7 +3570,8 @@ baseSSLCom<L4Proto>::normalize_peer_hello_records() {
         if (raw.size() - offset < record_header_size)
             return client_hello_peek_t::WAIT;
         if (raw.get_at<unsigned char>(offset) != SSL3_RT_HANDSHAKE ||
-            raw.get_at<unsigned char>(offset + 1) != 3)
+            raw.get_at<unsigned char>(offset + 1) != 3 ||
+            raw.get_at<unsigned char>(offset + 2) > 3)
             return client_hello_peek_t::INVALID;
 
         const std::size_t payload_size = ntohs(raw.get_at<unsigned short>(offset + 3));
@@ -3350,11 +3592,16 @@ baseSSLCom<L4Proto>::normalize_peer_hello_records() {
                 (static_cast<std::size_t>(handshake[1]) << 16U) +
                 (static_cast<std::size_t>(handshake[2]) << 8U) +
                 static_cast<std::size_t>(handshake[3]);
-            if (expected_handshake_size > SSLCOM_CLIENTHELLO_MAX_SIZE - record_header_size)
+            if (expected_handshake_size < client_hello_min_size ||
+                expected_handshake_size > SSLCOM_CLIENTHELLO_MAX_SIZE - record_header_size)
                 return client_hello_peek_t::INVALID;
         }
 
-        if (expected_handshake_size != 0 && handshake.size() >= expected_handshake_size) {
+        if (expected_handshake_size != 0 &&
+            handshake.size() > expected_handshake_size)
+            return client_hello_peek_t::INVALID;
+        if (expected_handshake_size != 0 &&
+            handshake.size() == expected_handshake_size) {
             buffer normalized;
             normalized.capacity(record_header_size + expected_handshake_size);
             unsigned char header[record_header_size] {
@@ -3490,6 +3737,11 @@ bool baseSSLCom<L4Proto>::waiting_peer_hello() {
                         _err("SSLCom::waiting_peer_hello: unrecoverable peek errno: %s", string_error().c_str());
                         peer_scom->error(ERROR_READ);
                         error(ERROR_UNSPEC);
+                    } else if (timeval_msdelta_now(&timer_start) >
+                               opt.client_hello_timeout) {
+                        _err("handshake timeout: no ClientHello received");
+                        peer_scom->error(ERROR_READ);
+                        error(ERROR_UNSPEC);
                     } else {
                         _deb("SSLCom::waiting_peer_hello: peek errno: %s",string_error().c_str());
                     }
@@ -3561,6 +3813,12 @@ int baseSSLCom<L4Proto>::parse_peer_hello() {
 
     int ret = -1;
 
+    // Parsed identity belongs exclusively to this ClientHello. An absent
+    // extension must not inherit a value from a previous attempt.
+    sslcom_sni_.clear();
+    sslcom_peer_hello_alpn_.clear();
+    sslcom_peer_hello_id_.clear();
+
     try {
 
         buffer& b = sslcom_peer_hello_buffer;
@@ -3586,8 +3844,9 @@ int baseSSLCom<L4Proto>::parse_peer_hello() {
             //     0x02 - TLS 1.1
             //     0x01 - TLS 1.0
 
-            if(version_maj != 3) {
-                _dia("SSLCom::parse_peer_hello: version_maj should be always 3. not %d", version_maj);
+            if(version_maj != 3 || version_min > 3) {
+                _dia("SSLCom::parse_peer_hello: invalid record version %d.%d",
+                     version_maj, version_min);
                 throw socle::ex::SSL_clienthello_malformed();
             }
 
@@ -3611,12 +3870,14 @@ int baseSSLCom<L4Proto>::parse_peer_hello() {
                         (static_cast<unsigned int>(b.get_at<unsigned char>(curpos + 1)) << 8U) |
                         static_cast<unsigned int>(b.get_at<unsigned char>(curpos + 2));
                     curpos += 3; //@9
-                    if (handshake_length > b.size() - curpos)
+                    if (handshake_length != b.size() - curpos)
                         throw socle::ex::SSL_clienthello_malformed();
                     unsigned char handshake_version_maj = b.get_at<unsigned char>(curpos);
                     curpos += sizeof(unsigned char); //@10
                     unsigned char handshake_version_min = b.get_at<unsigned char>(curpos);
                     curpos += sizeof(unsigned char); //@11
+                    if(handshake_version_maj != 3 || handshake_version_min > 3)
+                        throw socle::ex::SSL_clienthello_malformed();
                     [[maybe_unused]]
                     unsigned int handshake_unixtime = ntohl(b.get_at<unsigned int>(curpos));
                     curpos += sizeof(unsigned int); //@15
@@ -3625,6 +3886,8 @@ int baseSSLCom<L4Proto>::parse_peer_hello() {
 
                     unsigned char session_id_length = b.get_at<unsigned char>(curpos);
                     curpos += sizeof(unsigned char);
+                    if(session_id_length > SSL_MAX_SSL_SESSION_ID_LENGTH)
+                        throw socle::ex::SSL_clienthello_malformed();
 
                     // we already know it's handshake, it's ok to return true
                     _dia("SSLCom::parse_peer_hello: handshake (type %u), version %u.%u, length %u", handshake_type,
@@ -3649,7 +3912,8 @@ int baseSSLCom<L4Proto>::parse_peer_hello() {
                     auto ciphers_length = tainted::var<unsigned short>(ntohs(b.get_at<unsigned short>(curpos)), tainted::any<unsigned short>);
 
                     curpos += sizeof(unsigned short);
-                    if (curpos + ciphers_length > b.size())
+                    if (ciphers_length < 2 || (ciphers_length % 2) != 0 ||
+                        curpos + ciphers_length > b.size())
                         throw socle::ex::SSL_clienthello_malformed();
 
                     curpos += ciphers_length; //skip ciphers
@@ -3658,7 +3922,14 @@ int baseSSLCom<L4Proto>::parse_peer_hello() {
                     auto compression_length = tainted::var<unsigned char>(b.get_at<unsigned char>(curpos), tainted::any<unsigned char>);
 
                     curpos += sizeof(unsigned char);
-                    if (curpos + compression_length > b.size())
+                    if (compression_length == 0 ||
+                        curpos + compression_length > b.size())
+                        throw socle::ex::SSL_clienthello_malformed();
+
+                    bool null_compression_offered = false;
+                    for(unsigned int i = 0; i < compression_length; ++i)
+                        null_compression_offered |= b.get_at<unsigned char>(curpos + i) == 0;
+                    if(!null_compression_offered)
                         throw socle::ex::SSL_clienthello_malformed();
 
                     curpos += compression_length; // skip compression methods
@@ -3689,16 +3960,23 @@ int baseSSLCom<L4Proto>::parse_peer_hello() {
                 }
 
                 _deb("SSLCom::parse_peer_hello: extensions payload length %d", extensions_length);
-                if (curpos + extensions_length > b.size()) {
+                if (curpos + extensions_length != b.size()) {
                     _dia("SSLCom::parse_peer_hello: too short to read extensions position %d, extension len %d from data size %d", curpos, extensions_length, b.size());
                     throw socle::ex::SSL_clienthello_malformed();
                 }
 
                 if (extensions_length > 0) {
                     const unsigned int extensions_end = curpos + extensions_length;
+                    std::bitset<1U << 16U> extension_ids;
                     while (curpos < extensions_end) {
                         if (extensions_end - curpos < 4)
                             throw socle::ex::SSL_clienthello_malformed();
+
+                        const auto extension_id = ntohs(
+                            b.get_at<unsigned short>(curpos));
+                        if(extension_ids.test(extension_id))
+                            throw socle::ex::SSL_clienthello_malformed();
+                        extension_ids.set(extension_id);
 
                         _deb("SSLCom::parse_peer_hello: parsing extension at position %d", curpos);
                         const unsigned int parsed = parse_peer_hello_extensions(b, curpos);
@@ -3710,14 +3988,14 @@ int baseSSLCom<L4Proto>::parse_peer_hello() {
             }
             else if(message_type == 22 && handshake_type != 1) {
                 _err("SSLCom::parse_peer_hello: handshake message, but not ClientHello; message_type %d, handshake_type %d", message_type, handshake_type);
-                ret = 1; // we need to assume we are late, so let continue without SNI.
+                throw socle::ex::SSL_clienthello_malformed();
             }
             else if(message_type > 22) {
                 _err("SSLCom::parse_peer_hello: post-handshake message; message_type %d, handshake_type %d", message_type, handshake_type);
-                ret = 1; // we need to assume we are late, so let continue without SNI.
+                throw socle::ex::SSL_clienthello_malformed();
             } else {
                 _err("SSLCom::parse_peer_hello: unknown message; message_type %d, handshake_type %d", message_type, handshake_type);
-                ret = 1; // we need to assume we are late, so let continue without SNI.
+                throw socle::ex::SSL_clienthello_malformed();
             }
             
                 
@@ -3794,7 +4072,9 @@ unsigned short baseSSLCom<L4Proto>::parse_peer_hello_extensions(buffer& b, unsig
                 const auto* hostname = b.data() + curpos;
                 if(hostname_seen || sn_length == 0 ||
                    std::find(hostname, hostname + sn_length, '\0') !=
-                       hostname + sn_length)
+                       hostname + sn_length ||
+                   !unambiguous_sni_hostname(std::string_view(
+                       reinterpret_cast<char const*>(hostname), sn_length)))
                     throw socle::ex::SSL_clienthello_malformed();
 
                 sslcom_sni_.assign(reinterpret_cast<char const*>(hostname),
@@ -3813,7 +4093,7 @@ unsigned short baseSSLCom<L4Proto>::parse_peer_hello_extensions(buffer& b, unsig
 
         unsigned short alpn_length = ntohs(b.get_at<unsigned short>(curpos));
         curpos += sizeof(unsigned short);
-        if (alpn_length != ext_end - curpos)
+        if (alpn_length < 2 || alpn_length != ext_end - curpos)
             throw socle::ex::SSL_clienthello_malformed();
 
         unsigned int protocol_pos = curpos;
@@ -3846,6 +4126,11 @@ ssize_t baseSSLCom<L4Proto>::read (int _fd, void* _buf, size_t _n, int _flags ) 
 
     int total_r = 0;
     int rounds = 0;
+
+    // Preserve the ordinary read(2) contract. In particular, a zero-length
+    // probe must not start or advance a TLS handshake or consume alerts.
+    if(_n == 0)
+        return 0;
 
     if(opt.bypass) {
         _deb("SSLCom::read[%d]: called: bypassed - to read max %d bytes", _fd, _n);
@@ -3887,15 +4172,41 @@ ssize_t baseSSLCom<L4Proto>::read (int _fd, void* _buf, size_t _n, int _flags ) 
     // if we are peeking, just do it and return, no magic done is here
     if ((_flags & MSG_PEEK) != 0) {
         _dum("SSLCom::read[%d]: about to peek  max %4d bytes", _fd, _n);
+        ERR_clear_error();
         sslcom_ret = SSL_peek(sslcom_ssl, _buf, _n);
         counters.prof_peek_cnt++;
 
         if(sslcom_ret > 0) {
             _dia("SSLCom::read[%d]: peek returned %d", _fd, sslcom_ret);
+            if(sslcom_read_blocked_on_write > 0) {
+                master()->poller.modify(_fd, EPOLLIN);
+                sslcom_read_blocked_on_write = 0;
+                forced_read_on_write(false);
+            }
         } else {
             _dum("SSLCom::read[%d]: peek returned %d", _fd, sslcom_ret);
 
             auto errc = SSL_get_error(sslcom_ssl, sslcom_ret);
+            if(errc == SSL_ERROR_WANT_WRITE) {
+                forced_read_on_write(true);
+                sslcom_read_blocked_on_write = 1;
+                counters.read_want_write_cur++;
+                counters.prof_want_write_cnt++;
+                set_write_monitor(_fd);
+                return sslcom_ret;
+            }
+            if(errc == SSL_ERROR_WANT_READ) {
+                if(sslcom_read_blocked_on_write > 0) {
+                    master()->poller.modify(_fd, EPOLLIN);
+                    sslcom_read_blocked_on_write = 0;
+                    forced_read_on_write(false);
+                } else {
+                    set_monitor(_fd);
+                }
+                counters.read_want_read_cur++;
+                counters.prof_want_read_cnt++;
+                return sslcom_ret;
+            }
             if(errc == SSL_ERROR_ZERO_RETURN) {
                 _dia("SSLCom::read[%d]: clean TLS close_notify while peeking", _fd);
                 return 0;
@@ -4312,18 +4623,14 @@ void baseSSLCom<L4Proto>::cleanup()  {
             bool const sent_already = SSL_get_shutdown(sslcom_ssl) & SSL_SENT_SHUTDOWN;
 
             if (not sent_already) {
-
-                int last_status = SSL_get_error(sslcom_ssl, sslcom_ret);
-
-                if(last_status != SSL_ERROR_SSL and last_status != SSL_ERROR_SYSCALL) {
-                    int shit = SSL_shutdown(sslcom_ssl);  //_sh_utdown _it_
-                    if (shit == 0) {
-                        _deb("  shutdown success");
-                    } else if (shit < 0) {
-                        _err("  shutdown failed: %d", SSL_get_error(sslcom_ssl, shit));
-                    }
-                } else {
-                    _not("  shutdown not called on this error");
+                // SSL_get_error() is valid only for the immediately preceding
+                // SSL operation on an otherwise empty error queue.
+                ERR_clear_error();
+                int shit = SSL_shutdown(sslcom_ssl);  //_sh_utdown _it_
+                if (shit == 0) {
+                    _deb("  shutdown success");
+                } else if (shit < 0) {
+                    _err("  shutdown failed: %d", SSL_get_error(sslcom_ssl, shit));
                 }
             } else {
                 _not("  shutdown already sent");
@@ -4346,6 +4653,9 @@ int baseSSLCom<L4Proto>::upgrade_client_socket(int sock) {
 
     bool ch = waiting_peer_hello();
 
+    if(!ch && error())
+        return -1;
+
     if(ch) {
 
         if(opt.bypass) {
@@ -4364,12 +4674,23 @@ int baseSSLCom<L4Proto>::upgrade_client_socket(int sock) {
             return -1;
         }
 
+        auto fail_client_upgrade = [this]() {
+            if(sslcom_ssl) {
+                SSL_free(sslcom_ssl);
+                sslcom_ssl = nullptr;
+            }
+            sslcom_sbio = nullptr;
+            upgraded(false);
+            sslcom_waiting = false;
+            handshake_timer_started = false;
+            error(ERROR_UNSPEC);
+        };
+
         if(not sslcom_sni_.empty()) {
             _dia("SSLCom::upgrade_client_socket[%d]: set sni extension to: %s", sock, sslcom_sni_.c_str());
             if(SSL_set_tlsext_host_name(sslcom_ssl, sslcom_sni_.c_str()) != 1) {
                 _err("SSLCom::upgrade_client_socket[%d]: invalid outbound SNI", sock);
-                error(ERROR_UNSPEC);
-                sslcom_waiting = false;
+                fail_client_upgrade();
                 return -1;
             }
         }
@@ -4382,8 +4703,7 @@ int baseSSLCom<L4Proto>::upgrade_client_socket(int sock) {
                                    reinterpret_cast<unsigned char*>(sslcom_peer_hello_alpn_.data()),
                                    sslcom_peer_hello_alpn_.size()) != 0) {
                 _err("SSLCom::upgrade_client_socket[%d]: invalid outbound ALPN", sock);
-                error(ERROR_UNSPEC);
-                sslcom_waiting = false;
+                fail_client_upgrade();
                 return -1;
             }
         }
@@ -4391,8 +4711,7 @@ int baseSSLCom<L4Proto>::upgrade_client_socket(int sock) {
         sslcom_sbio = BIO_new_socket(sock,BIO_NOCLOSE);
         if (sslcom_sbio == nullptr) {
             _err("SSLCom::upgrade_client_socket[%d]: BIO allocation failed! ",sock);
-            error(ERROR_UNSPEC);
-            sslcom_waiting = false;
+            fail_client_upgrade();
             return -1;
         }
 
@@ -4409,6 +4728,7 @@ int baseSSLCom<L4Proto>::upgrade_client_socket(int sock) {
             if(is_blocking(sock)) {
                 _err("SSL connect error on blocking socket %d",sock);
                 close(sock);
+                fail_client_upgrade();
                 return -1;
             }
             /* non-blocking may return -1 */
@@ -4445,34 +4765,37 @@ int baseSSLCom<L4Proto>::upgrade_client_socket(int sock) {
                     _err("upgrade_client_socket[%d]: initial SSL_connect failed: %d", sock, err);
                     if (err == SSL_ERROR_SSL || err == SSL_ERROR_SYSCALL)
                         sslcom_fatal = true;
-                    error(ERROR_UNSPEC);
-                    sslcom_waiting = false;
+                    fail_client_upgrade();
                     return -1;
                 }
                 sslcom_waiting = true;
                 return sock;
             }
             _err("upgrade_client_socket[%d]: initial SSL_connect returned %d", sock, sslcom_ret);
-            error(ERROR_UNSPEC);
-            sslcom_waiting = false;
+            fail_client_upgrade();
             return -1;
         }
 
         counters.prof_connect_ok++;
+
+        if(SSL_session_reused(sslcom_ssl)) {
+            flags_ |= HSK_REUSED;
+            verify_bitreset(verify_status_t::VRF_NOTTESTED);
+            verify_bitset(verify_status_t::VRF_OK);
+        }
 
         _deb("SSLCom::upgrade_client_socket[%d]: connection succeeded",sock);
         sslcom_waiting = false;
         
         // restore peer monitoring
         monitor_peer();
-        store_session_if_needed();
 
         if (not check_cert(nullptr)) {
             _err("SSLCom::upgrade_client_socket[%d]: peer certificate/counterpart setup failed", sock);
-            error(ERROR_UNSPEC);
-            sslcom_waiting = false;
+            fail_client_upgrade();
             return -1;
         }
+        store_session_if_needed();
 
         forced_read(true);
         forced_write(true);

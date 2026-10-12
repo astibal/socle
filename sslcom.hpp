@@ -293,6 +293,9 @@ protected:
 
 	SSL_CTX* sslcom_ctx = nullptr;
 	SSL*     sslcom_ssl = nullptr;
+	// Non-owning only while OpenSSL invokes new_session_callback(). TLS 1.3
+	// may deliver a ticket session different from SSL_get0_session(ssl).
+	SSL_SESSION* sslcom_callback_session = nullptr;
 	BIO*	 sslcom_sbio = nullptr;
     int      sslcom_ret = 0;  // return value of last SSL_get_error() capable calls:
                               // SSL_connect, SSL_accept, SSL_do_handshake, SSL_read, SSL_peek,
@@ -424,6 +427,31 @@ protected:
     inline void sslcom_status(bool b) { sslcom_status_ = b; }
 
     std::string flags_str() override;
+    void adopt_generated_identity() {
+        if(!sslcom_pref_key || !sslcom_pref_cert)
+            return;
+#ifdef USE_OPENSSL11
+        EVP_PKEY_up_ref(sslcom_pref_key);
+#else
+        CRYPTO_add(&sslcom_pref_key->references,+1,CRYPTO_LOCK_EVP_PKEY);
+#endif
+        // SSLFactory::spoof() transfers the new certificate but lends its
+        // factory-owned signing key. The added key reference makes the pair
+        // symmetrically connection-owned.
+        sslcom_refcount_incremented_ = true;
+    }
+    void release_preferred_identity() {
+        if(!sslcom_refcount_incremented_)
+            return;
+#ifdef USE_OPENSSL11
+        EVP_PKEY_free(sslcom_pref_key);
+        X509_free(sslcom_pref_cert);
+#else
+        CRYPTO_add(&sslcom_pref_key->references,-1,CRYPTO_LOCK_EVP_PKEY);
+        CRYPTO_add(&sslcom_pref_cert->references,-1,CRYPTO_LOCK_X509);
+#endif
+        sslcom_refcount_incremented_ = false;
+    }
 private:
     typedef enum { HSK_REUSED = 0x4 } sslcom_flags;
     unsigned long flags_ = 0;
@@ -594,6 +622,12 @@ public:
         result += std::to_string(options.ocsp.stapling_mode);
         result.push_back(':');
         result += std::to_string(options.ocsp.mode);
+        result.push_back(':');
+        add_bool(options.left.kex_dh);
+        add_bool(options.left.kex_rsa);
+        add_bool(options.left.allow_sha1);
+        add_bool(options.left.allow_rc4);
+        add_bool(options.left.allow_aes128);
         result.push_back(':');
         add_bool(options.right.kex_dh);
         add_bool(options.right.kex_rsa);
