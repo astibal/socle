@@ -51,6 +51,12 @@ std::string FILE_to_string(FILE* file) {
 bool SSLFactory::load_custom_certificates() {
     auto const& log = get_log();
 
+    // A cached outbound session may embody a client-authentication decision
+    // made with the previous cc-sni/cc-ip identity.  Resumption does not
+    // necessarily issue CertificateRequest again, so no session established
+    // under the old custom-certificate generation may survive a reload.
+    session_cache().clear();
+
     if (not load_certs_from(config_t::SNI_DIR, "sni:")) {
         _dia("some SNI certificates not loaded");
     }
@@ -100,7 +106,7 @@ bool SSLFactory::load_from_files() {
 
 
 bool fullchain_file_exists(std::string_view fnm_fullchain) {
-    auto fp_fullchain = raw::file(fopen(fnm_fullchain.data(), "r"));
+    auto fp_fullchain = raw::file(fopen(fnm_fullchain.data(), "re"));
     return (fp_fullchain.value != nullptr);
 }
 
@@ -109,12 +115,12 @@ bool fullchain_file_exists(std::string_view fnm_fullchain) {
 std::optional<CertificateChainCtx> load_cert_pair(std::string_view fnm_key, std::string_view fnm_cert, const char* password = nullptr) {
 
 
-    auto fp_crt = raw::file(fopen(fnm_cert.data(), "r"));
+    auto fp_crt = raw::file(fopen(fnm_cert.data(), "re"));
     if (! fp_crt.value) {
         return std::nullopt;
     }
 
-    auto fp_key = raw::file(fopen(fnm_key.data(), "r"));
+    auto fp_key = raw::file(fopen(fnm_key.data(), "re"));
     if (!fp_key.value) {
         return std::nullopt;
     }
@@ -142,7 +148,7 @@ bool SSLFactory::update_ssl_ctx_fullchain(CertificateChainCtx& chain, std::strin
     bool load_status = false;
     std::string error_msg;
 
-    auto fp_key = raw::file(fopen(key.data(), "r"));
+    auto fp_key = raw::file(fopen(key.data(), "re"));
 
     if (fp_key.value) {
         auto ossl_key = PEM_read_PrivateKey(fp_key.value, nullptr, nullptr, nullptr);
@@ -186,9 +192,9 @@ bool SSLFactory::update_ssl_ctx_chainfiles(CertificateChainCtx& chain, std::stri
 
     int build_chain = 0;
 
-    auto fp_files = std::array<raw::file_var,3> { raw::file(fopen(issuer3.data(), "r")),
-                                                  raw::file(fopen(issuer2.data(), "r")),
-                                                  raw::file(fopen(issuer1.data(), "r")) };
+    auto fp_files = std::array<raw::file_var,3> { raw::file(fopen(issuer3.data(), "re")),
+                                                  raw::file(fopen(issuer2.data(), "re")),
+                                                  raw::file(fopen(issuer1.data(), "re")) };
 
     SSL_CTX_use_certificate(chain.ctx, chain.chain.cert);
     SSL_CTX_use_PrivateKey(chain.ctx, chain.chain.key);
@@ -301,7 +307,7 @@ bool SSLFactory::load_ca_cert() {
     auto const& log = get_log();
     std::string cer = certs_path() + config_t::CA_CERTF;
 
-    FILE *fp_crt = fopen(cer.c_str(), "r");
+    FILE *fp_crt = fopen(cer.c_str(), "re");
     FILE *fp_key = nullptr;
     
     if (!fp_crt) {
@@ -310,7 +316,7 @@ bool SSLFactory::load_ca_cert() {
     }
     
     std::string key = certs_path() + config_t::CA_KEYF;
-    fp_key = fopen(key.c_str(), "r");
+    fp_key = fopen(key.c_str(), "re");
     
     if (!fp_key) {
         _fat("SSLFactory::load_ca_cert: unable to open: %s",key.c_str());
@@ -348,7 +354,7 @@ bool SSLFactory::load_def_cl_cert() {
     auto const& log = get_log();
     std::string cer = certs_path() + config_t::CL_CERTF;
 
-    FILE *fp_crt = fopen(cer.c_str(), "r");
+    FILE *fp_crt = fopen(cer.c_str(), "re");
     FILE *fp_key = nullptr;
     
     if (!fp_crt) {
@@ -357,7 +363,7 @@ bool SSLFactory::load_def_cl_cert() {
     }
     
     std::string key = certs_path() + config_t::CL_KEYF;
-    fp_key = fopen(key.c_str(), "r");
+    fp_key = fopen(key.c_str(), "re");
     
     if (!fp_key) {
         _fat("SSLFactory::load_def_cl_cert: unable to open: %s",key.c_str());
@@ -391,7 +397,7 @@ bool SSLFactory::load_def_po_cert() {
     auto const& log = get_log();
     std::string cer = certs_path() + config_t::PO_CERTF;
 
-    FILE *fp_crt = fopen(cer.c_str(), "r");
+    FILE *fp_crt = fopen(cer.c_str(), "re");
     FILE *fp_key = nullptr;
 
     if (!fp_crt) {
@@ -400,7 +406,7 @@ bool SSLFactory::load_def_po_cert() {
     }
 
     std::string key = certs_path() + config_t::PO_KEYF;
-    fp_key = fopen(key.c_str(), "r");
+    fp_key = fopen(key.c_str(), "re");
 
     if (!fp_key) {
         _fat("SSLFactory::load_def_po_cert: unable to open: %s",key.c_str());
@@ -426,7 +432,7 @@ bool SSLFactory::load_def_sr_cert() {
     auto const& log = get_log();
     std::string cer = certs_path() + config_t::SR_CERTF;
     
-    FILE *fp_crt = fopen(cer.c_str(), "r");
+    FILE *fp_crt = fopen(cer.c_str(), "re");
     FILE *fp_key = nullptr;
     
     if (!fp_crt) {
@@ -435,7 +441,7 @@ bool SSLFactory::load_def_sr_cert() {
     }
     
     std::string key = certs_path() + config_t::SR_KEYF;
-    fp_key = fopen(key.c_str(), "r");
+    fp_key = fopen(key.c_str(), "re");
     
     if (!fp_key) {
         _fat("SSLFactory::load_def_sr_cert: unable to open: %s",key.c_str());
@@ -482,7 +488,12 @@ SSL_CTX* SSLFactory::client_ctx_setup(const char* ciphers) {
         exit(3);
     }
 
-    ciphers == nullptr ? SSL_CTX_set_cipher_list(ctx, SSLCom::ci_default_filter) : SSL_CTX_set_cipher_list(ctx,ciphers);
+    auto const cipher_filter = ciphers ? ciphers : SSLCom::ci_default_filter;
+    if (SSL_CTX_set_cipher_list(ctx, cipher_filter) != 1) {
+        _err("SSLFactory::client_ctx_setup: invalid cipher filter '%s'", cipher_filter);
+        SSL_CTX_free(ctx);
+        return nullptr;
+    }
 
     auto ctx_options = def_cl_options;
 #ifdef USE_OPENSSL300
@@ -538,7 +549,12 @@ SSL_CTX* SSLFactory::client_dtls_ctx_setup(const char* ciphers) {
         exit(3);
     }
 
-    ciphers == nullptr ? SSL_CTX_set_cipher_list(ctx, SSLCom::ci_default_filter) : SSL_CTX_set_cipher_list(ctx,ciphers);
+    auto const cipher_filter = ciphers ? ciphers : SSLCom::ci_default_filter;
+    if (SSL_CTX_set_cipher_list(ctx, cipher_filter) != 1) {
+        _err("SSLFactory::client_dtls_ctx_setup: invalid cipher filter '%s'", cipher_filter);
+        SSL_CTX_free(ctx);
+        return nullptr;
+    }
 
     SSL_CTX_set_session_cache_mode(ctx, SSL_SESS_CACHE_NO_INTERNAL);
 
@@ -563,7 +579,12 @@ SSL_CTX* SSLFactory::server_ctx_setup(EVP_PKEY* priv, X509* cert, const char* ci
         exit(3);
     }
 
-    ciphers == nullptr ? SSL_CTX_set_cipher_list(ctx, SSLCom::ci_default_filter) : SSL_CTX_set_cipher_list(ctx,ciphers);
+    auto const cipher_filter = ciphers ? ciphers : SSLCom::ci_default_filter;
+    if (SSL_CTX_set_cipher_list(ctx, cipher_filter) != 1) {
+        _err("SSLFactory::server_ctx_setup: invalid cipher filter '%s'", cipher_filter);
+        SSL_CTX_free(ctx);
+        return nullptr;
+    }
 
     auto ctx_options = def_sr_options;
 #ifdef USE_OPENSSL300
@@ -621,7 +642,12 @@ SSL_CTX* SSLFactory::server_dtls_ctx_setup(EVP_PKEY* priv, X509* cert, const cha
         exit(3);
     }
 
-    ciphers == nullptr ? SSL_CTX_set_cipher_list(ctx, SSLCom::ci_default_filter) : SSL_CTX_set_cipher_list(ctx,ciphers);
+    auto const cipher_filter = ciphers ? ciphers : SSLCom::ci_default_filter;
+    if (SSL_CTX_set_cipher_list(ctx, cipher_filter) != 1) {
+        _err("SSLFactory::server_dtls_ctx_setup: invalid cipher filter '%s'", cipher_filter);
+        SSL_CTX_free(ctx);
+        return nullptr;
+    }
 
     SSL_CTX_set_session_cache_mode(ctx, SSL_SESS_CACHE_NO_INTERNAL);
 
