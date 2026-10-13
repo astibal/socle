@@ -945,13 +945,24 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
 		
 		if (xcom->poll_result > 0) {
 
-            auto accepted = [] (baseHostCX *p, auto action) -> bool {
+            auto accepted = [xcom] (baseHostCX *p, auto action) -> bool {
                 if (!p->read_waiting_for_peercom()) {
                     p->on_accept_socket(p->socket());
 
                     action(p);
 
                     return true;
+                }
+                // Delayed TLS accepts intentionally leave ClientHello queued
+                // until the origin side is ready. Its readable edge must wake
+                // the peer's write-driven handshake; EPOLLIN on the origin
+                // cannot consume bytes which are waiting on this socket.
+                if(xcom->in_readset(p->socket()) && p->peercom()) {
+                    if(p->peer() && p->peer()->opening() &&
+                       p->peercom()->is_connected(p->peercom()->socket())) {
+                        p->peer()->opening(false);
+                    }
+                    p->peercom()->set_write_monitor(p->peercom()->socket());
                 }
                 return false;
             };
