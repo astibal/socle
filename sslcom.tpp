@@ -1375,6 +1375,7 @@ int baseSSLCom<L4Proto>::certificate_status_oob_check(baseSSLCom* com, int defau
 
 
     if(com != nullptr) {
+        auto const verification_before_ocsp = com->verify_get();
         com->verify_bitreset(verify_status_t::VRF_DEFERRED);
 
         if(com->opt.ocsp.enforce_in_verify) {
@@ -1402,6 +1403,18 @@ int baseSSLCom<L4Proto>::certificate_status_oob_check(baseSSLCom* com, int defau
                     log.event(ERR, "[%s]: certificate is revoked (OCSP query)", socle::com::ssl::connection_name(com, true).c_str());
                 } else {
                     // is_revoked < 0 - various errors
+                    if(default_action) {
+                        // Optional OCSP is soft-fail. Restore the certificate
+                        // verdict which existed before the unavailable query,
+                        // but retire the deferred marker which triggered it.
+                        com->verify_reset(static_cast<verify_status_t>(
+                            flag_reset<int>(verification_before_ocsp,
+                                            verify_status_t::VRF_DEFERRED)));
+                        ERR_clear_error();
+                        _war("OCSP status unavailable; preserving certificate verdict");
+                        return default_action;
+                    }
+
                     com->verify_bitreset(verify_status_t::VRF_OK);
                     com->verify_bitset(verify_status_t::VRF_ALLFAILED);
                 }
