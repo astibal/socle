@@ -497,7 +497,12 @@ void epoller::init_if_null()
 
 epoller::~epoller() {
     for(auto& [sock, hi]: handler_db) {
-        hi.handler->registrant = nullptr;
+        if(hi.handler == nullptr || hi.handler->registrant != this) continue;
+        auto sockets_lock = std::scoped_lock(hi.handler->registered_sockets.get_lock());
+        hi.handler->registered_sockets.erase_ul(sock);
+        if(hi.handler->registered_sockets.empty_ul() && hi.handler->registrant == this) {
+            hi.handler->registrant = nullptr;
+        }
     }
 }
 
@@ -689,12 +694,23 @@ epoll_handler* epoller::get_handler(int check) {
 }
 void epoller::clear_handler(int check) {
 
+    epoll_handler* removed = nullptr;
     {
         auto lc_ = std::unique_lock(lock_);
 
-        auto n_removed = handler_db.erase(check);
-        if(n_removed > 0) {
+        auto existing = handler_db.find(check);
+        if(existing != handler_db.end()) {
+            removed = existing->second.handler;
+            handler_db.erase(existing);
             _deb("epoller::clear_handler %d", check);
+        }
+    }
+
+    if(removed != nullptr) {
+        auto sockets_lock = std::scoped_lock(removed->registered_sockets.get_lock());
+        removed->registered_sockets.erase_ul(check);
+        if(removed->registered_sockets.empty_ul() && removed->registrant == this) {
+            removed->registrant = nullptr;
         }
     }
 
@@ -711,33 +727,43 @@ void epoller::clear_handler(int check) {
 void epoller::set_handler(int check, epoll_handler* h) {
 
     if(h != nullptr) {
-
-        {
-            auto lc_ = std::unique_lock(lock_);
-            handler_info_t &href = handler_db[check];
-            href.handler = h;
-        }
-        _deb("epoller::set_handler %d -> 0x%x",check,h);
-
-
         auto l_ = std::scoped_lock(h->registered_sockets.get_lock());
+        mp::set<int> target_sockets;
+        target_sockets.insert(check);
 
         if(h->registrant && h->registrant != this) {
             _err("epoller::set_handler: setting handler over already existing, different handler. This should not happen!");
-            // since registrant will be modified, we need to clear old registrant handlers.
-            
-            for(auto cur_socket: h->registered_sockets.get_ul()) {
-                _err("epoller::set_handler:  moving old socket %d handler to new one", cur_socket);
+            epoller* old_registrant = h->registrant;
 
-                auto lc_ = std::unique_lock(lock_);
-                // new is created if it doesn't exist yet
-                handler_info_t& curhref  = handler_db[cur_socket];
-                curhref.handler = h;
-                curhref.stats.clear();
+            const std::vector<int> old_sockets(h->registered_sockets.get_ul().begin(),
+                                               h->registered_sockets.get_ul().end());
+            for(auto cur_socket: old_sockets) {
+                if(old_registrant->get_handler(cur_socket) == h) {
+                    _err("epoller::set_handler: moving old socket %d handler to new one", cur_socket);
+                    target_sockets.insert(cur_socket);
+                    old_registrant->clear_handler(cur_socket);
+                }
             }
+            h->registered_sockets.clear_ul();
+            h->registrant = nullptr;
+        }
+
+        for(auto target_socket: target_sockets) {
+            if(get_handler(target_socket) == h) {
+                h->registered_sockets.insert_ul(target_socket);
+                continue;
+            }
+            clear_handler(target_socket);
+            {
+                auto lc_ = std::unique_lock(lock_);
+                handler_info_t& href = handler_db[target_socket];
+                href.handler = h;
+                href.stats.clear();
+            }
+            h->registered_sockets.insert_ul(target_socket);
+            _deb("epoller::set_handler %d -> 0x%x",target_socket,h);
         }
         h->registrant = this;
-        h->registered_sockets.insert_ul(check);
     }
     else {
         clear_handler(check);

@@ -439,6 +439,12 @@ std::size_t send_available(int fd, std::vector<std::uint8_t> const& data) {
     return sent;
 }
 
+class CountingPollHandler : public epoll_handler {
+public:
+    void handle_event(baseCom*) override { ++calls; }
+    std::size_t calls = 0;
+};
+
 TEST(TransferDrain, ReadConsumesMultipleSocketChunksPerDispatch) {
     SocketPair sockets;
     ASSERT_TRUE(sockets.valid());
@@ -1468,4 +1474,40 @@ TEST(ProxyLifecycle, OpeningPermanentConnectionsMonitorWriteCompletion) {
 
     proxy.shutdown();
     for (auto fd : peers) ::close(fd);
+}
+
+TEST(TransferLifecycle, ReplacedPollHandlerCannotResurrectItsFormerSocket) {
+    epoller first;
+    epoller second;
+    CountingPollHandler replaced;
+    CountingPollHandler current;
+
+    first.set_handler(11, &replaced);
+    first.set_handler(11, &current);
+    second.set_handler(22, &replaced);
+
+    EXPECT_EQ(first.get_handler(11), &current);
+    EXPECT_EQ(second.get_handler(11), nullptr)
+        << "moving a replaced handler must not copy its stale reverse index";
+    EXPECT_EQ(second.get_handler(22), &replaced);
+}
+
+TEST(TransferLifecycle, MovingPollHandlerRemovesItsOldRegistrantMappings) {
+    epoller first;
+    epoller second;
+
+    {
+        CountingPollHandler handler;
+        first.set_handler(31, &handler);
+        second.set_handler(32, &handler);
+
+        EXPECT_EQ(first.get_handler(31), nullptr);
+        EXPECT_EQ(second.get_handler(31), &handler);
+        EXPECT_EQ(second.get_handler(32), &handler);
+    }
+
+    EXPECT_EQ(first.get_handler(31), nullptr)
+        << "the prior poller must not retain a dangling handler";
+    EXPECT_EQ(second.get_handler(31), nullptr);
+    EXPECT_EQ(second.get_handler(32), nullptr);
 }
