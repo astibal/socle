@@ -123,19 +123,19 @@ std::size_t FdQueue::push_all(int s) {
         _deb("FdQueue::push: candidate with load %d inserted", pipes.seen_worker_load.load());
     }
 
+    const auto wake_target = std::max<uint64_t>(1, (entry_count + 1) / 2);
     for(auto const& candy: candidates) {
-        ++written_sum;
-        if(written_sum > entry_count/2) break;
+        if(written_sum >= wake_target) break;
 
         _deb("FdQueue::push: candidate with load %d summoned", candy.second->seen_worker_load.load());
         auto sock = candy.second->pipe_to_worker();
-        written_sum += write_to_socket(sock);
+        auto const notified = write_to_socket(sock);
+        written_sum += notified;
 
         // mechanism to help further avoid spurious wake-ups.
         // if reported from worker, we stop notifying the rest.
-        if(WorkerPipe::feedback_queue_empty) {
+        if(notified > 0 && feedback_queue_empty_.exchange(false)) {
             _deb("FdQueue::push: feedback - queue is already empty");
-            WorkerPipe::feedback_queue_empty = false;
             break;
         }
     }
@@ -295,7 +295,7 @@ int FdQueue::pop(uint32_t worker_id) {
         if (sq_.empty()) {
 
             // report to scheduler queue is empty. It's not required, but it's nice from us.
-            WorkerPipe::feedback_queue_empty = true;
+            feedback_queue_empty_ = true;
             purged = purge_socket(my_hint_socket);
         } else {
 
@@ -304,7 +304,7 @@ int FdQueue::pop(uint32_t worker_id) {
 
             // do another check and report to scheduler
             if (sq_.empty()) {
-                WorkerPipe::feedback_queue_empty = true;
+                feedback_queue_empty_ = true;
                 purged = purge_socket(my_hint_socket);
             }
         }

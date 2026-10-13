@@ -193,6 +193,35 @@ TEST(FdQueueLifecycle, WakeupDrainSupportsThePipeFallback) {
     ::close(descriptors[1]);
 }
 
+TEST(FdQueueLifecycle, EmptyFeedbackCannotSuppressAnotherQueuesWorkers) {
+    FdQueue idle_queue;
+    ASSERT_GE(idle_queue.new_pair(0).first, 0);
+    ASSERT_EQ(idle_queue.push_all(903), 1U);
+    ASSERT_EQ(idle_queue.pop(0), 903);
+
+    FdQueue busy_queue;
+    for(unsigned int worker = 0; worker < 3; ++worker) {
+        auto const endpoints = busy_queue.new_pair(worker);
+        ASSERT_GE(endpoints.first, 0);
+        ASSERT_GE(endpoints.second, 0);
+    }
+
+    ASSERT_EQ(busy_queue.push_all(904), 3U);
+
+    std::size_t notified = 0;
+    char byte = 0;
+    for(unsigned int worker = 0; worker < 3; ++worker) {
+        auto const endpoints = busy_queue.hint_pair(worker);
+        auto const red = ::read(endpoints.first, &byte, sizeof(byte));
+        if(red == 1) ++notified;
+        else EXPECT_TRUE(red < 0 && (errno == EAGAIN || errno == EWOULDBLOCK));
+    }
+    EXPECT_EQ(notified, 2U);
+    auto queued = busy_queue.pop_if([](int) { return true; });
+    ASSERT_TRUE(queued.has_value());
+    EXPECT_EQ(*queued, 904);
+}
+
 TEST(EpollLifecycle, PeerHalfCloseIsReadableButNotSocketError) {
     int pair[2] {-1, -1};
     ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK, 0, pair), 0);
