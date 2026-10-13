@@ -487,6 +487,13 @@ int baseHostCX::read() {
         // A full buffer which cannot grow must not be presented to recv()/SSL_read()
         // as a zero-length read: zero means EOF to the caller.
         if(max_bytes_left == 0) {
+            // Give process_in() one complete dispatch to consume bytes which
+            // filled the buffer. If a later dispatch still has no free tail,
+            // the retention bound is exhausted; this is a local error, not EOF.
+            if(buffer_written_len == 0) {
+                error(true);
+                buffer_written_len = -1;
+            }
             break;
         }
 
@@ -785,7 +792,11 @@ std::size_t baseHostCX::process_out() {
 
 
 std::size_t baseHostCX::finish() {
-    if( readbuf()->size() >= (unsigned int)processed_in_ && processed_in_ > 0)
+    if(processed_in_ == 0) {
+        _dum("baseHostCX::finish[%s]: no processed bytes to flush", c_type());
+        return 0;
+    }
+    if( readbuf()->size() >= (unsigned int)processed_in_)
     {
         _deb("baseHostCX::finish[%s]: flushing %d bytes in readbuf_ size %d", c_type(), processed_in_, readbuf()->size());
         readbuf()->flush(processed_in_);

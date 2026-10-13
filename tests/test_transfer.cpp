@@ -261,6 +261,14 @@ private:
     bool incremental_;
 };
 
+class StallingHostCX : public baseHostCX {
+public:
+    explicit StallingHostCX(baseCom* transport) : baseHostCX(transport, -1) {}
+
+protected:
+    std::size_t process_in() override { return 0; }
+};
+
 class ScopedIoBatch {
 public:
     explicit ScopedIoBatch(std::size_t value)
@@ -268,6 +276,20 @@ public:
     ~ScopedIoBatch() { baseHostCX::params_t::io_batch = previous_; }
 private:
     std::size_t previous_;
+};
+
+class ScopedBufferLimits {
+public:
+    ScopedBufferLimits(std::size_t initial, std::size_t multiplier)
+        : previous_initial_(baseHostCX::params_t::buffsize.exchange(initial)),
+          previous_multiplier_(baseHostCX::params_t::buffsize_maxmul.exchange(multiplier)) {}
+    ~ScopedBufferLimits() {
+        baseHostCX::params_t::buffsize = previous_initial_;
+        baseHostCX::params_t::buffsize_maxmul = previous_multiplier_;
+    }
+private:
+    std::size_t previous_initial_;
+    std::size_t previous_multiplier_;
 };
 
 class RawAcceptCountingProxy : public baseProxy {
@@ -1338,4 +1360,35 @@ TEST(ProxyLifecycle, FailedTcpReconnectIsNotRegisteredAsAVirtualDescriptor) {
     if(proxy.poller() != nullptr) {
         EXPECT_EQ(proxy.com()->poller.get_handler(-1), nullptr);
     }
+}
+TEST(TransferDrain, SaturatedUnconsumedBufferFailsWithoutInventingEof) {
+    ScopedBufferLimits limits(64, 1);
+    auto const payload = pattern(4096);
+    StallingHostCX connection(new ChunkedTCPCom(payload, 64));
+    connection.opening(false);
+
+    while(connection.readbuf()->size() < connection.readbuf()->capacity()) {
+        ASSERT_GT(connection.read(), 0);
+    }
+    EXPECT_FALSE(connection.error());
+    EXPECT_FALSE(connection.read_eof());
+
+    EXPECT_EQ(connection.read(), -1);
+    EXPECT_TRUE(connection.error());
+    EXPECT_FALSE(connection.read_eof());
+    EXPECT_EQ(connection.readbuf()->size(), connection.readbuf()->capacity());
+}
+
+TEST(TransferDrain, ZeroProcessedBytesRemainBufferedForTheNextDispatch) {
+    ScopedBufferLimits limits(64, 1);
+    auto const payload = pattern(64);
+    StallingHostCX connection(new ChunkedTCPCom(payload, 64));
+    connection.opening(false);
+
+    ASSERT_EQ(connection.read(), 64);
+    ASSERT_EQ(connection.readbuf()->size(), 64U);
+    EXPECT_EQ(connection.finish(), 0U);
+    EXPECT_EQ(connection.readbuf()->size(), 64U);
+    EXPECT_TRUE(std::equal(payload.begin(), payload.end(),
+                           connection.readbuf()->data()));
 }
