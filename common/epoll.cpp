@@ -317,7 +317,20 @@ bool epoll::del(int socket) {
     ev.data.fd = socket;
     
     _deb("epoll:del:%x: epoll_ctl(%d): called to delete socket %d ",this, fd, socket);
-    
+
+    // epoll_ctl(DEL) cannot retract events already copied into this poller's
+    // userspace result sets. Clear them before the descriptor can be reused.
+    in_set.erase(socket);
+    out_set.erase(socket);
+    err_set.erase(socket);
+    hup_set.erase(socket);
+    idle_set.erase(socket);
+    enforce_in_set.erase(socket);
+    rescan_set_in.erase(socket);
+    rescan_set_out.erase(socket);
+    clear_idle_watch(socket);
+    if(hint_socket() == socket) hint_fd_ = 0;
+
     if (::epoll_ctl(fd, EPOLL_CTL_DEL, socket, &ev) == -1) {
 
         return false;
