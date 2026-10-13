@@ -2222,6 +2222,25 @@ TEST(TLS_Tests, RevocationCallbacksHandleMissingCertificateState) {
     EXPECT_EQ(SSLCom::certificate_status_oob_check(nullptr, 7), 7);
 }
 
+TEST(TLS_Tests, OptionalOcspQueryFailureRespectsSoftFailPolicy) {
+    SSLCom_Buddy connection;
+    connection.opt.ocsp.enforce_in_verify = true;
+    connection.opt.cert.failed_check_replacement = false;
+    connection.verify_reset(static_cast<SSLCom::verify_status_t>(
+        SSLCom::verify_status_t::VRF_OK |
+        SSLCom::verify_status_t::VRF_DEFERRED));
+
+    // Missing target certificate state makes the explicit OCSP lookup return
+    // UNKNOWN. Optional OCSP must preserve the successful certificate verdict
+    // instead of converting an unavailable responder into a hard failure.
+    EXPECT_EQ(SSLCom::certificate_status_oob_check(&connection, 1), 1);
+    EXPECT_TRUE(connection.verify_bitcheck(SSLCom::verify_status_t::VRF_OK));
+    EXPECT_FALSE(connection.verify_bitcheck(
+        SSLCom::verify_status_t::VRF_ALLFAILED));
+    EXPECT_FALSE(connection.verify_bitcheck(
+        SSLCom::verify_status_t::VRF_DEFERRED));
+}
+
 TEST(TLS_Tests, StaplingParserClassifiesMalformedAndIncompleteResponses) {
     std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)> context(
         SSL_CTX_new(TLS_method()), SSL_CTX_free);
