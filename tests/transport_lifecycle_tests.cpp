@@ -811,6 +811,74 @@ TEST(EpollLifecycle, SameWaitReadActivityRetractsPublishedIdleTimeout) {
     EXPECT_FALSE(poller.idle_set.find(descriptor));
 }
 
+TEST(EpollLifecycle, DeleteRetractsAlreadyCollectedEvents) {
+    int pair[2] {-1, -1};
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK, 0, pair), 0);
+
+    epoll poller;
+    ASSERT_GE(poller.init(), 0);
+    ASSERT_TRUE(poller.add(pair[0], EPOLLIN | EPOLLOUT));
+
+    poller.events[0].data.fd = pair[0];
+    poller.events[0].events = EPOLLIN | EPOLLOUT | EPOLLERR | EPOLLHUP;
+    ASSERT_EQ(poller.process_epoll_events(1), 1);
+    ASSERT_TRUE(poller.in_set.find(pair[0]));
+    ASSERT_TRUE(poller.out_set.find(pair[0]));
+    ASSERT_TRUE(poller.err_set.find(pair[0]));
+    ASSERT_TRUE(poller.hup_set.find(pair[0]));
+
+    ASSERT_TRUE(poller.del(pair[0]));
+    EXPECT_FALSE(poller.in_set.find(pair[0]));
+    EXPECT_FALSE(poller.out_set.find(pair[0]));
+    EXPECT_FALSE(poller.err_set.find(pair[0]));
+    EXPECT_FALSE(poller.hup_set.find(pair[0]));
+
+    ::close(pair[0]);
+    ::close(pair[1]);
+}
+
+TEST(EpollLifecycle, DeleteRetractsEveryDeferredSyntheticEvent) {
+    int pair[2] {-1, -1};
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK, 0, pair), 0);
+
+    epoll poller;
+    ASSERT_GE(poller.init(), 0);
+    ASSERT_TRUE(poller.add(pair[0], EPOLLIN));
+    ASSERT_TRUE(poller.enforce_in(pair[0]));
+    poller.rescan_set_in.insert(pair[0]);
+    poller.rescan_set_out.insert(pair[0]);
+    poller.idle_watched_pre.insert(pair[0]);
+    poller.idle_watched.insert(pair[0]);
+    poller.idle_set.insert(pair[0]);
+
+    ASSERT_TRUE(poller.del(pair[0]));
+    EXPECT_FALSE(poller.enforce_in_set.find(pair[0]));
+    EXPECT_FALSE(poller.rescan_set_in.find(pair[0]));
+    EXPECT_FALSE(poller.rescan_set_out.find(pair[0]));
+    EXPECT_FALSE(poller.idle_watched_pre.find(pair[0]));
+    EXPECT_FALSE(poller.idle_watched.find(pair[0]));
+    EXPECT_FALSE(poller.idle_set.find(pair[0]));
+
+    ASSERT_EQ(poller.wait(0), 0);
+    EXPECT_FALSE(poller.in_set.find(pair[0]))
+        << "a removed descriptor must not be synthetically reactivated";
+
+    ::close(pair[0]);
+    ::close(pair[1]);
+}
+
+TEST(EpollLifecycle, ActivityRetractsBothIdleWatchGenerations) {
+    epoll poller;
+    poller.idle_watched_pre.insert(41);
+    poller.idle_watched.insert(41);
+    poller.idle_set.insert(41);
+
+    EXPECT_EQ(poller.clear_idle_watch(41), 3U);
+    EXPECT_FALSE(poller.idle_watched_pre.find(41));
+    EXPECT_FALSE(poller.idle_watched.find(41));
+    EXPECT_FALSE(poller.idle_set.find(41));
+}
+
 TEST(EpollLifecycle, DescriptorZeroIsValidAndClosed) {
     int saved_stdin = ::fcntl(STDIN_FILENO, F_DUPFD_CLOEXEC, 1);
     ASSERT_GE(saved_stdin, 0);
