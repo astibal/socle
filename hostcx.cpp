@@ -38,10 +38,7 @@ namespace std
 }
 
 bool operator==(const Host& h, const Host& hh) {
-    std::string s = h.chost() + ":" + h.cport();
-    std::string ss = hh.chost() + ":" + hh.cport();
-
-    return s == ss;
+    return h.chost() == hh.chost() && h.cport() == hh.cport();
 }
 
 

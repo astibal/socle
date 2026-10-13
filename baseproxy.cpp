@@ -307,40 +307,39 @@ int baseProxy::prepare_sockets(baseCom* fdset_owner) {
 
 bool baseProxy::handle_cx_events(unsigned char side, baseHostCX* cx) {
 
+    auto handle_terminal = [&]() {
+        // A permanent callback reconnects synchronously. Retire the failed
+        // descriptor first so the generic terminal path cannot immediately
+        // shut down the replacement socket.
+        if(side == 'x' || side == 'y') {
+            cx->shutdown();
+            if(side == 'x') on_left_pc_error(cx);
+            else            on_right_pc_error(cx);
+        } else {
+            if(side == 'l') on_left_error(cx);
+            else            on_right_error(cx);
+            cx->shutdown();
+        }
+    };
+
     // treat non-blocking still opening sockets
         if( cx->opening_timeout() ) {
             _dia("baseProxy::handle_cx_events[%d]: opening timeout!", cx->socket());
-            
-            if     (side == 'l')  { on_left_error(cx);  }
-            else if(side == 'r')  { on_right_error(cx); }
-            else if(side == 'x')  { on_left_pc_error(cx); }
-            else if(side == 'y')  { on_right_pc_error(cx); }
-
-            cx->shutdown();
+            handle_terminal();
             return false;
         }
 
         if( cx->idle_timeout() ) {
             _dia("baseProxy::handle_cx_events[%d]: idle timeout!", cx->socket());
 
-            if     (side == 'l')  { on_left_error(cx);  }
-            else if(side == 'r')  { on_right_error(cx); }
-            else if(side == 'x')  { on_left_pc_error(cx); }
-            else if(side == 'y')  { on_right_pc_error(cx); }
-
-            cx->shutdown();
+            handle_terminal();
             return false;
         }
 
         if( cx->error() ) {
             _dia("baseProxy::handle_cx_events[%d]: error!", cx->socket());
 
-            if     (side == 'l')  { on_left_error(cx);  }
-            else if(side == 'r')  { on_right_error(cx); }
-            else if(side == 'x')  { on_left_pc_error(cx); }
-            else if(side == 'y')  { on_right_pc_error(cx); }
-
-            cx->shutdown();
+            handle_terminal();
             return false;
         }
         
@@ -383,17 +382,17 @@ bool baseProxy::handle_cx_read(unsigned char side, baseHostCX* cx,
             }
 
 
-            if     (side == 'l') { on_left_error(cx); }
-            else if(side == 'r') { on_right_error(cx); }
-            else if(side == 'x')  { on_left_pc_error(cx); }
-            else if(side == 'y')  { on_right_pc_error(cx); }
-
             // Permanent/reconnecting contexts use EOF as a reconnect signal,
             // not an end-to-end stream half-close.
             if(side == 'x' || side == 'y') {
                 cx->shutdown();
+                if(side == 'x') on_left_pc_error(cx);
+                else            on_right_pc_error(cx);
                 return false;
             }
+
+            if(side == 'l') on_left_error(cx);
+            else            on_right_error(cx);
 
             // A read EOF is a half-close, not permission to destroy the write
             // half of the same full-duplex stream. Stop read readiness while
@@ -671,7 +670,13 @@ bool baseProxy::handle_cx_write_once(unsigned char side, baseCom* xcom, baseHost
         auto  orig_bytes_sz = cx->writebuf()->size();
         auto  pending_bytes_sz = orig_bytes_sz;
 
-        if(!handle_cx_write(side, cx) || cx->error()) {
+        // The write handler already owns classification of a fatal write.
+        // Feeding the same failure through the generic path invokes a
+        // permanent reconnect callback twice.
+        if(!handle_cx_write(side, cx)) {
+            return false;
+        }
+        if(cx->error()) {
             handle_cx_events(side,cx);
             return false;
         }
@@ -859,13 +864,9 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
                     handle_last_status |= HANDLE_LEFT_PC_ERROR;
 
                     state().error_on_left_read = true;
-                    on_left_pc_error(i);
                     break;
-                } else {
-                    bool opening_status = i->opening();
-                    if (opening_status) {
-                        on_left_pc_restore(i);
-                    }
+                } else if(i->opening()) {
+                    on_left_pc_restore(i);
                 }
 
                //WRITES
@@ -882,13 +883,9 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
                     handle_last_status |= HANDLE_LEFT_PC_ERROR;
 
                     state().error_on_left_write = true;
-                    on_left_pc_error(i);
                     break;
-                } else {
-
-                    if (i->opening()) {
-                        on_left_pc_restore(i);
-                    }
+                } else if (i->opening()) {
+                    on_left_pc_restore(i);
                 }
             }
         }
@@ -910,12 +907,9 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
                     handle_last_status |= HANDLE_RIGHT_PC_ERROR;
 
                     state().error_on_right_read = true;
-                    on_right_pc_error(i);
                     break;
-                } else {
-                    if (i->opening()) {
-                        on_right_pc_restore(i);
-                    }
+                } else if(i->opening()) {
+                    on_right_pc_restore(i);
                 }
 
 
@@ -933,13 +927,9 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
                     handle_last_status |= HANDLE_RIGHT_PC_ERROR;
 
                     state().error_on_right_write = true;
-                    on_right_pc_error(i);
                     break;
-                } else {
-
-                    if (i->opening()) {
-                        on_right_pc_restore(i);
-                    }
+                } else if (i->opening()) {
+                    on_right_pc_restore(i);
                 }
             }
         }
@@ -1076,8 +1066,19 @@ void baseProxy::on_left_pc_error(baseHostCX* cx) {
 	if (cx->opening()) {
 		_err("Left permanent socket connection timeout %s:", cx->c_type());
 	}
-	else if ( cx->reconnect()) {
+
+	if ( cx->reconnect()) {
 		_inf("reconnecting");
+		cx->parent_proxy(this, 'L');
+		if(!cx->com()->descriptor_valid(cx->socket())) {
+			cx->error(true);
+			_war("left permanent reconnect did not produce a valid descriptor");
+			return;
+		}
+		int s = cx->com()->translate_socket(cx->socket());
+		com()->set_poll_handler(s, this);
+		com()->set_monitor(s);
+		com()->set_write_monitor(s);
 	} 
 	else {
 		_dum("reconnection postponed");
@@ -1094,6 +1095,16 @@ void baseProxy::on_right_pc_error(baseHostCX* cx) {
 	
 	if ( cx->reconnect()) {
 		_dia("Reconnecting %s", cx->c_type());
+		cx->parent_proxy(this, 'R');
+		if(!cx->com()->descriptor_valid(cx->socket())) {
+			cx->error(true);
+			_war("right permanent reconnect did not produce a valid descriptor");
+			return;
+		}
+		int s = cx->com()->translate_socket(cx->socket());
+		com()->set_poll_handler(s, this);
+		com()->set_monitor(s);
+		com()->set_write_monitor(s);
 	} 
 	else {
 		_dum("reconnection postponed");
