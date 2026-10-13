@@ -199,6 +199,23 @@ private:
     int accepted_fd_;
 };
 
+class CountingAcceptTCPCom : public TCPCom {
+public:
+    baseCom* replicate() override { return new CountingAcceptTCPCom(); }
+    int accept(int, sockaddr*, socklen_t*) override {
+        ++accept_calls;
+        if(successful_accepts < available_accepts) {
+            return 301 + static_cast<int>(successful_accepts++);
+        }
+        errno = EAGAIN;
+        return -1;
+    }
+
+    static constexpr std::size_t available_accepts = 300;
+    std::size_t accept_calls = 0;
+    std::size_t successful_accepts = 0;
+};
+
 class ReconnectingTCPCom : public LifecycleTCPCom {
 public:
     explicit ReconnectingTCPCom(LifecycleState* state)
@@ -1082,6 +1099,26 @@ TEST(ProxyLifecycle, ExceptionDuringAcceptedContextHandoffClosesExactlyOnce) {
 
     // LifecycleTCPCom records close operations without calling the syscall.
     ::close(accepted_fd);
+}
+
+TEST(ProxyLifecycle, MissingListenerLockDoesNotDrainASecondBatchBeforeFailing) {
+    LifecycleState listener_state;
+    auto* transport = new CountingAcceptTCPCom();
+    RawAcceptCountingProxy proxy(transport);
+    auto* listener = new baseHostCX(new LifecycleTCPCom(&listener_state), 424242);
+
+    ASSERT_EQ(locks::fd().lock(listener->socket()), nullptr);
+    proxy.lbs().push_back(listener);
+    proxy.com()->set_monitor(listener->socket());
+    proxy.com()->poll_result = 1;
+    ASSERT_NE(proxy.poller(), nullptr);
+    proxy.poller()->in_set.insert(listener->socket());
+
+    EXPECT_THROW(proxy.handle_sockets_once(proxy.com()), std::runtime_error);
+
+    EXPECT_EQ(transport->successful_accepts, 256U);
+    EXPECT_EQ(transport->accept_calls, 256U);
+    EXPECT_EQ(proxy.left_callbacks, 256U);
 }
 
 TEST(ProxyLifecycle, RegistersOwnsAndShutsDownEveryContextClass) {
