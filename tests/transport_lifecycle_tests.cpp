@@ -222,6 +222,20 @@ TEST(FdQueueLifecycle, EmptyFeedbackCannotSuppressAnotherQueuesWorkers) {
     EXPECT_EQ(*queued, 904);
 }
 
+TEST(FdQueueLifecycle, ShutdownClosesQueuedAcceptedDescriptors) {
+    int descriptors[2] {-1, -1};
+    ASSERT_EQ(::socketpair(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK, 0,
+                           descriptors), 0);
+    FdQueue queue;
+    ASSERT_GE(queue.new_pair(0).first, 0);
+    ASSERT_EQ(queue.push_all(descriptors[0]), 1U);
+    EXPECT_GT(queue.close_all(), 0);
+    errno = 0;
+    EXPECT_EQ(::fcntl(descriptors[0], F_GETFD), -1);
+    EXPECT_EQ(errno, EBADF);
+    ::close(descriptors[1]);
+}
+
 TEST(EpollLifecycle, PeerHalfCloseIsReadableButNotSocketError) {
     int pair[2] {-1, -1};
     ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK, 0, pair), 0);
