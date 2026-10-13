@@ -68,6 +68,7 @@ FdQueue::~FdQueue() {
 int FdQueue::close_all() {
 
     int s = 0;
+    auto lc_ = std::scoped_lock(sq_lock_);
     std::for_each(hint_pairs_.begin(), hint_pairs_.end(), [&](auto const& pair) {
 
         auto const& worker_pipe = pair.second;
@@ -79,6 +80,12 @@ int FdQueue::close_all() {
     });
 
     hint_pairs_.clear();
+
+    while(!sq_.empty()) {
+        auto const descriptor = sq_.back();
+        sq_.pop_back();
+        if(descriptor > 0) ::close(descriptor);
+    }
 
     return s;
 }
