@@ -431,7 +431,7 @@ public:
 	inline lockbuffer const* readbuf() const { return &readbuf_; }
 
 	inline lockbuffer* writebuf() { return &writebuf_; }
-    inline lockbuffer const* writebuf() const { return &readbuf_; }
+	inline lockbuffer const* writebuf() const { return &writebuf_; }
 	
 	inline void send(buffer& b) { writebuf_.append(b); }
 	inline std::size_t peek(buffer& b) const

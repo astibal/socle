@@ -212,6 +212,27 @@ private:
     int next_fd_ = 101;
 };
 
+class ReadyEofReconnectTCPCom : public ReconnectingTCPCom {
+public:
+    explicit ReadyEofReconnectTCPCom(LifecycleState* state)
+        : ReconnectingTCPCom(state) {}
+
+    bool readable(int) override { return true; }
+    ssize_t read(int, void*, size_t, int) override { return 0; }
+};
+
+class FailingReconnectTCPCom : public LifecycleTCPCom {
+public:
+    explicit FailingReconnectTCPCom(LifecycleState* state)
+        : LifecycleTCPCom(state) {}
+
+    int connect(const char*, const char*) override {
+        return connect_calls++ == 0 ? 101 : -1;
+    }
+
+    std::size_t connect_calls = 0;
+};
+
 class ConnectResultTCPCom : public LifecycleTCPCom {
 public:
     ConnectResultTCPCom(LifecycleState* state, int result)
@@ -283,6 +304,14 @@ public:
     void restore_right(baseHostCX* cx) { baseProxy::on_right_pc_restore(cx); }
     void adopt_left(std::unique_ptr<baseHostCX> cx) { baseProxy::on_left_new(std::move(cx)); }
     void adopt_right(std::unique_ptr<baseHostCX> cx) { baseProxy::on_right_new(std::move(cx)); }
+};
+
+class PermanentReconnectProxy : public baseProxy {
+public:
+    explicit PermanentReconnectProxy(baseCom* transport) : baseProxy(transport) {}
+
+    void retry_left(baseHostCX* cx) { baseProxy::on_left_pc_error(cx); }
+    void retry_right(baseHostCX* cx) { baseProxy::on_right_pc_error(cx); }
 };
 
 class ConnectFactoryProxy : public RecordingProxy {
@@ -1185,3 +1214,128 @@ TEST(TransferLifecycle, HostFormattingRawWritesAndReconnectGuardsCoverDetachedSt
 }
 
 } // namespace
+TEST(TransferLifecycle, ConstWriteBufferAccessorReturnsTheOutputQueue) {
+    LifecycleState state;
+    baseHostCX connection(new LifecycleTCPCom(&state), -1);
+    connection.readbuf()->assign("input");
+    connection.writebuf()->assign("output");
+
+    baseHostCX const& view = connection;
+    ASSERT_NE(view.readbuf(), view.writebuf());
+    EXPECT_EQ(std::string(reinterpret_cast<char const*>(view.readbuf()->data()),
+                          view.readbuf()->size()), "input");
+    EXPECT_EQ(std::string(reinterpret_cast<char const*>(view.writebuf()->data()),
+                          view.writebuf()->size()), "output");
+}
+
+TEST(TransferLifecycle, HostIdentityDoesNotCollapseAcrossFieldBoundary) {
+    Host first("alpha:beta", "443");
+    Host second("alpha", "beta:443");
+
+    EXPECT_FALSE(first == second);
+    EXPECT_NE(std::hash<Host>{}(first), std::hash<Host>{}(second));
+}
+TEST(ProxyLifecycle, OpeningPermanentTimeoutReconnectsBothDirections) {
+    LifecycleState master_state;
+    LifecycleState left_state;
+    LifecycleState right_state;
+    PermanentReconnectProxy proxy(new LifecycleTCPCom(&master_state));
+    baseHostCX left(new ReconnectingTCPCom(&left_state), "127.0.0.1", "1");
+    baseHostCX right(new ReconnectingTCPCom(&right_state), "127.0.0.1", "1");
+
+    ASSERT_EQ(left.connect(), 101);
+    ASSERT_EQ(right.connect(), 101);
+    left.permanent(true);
+    right.permanent(true);
+    left.error(true);
+    right.error(true);
+    left.opening(true);
+    right.opening(true);
+    left.parent_proxy(&proxy, 'L');
+    right.parent_proxy(&proxy, 'R');
+
+    proxy.retry_left(&left);
+    proxy.retry_right(&right);
+
+    EXPECT_EQ(left.socket(), 102);
+    EXPECT_EQ(right.socket(), 102);
+    EXPECT_EQ(left_state.shutdown_calls, 1U);
+    EXPECT_EQ(right_state.shutdown_calls, 1U);
+    EXPECT_EQ(left.parent_proxy(), &proxy);
+    EXPECT_EQ(right.parent_proxy(), &proxy);
+    EXPECT_EQ(left.parent_flag(), 'L');
+    EXPECT_EQ(right.parent_flag(), 'R');
+}
+
+TEST(ProxyLifecycle, PermanentTerminalEventsDoNotShutdownReplacementSocket) {
+    LifecycleState master_state;
+    LifecycleState eof_state;
+    LifecycleState error_state;
+    PermanentReconnectProxy proxy(new LifecycleTCPCom(&master_state));
+    baseHostCX eof_connection(new ReadyEofReconnectTCPCom(&eof_state),
+                              "127.0.0.1", "1");
+    baseHostCX error_connection(new ReconnectingTCPCom(&error_state),
+                                "127.0.0.1", "1");
+
+    ASSERT_EQ(eof_connection.connect(), 101);
+    eof_connection.permanent(true);
+    eof_connection.opening(false);
+    EXPECT_FALSE(proxy.handle_cx_read('x', &eof_connection));
+    EXPECT_EQ(eof_connection.socket(), 102);
+    EXPECT_EQ(eof_state.shutdown_calls, 1U);
+
+    ASSERT_EQ(error_connection.connect(), 101);
+    error_connection.permanent(true);
+    error_connection.opening(false);
+    error_connection.error(true);
+    EXPECT_FALSE(proxy.handle_cx_events('y', &error_connection));
+    EXPECT_EQ(error_connection.socket(), 102);
+    EXPECT_EQ(error_state.shutdown_calls, 1U);
+}
+
+TEST(ProxyLifecycle, PermanentDispatchReportsEachTerminalEventExactlyOnce) {
+    LifecycleState master_state;
+    LifecycleState left_state;
+    LifecycleState right_state;
+    RecordingProxy proxy(new LifecycleTCPCom(&master_state));
+    auto* left = new baseHostCX(
+        new LifecycleTCPCom(&left_state, {}, true), 201);
+    auto* right = new baseHostCX(
+        new LifecycleTCPCom(&right_state, {}, false, 16 * 1024, 0), 202);
+    left->opening(false);
+    right->opening(false);
+    right->writebuf()->append("x", 1);
+    proxy.lpcadd(left);
+    proxy.rpcadd(right);
+
+    proxy.com()->poll_result = 2;
+    proxy.poller()->in_set.insert(left->socket());
+    proxy.poller()->out_set.insert(right->socket());
+    proxy.handle_sockets_once(proxy.com());
+
+    EXPECT_EQ(proxy.left_pc_errors, 1U);
+    EXPECT_EQ(proxy.right_pc_errors, 1U);
+    EXPECT_TRUE(proxy.state().error_on_left_read);
+    EXPECT_TRUE(proxy.state().error_on_right_write);
+    EXPECT_EQ(left_state.shutdown_calls, 1U);
+    EXPECT_EQ(right_state.shutdown_calls, 1U);
+}
+
+TEST(ProxyLifecycle, FailedTcpReconnectIsNotRegisteredAsAVirtualDescriptor) {
+    LifecycleState master_state;
+    LifecycleState connection_state;
+    PermanentReconnectProxy proxy(new LifecycleTCPCom(&master_state));
+    baseHostCX connection(new FailingReconnectTCPCom(&connection_state),
+                          "127.0.0.1", "1");
+
+    ASSERT_EQ(connection.connect(), 101);
+    connection.permanent(true);
+    connection.error(true);
+    proxy.retry_left(&connection);
+
+    EXPECT_EQ(connection.socket(), -1);
+    EXPECT_TRUE(connection.error());
+    if(proxy.poller() != nullptr) {
+        EXPECT_EQ(proxy.com()->poller.get_handler(-1), nullptr);
+    }
+}
