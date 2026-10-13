@@ -677,8 +677,30 @@ namespace inet {
                 err, req, host, path, port, use_ssl, timed, deadline);
         }
 
-        inet::cert::VerifyStatus ocsp_verify_response(OCSP_RESPONSE *resp, X509* cert, X509* issuer,
-                                                      X509_STORE* trust_store) {
+        bool ocsp_add_untrusted_certificates(STACK_OF(X509)* signers,
+                                             X509* cert, X509* issuer,
+                                             STACK_OF(X509)* verified_chain) {
+            if(!signers || !issuer || sk_X509_push(signers, issuer) != 1)
+                return false;
+
+            const int chain_size = verified_chain
+                ? sk_X509_num(verified_chain) : 0;
+            for(int i = 0; i < chain_size; ++i) {
+                X509* candidate = sk_X509_value(verified_chain, i);
+                if(!candidate || candidate == cert || candidate == issuer ||
+                   X509_cmp(candidate, cert) == 0 ||
+                   X509_cmp(candidate, issuer) == 0) {
+                    continue;
+                }
+                if(sk_X509_push(signers, candidate) <= 0)
+                    return false;
+            }
+            return true;
+        }
+
+        inet::cert::VerifyStatus ocsp_verify_response(
+                OCSP_RESPONSE *resp, X509* cert, X509* issuer,
+                X509_STORE* trust_store, STACK_OF(X509)* verified_chain) {
 
             using namespace inet::cert;
             openssl_error_scope error_scope;
@@ -715,7 +737,8 @@ namespace inet {
                 }
 
                 STACK_OF(X509*) signers = sk_X509_new_null();
-                if (!signers || sk_X509_push(signers, issuer) != 1) {
+                if (!ocsp_add_untrusted_certificates(
+                        signers, cert, issuer, verified_chain)) {
                     sk_X509_free(signers);
                     OCSP_BASICRESP_free(br);
                     if (owns_store)
@@ -898,7 +921,9 @@ namespace inet {
             return VerifyStatus(is_revoked, ttl, VerifyStatus::status_origin::OCSP);
         }
 
-        inet::cert::VerifyStatus ocsp_check_cert (X509 *x509, X509 *issuer, int req_timeout) {
+        inet::cert::VerifyStatus ocsp_check_cert(
+                X509 *x509, X509 *issuer, int req_timeout,
+                STACK_OF(X509)* verified_chain) {
 
             using namespace inet::cert;
             openssl_error_scope error_scope;
@@ -951,7 +976,9 @@ namespace inet {
 
                             //parse response
                             if (resp && responder_status == OCSP_RESPONSE_STATUS_SUCCESSFUL) {
-                                ret = ocsp_verify_response(resp, x509, issuer);
+                                ret = ocsp_verify_response(
+                                    resp, x509, issuer, nullptr,
+                                    verified_chain);
                             }
                             OCSP_RESPONSE_free(resp);
                         }

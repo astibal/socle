@@ -163,7 +163,8 @@ std::unique_ptr<EVP_PKEY, decltype(&EVP_PKEY_free)> make_rsa_key() {
 
 std::unique_ptr<X509, decltype(&X509_free)> make_certificate(
     EVP_PKEY* key, long serial, const char* common_name,
-    X509* issuer = nullptr, EVP_PKEY* issuer_key = nullptr) {
+    X509* issuer = nullptr, EVP_PKEY* issuer_key = nullptr,
+    bool certificate_authority = false) {
     std::unique_ptr<X509, decltype(&X509_free)> certificate(X509_new(), X509_free);
     if (!certificate || X509_set_version(certificate.get(), 2) != 1 ||
         ASN1_INTEGER_set(X509_get_serialNumber(certificate.get()), serial) != 1 ||
@@ -180,7 +181,7 @@ std::unique_ptr<X509, decltype(&X509_free)> make_certificate(
                                                       : subject) != 1)
         return {nullptr, X509_free};
 
-    if (!issuer) {
+    if (!issuer || certificate_authority) {
         X509_EXTENSION* extension = X509V3_EXT_conf_nid(
             nullptr, nullptr, NID_basic_constraints,
             const_cast<char*>("critical,CA:TRUE"));
@@ -683,6 +684,49 @@ TEST(TLS_Tests, SignedOcspResponsesDistinguishGoodRevokedAndInvalidEvidence) {
     EXPECT_EQ(inet::ocsp::ocsp_verify_response(
                   retry_later.get(), leaf.get(), issuer.get(), store.get()).revoked,
               -1);
+}
+
+TEST(TLS_Tests, OcspVerificationUsesTheCompleteVerifiedIssuerChain) {
+    auto root_key = make_rsa_key();
+    auto upper_key = make_rsa_key();
+    auto issuer_key = make_rsa_key();
+    auto leaf_key = make_rsa_key();
+    auto root = make_certificate(root_key.get(), 24, "OCSP chain root");
+    auto upper = make_certificate(
+        upper_key.get(), 25, "OCSP chain upper", root.get(), root_key.get(), true);
+    auto issuer = make_certificate(
+        issuer_key.get(), 26, "OCSP chain issuer", upper.get(), upper_key.get(), true);
+    auto leaf = make_certificate(
+        leaf_key.get(), 27, "OCSP chain leaf", issuer.get(), issuer_key.get());
+    ASSERT_NE(root, nullptr);
+    ASSERT_NE(upper, nullptr);
+    ASSERT_NE(issuer, nullptr);
+    ASSERT_NE(leaf, nullptr);
+
+    std::unique_ptr<X509_STORE, decltype(&X509_STORE_free)> store(
+        X509_STORE_new(), X509_STORE_free);
+    ASSERT_NE(store, nullptr);
+    ASSERT_EQ(X509_STORE_add_cert(store.get(), root.get()), 1);
+    auto response = make_ocsp_response(
+        leaf.get(), issuer.get(), issuer_key.get(), V_OCSP_CERTSTATUS_GOOD);
+    ASSERT_NE(response, nullptr);
+
+    EXPECT_EQ(inet::ocsp::ocsp_verify_response(
+                  response.get(), leaf.get(), issuer.get(), store.get()).revoked,
+              -1);
+
+    STACK_OF(X509)* verified_chain = sk_X509_new_null();
+    ASSERT_NE(verified_chain, nullptr);
+    auto free_chain = raw::guard([&] { sk_X509_free(verified_chain); });
+    ASSERT_GT(sk_X509_push(verified_chain, leaf.get()), 0);
+    ASSERT_GT(sk_X509_push(verified_chain, issuer.get()), 0);
+    ASSERT_GT(sk_X509_push(verified_chain, upper.get()), 0);
+    ASSERT_GT(sk_X509_push(verified_chain, root.get()), 0);
+
+    EXPECT_EQ(inet::ocsp::ocsp_verify_response(
+                  response.get(), leaf.get(), issuer.get(), store.get(),
+                  verified_chain).revoked,
+              0);
 }
 
 TEST(TLS_Tests, OcspVerificationDefaultsToConfiguredCentralTrustStore) {
