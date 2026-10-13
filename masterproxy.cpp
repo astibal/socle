@@ -94,9 +94,11 @@ void MasterProxy::defer_proxy_ul(proxy_entry&& entry) {
 
 MasterProxy::pressure_level MasterProxy::get_pressure_level() const {
     auto lock = std::scoped_lock(deferred_lock_);
-    return deferred().size() >= deferred_pressure_threshold
-        ? pressure_level::elevated
-        : pressure_level::nominal;
+    auto const size = deferred().size();
+    if(size >= deferred_emergency_threshold) return pressure_level::emergency;
+    if(size >= deferred_critical_threshold) return pressure_level::critical;
+    if(size >= deferred_pressure_threshold) return pressure_level::elevated;
+    return pressure_level::nominal;
 }
 
 void MasterProxy::reap_deferred(std::size_t count_budget,
