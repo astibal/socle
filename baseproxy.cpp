@@ -53,8 +53,8 @@ void baseProxy::ladd(baseHostCX* cs) {
     cs->unblock();
     
     int s = cs->socket();
-    com()->set_monitor(s);
     com()->set_poll_handler(s,this);
+    com()->set_monitor(s);
     left_sockets.push_back(cs);
     cs->parent_proxy(this, 'L');
     _dia("baseProxy::ladd: added socket: %s", cs->c_type());
@@ -66,8 +66,8 @@ void baseProxy::radd(baseHostCX* cs) {
     
     //int s = cs->com()->translate_socket(cs->socket());
     int s = cs->socket();
-    com()->set_monitor(s);
     com()->set_poll_handler(s,this);
+    com()->set_monitor(s);
     right_sockets.push_back(cs);
     cs->parent_proxy(this, 'R');
     _dia("baseProxy::radd: added socket: %s", cs->c_type());
@@ -101,9 +101,10 @@ void baseProxy::rbadd(baseHostCX* cs) {
 void baseProxy::lpcadd(baseHostCX* cx) {
     cx->permanent(true);
     int s = cx->com()->translate_socket(cx->socket());
-    
-    com()->set_monitor(s);
+
     com()->set_poll_handler(s,this);
+    com()->set_monitor(s);
+    if (cx->opening()) com()->set_write_monitor(s);
     left_pc_cx.push_back(cx);
     cx->parent_proxy(this, 'L');
     _dia("baseProxy::lpcadd: added perma socket: %s", cx->c_type());
@@ -113,9 +114,10 @@ void baseProxy::lpcadd(baseHostCX* cx) {
 void baseProxy::rpcadd(baseHostCX* cx) {
     cx->permanent(true);
     int s = cx->com()->translate_socket(cx->socket());
-    
-    com()->set_monitor(s);
+
     com()->set_poll_handler(s,this);
+    com()->set_monitor(s);
+    if (cx->opening()) com()->set_write_monitor(s);
     
     right_pc_cx.push_back(cx);
     cx->parent_proxy(this,'R');
@@ -865,8 +867,6 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
 
                     state().error_on_left_read = true;
                     break;
-                } else if(i->opening()) {
-                    on_left_pc_restore(i);
                 }
 
                //WRITES
@@ -879,12 +879,16 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
                     break;
                 }
 
+                bool const was_opening = i->opening();
+                if(was_opening && xcom->in_writeset(i->socket()) && i->is_connected()) {
+                    i->opening(false);
+                }
                 if (!handle_cx_write_once('x', xcom, i)) {
                     handle_last_status |= HANDLE_LEFT_PC_ERROR;
 
                     state().error_on_left_write = true;
                     break;
-                } else if (i->opening()) {
+                } else if (was_opening && !i->opening()) {
                     on_left_pc_restore(i);
                 }
             }
@@ -908,8 +912,6 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
 
                     state().error_on_right_read = true;
                     break;
-                } else if(i->opening()) {
-                    on_right_pc_restore(i);
                 }
 
 
@@ -923,12 +925,16 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
                     break;
                 }
 
+                bool const was_opening = i->opening();
+                if(was_opening && xcom->in_writeset(i->socket()) && i->is_connected()) {
+                    i->opening(false);
+                }
                 if (!handle_cx_write_once('y', xcom, i)) {
                     handle_last_status |= HANDLE_RIGHT_PC_ERROR;
 
                     state().error_on_right_write = true;
                     break;
-                } else if (i->opening()) {
+                } else if (was_opening && !i->opening()) {
                     on_right_pc_restore(i);
                 }
             }
