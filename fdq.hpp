@@ -90,6 +90,8 @@ private:
 
     mutable std::mutex sq_lock_;
     mp::deque<int> sq_;
+    // Feedback belongs to this queue, not every FdQueue in the process.
+    std::atomic_bool feedback_queue_empty_ = false;
 
     std::atomic_uint32_t worker_id_max_ = 0;
 
