@@ -12,6 +12,7 @@
 
 #include "hostcx.hpp"
 #include "baseproxy.hpp"
+#include "masterproxy.hpp"
 #include "tcpcom.hpp"
 #include "udpcom.hpp"
 
@@ -351,6 +352,18 @@ public:
 
     void retry_left(baseHostCX* cx) { baseProxy::on_left_pc_error(cx); }
     void retry_right(baseHostCX* cx) { baseProxy::on_right_pc_error(cx); }
+};
+
+class PressureProbeMasterProxy : public MasterProxy {
+public:
+    PressureProbeMasterProxy() : MasterProxy(new TCPCom()) {}
+
+    pressure_level pressure() const { return get_pressure_level(); }
+    void deferred_size(std::size_t size) {
+        deferred().clear();
+        while(deferred().size() < size)
+            deferred().push_back({nullptr, std::chrono::steady_clock::time_point{}});
+    }
 };
 
 class ConnectFactoryProxy : public RecordingProxy {
@@ -1029,6 +1042,36 @@ TEST(ProxyLifecycle, PollDispatchDeliversQueuedOutputAfterReadHalfClose) {
         << "delivered half-closed output must leave no readiness spin";
 
     ::close(sockets[1]);
+}
+
+TEST(ProxyLifecycle, DeferredReapPressureUsesEveryConfiguredTier) {
+    auto const old_elevated = MasterProxy::deferred_pressure_threshold;
+    auto const old_critical = MasterProxy::deferred_critical_threshold;
+    auto const old_emergency = MasterProxy::deferred_emergency_threshold;
+    struct threshold_restore {
+        std::size_t elevated;
+        std::size_t critical;
+        std::size_t emergency;
+        ~threshold_restore() {
+            MasterProxy::deferred_pressure_threshold = elevated;
+            MasterProxy::deferred_critical_threshold = critical;
+            MasterProxy::deferred_emergency_threshold = emergency;
+        }
+    } restore {old_elevated, old_critical, old_emergency};
+
+    MasterProxy::deferred_pressure_threshold = 2;
+    MasterProxy::deferred_critical_threshold = 4;
+    MasterProxy::deferred_emergency_threshold = 6;
+    PressureProbeMasterProxy proxy;
+
+    proxy.deferred_size(1);
+    EXPECT_EQ(proxy.pressure(), MasterProxy::pressure_level::nominal);
+    proxy.deferred_size(2);
+    EXPECT_EQ(proxy.pressure(), MasterProxy::pressure_level::elevated);
+    proxy.deferred_size(4);
+    EXPECT_EQ(proxy.pressure(), MasterProxy::pressure_level::critical);
+    proxy.deferred_size(6);
+    EXPECT_EQ(proxy.pressure(), MasterProxy::pressure_level::emergency);
 }
 
 TEST(TransferLifecycle, ReconnectResetsReadEofAndClosesRetiredDescriptor) {
