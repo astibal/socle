@@ -8,11 +8,14 @@
 #include <traflog/filewriter.hpp>
 #include <mpdisplay.hpp>
 #include <ancillary_address.hpp>
+#include <fdq.hpp>
 
 #include <array>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+
+long purge_socket(int socket);
 
 class TCPComStateTestProbe {
 public:
@@ -146,6 +149,49 @@ void set_ipv4(sockaddr_storage& storage, const char* address, uint16_t port) {
 }
 
 } // namespace
+
+TEST(FdQueueLifecycle, WorkerWakeupDescriptorsNeverUseReservedZero) {
+    int saved_stdin = ::fcntl(STDIN_FILENO, F_DUPFD_CLOEXEC, 1);
+    ASSERT_GE(saved_stdin, 0);
+    ASSERT_EQ(::close(STDIN_FILENO), 0);
+    struct stdin_guard {
+        int* saved;
+        ~stdin_guard() {
+            if(*saved >= 0) {
+                ::dup2(*saved, STDIN_FILENO);
+                ::close(*saved);
+            }
+        }
+    } restore {&saved_stdin};
+
+    {
+        FdQueue queue;
+        auto const descriptors = queue.new_pair(8);
+        EXPECT_GT(descriptors.first, 0);
+        EXPECT_GT(descriptors.second, 0);
+        errno = 0;
+        EXPECT_EQ(::fcntl(STDIN_FILENO, F_GETFD), -1);
+        EXPECT_EQ(errno, EBADF);
+    }
+}
+
+TEST(FdQueueLifecycle, WakeupDrainSupportsThePipeFallback) {
+    int descriptors[2] {-1, -1};
+    ASSERT_EQ(::pipe2(descriptors, O_NONBLOCK | O_CLOEXEC), 0);
+    constexpr char wakeups[] = "AAAA";
+    ASSERT_EQ(::write(descriptors[1], wakeups, sizeof(wakeups) - 1),
+              static_cast<ssize_t>(sizeof(wakeups) - 1));
+
+    EXPECT_EQ(purge_socket(descriptors[0]),
+              static_cast<long>(sizeof(wakeups) - 1));
+    unsigned char byte = 0;
+    errno = 0;
+    EXPECT_EQ(::read(descriptors[0], &byte, 1), -1);
+    EXPECT_TRUE(errno == EAGAIN || errno == EWOULDBLOCK);
+
+    ::close(descriptors[0]);
+    ::close(descriptors[1]);
+}
 
 TEST(EpollLifecycle, PeerHalfCloseIsReadableButNotSocketError) {
     int pair[2] {-1, -1};
