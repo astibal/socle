@@ -15,11 +15,11 @@ std::pair<int, int> FdQueue::new_pair(uint32_t id) {
     auto l_ = std::scoped_lock(get_lock());
 
 #ifdef USE_SOCKETPAIR
-    if(0 == ::socketpair(AF_UNIX, SOCK_STREAM|SOCK_NONBLOCK, 0, hint_pair)) {
+    if(0 == ::socketpair(AF_UNIX, SOCK_STREAM|SOCK_NONBLOCK|SOCK_CLOEXEC, 0, hint_pair)) {
         _inf("acceptor: using socketpair");
         sq_type_ = sq_type_t::SQ_SOCKETPAIR;
     }
-    else if( 0 == pipe2(hint_pair, O_DIRECT | O_NONBLOCK)) {
+    else if( 0 == pipe2(hint_pair, O_DIRECT | O_NONBLOCK | O_CLOEXEC)) {
         _inf("acceptor: using pipe2");
         sq_type_ = sq_type_t::SQ_PIPE;
     }
@@ -38,7 +38,24 @@ std::pair<int, int> FdQueue::new_pair(uint32_t id) {
     }
 #endif
 
+    for(auto& descriptor: hint_pair) {
+        if(descriptor != 0) continue;
+        int promoted;
+        do {
+            promoted = ::fcntl(descriptor, F_DUPFD_CLOEXEC, 1);
+        } while(promoted < 0 && errno == EINTR);
+        const int saved_errno = errno;
+        ::close(descriptor);
+        descriptor = promoted;
+        errno = saved_errno;
+    }
+
     auto pa = std::make_pair(hint_pair[0], hint_pair[1]);
+    if(pa.first < 0 || pa.second < 0) {
+        if(pa.first >= 0) ::close(pa.first);
+        if(pa.second >= 0) ::close(pa.second);
+        return {-1, -1};
+    }
     hint_pairs_[id] = WorkerPipe(pa);
 
     return pa;
@@ -202,7 +219,11 @@ std::string FdQueue::stats_str(int indent) const {
 long purge_socket(int socket) {
     constexpr size_t max_sz = 10240;
     std::array<unsigned char, max_sz> dummy{};
-    return ::recv(socket, dummy.data(), max_sz, MSG_DONTWAIT);
+    long result;
+    do {
+        result = ::read(socket, dummy.data(), max_sz);
+    } while(result < 0 && errno == EINTR);
+    return result;
 }
 
 int FdQueue::pop(uint32_t worker_id) {
