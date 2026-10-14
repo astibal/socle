@@ -1104,7 +1104,14 @@ int baseSSLCom<L4Proto>::certificate_status_ocsp_check(baseSSLCom* com) {
             origin = verify_origin_t::OCSP_CACHE;
 
         } else {
-            res = inet::ocsp::ocsp_check_cert(com->sslcom_target_cert, com->sslcom_target_issuer);
+            STACK_OF(X509)* verified_chain = nullptr;
+#ifdef USE_OPENSSL11
+            if(com->sslcom_ssl)
+                verified_chain = SSL_get0_verified_chain(com->sslcom_ssl);
+#endif
+            res = inet::ocsp::ocsp_check_cert(
+                com->sslcom_target_cert, com->sslcom_target_issuer,
+                2, verified_chain);
             str_status = str_fresh;
             factory()->verify_cache().set(cn, SSLFactory::make_exp_ocsp_status(res.revoked, res.ttl));
             origin = verify_origin_t::OCSP;
@@ -1238,7 +1245,15 @@ int baseSSLCom<L4Proto>::certificate_status_ocsp_check(baseSSLCom* com) {
                             com->sslcom_target_cert,
                             com->sslcom_target_issuer,
                             crl_struct,
-                            com->factory()->ca_path().c_str());
+                            com->factory()->ca_path().c_str(),
+#ifdef USE_OPENSSL11
+                            com->sslcom_ssl
+                                ? SSL_get0_verified_chain(com->sslcom_ssl)
+                                : nullptr
+#else
+                            nullptr
+#endif
+                            );
                     _dia("CRL 0x%x trusted = %d", crl_struct, crl_trust);
 
                     if(crl_trust == 0) {
@@ -1375,6 +1390,7 @@ int baseSSLCom<L4Proto>::certificate_status_oob_check(baseSSLCom* com, int defau
 
 
     if(com != nullptr) {
+        auto const verification_before_ocsp = com->verify_get();
         com->verify_bitreset(verify_status_t::VRF_DEFERRED);
 
         if(com->opt.ocsp.enforce_in_verify) {
@@ -1402,6 +1418,18 @@ int baseSSLCom<L4Proto>::certificate_status_oob_check(baseSSLCom* com, int defau
                     log.event(ERR, "[%s]: certificate is revoked (OCSP query)", socle::com::ssl::connection_name(com, true).c_str());
                 } else {
                     // is_revoked < 0 - various errors
+                    if(default_action) {
+                        // Optional OCSP is soft-fail. Restore the certificate
+                        // verdict which existed before the unavailable query,
+                        // but retire the deferred marker which triggered it.
+                        com->verify_reset(static_cast<verify_status_t>(
+                            flag_reset<int>(verification_before_ocsp,
+                                            verify_status_t::VRF_DEFERRED)));
+                        ERR_clear_error();
+                        _war("OCSP status unavailable; preserving certificate verdict");
+                        return default_action;
+                    }
+
                     com->verify_bitreset(verify_status_t::VRF_OK);
                     com->verify_bitset(verify_status_t::VRF_ALLFAILED);
                 }
@@ -1470,6 +1498,7 @@ std::pair<typename baseSSLCom<L4Proto>::staple_code_t, int> baseSSLCom<L4Proto>:
     bool status_found = false;
 
     STACK_OF(X509*) signers = nullptr;
+    STACK_OF(X509)* verified_chain = nullptr;
     OCSP_RESPONSE *ocsp_response = nullptr;
     OCSP_BASICRESP *basic_response = nullptr;
     OCSP_CERTID *cert_id = nullptr;
@@ -1528,8 +1557,12 @@ std::pair<typename baseSSLCom<L4Proto>::staple_code_t, int> baseSSLCom<L4Proto>:
     }
 
     signers = sk_X509_new_null();
-    if (!signers || !com->sslcom_target_issuer ||
-        sk_X509_push(signers, com->sslcom_target_issuer) != 1) {
+#ifdef USE_OPENSSL11
+    verified_chain = SSL_get0_verified_chain(ssl);
+#endif
+    if (!inet::ocsp::ocsp_add_untrusted_certificates(
+            signers, com->sslcom_target_cert,
+            com->sslcom_target_issuer, verified_chain)) {
         com->opt.ocsp.enforce_in_verify = true;
         proc_status = staple_code_t::BASIC_VERIFY_FAILED;
         goto the_end;
