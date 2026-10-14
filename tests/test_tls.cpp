@@ -490,6 +490,54 @@ TEST(TLS_Tests, CrlVerificationUsesConfiguredCaBundleWhenPathIsEmpty) {
     EXPECT_EQ(ERR_peek_error(), 0UL);
 }
 
+TEST(TLS_Tests, CrlVerificationUsesCompleteVerifiedChain) {
+    auto root_key = make_rsa_key();
+    auto bridge_key = make_rsa_key();
+    auto issuer_key = make_rsa_key();
+    auto leaf_key = make_rsa_key();
+    auto root = make_certificate(root_key.get(), 51, "CRL chain root");
+    auto bridge = make_certificate(bridge_key.get(), 52, "CRL chain bridge",
+                                   root.get(), root_key.get(), true);
+    auto issuer = make_certificate(issuer_key.get(), 53, "CRL chain issuer",
+                                   bridge.get(), bridge_key.get(), true);
+    auto leaf = make_certificate(leaf_key.get(), 54, "CRL chain leaf",
+                                 issuer.get(), issuer_key.get());
+    auto crl = make_test_crl(issuer.get(), issuer_key.get(), leaf.get());
+    ASSERT_NE(root, nullptr);
+    ASSERT_NE(bridge, nullptr);
+    ASSERT_NE(issuer, nullptr);
+    ASSERT_NE(leaf, nullptr);
+    ASSERT_NE(crl, nullptr);
+
+    const std::filesystem::path ca_file = std::filesystem::temp_directory_path()
+        / ("smithproxy-crl-chain-root-" + std::to_string(::getpid()) + ".pem");
+    FILE* output = std::fopen(ca_file.c_str(), "w");
+    ASSERT_NE(output, nullptr);
+    ASSERT_EQ(PEM_write_X509(output, root.get()), 1);
+    std::fclose(output);
+    auto remove_ca = raw::guard([&] { std::filesystem::remove(ca_file); });
+
+    EXPECT_EQ(inet::crl::crl_verify_trust(
+                  leaf.get(), issuer.get(), crl.get(), ca_file.string()),
+              0);
+
+    STACK_OF(X509)* verified_chain = sk_X509_new_null();
+    ASSERT_NE(verified_chain, nullptr);
+    auto free_chain = raw::guard([&] { sk_X509_free(verified_chain); });
+    ASSERT_GT(sk_X509_push(verified_chain, leaf.get()), 0);
+    ASSERT_GT(sk_X509_push(verified_chain, issuer.get()), 0);
+    ASSERT_GT(sk_X509_push(verified_chain, bridge.get()), 0);
+    ASSERT_GT(sk_X509_push(verified_chain, root.get()), 0);
+
+    EXPECT_EQ(inet::crl::crl_verify_trust(
+                  leaf.get(), issuer.get(), crl.get(), ca_file.string(),
+                  verified_chain),
+              1);
+    EXPECT_EQ(inet::crl::crl_is_revoked_by(
+                  leaf.get(), issuer.get(), crl.get()),
+              1);
+}
+
 TEST(TLS_Tests, RevocationEndpointsAndOcspRequestUseCertificateExtensions) {
     auto issuer_key = make_rsa_key();
     auto leaf_key = make_rsa_key();
