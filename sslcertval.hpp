@@ -145,7 +145,9 @@ namespace inet {
         X509_CRL *crl_from_bytes (buffer &b);
         X509_CRL *crl_from_file(const char *crl_filename);
 
-        int crl_verify_trust (X509 *x509, X509 *issuer, X509_CRL *crl_file, const std::string &cacerts_pem_path);
+        int crl_verify_trust (X509 *x509, X509 *issuer, X509_CRL *crl_file,
+                              const std::string &cacerts_pem_path,
+                              STACK_OF(X509) *verified_chain = nullptr);
         int crl_is_revoked_by (X509 *x509, X509 *issuer, X509_CRL *crl_file);
     }
 }

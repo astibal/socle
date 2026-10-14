@@ -1245,7 +1245,15 @@ int baseSSLCom<L4Proto>::certificate_status_ocsp_check(baseSSLCom* com) {
                             com->sslcom_target_cert,
                             com->sslcom_target_issuer,
                             crl_struct,
-                            com->factory()->ca_path().c_str());
+                            com->factory()->ca_path().c_str(),
+#ifdef USE_OPENSSL11
+                            com->sslcom_ssl
+                                ? SSL_get0_verified_chain(com->sslcom_ssl)
+                                : nullptr
+#else
+                            nullptr
+#endif
+                            );
                     _dia("CRL 0x%x trusted = %d", crl_struct, crl_trust);
 
                     if(crl_trust == 0) {

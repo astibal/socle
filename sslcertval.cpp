@@ -176,7 +176,9 @@ namespace inet {
         }
 
 
-        int crl_verify_trust (X509 *x509, X509 *issuer, X509_CRL *crl_file, const std::string &cacerts_pem_path) {
+        int crl_verify_trust (X509 *x509, X509 *issuer, X509_CRL *crl_file,
+                              const std::string &cacerts_pem_path,
+                              STACK_OF(X509) *verified_chain) {
 
             auto const& log = CrlFactory::log();
             openssl_error_scope error_scope;
@@ -221,6 +223,28 @@ namespace inet {
             if (sk_X509_push(chain, issuer) != 1) {
                 sk_X509_free(chain);
                 return 0;
+            }
+            if(verified_chain) {
+                for(int i = 0; i < sk_X509_num(verified_chain); ++i) {
+                    X509* candidate = sk_X509_value(verified_chain, i);
+                    if(!candidate || candidate == x509 ||
+                       X509_cmp(candidate, x509) == 0 ||
+                       X509_check_issued(candidate, candidate) == X509_V_OK)
+                        continue;
+
+                    bool duplicate = false;
+                    for(int j = 0; j < sk_X509_num(chain); ++j) {
+                        X509* present = sk_X509_value(chain, j);
+                        if(present == candidate || X509_cmp(present, candidate) == 0) {
+                            duplicate = true;
+                            break;
+                        }
+                    }
+                    if(!duplicate && sk_X509_push(chain, candidate) <= 0) {
+                        sk_X509_free(chain);
+                        return 0;
+                    }
+                }
             }
 
             X509_STORE *store = X509_STORE_new();
