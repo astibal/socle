@@ -334,7 +334,7 @@ bool epoll::in_read_set(int check) {
 }
 
 bool epoll::in_write_set(int check) {
-    return out_set.find(check);
+    return true;
 }
 
 bool epoll::in_idle_set(int check) {
