@@ -431,10 +431,10 @@ int ThreadedReceiverProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
         throw proxy_error("PARENT is NULL");
     }
 
-    if (parent()->state().dead()) {
-        // set myself dead too!
-        this->state().dead(true);
-        return -1;
+    if (this->retiring() || parent()->state().dead()) {
+        // Existing UDP flows drain through MasterProxy; no new flow is claimed.
+        if (proxies().empty()) this->state().dead(true);
+        return MasterProxy::handle_sockets_once(com());
     }
 
     uint32_t virtual_socket = 0;
