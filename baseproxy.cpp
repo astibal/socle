@@ -501,6 +501,8 @@ bool baseProxy::handle_cx_read_once(unsigned char side, baseCom* xcom, baseHostC
 
     bool ret = true;
     bool dont_read = false;
+    const bool waiting_for_peer = cx->socket() != 0 &&
+                                  cx->read_waiting_for_peercom();
 
     _ext("%c: %d",side, cx->socket());
     if(cx->socket() == 0) {
@@ -522,7 +524,7 @@ bool baseProxy::handle_cx_read_once(unsigned char side, baseCom* xcom, baseHostC
 
 
     // waiting_for_peercom cx is subject to timeout only, no r/w is done on it ( it would return -1/0 anyway, so spare some cycles)
-    if( (!cx->read_waiting_for_peercom()) && (!dont_read) ) {
+    if((!waiting_for_peer) && (!dont_read)) {
         bool forced_read = cx->com()->forced_read_reset();
         bool in_read_set = xcom->in_readset(cx->socket());
 
@@ -550,8 +552,15 @@ bool baseProxy::handle_cx_read_once(unsigned char side, baseCom* xcom, baseHostC
             }
         }
     } else {
-        _dia("baseProxy::handle_cx_read_once[%c]: waiting_for_peercom read in cx with socket %d, in read_set: %s", side, cx->socket(),
-                                                                 xcom->in_readset(cx->socket()) ? "yes" : "no");
+        const bool ready = xcom->in_readset(cx->socket());
+        _dia("baseProxy::handle_cx_read_once[%c]: deferred read in cx with socket %d, in read_set: %s", side, cx->socket(),
+                                                                 ready ? "yes" : "no");
+
+        // A deferred level-triggered event (including EPOLLRDHUP) must leave
+        // the immediate poll set or it will spin until the read is resumed.
+        if(ready) {
+            cx->defer_read_readiness();
+        }
     }
 
     // on failure, skip all operations and go here
@@ -671,6 +680,10 @@ bool baseProxy::handle_cx_write_once(unsigned char side, baseCom* xcom, baseHost
     bool in_writeset = xcom->in_writeset(cx->socket());
     bool in_force_writeset = cx->com()->forced_write_reset();
 
+    if(cx->opening() && in_writeset && cx->is_connected()) {
+        cx->opening(false);
+    }
+
 
     if( in_writeset || in_force_writeset || ( ! cx->writebuf()->empty() ) ) {
 
@@ -737,6 +750,23 @@ bool baseProxy::handle_cx_write_once(unsigned char side, baseCom* xcom, baseHost
 
                 }
             }
+        }
+    }
+
+    // Completing independent output must not restore EPOLLIN while the read
+    // half is still paused. Otherwise a latched EPOLLRDHUP immediately starts
+    // the same level-triggered loop again after the write buffer drains.
+    bool const read_bottleneck =
+        ((side == 'l' || side == 'x') && state().write_right_bottleneck()) ||
+        ((side == 'r' || side == 'y') && state().write_left_bottleneck());
+    if(cx->read_waiting_for_peercom() || read_bottleneck) {
+        cx->defer_read_readiness();
+    } else if(cx->read_eof()) {
+        if(cx->opening() || !cx->writebuf()->empty() ||
+           cx->com()->write_event_pending()) {
+            cx->com()->set_write_monitor_only(cx->socket());
+        } else {
+            cx->com()->unset_monitor(cx->socket());
         }
     }
 

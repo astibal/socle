@@ -409,6 +409,14 @@ void baseHostCX::after_read(std::size_t buffer_written_len) {
 
 }
 
+void baseHostCX::defer_read_readiness() {
+    if(opening() || !writebuf()->empty() || com()->write_event_pending()) {
+        com()->rescan_write(socket());
+    } else {
+        com()->rescan_read(socket());
+    }
+}
+
 int baseHostCX::read() {
 
     if(io_disabled()) {
@@ -422,14 +430,7 @@ int baseHostCX::read() {
 
     if(peer() && peer()->writebuf()->size() > baseHostCX::params_t::write_full) {
         _deb("baseHostCX::read[%d]: deferring read operation",socket());
-        // rescan_read() temporarily removes the descriptor and restores it as
-        // EPOLLIN-only. Preserve an independent queued/protocol-level write
-        // (notably TLS WANT_WRITE) by using the IN|OUT rescan path instead.
-        if(opening() || !writebuf()->empty() || com()->write_event_pending()) {
-            com()->rescan_write(socket());
-        } else {
-            com()->rescan_read(socket());
-        }
+        defer_read_readiness();
         return -1;
     }
 

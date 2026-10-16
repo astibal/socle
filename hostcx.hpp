@@ -467,6 +467,7 @@ public:
 	}
 
 	int read();
+	void defer_read_readiness();
 	void grow_buffer();
 	ssize_t io_read(void* where, size_t len, int flags) const;
 	void after_read(std::size_t bytes);
