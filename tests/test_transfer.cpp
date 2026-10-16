@@ -36,6 +36,18 @@ public:
     bool write_event_pending() const override { return true; }
 };
 
+class OneShotWriteEventTCPCom : public TCPCom {
+public:
+    bool write_event_pending() const override { return pending_; }
+    ssize_t write(int fd, const void* source, size_t size, int flags) override {
+        pending_ = false;
+        return TCPCom::write(fd, source, size, flags);
+    }
+
+private:
+    bool pending_ = true;
+};
+
 class ChunkedTCPCom : public TCPCom {
 public:
     explicit ChunkedTCPCom(std::vector<std::uint8_t> input = {},
@@ -1061,6 +1073,140 @@ TEST(ProxyLifecycle, PollDispatchDeliversQueuedOutputAfterReadHalfClose) {
         << "delivered half-closed output must leave no readiness spin";
 
     ::close(sockets[1]);
+}
+
+TEST(ProxyLifecycle, PeerShutdownBreaksDeferredReadReadinessLoop) {
+    int sockets[2] {-1, -1};
+    ASSERT_EQ(::socketpair(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK, 0, sockets), 0);
+
+    LifecycleState master_state;
+    RecordingProxy proxy(new LifecycleTCPCom(&master_state));
+    auto* transport = new TCPCom();
+    transport->master(proxy.com());
+    auto* connection = new baseHostCX(transport, sockets[0]);
+    connection->opening(false);
+    connection->read_waiting_for_peercom(true);
+    proxy.ladd(connection);
+
+    ASSERT_EQ(::shutdown(sockets[1], SHUT_WR), 0);
+    ASSERT_NE(proxy.poller(), nullptr);
+    ASSERT_GT(proxy.poller()->wait(1000), 0);
+    proxy.run_poll();
+
+    EXPECT_EQ(proxy.poller()->wait(0), 0)
+        << "peer shutdown must not spin while TLS defers application reads";
+
+    ::close(sockets[1]);
+}
+
+TEST(ProxyLifecycle, HalfCloseCoversEveryDeferredPeerAndWriteState) {
+    enum class peer_wait_state {
+        disabled,
+        missing,
+        blocked,
+        ready,
+    };
+
+    constexpr std::array<unsigned char, 2> sides {'l', 'r'};
+    constexpr std::array<peer_wait_state, 4> peer_states {
+        peer_wait_state::disabled,
+        peer_wait_state::missing,
+        peer_wait_state::blocked,
+        peer_wait_state::ready,
+    };
+
+    // Exercise the full state product around a read half-close:
+    // 2 sides x 4 peer-wait states x 2 bottleneck states x the 8 possible
+    // combinations of opening/buffered/protocol-write work.
+    for(auto const side: sides) {
+        for(auto const peer_state: peer_states) {
+            for(bool const bottleneck: {false, true}) {
+                for(unsigned int write_state = 0; write_state < 8; ++write_state) {
+                    bool const opening = write_state & 1U;
+                    bool const buffered = write_state & 2U;
+                    bool const protocol_write = write_state & 4U;
+                    SCOPED_TRACE(testing::Message()
+                        << "side=" << side
+                        << " peer_state=" << static_cast<int>(peer_state)
+                        << " bottleneck=" << bottleneck
+                        << " opening=" << opening
+                        << " buffered=" << buffered
+                        << " protocol_write=" << protocol_write);
+
+                    LifecycleState master_state;
+                    LifecycleState peer_lifecycle;
+                    RecordingProxy proxy(new LifecycleTCPCom(&master_state));
+
+                    auto* peer_transport = new LifecycleTCPCom(&peer_lifecycle);
+                    baseHostCX peer(peer_transport, -1);
+                    peer_transport->master(proxy.com());
+                    peer_transport->ready(peer_state == peer_wait_state::ready);
+                    peer.opening(false);
+
+                    SocketPair sockets;
+                    ASSERT_TRUE(sockets.valid());
+
+                    baseCom* transport = protocol_write
+                        ? static_cast<baseCom*>(new OneShotWriteEventTCPCom())
+                        : static_cast<baseCom*>(new TCPCom());
+                    transport->master(proxy.com());
+                    auto* connection = new baseHostCX(transport, sockets.release_first());
+                    connection->opening(opening);
+                    if(buffered) connection->to_write("pending-response");
+
+                    if(peer_state != peer_wait_state::disabled) {
+                        connection->read_waiting_for_peercom(true);
+                        if(peer_state != peer_wait_state::missing) {
+                            connection->peer(&peer);
+                        }
+                    }
+                    if(bottleneck) {
+                        if(side == 'l') proxy.state().write_right_bottleneck(true);
+                        else proxy.state().write_left_bottleneck(true);
+                    }
+
+                    if(side == 'l') proxy.ladd(connection);
+                    else proxy.radd(connection);
+
+                    ASSERT_EQ(::shutdown(sockets.second(), SHUT_WR), 0)
+                        << "fd=" << sockets.second() << " errno=" << errno;
+                    ASSERT_NE(proxy.poller(), nullptr);
+                    ASSERT_GT(proxy.poller()->wait(1000), 0);
+                    proxy.run_poll();
+
+                    bool const peer_blocks =
+                        peer_state == peer_wait_state::missing ||
+                        peer_state == peer_wait_state::blocked;
+                    bool const read_deferred = peer_blocks || bottleneck;
+                    EXPECT_EQ(connection->read_eof(), !read_deferred);
+
+                    int next_events = 0;
+                    for(unsigned int dispatch = 0; dispatch < 4; ++dispatch) {
+                        next_events = proxy.poller()->wait(0);
+                        if(next_events == 0) break;
+                        EXPECT_FALSE(connection->com()->in_readset(connection->socket()))
+                            << "half-close must not remain read-ready while deferred";
+                        proxy.run_poll();
+                    }
+                    EXPECT_EQ(next_events, 0)
+                        << "half-close must settle after independent write work";
+
+                    if(buffered) {
+                        std::array<char, 32> received{};
+                        auto const count = ::recv(sockets.second(), received.data(),
+                                                  received.size(), 0);
+                        ASSERT_EQ(count, 16);
+                        EXPECT_EQ(std::string_view(received.data(), count),
+                                  "pending-response");
+                    }
+
+                    // The proxy owns connection; detach its borrowed peer before
+                    // the stack peer is destroyed at the end of this iteration.
+                    connection->peer(nullptr);
+                }
+            }
+        }
+    }
 }
 
 TEST(ProxyLifecycle, DeferredReapPressureUsesEveryConfiguredTier) {
