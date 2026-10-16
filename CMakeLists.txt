@@ -12,6 +12,7 @@ ProcessorCount(CPUs)
 
 add_library(socle_lib
         baseproxy.hpp
+        proxystats.hpp
         lrproxy.hpp
         baseproxy.cpp
         hostcx.hpp

@@ -30,6 +30,7 @@
 
 #include <log/logger.hpp>
 #include <hostcx.hpp>
+#include <proxystats.hpp>
 #include <mpstd.hpp>
 #include <common/meter.hpp>
 
@@ -169,40 +170,15 @@ protected:
     vector_type<baseHostCX*> right_delayed_accepts;
 
 
-    struct metering {
-        struct poll {
-            std::size_t handled_count = 0L;
-            std::size_t generic_count = 0L;
-            std::size_t hint_count = 0L;
-            std::size_t null_count = 0L;
-
-            poll operator+(poll const&) = delete;
-            void operator+=(poll const& b) {
-                handled_count += b.handled_count;
-                generic_count += b.generic_count;
-                hint_count += b.hint_count;
-                null_count += b.null_count;
-            }
-        };
-
-        int last_read = 0;
-        int last_write = 0;
-
-        poll polls;
-
-        // opt-out metering feature
-        bool do_rate_meter = true;
-        socle::meter mtr_down;
-        socle::meter mtr_up;
-    };
-    metering stats_;
+    ProxyStats stats_;
 
     unsigned int handle_last_status = 0;
         
     bool pollroot_ = false;    
 
 public:
-    metering const& stats() const { return stats_; }
+    ProxyStats& stats() { return stats_; }
+    ProxyStats const& stats() const { return stats_; }
     proxy_state& state() { return status_; }
     proxy_state const& state() const { return status_; }
 
@@ -290,8 +266,8 @@ public:
 
 
 
-    metering::poll run_poll_socket(int cur_socket, epoll::set_type &real_set, socket_set_type set_type);          // do actual work with the socket
-    metering::poll run_poll_socket_null_handler(int cur_socket, epoll::set_type& real_set, socket_set_type set_type);          // treat specifically sockets without hnadlers set (maybe legit, ie. hint sockets)
+    ProxyStats::poll run_poll_socket(int cur_socket, epoll::set_type &real_set, socket_set_type set_type);          // do actual work with the socket
+    ProxyStats::poll run_poll_socket_null_handler(int cur_socket, epoll::set_type& real_set, socket_set_type set_type);          // treat specifically sockets without hnadlers set (maybe legit, ie. hint sockets)
 
     int prepare_sockets(baseCom*) override;   // which Com should be set: typically it should be the parent's proxy's Com
     

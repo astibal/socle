@@ -98,6 +98,10 @@ public:
     deferred_queue const& deferred() const { return deferred_; };
 
     void add_proxy(std::unique_ptr<baseProxy> upx) {
+        if(upx) {
+            upx->parent(this);
+            stats().count_session_opened();
+        }
         auto lc_ = std::scoped_lock(proxies_lock_);
         proxies_.emplace_back(std::move(upx));
     }

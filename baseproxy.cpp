@@ -473,6 +473,14 @@ bool baseProxy::handle_cx_write(unsigned char side, baseHostCX* cx,
         } else {
             stats_.last_write += wrt;
 
+            if(auto* owner = parent(); owner != nullptr && wrt > 0) {
+                if(side == 'l' || side == 'x') {
+                    owner->stats().count_bytes_down(wrt);
+                } else if(side == 'r' || side == 'y') {
+                    owner->stats().count_bytes_up(wrt);
+                }
+            }
+
             if(wrt > 0 and stats_.do_rate_meter) {
                 if (stats_.do_rate_meter) {
                     if (side == 'l' or side == 'x') {
@@ -1156,7 +1164,7 @@ void baseProxy::on_right_new(std::unique_ptr<baseHostCX> cx) {
     cx.release();
 }
 
-auto baseProxy::run_poll_socket_null_handler(int cur_socket, epoll::set_type& real_set, socket_set_type set_type) -> metering::poll {
+auto baseProxy::run_poll_socket_null_handler(int cur_socket, epoll::set_type& real_set, socket_set_type set_type) -> ProxyStats::poll {
     int hint_socket = poller()->hint_socket();
 
     _if_deb {
@@ -1186,7 +1194,7 @@ auto baseProxy::run_poll_socket_null_handler(int cur_socket, epoll::set_type& re
             poller()->del(cur_socket);
         }
 
-        metering::poll ret; ++ret.null_count;
+        ProxyStats::poll ret; ++ret.null_count;
         return ret;
 
     } else {
@@ -1194,14 +1202,14 @@ auto baseProxy::run_poll_socket_null_handler(int cur_socket, epoll::set_type& re
         _deb("baseProxy::run: socket %d is hint socket, running proxy socket handler", cur_socket);
         handle_sockets_once(com());
 
-        metering::poll ret; ++ret.hint_count;
+        ProxyStats::poll ret; ++ret.hint_count;
         return ret;
     }
 }
 
-auto baseProxy::run_poll_socket(int cur_socket, epoll::set_type& real_set, socket_set_type set_type) -> metering::poll {
+auto baseProxy::run_poll_socket(int cur_socket, epoll::set_type& real_set, socket_set_type set_type) -> ProxyStats::poll {
 
-    metering::poll ret;
+    ProxyStats::poll ret;
 
     epoll_handler* p_handler = com()->poller.get_handler(cur_socket);
 
@@ -1285,7 +1293,7 @@ int baseProxy::run_poll() {
         return 1;
     }
 
-    metering::poll stats;
+    ProxyStats::poll stats;
 
     std::array<epoll::set_type*,5> sets;
     sets[socket_set_type::INSET] = &poller()->in_set;
