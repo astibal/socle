@@ -372,6 +372,7 @@ public:
     bool idle_timeout() const;
 
 	bool read_waiting_for_peercom ();
+    bool read_paused_for_peer() const { return read_waiting_for_peercom_; }
     bool write_waiting_for_peercom ();
     [[maybe_unused]] inline void read_waiting_for_peercom (bool p) { read_waiting_for_peercom_ = p; }
     [[maybe_unused]] inline void write_waiting_for_peercom (bool p) { write_waiting_for_peercom_ = p; }
