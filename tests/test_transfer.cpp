@@ -763,7 +763,9 @@ TEST(ProxyLifecycle, PartialWriteThenFatalErrorStopsWithoutBottleneckRetry) {
     auto const payload = pattern(chunk * 3);
     LifecycleState master_state;
     LifecycleState connection_state;
+    PressureProbeMasterProxy owner;
     RecordingProxy proxy(new LifecycleTCPCom(&master_state));
+    proxy.parent(&owner);
     auto* transport = new LifecycleTCPCom(&connection_state, {}, false, chunk, 1);
     baseHostCX connection(transport, -1);
     connection.opening(false);
@@ -774,6 +776,8 @@ TEST(ProxyLifecycle, PartialWriteThenFatalErrorStopsWithoutBottleneckRetry) {
     EXPECT_FALSE(proxy.state().write_left_bottleneck());
     EXPECT_EQ(connection.socket(), 0);
     EXPECT_EQ(connection.writebuf()->size(), payload.size() - chunk);
+    EXPECT_EQ(owner.stats().bytes_down(), chunk);
+    EXPECT_EQ(owner.stats().bytes_up(), 0U);
 }
 
 TEST(ProxyLifecycle, DispatchesMessageBeforePeerWaitCanPauseIt) {
@@ -809,7 +813,9 @@ TEST(ProxyLifecycle, DispatchesMessagesFromNormalAndPermanentSides) {
 
 TEST(ProxyLifecycle, SuccessfulReadWriteAndWriteErrorsRouteEverySide) {
     LifecycleState master_state;
+    PressureProbeMasterProxy owner;
     RecordingProxy proxy(new LifecycleTCPCom(&master_state));
+    proxy.parent(&owner);
     constexpr std::array<unsigned char, 4> sides {'l', 'r', 'x', 'y'};
     auto const payload = pattern(64);
 
@@ -835,6 +841,17 @@ TEST(ProxyLifecycle, SuccessfulReadWriteAndWriteErrorsRouteEverySide) {
     EXPECT_EQ(proxy.stats().last_write, static_cast<int>(payload.size() * sides.size()));
     EXPECT_EQ(proxy.stats().mtr_down.total(), payload.size() * 2);
     EXPECT_EQ(proxy.stats().mtr_up.total(), payload.size() * 2);
+    EXPECT_EQ(owner.stats().bytes_down(), payload.size() * 2);
+    EXPECT_EQ(owner.stats().bytes_up(), payload.size() * 2);
+
+    {
+        LifecycleState state;
+        baseHostCX connection(new LifecycleTCPCom(&state), -49);
+        connection.opening(false);
+        EXPECT_TRUE(proxy.handle_cx_write('l', &connection));
+        EXPECT_EQ(owner.stats().bytes_down(), payload.size() * 2);
+        EXPECT_EQ(owner.stats().bytes_up(), payload.size() * 2);
+    }
 
     for(std::size_t i = 0; i < sides.size(); ++i) {
         LifecycleState state;
@@ -850,6 +867,8 @@ TEST(ProxyLifecycle, SuccessfulReadWriteAndWriteErrorsRouteEverySide) {
     EXPECT_EQ(proxy.right_errors, 1U);
     EXPECT_EQ(proxy.left_pc_errors, 1U);
     EXPECT_EQ(proxy.right_pc_errors, 1U);
+    EXPECT_EQ(owner.stats().bytes_down(), payload.size() * 2);
+    EXPECT_EQ(owner.stats().bytes_up(), payload.size() * 2);
 }
 
 TEST(ProxyLifecycle, CrossDirectionRetriesAreConsumedOnlyByMatchingEvents) {
