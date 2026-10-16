@@ -9,6 +9,7 @@
 #include <mpdisplay.hpp>
 #include <ancillary_address.hpp>
 #include <fdq.hpp>
+#include <threadedworker.hpp>
 
 #include <array>
 #include <cstring>
@@ -23,6 +24,15 @@ public:
         return TCPCom::writability_epoll_flags();
     }
 };
+
+TEST(ThreadedWorkerLifecycle, RetirementStopsNewWorkWithoutKillingTheWorker) {
+    threadedProxyWorker worker(7, proxyType::proxy());
+    EXPECT_FALSE(worker.retiring());
+    EXPECT_EQ(worker.worker_id_, 7U);
+
+    worker.retire();
+    EXPECT_TRUE(worker.retiring());
+}
 
 TEST(TCPComLifecycle, WritabilityProbeEpollIsCloseOnExec) {
     EXPECT_NE(TCPComStateTestProbe::writability_epoll_flags() & EPOLL_CLOEXEC, 0);

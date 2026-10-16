@@ -46,6 +46,10 @@ public:
     [[nodiscard]]
     inline proxyType proxy_type() const { return type_; }
     uint32_t worker_id_ = 0;
+    std::atomic_bool retiring_ = false;
+
+    void retire() noexcept { retiring_.store(true, std::memory_order_release); }
+    bool retiring() const noexcept { return retiring_.load(std::memory_order_acquire); }
 
 };
 
@@ -111,6 +115,19 @@ public:
 
             tasks_.clear();
         }
+    }
+
+    // Stop assigning new work and wait for already accepted sessions to finish.
+    // Unlike join_workers(), this never marks an active child session dead.
+    void drain_workers() {
+        for (auto& thread_worker : tasks_) thread_worker.second->retire();
+        // A worker may be asleep on its queue with no sessions. Wake it so the
+        // retiring predicate is observed even when no more traffic arrives.
+        fdq_->wake_all();
+        for (auto& thread_worker : tasks_) {
+            if (thread_worker.first && thread_worker.first->joinable()) thread_worker.first->join();
+        }
+        tasks_.clear();
     }
 
     int create_workers(int count, baseCom* parent_com, proxyType proxy_type) {
