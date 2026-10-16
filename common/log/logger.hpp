@@ -93,8 +93,6 @@ public:
     using ostream_list_t = std::list<std::pair<std::unique_ptr<std::ostream>, std::unique_ptr<std::mutex>>>;
     ostream_list_t targets_;
 
-    using fd_list_t = std::list<std::pair<int, std::unique_ptr<std::mutex>>>;
-    fd_list_t remote_targets_;
 };
 
 class Log;
@@ -148,13 +146,35 @@ private:
 // inherit default setting from logger_profile
 class LogMux : public logger_profile {
 
-    mutable std::recursive_mutex mtx_lout;
+public:
+    struct remote_log_target {
+        remote_log_target(std::string target_name, int source_descriptor, int owned_descriptor,
+                          std::shared_ptr<logger_profile> target_profile)
+            : name(std::move(target_name)), source_fd(source_descriptor), fd(owned_descriptor),
+              profile(std::move(target_profile)) {}
+        ~remote_log_target();
+
+        std::string name;
+        int source_fd;
+        int fd;
+        std::shared_ptr<logger_profile> profile;
+        std::mutex write_mutex;
+    };
+    using remote_log_targets_t = std::vector<std::shared_ptr<remote_log_target>>;
+
+private:
     std::map<std::string,timer_tt, std::less<>> timers;
     mutable std::mutex mtx_timers;
 
 
     std::map<uint64_t,std::unique_ptr<logger_profile>> target_profiles_;
     std::map<uint64_t,std::string> target_names_;
+
+    mutable std::mutex remote_targets_update_mutex_;
+    // Readers never lock the registry. A target (and its duplicated fd) stays
+    // alive until the last writer that observed its snapshot has finished.
+    std::shared_ptr<const remote_log_targets_t> remote_targets_snapshot_ =
+        std::make_shared<const remote_log_targets_t>();
 
     Events events_;
 public:
@@ -177,8 +197,11 @@ public:
     logger_profile::ostream_list_t& targets() { return targets_; }
     void targets(std::string_view name, std::ostream* o) { targets_.emplace_back(o, new std::mutex()); target_names_[(uint64_t)o] = name; }
 
-    logger_profile::fd_list_t& remote_targets() { return remote_targets_; }
-    void remote_targets(std::string_view name, int s) { remote_targets_.emplace_back(s, new std::mutex()); target_names_[s] = name; }
+    bool add_remote_target(std::string_view name, int descriptor,
+                           std::shared_ptr<logger_profile> profile);
+    void remove_remote_target(int descriptor);
+    [[nodiscard]] std::shared_ptr<logger_profile> remote_target_profile(int descriptor) const;
+    [[nodiscard]] std::shared_ptr<const remote_log_targets_t> remote_targets_snapshot() const;
 
     virtual size_t write_log(loglevel level, std::string& sss);
 
