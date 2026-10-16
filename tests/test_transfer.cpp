@@ -1074,6 +1074,22 @@ TEST(ProxyLifecycle, DeferredReapPressureUsesEveryConfiguredTier) {
     EXPECT_EQ(proxy.pressure(), MasterProxy::pressure_level::emergency);
 }
 
+TEST(ProxyLifecycle, MasterOwnsChildStatsAndLifecycle) {
+    PressureProbeMasterProxy owner;
+    auto child = std::make_unique<RecordingProxy>(new TCPCom());
+    auto* child_ptr = child.get();
+
+    owner.add_proxy(std::move(child));
+
+    EXPECT_EQ(child_ptr->parent(), &owner);
+    EXPECT_EQ(owner.stats().sessions_total(), 1U);
+    EXPECT_EQ(owner.stats().sessions_active(), 1U);
+
+    owner.shutdown();
+    EXPECT_EQ(owner.stats().sessions_total(), 1U);
+    EXPECT_EQ(owner.stats().sessions_active(), 0U);
+}
+
 TEST(TransferLifecycle, ReconnectResetsReadEofAndClosesRetiredDescriptor) {
     LifecycleState state;
     baseHostCX connection(new ReconnectingTCPCom(&state), "127.0.0.1", "1");

@@ -83,7 +83,10 @@ void MasterProxy::defer_proxy_ul(proxy_entry&& entry) {
     // Deferring object destruction protects callbacks which may still hold a
     // pointer for the current dispatch. It must not defer transport teardown:
     // an idle worker may not get the future traffic-driven reap ticks at all.
-    if(entry) entry->shutdown();
+    if(entry) {
+        stats().count_session_closed();
+        entry->shutdown();
+    }
 
     {
         auto l_ = std::scoped_lock(deferred_lock_);
@@ -249,7 +252,10 @@ void MasterProxy::shutdown() {
 		// atomically moved to the local shutdown list.
 		auto l_ = std::scoped_lock(proxies_lock_);
 		shutdown_entries.reserve(proxies().size());
-		for(auto& entry : proxies()) shutdown_entries.emplace_back(std::move(entry));
+		for(auto& entry : proxies()) {
+            if(entry) stats().count_session_closed();
+            shutdown_entries.emplace_back(std::move(entry));
+        }
 		proxies().clear();
 	}
 
