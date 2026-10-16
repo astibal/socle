@@ -1099,7 +1099,123 @@ TEST(ProxyLifecycle, PeerShutdownBreaksDeferredReadReadinessLoop) {
     ::close(sockets[1]);
 }
 
+TEST(ProxyLifecycle, WriteHandlerObservesOpeningBeforeConnectCompletion) {
+    class ConnectReplyProxy : public RecordingProxy {
+    public:
+        using RecordingProxy::RecordingProxy;
+        bool replied = false;
+        bool handle_cx_write(unsigned char side, baseHostCX* cx,
+                             bool cross_direction_retry = false) override {
+            if(side == 'r' && cx->opening()) {
+                replied = true;
+                cx->opening(false);
+            }
+            return RecordingProxy::handle_cx_write(side, cx, cross_direction_retry);
+        }
+    };
+
+    SocketPair sockets;
+    ASSERT_TRUE(sockets.valid());
+    LifecycleState master_state;
+    ConnectReplyProxy proxy(new LifecycleTCPCom(&master_state));
+    auto* transport = new TCPCom();
+    transport->master(proxy.com());
+    auto* connection = new baseHostCX(transport, sockets.release_first());
+    proxy.radd(connection);
+    transport->set_write_monitor_only(connection->socket());
+    ASSERT_GT(proxy.poller()->wait(1000), 0);
+    ASSERT_TRUE(proxy.handle_cx_write_once('r', proxy.com(), connection));
+    EXPECT_TRUE(proxy.replied)
+        << "SOCKS/CONNECT must see opening to acknowledge the upstream connection";
+    EXPECT_FALSE(connection->opening());
+}
+
+TEST(ProxyLifecycle, IdleWriteDispatchDoesNotAdvancePeerReadWait) {
+    SocketPair sockets;
+    ASSERT_TRUE(sockets.valid());
+    LifecycleState master_state;
+    LifecycleState peer_state;
+    baseHostCX peer(new LifecycleTCPCom(&peer_state), -1);
+    RecordingProxy proxy(new LifecycleTCPCom(&master_state));
+    auto* transport = new TCPCom();
+    transport->master(proxy.com());
+    auto* connection = new baseHostCX(transport, sockets.release_first());
+    connection->opening(false);
+    connection->peer(&peer);
+    connection->read_waiting_for_peercom(true);
+    proxy.ladd(connection);
+
+    ASSERT_EQ(proxy.poller()->wait(0), 0);
+    ASSERT_TRUE(proxy.handle_cx_write_once('l', proxy.com(), connection));
+    EXPECT_TRUE(connection->read_paused_for_peer())
+        << "an idle write dispatch must not consume the peer readiness transition";
+    EXPECT_TRUE(proxy.poller()->rescans_empty())
+        << "without a write, dispatch must not remove and requeue read readiness";
+}
+
+TEST(ProxyLifecycle, DeferredHalfClosePreservesDeliveredProtocolWriteEvent) {
+    SocketPair sockets;
+    ASSERT_TRUE(sockets.valid());
+    LifecycleState master_state;
+    RecordingProxy proxy(new LifecycleTCPCom(&master_state));
+    auto* transport = new CountingTCPCom();
+    transport->master(proxy.com());
+    auto* connection = new baseHostCX(transport, sockets.release_first());
+    connection->opening(false);
+    connection->read_waiting_for_peercom(true);
+    proxy.ladd(connection);
+    transport->set_write_monitor(connection->socket());
+    ASSERT_EQ(::shutdown(sockets.second(), SHUT_WR), 0);
+    ASSERT_GT(proxy.poller()->wait(1000), 0);
+    ASSERT_TRUE(transport->in_readset(connection->socket()));
+    ASSERT_TRUE(transport->in_writeset(connection->socket()));
+
+    ASSERT_TRUE(proxy.handle_cx_read_once('l', proxy.com(), connection));
+    EXPECT_TRUE(transport->in_writeset(connection->socket()))
+        << "deferring RDHUP must not consume a protocol write event";
+    ASSERT_TRUE(proxy.handle_cx_write_once('l', proxy.com(), connection));
+    EXPECT_EQ(transport->write_calls, 1);
+    EXPECT_EQ(proxy.poller()->wait(0), 0);
+}
+
+TEST(ProxyLifecycle, WriteTickDispatchesHandoffBeforeDeferringReadiness) {
+    class HandoffHostCX : public MessageHostCX {
+    public:
+        using MessageHostCX::MessageHostCX;
+        void pre_write() override {
+            has_message = true;
+            read_waiting_for_peercom(true);
+        }
+    };
+    SocketPair sockets;
+    ASSERT_TRUE(sockets.valid());
+    LifecycleState master_state;
+    RecordingProxy proxy(new LifecycleTCPCom(&master_state));
+    auto* transport = new CountingTCPCom();
+    transport->master(proxy.com());
+    auto* connection = new HandoffHostCX(transport, sockets.release_first());
+    connection->has_message = false;
+    connection->opening(false);
+    proxy.ladd(connection);
+    transport->set_write_monitor_only(connection->socket());
+    ASSERT_GT(proxy.poller()->wait(1000), 0);
+    EXPECT_FALSE(proxy.handle_cx_write_once('l', proxy.com(), connection));
+    EXPECT_EQ(proxy.left_messages, 1U)
+        << "write-driven handoff must not wait for another socket event";
+}
+
 TEST(ProxyLifecycle, HalfCloseCoversEveryDeferredPeerAndWriteState) {
+    // Model a protocol handler consuming its own connect completion. A raw
+    // socketpair cannot model the SOCKS/CONNECT acknowledgement state machine.
+    class CompletingProxy : public RecordingProxy {
+    public:
+        using RecordingProxy::RecordingProxy;
+        bool handle_cx_write(unsigned char side, baseHostCX* cx,
+                             bool cross_direction_retry = false) override {
+            cx->opening(false);
+            return RecordingProxy::handle_cx_write(side, cx, cross_direction_retry);
+        }
+    };
     enum class peer_wait_state {
         disabled,
         missing,
@@ -1135,7 +1251,7 @@ TEST(ProxyLifecycle, HalfCloseCoversEveryDeferredPeerAndWriteState) {
 
                     LifecycleState master_state;
                     LifecycleState peer_lifecycle;
-                    RecordingProxy proxy(new LifecycleTCPCom(&master_state));
+                    CompletingProxy proxy(new LifecycleTCPCom(&master_state));
 
                     auto* peer_transport = new LifecycleTCPCom(&peer_lifecycle);
                     baseHostCX peer(peer_transport, -1);

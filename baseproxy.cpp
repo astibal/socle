@@ -558,7 +558,10 @@ bool baseProxy::handle_cx_read_once(unsigned char side, baseCom* xcom, baseHostC
 
         // A deferred level-triggered event (including EPOLLRDHUP) must leave
         // the immediate poll set or it will spin until the read is resumed.
-        if(ready) {
+        // Rescanning removes the descriptor from both current result sets.
+        // Let an already-delivered write event advance the protocol first;
+        // the write dispatcher reapplies the read pause afterwards.
+        if(ready && !xcom->in_writeset(cx->socket())) {
             cx->defer_read_readiness();
         }
     }
@@ -679,13 +682,9 @@ bool baseProxy::handle_cx_write_once(unsigned char side, baseCom* xcom, baseHost
 
     bool in_writeset = xcom->in_writeset(cx->socket());
     bool in_force_writeset = cx->com()->forced_write_reset();
+    bool const write_dispatched = in_writeset || in_force_writeset || !cx->writebuf()->empty();
 
-    if(cx->opening() && in_writeset && cx->is_connected()) {
-        cx->opening(false);
-    }
-
-
-    if( in_writeset || in_force_writeset || ( ! cx->writebuf()->empty() ) ) {
+    if(write_dispatched) {
 
         bool side_left = side == 'l' || side == 'L' || side == 'x' || side == 'X';
         bool side_right = side == 'r' || side == 'R' || side == 'y' || side == 'Y';
@@ -752,14 +751,18 @@ bool baseProxy::handle_cx_write_once(unsigned char side, baseCom* xcom, baseHost
             }
         }
     }
+    // A write may publish a context message. Dispatch it before changing
+    // readiness monitoring, since another socket event may never arrive.
+    if(cx->new_message()) {
+        return handle_cx_events(side, cx);
+    }
 
-    // Completing independent output must not restore EPOLLIN while the read
-    // half is still paused. Otherwise a latched EPOLLRDHUP immediately starts
-    // the same level-triggered loop again after the write buffer drains.
+    // Inspect the pause without advancing the peer's transport state machine.
+    // A completed write must not re-arm a deferred level-triggered read.
     bool const read_bottleneck =
         ((side == 'l' || side == 'x') && state().write_right_bottleneck()) ||
         ((side == 'r' || side == 'y') && state().write_left_bottleneck());
-    if(cx->read_waiting_for_peercom() || read_bottleneck) {
+    if(write_dispatched && (cx->read_paused_for_peer() || read_bottleneck)) {
         cx->defer_read_readiness();
     } else if(cx->read_eof()) {
         if(cx->opening() || !cx->writebuf()->empty() ||
