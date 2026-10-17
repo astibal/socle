@@ -69,7 +69,7 @@ LogMux::remote_log_target::~remote_log_target() {
 }
 
 std::shared_ptr<const LogMux::remote_log_targets_t> LogMux::remote_targets_snapshot() const {
-    return std::atomic_load(&remote_targets_snapshot_);
+    return remote_targets_snapshot_.load();
 }
 
 bool LogMux::add_remote_target(std::string_view name, int descriptor,
@@ -86,8 +86,8 @@ bool LogMux::add_remote_target(std::string_view name, int descriptor,
     for(const auto& item : *current)
         if(item->source_fd != descriptor) next->push_back(item);
     next->push_back(std::move(target));
-    std::atomic_store(&remote_targets_snapshot_,
-                      std::static_pointer_cast<const remote_log_targets_t>(next));
+    remote_targets_snapshot_.store(
+        std::static_pointer_cast<const remote_log_targets_t>(next));
     return true;
 }
 
@@ -98,8 +98,8 @@ void LogMux::remove_remote_target(int descriptor) {
     next->reserve(current->size());
     for(const auto& item : *current)
         if(item->source_fd != descriptor) next->push_back(item);
-    std::atomic_store(&remote_targets_snapshot_,
-                      std::static_pointer_cast<const remote_log_targets_t>(next));
+    remote_targets_snapshot_.store(
+        std::static_pointer_cast<const remote_log_targets_t>(next));
 }
 
 std::shared_ptr<logger_profile> LogMux::remote_target_profile(int descriptor) const {

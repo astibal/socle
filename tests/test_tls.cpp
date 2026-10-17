@@ -3006,7 +3006,7 @@ TEST(TLS_Tests, ValidationErrorAllowListAndCachedAlpnAreExact) {
     static constexpr unsigned char match_then_truncated_offer[] = {
         2, 'h', '2', 2, 'h'
     };
-    for (const auto malformed : {
+    for (const auto& malformed : {
              std::pair<const unsigned char*, unsigned int>{nullptr, 0},
              std::pair<const unsigned char*, unsigned int>{
                  zero_length_offer, sizeof(zero_length_offer)},

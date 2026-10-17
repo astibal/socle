@@ -33,6 +33,7 @@
 #include <deque>
 #include <functional>
 #include <algorithm>
+#include <atomic>
 #include <iomanip>
 #include <memory>
 
@@ -173,8 +174,9 @@ private:
     mutable std::mutex remote_targets_update_mutex_;
     // Readers never lock the registry. A target (and its duplicated fd) stays
     // alive until the last writer that observed its snapshot has finished.
-    std::shared_ptr<const remote_log_targets_t> remote_targets_snapshot_ =
-        std::make_shared<const remote_log_targets_t>();
+    std::atomic<std::shared_ptr<const remote_log_targets_t>> remote_targets_snapshot_ {
+        std::make_shared<const remote_log_targets_t>()
+    };
 
     Events events_;
 public:

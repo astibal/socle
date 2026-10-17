@@ -391,7 +391,7 @@ public:
 
         if(it != topic_db_.end()) {
             // found loglevel
-            return std::atomic_load(&it->second);
+            return it->second;
         } else {
 
             auto l = std::make_shared<loglevel>(0,0);
@@ -503,7 +503,7 @@ public:
 
     [[nodiscard]] static std::shared_ptr<logan> get() {
         static auto l = std::make_shared<logan>();
-        return std::atomic_load(&l);
+        return l;
     }
 
 private:
