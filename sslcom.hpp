@@ -523,6 +523,9 @@ public:
     bool write_event_pending() const override {
         return sslcom_read_blocked_on_write > 0 || sslcom_write_blocked_on_write > 0;
     }
+    bool opening_write_event_pending() const override {
+        return write_event_pending();
+    }
 	
 	void accept_socket (int sockfd) override;
     void delay_socket (int sockfd) override;
