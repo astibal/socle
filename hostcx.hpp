@@ -293,7 +293,7 @@ public:
 
     inline Proxy* parent_proxy() const { return parent_proxy_; };
     inline unsigned char parent_flag() const { return parent_flag_; }
-    inline void parent_proxy(Proxy* p, unsigned char flag) { parent_proxy_ = p; parent_flag_ = flag; };
+    virtual void parent_proxy(Proxy* p, unsigned char flag) { parent_proxy_ = p; parent_flag_ = flag; };
     
     bool readable() const { return com()->readable(socket()) && !io_disabled(); };
     bool writable() const { return com()->writable(socket()) && !io_disabled(); };
