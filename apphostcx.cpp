@@ -79,12 +79,12 @@ bool AppHostCX::detect () {
     // start with 1 - skip starttls signatures
     for(unsigned int i = 1; i < SignatureTree::max_groups ; ++i) {
 
-        auto sensor_ptr = signatures_.sensors_[i];
+        auto sensor_ptr = signatures().sensors_[i];
 
         if(sensor_ptr) {
             _dia("AppHostCX::detect: tree group %d valid", i);
 
-            if (signatures_.filter_.test(i)) {
+            if (signatures().filter_.test(i)) {
                 _dia("AppHostCX::detect: tree group %d enabled", i);
 
                 if(detect(sensor_ptr)) {
@@ -163,8 +163,40 @@ void AppHostCX::continuous_mode_keeper(buffer const& data) {
 
 }
 
+void AppHostCX::app_context(std::shared_ptr<AppFlowCtx> ctx, bool driven) {
+    if(ctx) app_ctx_ = std::move(ctx);
+    driven_ = driven;
+}
+
+bool AppHostCX::ingest(char side, buffer const& data) {
+    if(data.empty() or mode() == mode_t::NONE) return false;
+
+    const bool active = mode() == mode_t::POST
+        ? inside_detect_ranges()
+        : inside_detect_on_continue();
+    if(not active) return false;
+
+    flow().append(side, data);
+
+    if(mode() == mode_t::CONTINUOUS) {
+        continuous_mode_keeper(data);
+    }
+
+    if(mode() == mode_t::PRE &&
+       flow().exchanges < config::max_starttls_exchanges &&
+       dynamic_cast<TCPCom*>(com()) &&
+       not dynamic_cast<SSLCom*>(com())) {
+        if(detect(starttls_sensor())) upgrade_starttls = true;
+    }
+
+    detect();
+    inspect(side);
+    return true;
+}
+
 void AppHostCX::post_read() {
 
+    if(driven_) return;
     if(to_read().empty()) return;
 
     if ( mode() == mode_t::POST or mode() == mode_t::CONTINUOUS) {
@@ -191,6 +223,14 @@ void AppHostCX::post_read() {
 }
 
 void AppHostCX::post_write() {
+
+    if(driven_) {
+        if(mode() == mode_t::PRE and upgrade_starttls) {
+            upgrade_starttls = false;
+            on_starttls();
+        }
+        return;
+    }
 
     if(writebuf()->empty()) return;
 
@@ -244,6 +284,8 @@ void AppHostCX::post_write() {
 }
 
 bool AppHostCX::write_needs_incremental_flush() {
+    if(driven_) return false;
+
     // post_write() examines the exact buffer remaining after each transport
     // write while POST inspection is active. Outside that bounded detection
     // window it is a no-op and the buffer can be compacted once per drain.
@@ -251,6 +293,8 @@ bool AppHostCX::write_needs_incremental_flush() {
 }
 
 void AppHostCX::pre_read() {
+
+    if(driven_) return;
 
     _dum("AppHostCX::pre_read[%s]: === start",c_type());
     
@@ -416,6 +460,8 @@ bool AppHostCX::inside_detect_on_continue() {
 }
 
 void AppHostCX::pre_write() {
+
+    if(driven_) return;
 
     // value-guard writebuf
     if(writebuf()->empty()) return;
