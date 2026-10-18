@@ -260,6 +260,10 @@ public:
     // A protocol state machine may require EPOLLOUT even with an empty
     // application write buffer (for example TLS read -> WANT_WRITE).
     virtual bool write_event_pending() const { return false; }
+    // Ordinary transports may still produce a delayed response while their
+    // connection context is opening. Protocol transports can reject that
+    // fallback once their own state machine has no pending write work.
+    virtual bool opening_write_event_pending() const { return true; }
     
     // check if socket is changed
     virtual bool in_readset(int s) { return master()->poller.in_read_set(s); };

@@ -400,8 +400,8 @@ bool baseProxy::handle_cx_read(unsigned char side, baseHostCX* cx,
             // half of the same full-duplex stream. Stop read readiness while
             // retaining any independent queued/protocol-level output.
             if(!state().dead() && cx->socket() != 0) {
-                if(cx->opening() || !cx->writebuf()->empty() ||
-                   cx->com()->write_event_pending()) {
+                if((cx->opening() && cx->com()->opening_write_event_pending()) ||
+                   !cx->writebuf()->empty() || cx->com()->write_event_pending()) {
                     cx->com()->set_write_monitor_only(cx->socket());
                 } else {
                     cx->com()->unset_monitor(cx->socket());
@@ -765,8 +765,8 @@ bool baseProxy::handle_cx_write_once(unsigned char side, baseCom* xcom, baseHost
     if(write_dispatched && (cx->read_paused_for_peer() || read_bottleneck)) {
         cx->defer_read_readiness();
     } else if(cx->read_eof()) {
-        if(cx->opening() || !cx->writebuf()->empty() ||
-           cx->com()->write_event_pending()) {
+        if((cx->opening() && cx->com()->opening_write_event_pending()) ||
+           !cx->writebuf()->empty() || cx->com()->write_event_pending()) {
             cx->com()->set_write_monitor_only(cx->socket());
         } else {
             cx->com()->unset_monitor(cx->socket());

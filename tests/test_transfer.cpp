@@ -170,6 +170,12 @@ private:
     std::size_t write_calls_ = 0;
 };
 
+class CompletedProtocolTCPCom : public LifecycleTCPCom {
+public:
+    using LifecycleTCPCom::LifecycleTCPCom;
+    bool opening_write_event_pending() const override { return false; }
+};
+
 class CrossDirectionTCPCom : public LifecycleTCPCom {
 public:
     explicit CrossDirectionTCPCom(LifecycleState* state)
@@ -1038,6 +1044,30 @@ TEST(ProxyLifecycle, ReadEofKeepsWriteHalfAvailableForDelayedResponse) {
     ASSERT_NE(proxy.poller(), nullptr);
     EXPECT_EQ(proxy.poller()->wait(0), 0)
         << "drained write-only half must not retain a writable-event spin";
+
+    connection.remove_socket();
+    ::close(sockets[0]);
+    ::close(sockets[1]);
+}
+
+TEST(ProxyLifecycle, CompletedProtocolEofDoesNotKeepStaleOpeningWriteInterest) {
+    int sockets[2] = {-1, -1};
+    ASSERT_EQ(::socketpair(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK, 0, sockets), 0);
+
+    LifecycleState master_state;
+    LifecycleState connection_state;
+    RecordingProxy proxy(new LifecycleTCPCom(&master_state));
+    auto* transport = new CompletedProtocolTCPCom(&connection_state, {}, true);
+    transport->master(proxy.com());
+    baseHostCX connection(transport, sockets[0]);
+    ASSERT_TRUE(connection.opening());
+    proxy.com()->set_monitor(sockets[0]);
+
+    ASSERT_TRUE(proxy.handle_cx_read('l', &connection));
+    ASSERT_TRUE(connection.read_eof());
+
+    EXPECT_EQ(proxy.poller()->wait(0), 0)
+        << "EOF without pending output must not spin merely because opening is stale";
 
     connection.remove_socket();
     ::close(sockets[0]);
