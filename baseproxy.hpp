@@ -328,6 +328,10 @@ public:
     unsigned int change_side_monitoring(unsigned char side, bool ifread, bool ifwrite, int pause_read, int pause_write);
 
     std::string to_string(int verbosity) const override;
+    virtual void enrich_event_context(logan_events::EventContext& context,
+                                      const logan_events::EventBatch&) const {
+        context.add("proxy", to_string(iNOT));
+    }
 protected:
 
     struct clicker {

@@ -54,6 +54,10 @@ public:
 
 private:
     vector_type <proxy_entry> proxies_;
+    logan_events::EventCollector event_collector_;
+    std::map<baseProxy*, std::uint64_t> event_ids_;
+    std::uint64_t next_event_id_ = 0;
+    void publish_events(bool final) noexcept;
     deferred_queue deferred_;
     mutable mutex_t proxies_lock_;
     mutable mutex_t deferred_lock_;
@@ -105,6 +109,9 @@ public:
         auto lc_ = std::scoped_lock(proxies_lock_);
         proxies_.emplace_back(std::move(upx));
     }
+
+    // Access only on the owning worker; delivery remains an upper-layer concern.
+    logan_events::EventCollector& event_collector() noexcept { return event_collector_; }
 
     int prepare_sockets(baseCom*) override;
 	int handle_sockets_once(baseCom*) override;

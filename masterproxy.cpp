@@ -41,6 +41,7 @@ int MasterProxy::prepare_sockets(baseCom* xcom)
 
 bool MasterProxy::run_timers()
 {
+    publish_events(false);
     if(baseProxy::run_timers()) {
 
         {
@@ -63,6 +64,7 @@ bool MasterProxy::run_timers()
                 // A child timer may have expired the proxy in this call. Do
                 // not wait for another master tick before shutting it down.
                 if(p->state().dead()) {
+                    event_ids_.erase(p.get());
                     defer_proxy_ul(std::move(*i));
                     i = proxies().erase(i);
                     continue;
@@ -136,6 +138,8 @@ void MasterProxy::reap_deferred(std::size_t count_budget,
 
 int MasterProxy::handle_sockets_once(baseCom* xcom) {
 
+    publish_events(false);
+
     switch(get_pressure_level()) {
         case pressure_level::nominal:
             if(++deferred_reap_tick_ >= deferred_reap_every) {
@@ -191,6 +195,12 @@ int MasterProxy::handle_sockets_once(baseCom* xcom) {
 
             auto const pref = logan_lite::context();
             {
+                auto [event_id, inserted] = event_ids_.try_emplace(proxy.get(), 0);
+                if (inserted) event_id->second = ++next_event_id_;
+                logan_events::EventScope events(event_collector_, [&](auto& context, const auto& batch) {
+                    context.add("connection", std::to_string(event_id->second));
+                    proxy->enrich_event_context(context, batch);
+                });
                 auto lcx = logan_context(proxy->to_string(iNOT));
                 try {
                     // Sub-proxies share their worker's poll cycle. Keeping the
@@ -224,6 +234,7 @@ int MasterProxy::handle_sockets_once(baseCom* xcom) {
         if (proxy->state().dead()) {
 
             auto lcx = logan_context(proxy->to_string(iNOT));
+            event_ids_.erase(proxy.get());
             defer_proxy_ul(std::move(*i));
             i = proxies().erase(i);
 
@@ -257,6 +268,7 @@ void MasterProxy::shutdown() {
             shutdown_entries.emplace_back(std::move(entry));
         }
 		proxies().clear();
+        event_ids_.clear();
 	}
 
 	{
@@ -276,6 +288,7 @@ void MasterProxy::shutdown() {
         }
         i++;
     }
+    publish_events(true);
 }
 
 
@@ -303,4 +316,19 @@ std::string MasterProxy::hr() {
 	}
 	
 	return ss.str();
+}
+
+void MasterProxy::publish_events(bool final) noexcept {
+    try {
+        if (!Log::instance()) return;
+        auto logger = Log::get();
+        if (!logger) return;
+        if (final) {
+            if (event_collector_.has_pending()) logger->events().publish(event_collector_.take());
+        } else if (auto delivery = event_collector_.take_due()) {
+            logger->events().publish(*delivery);
+        }
+    } catch (...) {
+        event_collector_.record_loss();
+    }
 }

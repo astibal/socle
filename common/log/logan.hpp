@@ -21,6 +21,7 @@
 
 #include <string>
 #include <log/loglevel.hpp>
+#include <log/event.hpp>
 #include <log/logger.hpp>
 #include <mpstd.hpp>
 #include <utility>
@@ -381,6 +382,10 @@ private:
 
 class logan {
 public:
+    static bool event(logan_events::Event event) noexcept {
+        return logan_events::emit(std::move(event));
+    }
+
 
     std::map <std::string, std::shared_ptr<loglevel>, std::less<>> topic_db_;
 

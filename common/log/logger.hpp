@@ -20,7 +20,9 @@
 #ifndef LOGGER_HPP
 #define LOGGER_HPP
 
+#include <atomic>
 #include <cstring>
+#include <log/event.hpp>
 #include <iostream>
 #include <ctime>
 
@@ -109,9 +111,11 @@ struct Events {
     using event_detail_db_t = std::unordered_map<uint64_t, std::string>;
 
     // global eventid counter
-    static inline uint64_t event_count_ = 100L;
+    static inline std::atomic_uint64_t event_count_ {100};
     // if nonzero, current thread uses this exact eid. Use it instead of increment of global counter
     static inline thread_local uint64_t current_event_id_ = 0L;
+
+    void publish(const logan_events::EventCollector::Delivery& delivery);
 
     void clear() {
         auto lc_ = std::scoped_lock(events_lock_);

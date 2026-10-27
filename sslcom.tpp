@@ -532,6 +532,15 @@ void baseSSLCom<L4Proto>::ssl_msg_callback(int write_p, int version, int content
                 com->error(ERROR_UNSPEC);
 
                 if(not skip_all and not skip_this_one) {
+                    // Only local facts here. The enclosing scope supplies proxy
+                    // identity and detailed TLS diagnostics after I/O processing.
+                    const bool scoped = logan::event({"TLS fatal alert",
+                        std::string(write_p ? "sent: " : "received: ") +
+                            SSL_alert_desc_string_long(int_code),
+                        logan_events::EventLevel::error});
+                    if (scoped) return;
+
+                    // Phase 1: preserve legacy reporting outside instrumented scopes.
                     auto event = log.event_block();
 
                     log.event(ERR, "[%s|%s|%s]: TLS alert: %s/%s [%d/%d]", com->to_string(iINF).c_str(), side_comment,

@@ -282,3 +282,54 @@ bool LogMux::click_timer (const std::string &xname, int interval) {
 		return true;
 	}
 }
+
+void Events::publish(const logan_events::EventCollector::Delivery& delivery) {
+    // Prepare owned text before taking the shared history lock. This is a sink,
+    // never a drain of CLI history, and does not inherit legacy event_block IDs.
+    std::vector<std::pair<std::string, std::string>> prepared;
+    for (const auto& batch : delivery.batches) {
+        for (const auto& observation : batch.events) {
+            std::ostringstream summary, detail;
+            const auto& event = observation.event;
+            const char* level = "notice";
+            switch (event.level) {
+                case logan_events::EventLevel::detail: level = "detail"; break;
+                case logan_events::EventLevel::warning: level = "warning"; break;
+                case logan_events::EventLevel::error: level = "error"; break;
+                case logan_events::EventLevel::notice: break;
+            }
+            const auto now = time(nullptr);
+            auto tm = get_tm(now);
+            summary << std::put_time(&tm, "%y-%m-%d %H:%M:%S") << ": "
+                    << level << ": " << event.message;
+            if (!event.context.empty()) summary << " (" << event.context << ")";
+            if (observation.count > 1) summary << " [x" << observation.count << "]";
+            detail << event.message << '\n';
+            if (!event.context.empty()) detail << event.context << '\n';
+            for (const auto& [key, value] : batch.context.fields) {
+                detail << key << ": " << value << '\n';
+                if (key == "connection") summary << " [connection " << value << "]";
+            }
+            detail << "occurrences: " << observation.count << "\nspan_ms: "
+                   << std::chrono::duration_cast<std::chrono::milliseconds>(
+                          observation.last_seen - observation.first_seen).count() << '\n';
+            if (!batch.context.detail.empty()) detail << batch.context.detail << '\n';
+            prepared.emplace_back(summary.str(), detail.str());
+        }
+    }
+    if (delivery.lost) {
+        prepared.emplace_back("warning: event trail loss: " + std::to_string(delivery.lost),
+                              "Trail overflow, collector overflow or processing failure.");
+    }
+    auto lock = std::scoped_lock(events_lock_);
+    for (auto& [summary, detail] : prepared) {
+        const auto id = ++event_count_;
+        events_.emplace_back(id, std::move(summary));
+        event_detail_db_.emplace(id, std::move(detail));
+        while (events_.size() > events_max_) {
+            const auto expired = events_.front().first;
+            events_.pop_front();
+            event_detail_db_.erase(expired);
+        }
+    }
+}

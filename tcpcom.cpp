@@ -306,6 +306,8 @@ bool TCPCom::is_connected(int s) {
         else {
             connect_failed_ = true;
             connect_error_ = error_code;
+            logan::event({"Connection attempt failed", string_error(error_code),
+                          logan_events::EventLevel::warning});
 
             // optimized-out in Release
             _if_deb {
