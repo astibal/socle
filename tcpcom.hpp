@@ -80,6 +80,9 @@ public:
             _dia("%s::shutdown[%d]: %s", c_type(), _fd, string_error().c_str());
     };
     
+    [[nodiscard]] bool supports_half_close() const override { return true; }
+    bool shutdown_write() override;
+
     void cleanup() override {};
     
     bool is_connected(int s) override;

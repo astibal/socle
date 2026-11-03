@@ -256,6 +256,7 @@ private:
     // after writing all data into the socket we should shutdown the socket
     bool close_after_write_ = false;
     bool read_eof_ = false;
+    bool write_eof_ = false;
 
     // larval connection facility
     bool opening_ = false;
@@ -387,6 +388,7 @@ public:
 
 	void unhandle() const;
 	virtual void shutdown();
+    void shutdown_write();
 	inline bool valid() const { return ( socket() > 0 && !error() ); };
 	inline bool error() const {
         if(com() != nullptr) return (error_ || com()->error());
@@ -486,6 +488,7 @@ public:
 	virtual void to_write(unsigned char* c, unsigned int l); 
 	inline bool close_after_write() const { return close_after_write_; };
 	inline void close_after_write(bool b) { close_after_write_ = b; };
+    [[nodiscard]] bool write_eof() const { return write_eof_; }
     [[nodiscard]] inline bool read_eof() const { return read_eof_; }
     inline void read_eof(bool value) { read_eof_ = value; }
 	

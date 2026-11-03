@@ -173,6 +173,9 @@ public:
     virtual ssize_t peek(int _fd, void* _buf, size_t _n, int _flags) = 0;
     virtual ssize_t write(int _fd, const void* _buf, size_t _n, int _flags) = 0;
     virtual void shutdown(int _fd) = 0;
+    // Half-close is opt-in: TLS and virtual streams have different semantics.
+    [[nodiscard]] virtual bool supports_half_close() const { return false; }
+    virtual bool shutdown_write() { return false; }
     // Most Com implementations leave the descriptor open for baseHostCX to
     // close during destruction. Implementations which consume or transfer
     // descriptor ownership in shutdown() must override this.

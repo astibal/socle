@@ -550,6 +550,8 @@ public:
     
     
     void shutdown(int _fd) override;
+    [[nodiscard]] bool supports_half_close() const override { return false; }
+    bool shutdown_write() override { return false; }
     ~baseSSLCom() override {
         if(sslcom_refcount_incremented_) {
 #ifdef USE_OPENSSL11

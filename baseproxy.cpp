@@ -757,12 +757,23 @@ bool baseProxy::handle_cx_write_once(unsigned char side, baseCom* xcom, baseHost
         return handle_cx_events(side, cx);
     }
 
+    // Permanent contexts reconnect on EOF instead of forwarding it.
+    if((side == 'l' || side == 'r') && cx->peer() &&
+       cx->peer()->read_eof() && cx->peer()->com()->supports_half_close()) {
+        cx->shutdown_write();
+        if(cx->error()) {
+            handle_cx_events(side, cx);
+            return false;
+        }
+    }
+
     // Inspect the pause without advancing the peer's transport state machine.
     // A completed write must not re-arm a deferred level-triggered read.
     bool const read_bottleneck =
         ((side == 'l' || side == 'x') && state().write_right_bottleneck()) ||
         ((side == 'r' || side == 'y') && state().write_left_bottleneck());
-    if(write_dispatched && (cx->read_paused_for_peer() || read_bottleneck)) {
+    if((write_dispatched || cx->write_eof()) &&
+       (cx->read_paused_for_peer() || read_bottleneck)) {
         cx->defer_read_readiness();
     } else if(cx->read_eof()) {
         if((cx->opening() && cx->com()->opening_write_event_pending()) ||

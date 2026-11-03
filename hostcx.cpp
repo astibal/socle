@@ -116,6 +116,7 @@ int baseHostCX::connect() {
         com()->closed_socket(0);
     }
     read_eof(false);
+    write_eof_ = false;
 
     opening(true);
 
@@ -248,6 +249,25 @@ void baseHostCX::unhandle() const {
             }
         }
     }
+}
+
+void baseHostCX::shutdown_write() {
+    if(write_eof_ || !com()->supports_half_close() || opening() ||
+       !writebuf()->empty() || com()->write_event_pending()) {
+        return;
+    }
+
+    // FIN must follow all application and transport output.
+    if(!com()->shutdown_write()) {
+        error(true);
+        return;
+    }
+    write_eof_ = true;
+
+    // Removing the monitor also clears cached events and scheduled rescans.
+    // A mask change alone can leave a stale write that fails with EPIPE.
+    com()->unset_monitor(socket());
+    if(!read_eof()) com()->set_monitor(socket());
 }
 
 void baseHostCX::shutdown() {
@@ -612,6 +632,13 @@ ssize_t baseHostCX::io_write(unsigned char* data, size_t tx_size, int flags = 0)
 }
 
 int baseHostCX::write() {
+    if(write_eof_) {
+        if(writebuf()->empty()) return 0;
+        error(true);
+        errno = EPIPE;
+        return -1;
+    }
+
 
     auto _debug_tx_size = [this](auto tx_size_orig, auto tx_size, const char* fname) {
 

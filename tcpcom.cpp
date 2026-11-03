@@ -260,6 +260,14 @@ bool TCPCom::is_connected(int s) {
     return true;
 }
 
+bool TCPCom::shutdown_write() {
+    int result;
+    do {
+        result = ::shutdown(socket(), SHUT_WR);
+    } while(result < 0 && errno == EINTR);
+    return result == 0;
+}
+
 bool TCPCom::com_status() {
     if(error()) return false;
     return is_connected(socket());
