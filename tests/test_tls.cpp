@@ -82,6 +82,102 @@ TEST(TLS_Tests, PrivilegedVirtualDtlsHandoffUsesPreparedRealSocket) {
     ::close(client);
 }
 
+TEST(TLS_Tests, PrivilegedVirtualDtlsContextTracksPromotionAndReleasesBothIdentities) {
+    if(::geteuid() != 0)
+        GTEST_SKIP() << "transparent DTLS socket setup requires root";
+
+    Log::init();
+    // HostCX initializes its COM, so give the factory the same isolated PKI
+    // used by the TLS tests rather than relying on the host's installation.
+    auto& factory = SSLFactory::factory();
+    const auto saved_certs_path = factory.certs_path();
+    const auto saved_password = factory.certs_password();
+    const auto saved_ca_file = factory.ca_file();
+    const auto saved_ca_path = factory.ca_path();
+    factory.certs_path() = "etc/certs/default/";
+    factory.certs_password() = "smithproxy";
+    factory.ca_file() = "etc/certs/default/ca-cert.pem";
+    factory.ca_path().clear();
+    auto restore_factory = raw::guard([&] {
+        factory.destroy();
+        factory.certs_path() = saved_certs_path;
+        factory.certs_password() = saved_password;
+        factory.ca_file() = saved_ca_file;
+        factory.ca_path() = saved_ca_path;
+    });
+
+    const int client = ::socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
+    ASSERT_GE(client, 0);
+    sockaddr_in client_address {};
+    client_address.sin_family = AF_INET;
+    client_address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    client_address.sin_port = 0;
+    ASSERT_EQ(::bind(client, reinterpret_cast<sockaddr*>(&client_address),
+                     sizeof(client_address)), 0);
+    socklen_t client_size = sizeof(client_address);
+    ASSERT_EQ(::getsockname(client, reinterpret_cast<sockaddr*>(&client_address),
+                            &client_size), 0);
+
+    auto record = std::make_shared<Datagram>();
+    std::memcpy(&record->src, &client_address, sizeof(client_address));
+    sockaddr_in intercepted {};
+    intercepted.sin_family = AF_INET;
+    ASSERT_EQ(::inet_pton(AF_INET, "127.0.0.2", &intercepted.sin_addr), 1);
+    intercepted.sin_port = 0;
+    std::memcpy(&record->dst, &intercepted, sizeof(intercepted));
+
+    constexpr uint32_t virtual_key = 0x80001234U;
+    auto pool = UDPCom::datagram_com_static();
+    {
+        auto lock = std::scoped_lock(pool->lock);
+        pool->datagrams_received[virtual_key] = record;
+    }
+
+    {
+        auto* transport = new DTLSCom();
+        baseHostCX context(transport, static_cast<int32_t>(virtual_key));
+        auto& connection = *transport;
+        connection.embryonics().id = virtual_key;
+        connection.opt.bypass = true;
+        context.on_accept_socket(static_cast<int32_t>(virtual_key));
+        EXPECT_EQ(context.socket(), connection.socket());
+        ASSERT_GE(connection.socket(), 0);
+        EXPECT_NE(connection.socket(), static_cast<int32_t>(virtual_key));
+        EXPECT_NE(::fcntl(connection.socket(), F_GETFD, 0) & FD_CLOEXEC, 0);
+
+        sockaddr_in peer {};
+        socklen_t peer_size = sizeof(peer);
+        ASSERT_EQ(::getpeername(connection.socket(),
+                                reinterpret_cast<sockaddr*>(&peer),
+                                &peer_size), 0);
+        EXPECT_EQ(peer.sin_addr.s_addr, client_address.sin_addr.s_addr);
+        EXPECT_EQ(peer.sin_port, client_address.sin_port);
+
+        sockaddr_in local {};
+        socklen_t local_size = sizeof(local);
+        ASSERT_EQ(::getsockname(connection.socket(),
+                                reinterpret_cast<sockaddr*>(&local),
+                                &local_size), 0);
+        EXPECT_EQ(local.sin_addr.s_addr, intercepted.sin_addr.s_addr);
+        EXPECT_NE(local.sin_port, 0);
+
+        const int descriptor = connection.socket();
+        context.shutdown();
+        EXPECT_EQ(context.socket(), 0);
+        EXPECT_EQ(context.closed_socket(), 0);
+        EXPECT_EQ(::fcntl(descriptor, F_GETFD), -1);
+        EXPECT_EQ(errno, EBADF);
+        auto lock = std::scoped_lock(pool->lock);
+        EXPECT_EQ(pool->datagrams_received.count(virtual_key), 0U);
+    }
+
+    {
+        auto lock = std::scoped_lock(pool->lock);
+        pool->datagrams_received.erase(virtual_key);
+    }
+    ::close(client);
+}
+
 std::unique_ptr<X509, decltype(&X509_free)> load_tls_test_certificate() {
     FILE* file = std::fopen("etc/certs/default/srv-cert.pem", "r");
     if (!file)

@@ -94,6 +94,7 @@ public:
 private:
 
     int fd_ = 0;
+    int closing_fd_ = 0; // Retained after shutdown until the context closes it.
 
     // feedback mechanism to get if the communication level is up/down
     // necessary for some mitm scenarios and connection status feedback between 2 sockets
@@ -209,22 +210,23 @@ public:
     virtual bool descriptor_valid(int fd) const { return fd > 0; }
     virtual int socket() const { return fd_; }
 
-    // sets a socket and closes previous socket if set
+    // Assign a descriptor without closing it. The context still controls
+    // shutdown, handoff and final close; zero clears the active descriptor.
     virtual int socket(int sock) {
-
-        if( sock !=  fd_ && fd_ > 0) {
-            _err("basecom::socket: orphaned fd %d, new socket %d", fd_, sock);
-
-            // prepared to fix https://github.com/astibal/smithproxy/issues/7
-            // auto bts = bt(true);
-            // _err("trace: \r\n%s", bts.c_str());
-            //::close(fd_);
-
-            _war("baseCom::socket(%d): possibly leaking previously held socket %d", sock, fd_);
+        if(sock != 0 && sock != fd_ && fd_ > 0) {
+            _war("baseCom::socket(%d): replacing active socket %d", sock, fd_);
         }
-
         fd_ = sock;
         return fd_;
+    }
+
+    int closed_socket() const { return closing_fd_; }
+    void closed_socket(int sock) { closing_fd_ = sock; }
+
+    // Relinquish both descriptors without closing them (handoff or replacement).
+    void remove_socket() {
+        fd_ = 0;
+        closing_fd_ = 0;
     }
 
 

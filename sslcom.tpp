@@ -2970,10 +2970,6 @@ bool baseSSLCom<L4Proto>::handshake_peer_client() {
         // if we got here, upgrade client socket prior SSL_connect! Keep it here, it has to be just once!
         if(auto_upgrade()) {
             _dia("SSLCom::waiting[%d]: executing client auto upgrade", socket());
-            if(owner_cx() != nullptr && socket() == 0) {
-                socket(owner_cx()->socket());
-                _dia("SSLCom::waiting[%d]: socket 0 has been auto-upgraded to owner's socket", socket());
-            }
             if(upgrade_client_socket(socket()) < 0) {
                 _err("SSLCom::waiting[%d]: client TLS upgrade failed", socket());
                 error(ERROR_UNSPEC);

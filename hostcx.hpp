@@ -207,8 +207,6 @@ private:
 	mutable std::string name_;      //!< human friendly name
 	mutable std::mutex name_mutex_;  // protect name_
 
-	int fds_ = 0;			//!< socket/file descriptor itself
-	int closing_fds_ = 0;   // to close com we call shutdown() which actually don't close fds_. We have to store it and close on very object destruction.
 	bool error_ = false;    //!< indicates that the last read operation on socket returned 0
 	
 	
@@ -385,28 +383,27 @@ public:
 	// this us dummy implementation returning false
 	virtual bool new_message() const { return false; }
 
-	inline int unblock() const { return com()->unblock(fds_); }
+	inline int unblock() const { return com()->unblock(socket()); }
 
 	void unhandle() const;
 	virtual void shutdown();
-	inline bool valid() const { return ( fds_ > 0 && !error() ); };
+	inline bool valid() const { return ( socket() > 0 && !error() ); };
 	inline bool error() const {
         if(com() != nullptr) return (error_ || com()->error());
         return error_ ; 
     }
 	inline void error(bool b) { error_ = b; }
-	void socket(int s) {
-		if (s != 0) {
-			fds_ = s;
-		}
-	};
-    inline void remove_socket() { fds_ = 0; closing_fds_ = 0; };
+    // Compatibility facade: descriptor storage belongs to the transport.
+    void socket(int s) {
+        if(s != 0) com()->socket(s);
+    }
+    inline void remove_socket() { com()->remove_socket(); }
 
-    [[nodiscard]] int socket() const { return fds_; };
-    [[nodiscard]] int real_socket() const { if(com_) { return com_->translate_socket(fds_); } return socket(); }
+    [[nodiscard]] int socket() const { return com()->socket(); }
+    [[nodiscard]] int real_socket() const { return com()->translate_socket(socket()); }
 
     [[maybe_unused]] [[nodiscard]] bool is_connected();
-    [[nodiscard]] int closed_socket() const { return closing_fds_; };
+    [[nodiscard]] int closed_socket() const { return com()->closed_socket(); }
 
     void permanent(bool p) { permanent_=p; }
     [[nodiscard]] bool permanent() const { return permanent_; }

@@ -661,6 +661,100 @@ TEST(TransferLifecycle, PreservesWrittenPrefixAndMarksFatalTailError) {
                            connection.writebuf()->data()));
 }
 
+TEST(TransferLifecycle, AcceptedDescriptorIsVisibleDuringTransportInitialization) {
+    class InspectingTCPCom : public TCPCom {
+    public:
+        void init(baseHostCX* owner) override {
+            TCPCom::init(owner);
+            initialized_socket = socket();
+        }
+        int initialized_socket = 0;
+    };
+
+    SocketPair sockets;
+    ASSERT_TRUE(sockets.valid());
+    auto* transport = new InspectingTCPCom();
+    const int descriptor = sockets.release_first();
+    baseHostCX connection(transport, descriptor);
+    EXPECT_EQ(transport->initialized_socket, descriptor);
+    EXPECT_EQ(transport->socket(), connection.socket());
+}
+
+TEST(TransferLifecycle, DescriptorFacadePreservesVirtualTokensAndHandoff) {
+    auto* transport = new TCPCom();
+    baseHostCX connection(transport, -17);
+    EXPECT_EQ(transport->socket(), -17);
+
+    connection.socket(-23);
+    EXPECT_EQ(transport->socket(), -23);
+    transport->socket(-29);
+    EXPECT_EQ(connection.socket(), -29);
+    connection.socket(0); // Preserve the existing setter's no-op contract.
+    EXPECT_EQ(connection.socket(), -29);
+
+    transport->closed_socket(-17);
+    connection.remove_socket();
+    EXPECT_EQ(transport->socket(), 0);
+    EXPECT_EQ(transport->closed_socket(), 0);
+}
+
+TEST(TransferLifecycle, TransportReplacementPreservesLiveSocketWithoutClosingIt) {
+    SocketPair sockets;
+    ASSERT_TRUE(sockets.valid());
+    const int descriptor = sockets.release_first();
+    {
+        baseHostCX connection(new TCPCom(), descriptor);
+        auto* replacement = new TCPCom();
+        connection.com(replacement);
+        replacement->init(&connection);
+        ASSERT_EQ(replacement->socket(), descriptor);
+        ASSERT_EQ(connection.socket(), descriptor);
+
+        // Exercise actual I/O after the old transport has been destroyed.
+        const char sent = 'x';
+        char received = 0;
+        ASSERT_EQ(replacement->write(descriptor, &sent, 1, 0), 1);
+        ASSERT_EQ(::recv(sockets.second(), &received, 1, 0), 1);
+        EXPECT_EQ(received, sent);
+    }
+    EXPECT_EQ(::fcntl(descriptor, F_GETFD), -1);
+    EXPECT_EQ(errno, EBADF);
+}
+
+TEST(TransferLifecycle, TransportReplacementPreservesDeferredCloseExactlyOnce) {
+    LifecycleState original;
+    LifecycleState replacement;
+    {
+        baseHostCX connection(new LifecycleTCPCom(&original), 101);
+        connection.shutdown();
+        EXPECT_EQ(connection.com()->socket(), 0);
+        EXPECT_EQ(connection.com()->closed_socket(), 101);
+
+        connection.com(new LifecycleTCPCom(&replacement));
+        EXPECT_EQ(connection.socket(), 0);
+        EXPECT_EQ(connection.closed_socket(), 101);
+        EXPECT_EQ(original.close_calls, 0U);
+    }
+    EXPECT_EQ(original.shutdown_calls, 1U);
+    EXPECT_EQ(original.close_calls, 0U);
+    EXPECT_EQ(replacement.close_calls, 1U);
+    EXPECT_EQ(replacement.close_fd, 101);
+}
+
+TEST(TransferLifecycle, NullAndSameTransportReplacementPreserveConnection) {
+    LifecycleState state;
+    {
+        auto* transport = new LifecycleTCPCom(&state);
+        baseHostCX connection(transport, 101);
+        EXPECT_THROW(connection.com(nullptr), socle::com_is_null);
+        connection.com(transport);
+        EXPECT_EQ(connection.com(), transport);
+        EXPECT_EQ(connection.socket(), 101);
+        EXPECT_EQ(state.close_calls, 0U);
+    }
+    EXPECT_EQ(state.close_calls, 1U);
+}
+
 TEST(TransferLifecycle, CloseAfterWriteDefersRegularDescriptorCloseExactlyOnce) {
     auto const payload = pattern(1024);
     LifecycleState state;

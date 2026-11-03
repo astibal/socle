@@ -58,7 +58,7 @@ baseHostCX::baseHostCX(baseCom* c, const char* h, const char* p): Host(h, p) {
     com()->init(this);
 }
 
-baseHostCX::baseHostCX(baseCom* c, int s): fds_(s) {
+baseHostCX::baseHostCX(baseCom* c, int s) {
 
     writebuf_.capacity(baseHostCX::params_t::buffsize);
     readbuf_.capacity(baseHostCX::params_t::buffsize);
@@ -71,26 +71,35 @@ baseHostCX::baseHostCX(baseCom* c, int s): fds_(s) {
     }
 
     com_ = std::unique_ptr<baseCom>(c);
+    com()->socket(s);
     com()->init(this);
 }
 
 baseHostCX::~baseHostCX() {
     com()->cleanup();
 
-    if(fds_ > 0) {
-        com()->set_poll_handler(fds_,nullptr);
-        com()->close(fds_);
+    if(socket() > 0) {
+        com()->set_poll_handler(socket(),nullptr);
+        com()->close(socket());
     }
 
-    if(closing_fds_ > 0) {
-        com()->set_poll_handler(closing_fds_,nullptr);
-        com()->close(closing_fds_);
+    if(closed_socket() > 0) {
+        com()->set_poll_handler(closed_socket(),nullptr);
+        com()->close(closed_socket());
     }
 }
 
 
 void baseHostCX::com(baseCom* c) {
-    com_ = std::unique_ptr<baseCom>(c);
+    if(!c) throw socle::com_is_null();
+    if(c == com()) return;
+
+    // STARTTLS replaces the transport, not the connection. Move descriptor
+    // storage before destroying the old COM; initialization remains explicit.
+    c->socket(socket());
+    c->closed_socket(closed_socket());
+    com()->remove_socket();
+    com_.reset(c);
 }
 
 int baseHostCX::connect() {
@@ -102,20 +111,21 @@ int baseHostCX::connect() {
     // A reconnect reuses this context. Retire the descriptor saved by the
     // preceding shutdown before it can be overwritten by another cycle, and
     // reset directional state belonging to the old stream.
-    if(closing_fds_ > 0) {
-        com()->close(closing_fds_);
-        closing_fds_ = 0;
+    if(closed_socket() > 0) {
+        com()->close(closed_socket());
+        com()->closed_socket(0);
     }
     read_eof(false);
 
     opening(true);
 
     _deb("HostCX::connect[%s]: blocking=%d",c_type(), baseCom::GLOBAL_IO_BLOCKING());
-    fds_ = com()->connect(host_.c_str(),port_.c_str());
+    const int descriptor = com()->connect(host_.c_str(), port_.c_str());
+    com()->socket(descriptor);
     error_ = false;
 
-    if (fds_ > 0 && baseCom::GLOBAL_IO_BLOCKING()) {
-        _deb("HostCX::connect[%s]: blocking, connected successfully, socket %d",c_type(),fds_);
+    if (socket() > 0 && baseCom::GLOBAL_IO_BLOCKING()) {
+        _deb("HostCX::connect[%s]: blocking, connected successfully, socket %d",c_type(),socket());
         opening(false);
     }
     else if (baseCom::GLOBAL_IO_BLOCKING()) {
@@ -123,7 +133,7 @@ int baseHostCX::connect() {
         opening(false);
     }
 
-    return fds_;
+    return socket();
 }
 
 
@@ -244,8 +254,8 @@ void baseHostCX::shutdown() {
 
     parent_proxy(nullptr, '-');
 
-    if(fds_ != 0) {
-        closing_fds_ = fds_;
+    if(socket() != 0) {
+        com()->closed_socket(socket());
 
         if(com()) {
             // Stop dispatching before shutdown: UDP shutdown closes the fd
@@ -254,15 +264,15 @@ void baseHostCX::shutdown() {
             unhandle();
             _deb("baseHostCX::shutdown[%s]: handler removed", c_type());
 
-            com()->shutdown(closing_fds_);
+            com()->shutdown(closed_socket());
             _deb("baseHostCX::shutdown[%s]: socket shutdown on com", c_type());
 
             // UDPCom either closes the socket or transfers a shared cached
             // socket to another session. In both cases this HostCX must not
             // close the numeric fd again later: it may already be reused.
-            if(com()->shutdown_consumes_fd()) closing_fds_ = 0;
+            if(com()->shutdown_consumes_fd()) com()->closed_socket(0);
         }
-        fds_ = 0;
+        com()->socket(0);
     } else {
         _deb("baseHostCX::shutdown[%s]: no-op, cannot be shutdown",c_type());
     }
@@ -284,7 +294,7 @@ std::string& baseHostCX::name(int level, bool force) const {
             if (valid()) {
 
                 if(com() != nullptr) {
-                    com()->resolve_socket_src(fds_, &res_host, &res_port);
+                    com()->resolve_socket_src(socket(), &res_host, &res_port);
                     host(res_host);
                     port(res_port);
                 }
