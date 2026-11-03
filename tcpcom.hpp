@@ -71,6 +71,10 @@ public:
         return r;
     };
     void shutdown(int _fd) override {
+        connect_proven = false;
+        connected_fd_ = 0;
+        connect_failed_ = true;
+        connect_error_ = ENOTCONN;
         int r = ::shutdown(_fd, SHUT_RDWR);
         if(r < 0 && errno != ENOTCONN)
             _dia("%s::shutdown[%d]: %s", c_type(), _fd, string_error().c_str());
@@ -97,6 +101,7 @@ protected:
     int bind_sock_protocol = IPPROTO_TCP;
 
     bool connect_proven = false;
+    int connected_fd_ = 0;
     bool connect_failed_ = false;
     int connect_error_ = 0;
 
@@ -104,9 +109,6 @@ protected:
     DECLARE_LOGGING(to_string)
 
 private:
-    static int writability_epoll_flags() noexcept;
-    friend class TCPComStateTestProbe;
-    friend bool is_socket_writable(int sock);
 
     static inline logan_lite log {"com.tcp"};
     static inline logan_lite log_state {"com.tcp.state"};

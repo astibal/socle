@@ -1429,6 +1429,11 @@ struct SSLCom_Buddy : public SSLCom {
     void test_sni(std::string value) { sslcom_sni() = std::move(value); }
     bool test_handshake_peer_client() { return handshake_peer_client(); }
     bool test_sslcom_status() { return sslcom_status(); }
+    void test_readiness(bool ready, bool waiting) {
+        sslcom_status(ready);
+        sslcom_waiting = waiting;
+        verify_reset(verify_status_t::VRF_OK);
+    }
     void test_init_ssl_callbacks() { init_ssl_callbacks(); }
     void test_init_client() { init_client(); }
     void test_context(SSL_CTX* context) { sslcom_ctx = context; }
@@ -3960,4 +3965,29 @@ TEST(TLS_Tests, RejectsAmbiguousSNIHostNames) {
     SSLCom_Buddy duplicate_connection;
     EXPECT_THROW(duplicate_connection.test_parse_extension(duplicate_input),
                  socle::ex::SSL_clienthello_malformed);
+}
+
+TEST(SSLComReadiness, HandshakeWaitingErrorAndBypass) {
+    int sockets[2];
+    ASSERT_EQ(::socketpair(AF_UNIX, SOCK_STREAM, 0, sockets), 0);
+    SSLCom_Buddy connection;
+    connection.socket(sockets[0]);
+    connection.test_readiness(false, true);
+    EXPECT_FALSE(connection.com_status());
+    connection.test_readiness(true, true);
+    EXPECT_FALSE(connection.com_status());
+    connection.test_readiness(true, false);
+    EXPECT_TRUE(connection.com_status());
+    connection.error(baseCom::ERROR_UNSPEC);
+    EXPECT_FALSE(connection.com_status());
+    // A failed upper layer does not erase evidence of an established TCP leg.
+    EXPECT_TRUE(connection.is_connected(sockets[0]));
+    connection.error(baseCom::ERROR_NONE);
+    connection.test_readiness(false, true);
+    connection.opt.bypass = true;
+    EXPECT_TRUE(connection.com_status());
+    connection.shutdown(sockets[0]);
+    EXPECT_FALSE(connection.com_status());
+    ::close(sockets[0]);
+    ::close(sockets[1]);
 }

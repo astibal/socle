@@ -12,18 +12,13 @@
 #include <threadedworker.hpp>
 
 #include <array>
+#include <hostcx.hpp>
+#include <poll.h>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
 
 long purge_socket(int socket);
-
-class TCPComStateTestProbe {
-public:
-    static int writability_epoll_flags() {
-        return TCPCom::writability_epoll_flags();
-    }
-};
 
 TEST(ThreadedWorkerLifecycle, RetirementStopsNewWorkWithoutKillingTheWorker) {
     threadedProxyWorker worker(7, proxyType::proxy());
@@ -34,9 +29,6 @@ TEST(ThreadedWorkerLifecycle, RetirementStopsNewWorkWithoutKillingTheWorker) {
     EXPECT_TRUE(worker.retiring());
 }
 
-TEST(TCPComLifecycle, WritabilityProbeEpollIsCloseOnExec) {
-    EXPECT_NE(TCPComStateTestProbe::writability_epoll_flags() & EPOLL_CLOEXEC, 0);
-}
 
 namespace {
 
@@ -1000,4 +992,63 @@ TEST(EpollLifecycle, DescriptorZeroIsValidAndClosed) {
     EXPECT_NE(descriptor_flags & FD_CLOEXEC, 0);
     EXPECT_EQ(closed_result, -1);
     EXPECT_EQ(closed_error, EBADF);
+}
+
+// Readiness must describe an established transport, not just a writable fd.
+TEST(TCPComReadiness, FreshSocketAndListenerAreNotConnected) {
+    TCPCom connection;
+    EXPECT_FALSE(connection.com_status());
+    int fd = ::socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
+    ASSERT_GT(fd, 0);
+    connection.socket(fd);
+    EXPECT_FALSE(connection.is_connected(fd));
+    EXPECT_FALSE(connection.com_status());
+    ::close(fd);
+
+    IPv4TCPCom listener;
+    listener.use_ipv4_listener();
+    fd = listener.bind(static_cast<unsigned short>(0));
+    ASSERT_GT(fd, 0);
+    EXPECT_FALSE(listener.com_status());
+    listener.close(fd);
+}
+
+TEST(TCPComReadiness, AcceptedContextAndShutdown) {
+    int pair[2];
+    ASSERT_EQ(::socketpair(AF_UNIX, SOCK_STREAM, 0, pair), 0);
+    {
+        baseHostCX accepted(new TCPCom(), pair[0]);
+        // Accepted contexts and their COM share one descriptor source.
+        EXPECT_EQ(accepted.com()->socket(), pair[0]);
+        EXPECT_TRUE(accepted.com()->com_status());
+        EXPECT_TRUE(accepted.com()->com_status());
+        accepted.com()->shutdown(pair[0]);
+        EXPECT_FALSE(accepted.com()->com_status());
+    }
+    ::close(pair[1]);
+}
+
+TEST(TCPComReadiness, RefusedConnectRemainsFailedAfterSoErrorWasConsumed) {
+    int reserved = ::socket(AF_INET, SOCK_STREAM, 0);
+    ASSERT_GT(reserved, 0);
+    sockaddr_in address{};
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    ASSERT_EQ(::bind(reserved, reinterpret_cast<sockaddr*>(&address), sizeof(address)), 0);
+    socklen_t size = sizeof(address);
+    ASSERT_EQ(getsockname(reserved, reinterpret_cast<sockaddr*>(&address), &size), 0);
+
+    TCPCom connection;
+    const auto port = std::to_string(ntohs(address.sin_port));
+    const int fd = connection.connect("127.0.0.1", port.c_str());
+    ASSERT_GT(fd, 0);
+    pollfd event{fd, POLLOUT, 0};
+    ASSERT_GT(::poll(&event, 1, 1000), 0);
+    EXPECT_FALSE(connection.is_connected(fd));
+    EXPECT_TRUE(connection.connect_failed());
+    EXPECT_EQ(connection.connect_error(), ECONNREFUSED);
+    EXPECT_FALSE(connection.is_connected(fd));
+    EXPECT_FALSE(connection.com_status());
+    connection.close(fd);
+    ::close(reserved);
 }

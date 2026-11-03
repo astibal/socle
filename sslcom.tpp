@@ -4862,44 +4862,18 @@ int baseSSLCom<L4Proto>::connect(const char* host, const char* port)  {
 
 template <class L4Proto>
 bool baseSSLCom<L4Proto>::com_status() {
-    if(L4Proto::com_status()) {
-        if(opt.bypass) {
-            _dia("SSLCom::com_status: L4 OK, bypassed");
-            return true;
-        }
+    // TCP readiness alone must not release application I/O during a handshake
+    // or after a failed certificate/counterpart setup. Bypass needs only L4.
+    if(error() || !L4Proto::com_status()) return false;
+    if(opt.bypass) return true;
 
-        bool l5_status = sslcom_status();
-
-        if(l5_status) {
-            if(! is_server()) {
-                _war("SSLCom::com_status: L4 and SSL layers OK - client: target cert: %d, issuer: %d", (target_cert() != nullptr), (target_issuer() != nullptr));
-                if( target_cert() || target_issuer() ) {
-                    _war("SSLCom::com_status: L4 and SSL layers OK - verify status: 0x%04x", verify_get());
-                }
-
-                if(verify_bitcheck(verify_status_t::VRF_NOTTESTED)) {
-                    _war("SSLCom::com_status: not yet verified");
-
-                    return false;
-                }
-            }
-            else {
-                _war("SSLCom::com_status: L4 and SSL layers OK - server", (target_cert() != nullptr), (target_issuer() != nullptr));
-            }
-        } else {
-            _deb("SSLCom::com_status: L4 OK, but SSL layer not ready.");
-        }
-
-        _deb("SSLCom::com_status: returning %d", l5_status);
-        return l5_status;
-    }
-
-    _deb("SSLCom::com_status: L4 layer not ready, returning 0");
-    return false;
+    return sslcom_status() && !sslcom_waiting && !sslcom_fatal &&
+           (is_server() || !verify_bitcheck(verify_status_t::VRF_NOTTESTED));
 }
 
 template <class L4Proto>
 void baseSSLCom<L4Proto>::shutdown(int _fd) {
+    sslcom_status(false);
     
     if(sslcom_ssl != nullptr and not sslcom_fatal) {
         SSL_shutdown(sslcom_ssl);
