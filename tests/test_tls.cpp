@@ -3664,6 +3664,66 @@ TEST(TLS_Tests, CryptoPolicyRestrictsTls13AlongsideLegacyCipherList) {
 }
 #endif
 
+TEST(TLS_Tests, UpstreamCipherOverrideReplacesLegacyPolicyAndRejectsInvalidExpressions) {
+    init_log();
+    auto& factory = SSLFactory::factory();
+    const auto saved_path = factory.certs_path();
+    const auto saved_password = factory.certs_password();
+    const auto saved_ca_file = factory.ca_file();
+    const auto saved_ca_path = factory.ca_path();
+    factory.destroy();
+    factory.certs_path() = "etc/certs/default/";
+    factory.certs_password() = "smithproxy";
+    factory.ca_file() = "etc/certs/default/ca-cert.pem";
+    factory.ca_path().clear();
+    auto restore = raw::guard([&] {
+        factory.destroy();
+        factory.certs_path() = saved_path;
+        factory.certs_password() = saved_password;
+        factory.ca_file() = saved_ca_file;
+        factory.ca_path() = saved_ca_path;
+    });
+    factory.init();
+    ASSERT_NE(factory.default_tls_client_cx(), nullptr);
+
+    const std::string selected = "ECDHE-RSA-AES128-GCM-SHA256";
+    SSLCom_Buddy connection;
+    connection.factory(&factory);
+    connection.l4_proto(SOCK_STREAM);
+    connection.opt.ct_enable = false;
+    connection.opt.right.allow_aes128 = false;
+    ASSERT_TRUE(connection.configure_upstream_hello("example.test", "", selected));
+
+    connection.test_init_client();
+
+    ASSERT_NE(connection.test_ssl(), nullptr);
+    ASSERT_FALSE(connection.error());
+    std::vector<std::string> legacy;
+    const auto* ciphers = SSL_get_ciphers(connection.test_ssl());
+    for(int i = 0; i < sk_SSL_CIPHER_num(ciphers); ++i) {
+        const auto* cipher = sk_SSL_CIPHER_value(ciphers, i);
+        if(std::string_view(SSL_CIPHER_get_version(cipher)) != "TLSv1.3") {
+            legacy.emplace_back(SSL_CIPHER_get_name(cipher));
+        }
+    }
+    EXPECT_EQ(legacy, std::vector<std::string>{selected});
+    EXPECT_FALSE(connection.configure_upstream_hello("late.test", "", "ALL"));
+
+    for(const auto* invalid : {"", "UNKNOWN-CIPHER", "TLS_AES_256_GCM_SHA384"}) {
+        SSLCom_Buddy rejected;
+        rejected.factory(&factory);
+        rejected.l4_proto(SOCK_STREAM);
+        rejected.opt.ct_enable = false;
+        ASSERT_TRUE(rejected.configure_upstream_hello("example.test", "", std::string(invalid)));
+
+        rejected.test_init_client();
+
+        EXPECT_EQ(rejected.test_ssl(), nullptr) << invalid;
+        EXPECT_TRUE(rejected.error()) << invalid;
+        EXPECT_EQ(rejected.tls_proto_state(), socle::TlsProtoState::failed);
+    }
+}
+
 TEST(TLS_Tests, CompleteClientHelloNormalizationReusesInputBuffer) {
     buffer complete(tls_sni_smithproxy, sizeof(tls_sni_smithproxy));
     SSLCom_Buddy s;

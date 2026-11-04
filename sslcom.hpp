@@ -23,6 +23,7 @@
 #include <atomic>
 #include <string>
 #include <string_view>
+#include <optional>
 #include <thread>
 
 #include <openssl/rsa.h>
@@ -287,6 +288,9 @@ private:
 
     TlsHookState tls_hooks_;
 
+    // Allocate an override only for an explicitly configured handshake.
+    std::unique_ptr<std::string> upstream_cipher_list_;
+
     socle::ProtocolHookResult dispatch_tls_client_hello() {
 
         auto& invocation = tls_hooks_.client_hello;
@@ -424,14 +428,18 @@ public:
 
     // Apply an already validated outbound offer before OpenSSL owns it.
     // Keep the peer's original ClientHello and certificate identity intact.
-    bool configure_upstream_hello(std::string sni, std::string alpn) {
+    bool configure_upstream_hello(std::string sni, std::string alpn,
+                                  std::optional<std::string> cipher_list = std::nullopt) {
 
         if(sslcom_ssl || is_server()) {
             return false;
         }
 
+        auto ciphers = cipher_list ? std::make_unique<std::string>(std::move(*cipher_list)) : nullptr;
+
         sslcom_sni_ = std::move(sni);
         sslcom_peer_hello_alpn_ = std::move(alpn);
+        upstream_cipher_list_ = std::move(ciphers);
         return true;
     }
 

@@ -2355,21 +2355,27 @@ void baseSSLCom<L4Proto>::init_client() {
         error(ERROR_UNSPEC);
     };
 
-    if (!uses_default_cipher_filter(opt.right)) {
+    if (upstream_cipher_list_ || !uses_default_cipher_filter(opt.right)) {
         std::string my_filter = ci_def_filter;
 
-        if(!opt.right.allow_sha1)
-                    my_filter += " !SHA1";
-        if(!opt.right.allow_rc4)
-                    my_filter += " !RC4";
-        if(!opt.right.allow_aes128)
-                    my_filter += " !AES128";
+        // An explicit OpenSSL expression replaces the legacy cipher policy.
+        // TLS 1.3 suites and protocol bounds remain separate settings.
+        if(upstream_cipher_list_) {
+            my_filter = *upstream_cipher_list_;
+        } else {
+            if(!opt.right.allow_sha1)
+                my_filter += " !SHA1";
+            if(!opt.right.allow_rc4)
+                my_filter += " !RC4";
+            if(!opt.right.allow_aes128)
+                my_filter += " !AES128";
 
-        if(!opt.right.kex_dh)
-                    my_filter += " !kEECDH !kEDH";
+            if(!opt.right.kex_dh)
+                my_filter += " !kEECDH !kEDH";
 
-        if(!opt.right.kex_rsa)
-                    my_filter += " !kRSA";
+            if(!opt.right.kex_rsa)
+                my_filter += " !kRSA";
+        }
 
         _dia("right ciphers: %s",my_filter.c_str());
         if(SSL_set_cipher_list(sslcom_ssl,my_filter.c_str()) != 1) {
