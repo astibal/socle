@@ -2292,6 +2292,9 @@ void baseSSLCom<L4Proto>::init_ssl_callbacks() {
 template <class L4Proto>
 void baseSSLCom<L4Proto>::init_client() {
 
+    // ClientHello precedes SSL initialization; keep its recorded decision.
+    tls_hooks_.start = {};
+
     tls_proto_role_ = socle::TlsProtoRole::client;
     record_tls_state(socle::TlsProtoState::initializing);
 
@@ -2410,6 +2413,9 @@ void baseSSLCom<L4Proto>::init_client() {
 
 template <class L4Proto>
 void baseSSLCom<L4Proto>::init_server() {
+
+    // ClientHello precedes SSL initialization; keep its recorded decision.
+    tls_hooks_.start = {};
 
     tls_proto_role_ = socle::TlsProtoRole::server;
     record_tls_state(socle::TlsProtoState::initializing);
@@ -2822,6 +2828,11 @@ void baseSSLCom<L4Proto>::accept_socket (int sockfd) {
 #endif
     }
 
+    // Application control runs outside OpenSSL, before its first handshake call.
+    if(hook_tls_start() == socle::ProtocolHookResult::Terminate) {
+        return;
+    }
+
     ERR_clear_error();
     record_tls_state(socle::TlsProtoState::handshaking);
     sslcom_ret = SSL_accept(sslcom_ssl);
@@ -2974,6 +2985,11 @@ int baseSSLCom<L4Proto>::handshake_server() {
         upgrade_server_socket(socket());
     }
 
+    // Application control runs outside OpenSSL, before its first handshake call.
+    if(hook_tls_start() == socle::ProtocolHookResult::Terminate) {
+        return -1;
+    }
+
     ERR_clear_error();
     if(not sslcom_ssl) {
         _dia("SSLCom::handshake: socket not upgraded, failing");
@@ -3119,6 +3135,11 @@ int baseSSLCom<L4Proto>::handshake_client() {
         _err("SSLCom::handshake_client: missing SSL object");
         record_tls_state(socle::TlsProtoState::failed);
         error(ERROR_UNSPEC);
+        return -1;
+    }
+
+    // Application control runs outside OpenSSL, before its first handshake call.
+    if(hook_tls_start() == socle::ProtocolHookResult::Terminate) {
         return -1;
     }
 
@@ -3708,6 +3729,12 @@ bool baseSSLCom<L4Proto>::waiting_peer_hello() {
 
     _dum("SSLCom::waiting_peer_hello: start");
 
+    // A rejected hello must not be reparsed or become an accepted prerequisite.
+    if(tls_hooks_.client_hello.called &&
+       tls_hooks_.client_hello.result == socle::ProtocolHookResult::Terminate) {
+        return false;
+    }
+
     if(sslcom_peer_hello_received_) {
         _deb("SSLCom::waiting_peer_hello: already called, returning true");
         return true;
@@ -3815,7 +3842,15 @@ bool baseSSLCom<L4Proto>::waiting_peer_hello() {
                         sslcom_sni() = target->outbound_sni(sslcom_sni());
                     }
                     
-                    record_tls_state(socle::TlsProtoState::peer_hello_ready);
+                    // Complete metadata is available, but neither TLS startup nor
+                    // the later SNI bypass decision has consumed it yet.
+                    if(hook_client_hello(*peer_scom) == socle::ProtocolHookResult::Terminate) {
+                        return false;
+                    }
+
+                    if(!opt.bypass) {
+                        record_tls_state(socle::TlsProtoState::peer_hello_ready);
+                    }
                     sslcom_peer_hello_received(true);
                     change_monitor(socket(), EPOLLIN);
 
@@ -4846,6 +4881,11 @@ int baseSSLCom<L4Proto>::upgrade_client_socket(int sock) {
         }
 
         SSL_set_bio(sslcom_ssl,sslcom_sbio,sslcom_sbio);
+
+        // Application control runs outside OpenSSL, before its first handshake call.
+        if(hook_tls_start() == socle::ProtocolHookResult::Terminate) {
+            return -1;
+        }
 
         ERR_clear_error();
         record_tls_state(socle::TlsProtoState::handshaking);

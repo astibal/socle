@@ -4180,3 +4180,104 @@ TEST(TLSProtoState, FragmentedHelloAndSkippedPrerequisiteAreDistinct) {
     EXPECT_TRUE(standalone.test_waiting_peer_hello());
     EXPECT_EQ(standalone.tls_proto_state(), socle::TlsProtoState::peer_hello_ready);
 }
+
+namespace {
+
+class ClientHelloHookTest : public ::testing::Test {
+protected:
+    SSLCom_Buddy outbound;
+    SSLCom_Buddy inbound;
+    int sockets[2] {-1, -1};
+    socle::ProtocolHooks::Callback previous = nullptr;
+    unsigned calls = 0;
+    bool parsed_before_start = false;
+    socle::ProtocolHookResult result = socle::ProtocolHookResult::Continue;
+    inline static ClientHelloHookTest* active = nullptr;
+
+    static socle::ProtocolHookResult observe(baseCom& com) noexcept {
+        auto& test = *active;
+        ++test.calls;
+        test.parsed_before_start = &com == &test.outbound &&
+            test.outbound.get_sni() == "smithproxy.org" &&
+            test.inbound.get_sni() == "smithproxy.org" &&
+            test.outbound.test_ssl() == nullptr &&
+            test.outbound.tls_proto_state() == socle::TlsProtoState::waiting_peer_hello;
+        return test.result;
+    }
+
+    void SetUp() override {
+        ASSERT_EQ(::socketpair(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK, 0, sockets), 0);
+        outbound.peer(&inbound);
+        inbound.peer(&outbound);
+        inbound.socket(sockets[0]);
+        outbound.opt.client_hello_timeout = 60000;
+        outbound.protocol_hooks_enabled(true);
+        active = this;
+        previous = socle::ProtocolHooks::registry().tls_client_hello;
+        socle::ProtocolHooks::registry().tls_client_hello = &observe;
+    }
+
+    void TearDown() override {
+        socle::ProtocolHooks::registry().tls_client_hello = previous;
+        active = nullptr;
+        inbound.socket(0);
+        if(sockets[0] >= 0) ::close(sockets[0]);
+        if(sockets[1] >= 0) ::close(sockets[1]);
+    }
+};
+
+TEST_F(ClientHelloHookTest, CompleteHelloIsObservedOnceBeforeTlsStartup) {
+    ASSERT_EQ(::write(sockets[1], tls_sni_smithproxy, 6), 6);
+    EXPECT_FALSE(outbound.test_waiting_peer_hello());
+    EXPECT_EQ(calls, 0U);
+
+    const auto remaining = sizeof(tls_sni_smithproxy) - 6;
+    ASSERT_EQ(::write(sockets[1], tls_sni_smithproxy + 6, remaining),
+              static_cast<ssize_t>(remaining));
+    EXPECT_TRUE(outbound.test_waiting_peer_hello());
+    EXPECT_TRUE(parsed_before_start);
+    EXPECT_TRUE(outbound.test_waiting_peer_hello());
+    EXPECT_EQ(calls, 1U);
+}
+
+TEST_F(ClientHelloHookTest, TerminateFailsBothLegsAndCannotBecomeAccepted) {
+    init_log();
+    logan::get()->entry("com.tls")->level(iWAR);
+    testing::internal::CaptureStdout();
+
+    result = socle::ProtocolHookResult::Terminate;
+    ASSERT_EQ(::write(sockets[1], tls_sni_smithproxy, sizeof(tls_sni_smithproxy)),
+              static_cast<ssize_t>(sizeof(tls_sni_smithproxy)));
+    EXPECT_FALSE(outbound.test_waiting_peer_hello());
+    EXPECT_TRUE(parsed_before_start);
+    EXPECT_TRUE(outbound.error());
+    EXPECT_TRUE(inbound.error());
+    EXPECT_FALSE(outbound.test_waiting_peer_hello());
+    EXPECT_EQ(calls, 1U);
+    EXPECT_EQ(outbound.tls_proto_state(), socle::TlsProtoState::failed);
+    EXPECT_EQ(inbound.tls_proto_state(), socle::TlsProtoState::failed);
+
+    const auto output = testing::internal::GetCapturedStdout();
+    const std::string warning = "TLS handshake terminated by callback: hook=client-hello";
+    const auto first = output.find(warning);
+    ASSERT_NE(first, std::string::npos);
+    EXPECT_EQ(output.find(warning, first + warning.size()), std::string::npos);
+}
+
+TEST_F(ClientHelloHookTest, DisabledObserverDoesNotDispatch) {
+    outbound.protocol_hooks_enabled(false);
+    ASSERT_EQ(::write(sockets[1], tls_sni_smithproxy, sizeof(tls_sni_smithproxy)),
+              static_cast<ssize_t>(sizeof(tls_sni_smithproxy)));
+    EXPECT_TRUE(outbound.test_waiting_peer_hello());
+    EXPECT_EQ(calls, 0U);
+}
+
+TEST_F(ClientHelloHookTest, InvalidHelloDoesNotDispatch) {
+    const unsigned char invalid[] {0x16, 0x01, 0x01, 0, 1, 0};
+    ASSERT_EQ(::write(sockets[1], invalid, sizeof(invalid)),
+              static_cast<ssize_t>(sizeof(invalid)));
+    EXPECT_FALSE(outbound.test_waiting_peer_hello());
+    EXPECT_EQ(calls, 0U);
+}
+
+} // namespace

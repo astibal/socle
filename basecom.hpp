@@ -57,6 +57,14 @@ public:
     baseHostCX* owner_cx_ = nullptr;
     inline baseHostCX* owner_cx() const { return owner_cx_; }
 
+    // Opt in on the owning thread, before entering a protocol decision point.
+    bool protocol_hooks_enabled() const { return protocol_hooks_enabled_; }
+    void protocol_hooks_enabled(bool enabled) { protocol_hooks_enabled_ = enabled; }
+
+private:
+    bool protocol_hooks_enabled_ = false;
+
+public:
     [[maybe_unused]] static void polltime(int msec) { poll_msec = msec; }
 
     bool _static_init = false;
