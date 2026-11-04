@@ -1975,3 +1975,70 @@ TEST(TransferLifecycle, MovingPollHandlerRemovesItsOldRegistrantMappings) {
     EXPECT_EQ(second.get_handler(31), nullptr);
     EXPECT_EQ(second.get_handler(32), nullptr);
 }
+
+namespace {
+
+class FinalizationProbe : public baseProxy {
+public:
+    explicit FinalizationProbe(std::vector<std::string>& events)
+        : baseProxy(new TCPCom()), events_(events) {}
+
+    void shutdown() override { events_.push_back("shutdown"); }
+    void finalize() noexcept override { events_.push_back("finalize"); }
+    ~FinalizationProbe() override { events_.push_back("destroy"); }
+
+private:
+    std::vector<std::string>& events_;
+};
+
+} // namespace
+
+TEST(ProxyFinalization, OwnerShutdownFinalizesBeforeDestruction) {
+    std::vector<std::string> events;
+    {
+        MasterProxy owner(new TCPCom());
+        owner.add_proxy(std::make_unique<FinalizationProbe>(events));
+        owner.shutdown();
+        EXPECT_EQ(events, (std::vector<std::string>{"shutdown", "finalize", "destroy"}));
+    }
+    EXPECT_EQ(events.size(), 3U);
+}
+
+TEST(ProxyFinalization, ReaperFinalizesOutsideTheQueueBeforeDestruction) {
+    std::vector<std::string> events;
+    MasterProxy owner(new TCPCom());
+    owner.deferred().push_back({std::make_unique<FinalizationProbe>(events),
+                               std::chrono::steady_clock::time_point{}});
+
+    for(std::size_t tick = 0; tick < MasterProxy::deferred_reap_every; ++tick) {
+        owner.handle_sockets_once(owner.com());
+    }
+
+    EXPECT_EQ(events, (std::vector<std::string>{"finalize", "destroy"}));
+    EXPECT_TRUE(owner.deferred().empty());
+}
+
+TEST(ProxyFinalization, DestructorDoesNotInvokeLifecycleCallbacks) {
+    std::vector<std::string> events;
+    {
+        MasterProxy owner(new TCPCom());
+        owner.add_proxy(std::make_unique<FinalizationProbe>(events));
+    }
+    EXPECT_EQ(events, (std::vector<std::string>{"destroy"}));
+}
+
+TEST(ProxyFinalization, TimerReapsRetiredSessionsWithoutSocketTraffic) {
+    std::vector<std::string> events;
+    class DueTimerMaster final : public MasterProxy {
+    public:
+        DueTimerMaster() : MasterProxy(new TCPCom()) { clicker_.last_tick_ = 0; }
+    };
+    DueTimerMaster owner;
+    owner.deferred().push_back({std::make_unique<FinalizationProbe>(events),
+                               std::chrono::steady_clock::time_point{}});
+
+    owner.run_timers();
+
+    EXPECT_EQ(events, (std::vector<std::string>{"finalize", "destroy"}));
+    EXPECT_TRUE(owner.deferred().empty());
+}

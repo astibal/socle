@@ -87,10 +87,7 @@ public:
     explicit MasterProxy(baseCom* c): baseProxy(c) {
         proxies_.reserve(subproxy_reserve);
     }
-    ~MasterProxy() override {
-        // Tear down active and deferred sessions on their owning worker.
-        MasterProxy::shutdown();
-    }
+    ~MasterProxy() override = default;
 
     vector_type <proxy_entry>& proxies() { return proxies_; };
     vector_type <proxy_entry> const& proxies() const { return proxies_; };
@@ -109,6 +106,12 @@ public:
     int prepare_sockets(baseCom*) override;
 	int handle_sockets_once(baseCom*) override;
 	void shutdown() override;
+
+    int run() override {
+        const int result = baseProxy::run();
+        shutdown();
+        return result;
+    }
     
     bool run_timers() override;
 

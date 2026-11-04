@@ -257,6 +257,10 @@ public:
     virtual void right_shutdown();
     void shutdown() override;
 
+    // Called explicitly by the owner before destruction, outside queue locks.
+    // Implementations must contain failures so resource cleanup can continue.
+    virtual void finalize() noexcept {}
+
 
     int run() override;
 

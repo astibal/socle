@@ -72,6 +72,10 @@ bool MasterProxy::run_timers()
             }
         }
 
+        // Quiet workers still need to publish final observations and release
+        // retired sessions. Do not rely only on traffic-driven reap ticks.
+        reap_deferred(deferred_pressure_batch, deferred_reap_time_budget);
+
         return true;
     }
 
@@ -124,6 +128,7 @@ void MasterProxy::reap_deferred(std::size_t count_budget,
 
         // HostCX and Com teardown has worker-thread affinity. Keep destruction
         // on the MasterProxy worker, but outside both queue locks.
+        if(entry) entry->finalize();
         entry.reset();
 
         ++reaped;
@@ -273,6 +278,7 @@ void MasterProxy::shutdown() {
 
         if(proxy) {
             proxy->shutdown();
+            proxy->finalize();
         }
         i++;
     }
