@@ -933,8 +933,11 @@ std::string baseHostCX::to_string(int verbosity) const {
     r_str << name(verbosity);
 
     if(verbosity > INF) {
+        // A context without its transport has no descriptor to report.
+        const int fd = com() ? com()->translate_socket(socket()) : -1;
+
         r_str << string_format(" | fd=%d | rx_cnt=%d rx_b=%d / tx_cnt=%d tx_b=%d",
-                               com() ? com()->translate_socket(socket()) : socket(),
+                               fd,
                                meter_read_count, meter_read_bytes,
                                meter_write_count, meter_write_bytes);
     }
