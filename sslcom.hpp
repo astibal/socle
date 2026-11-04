@@ -36,6 +36,7 @@
 #include <buffer.hpp>
 #include <basecom.hpp>
 #include <tcpcom.hpp>
+#include <tls_proto_state.hpp>
 #include <udpcom.hpp>
 #include <sslcertstore.hpp>
 #include <sslcertval.hpp>
@@ -253,6 +254,24 @@ public:
     std::string const& get_peer_id() const { return sslcom_peer_hello_id(); }
     std::string const& get_peer_alpn() const { return sslcom_peer_hello_alpn(); }
 
+    // Protocol observation only. Readiness and handshake control keep using
+    // their existing flags; these snapshots never drive connection behavior.
+    socle::TlsProtoRole tls_proto_role() const { return tls_proto_role_; }
+    socle::TlsProtoState tls_proto_state() const { return tls_proto_state_; }
+
+private:
+    socle::TlsProtoRole tls_proto_role_ { socle::TlsProtoRole::client };
+    socle::TlsProtoState tls_proto_state_ { socle::TlsProtoState::idle };
+
+    void record_tls_close() {
+
+        // Preserve the failure for an observer inspecting a retired connection.
+        if(tls_proto_state_ != socle::TlsProtoState::failed) {
+            tls_proto_state_ = socle::TlsProtoState::closed;
+        }
+    }
+
+public:
     // does not indicate SSL state, but operational level of the socket
     // UNKNOWN - default value
     // READY - successful handshake by SSL_accept() or SSL_connect()
@@ -506,7 +525,11 @@ public:
 
     bool is_server() const  { return sslcom_server_; }
 protected:
-    void is_server(bool b) { sslcom_server_ = b; }
+    void is_server(bool b) {
+
+        sslcom_server_ = b;
+        tls_proto_role_ = b ? socle::TlsProtoRole::server : socle::TlsProtoRole::client;
+    }
 public:
 
     bool is_verify_status_opt_allowed();

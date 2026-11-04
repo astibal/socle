@@ -1521,6 +1521,10 @@ TEST(TLS_Tests, WildcardSniBypassRequiresAnActualSubdomain) {
         bool const handshake_continues = client.test_handshake_peer_client();
         EXPECT_EQ(client.opt.bypass, peer.opt.bypass);
         EXPECT_EQ(handshake_continues, !client.opt.bypass);
+        if(client.opt.bypass) {
+            EXPECT_EQ(client.tls_proto_state(), socle::TlsProtoState::bypassed);
+            EXPECT_EQ(peer.tls_proto_state(), socle::TlsProtoState::bypassed);
+        }
         return client.opt.bypass;
     };
 
@@ -1608,6 +1612,10 @@ TEST(TLS_Tests, PartialClientHelloTimesOutAndFailsBothTlsSides) {
     EXPECT_FALSE(outbound.test_waiting_peer_hello());
     EXPECT_TRUE(outbound.error());
     EXPECT_TRUE(inbound.error());
+    EXPECT_EQ(outbound.tls_proto_state(), socle::TlsProtoState::failed);
+    EXPECT_EQ(inbound.tls_proto_state(), socle::TlsProtoState::failed);
+    EXPECT_EQ(outbound.tls_proto_role(), socle::TlsProtoRole::client);
+    EXPECT_EQ(inbound.tls_proto_role(), socle::TlsProtoRole::server);
 
     outbound.socket(0);
     inbound.socket(0);
@@ -1630,6 +1638,10 @@ TEST(TLS_Tests, RejectedClientHelloMakesClientUpgradeFail) {
     EXPECT_EQ(outbound.upgrade_client_socket(sockets[1]), -1);
     EXPECT_TRUE(outbound.error());
     EXPECT_TRUE(inbound.error());
+    EXPECT_EQ(outbound.tls_proto_state(), socle::TlsProtoState::failed);
+    EXPECT_EQ(inbound.tls_proto_state(), socle::TlsProtoState::failed);
+    EXPECT_EQ(outbound.tls_proto_role(), socle::TlsProtoRole::client);
+    EXPECT_EQ(inbound.tls_proto_role(), socle::TlsProtoRole::server);
     EXPECT_EQ(outbound.test_ssl(), nullptr);
     EXPECT_FALSE(outbound.upgraded());
 
@@ -1659,6 +1671,10 @@ TEST(TLS_Tests, TlsLookingFirstRecordCannotTriggerPlaintextFallback) {
     EXPECT_FALSE(outbound.test_waiting_peer_hello());
     EXPECT_TRUE(outbound.error());
     EXPECT_TRUE(inbound.error());
+    EXPECT_EQ(outbound.tls_proto_state(), socle::TlsProtoState::failed);
+    EXPECT_EQ(inbound.tls_proto_state(), socle::TlsProtoState::failed);
+    EXPECT_EQ(outbound.tls_proto_role(), socle::TlsProtoRole::client);
+    EXPECT_EQ(inbound.tls_proto_role(), socle::TlsProtoRole::server);
     EXPECT_FALSE(outbound.opt.bypass);
     EXPECT_FALSE(inbound.opt.bypass);
 
@@ -1681,6 +1697,10 @@ TEST(TLS_Tests, ExpiredTlsHandshakeFailsBothSidesBeforeAnotherRetry) {
               static_cast<int>(ret_handshake::FATAL));
     EXPECT_TRUE(connection.error());
     EXPECT_TRUE(peer.error());
+    EXPECT_EQ(connection.tls_proto_state(), socle::TlsProtoState::failed);
+    EXPECT_EQ(peer.tls_proto_state(), socle::TlsProtoState::failed);
+    connection.test_cleanup();
+    EXPECT_EQ(connection.tls_proto_state(), socle::TlsProtoState::failed);
 }
 
 MemoryTlsPair make_memory_tls_pair(SSL_CTX* client_context, SSL_CTX* server_context,
@@ -1889,6 +1909,8 @@ TEST(TLS_Tests, MismatchedPreferredServerIdentityFailsClosed) {
     connection.test_init_server();
 
     EXPECT_TRUE(connection.error());
+    EXPECT_EQ(connection.tls_proto_role(), socle::TlsProtoRole::server);
+    EXPECT_EQ(connection.tls_proto_state(), socle::TlsProtoState::failed);
     EXPECT_EQ(connection.test_ssl(), nullptr);
 }
 
@@ -1905,6 +1927,8 @@ TEST(TLS_Tests, RejectedServerCryptoPolicyLeavesNoUsableSslState) {
     connection.test_init_server();
 
     EXPECT_TRUE(connection.error());
+    EXPECT_EQ(connection.tls_proto_role(), socle::TlsProtoRole::server);
+    EXPECT_EQ(connection.tls_proto_state(), socle::TlsProtoState::failed);
     EXPECT_EQ(connection.test_ssl(), nullptr);
 }
 
@@ -3990,4 +4014,169 @@ TEST(SSLComReadiness, HandshakeWaitingErrorAndBypass) {
     EXPECT_FALSE(connection.com_status());
     ::close(sockets[0]);
     ::close(sockets[1]);
+}
+
+
+// Exercise observation through the real COM handshake/read/write paths. The
+// policy seam only lets us reject a completed wire handshake deterministically.
+struct ProtoStateSSLCom : SSLCom_Buddy {
+    bool accept_peer = true;
+    bool saw_checking_peer = false;
+
+    bool check_cert(const char*) override {
+
+        saw_checking_peer = tls_proto_state() == socle::TlsProtoState::checking_peer;
+        return accept_peer;
+    }
+};
+
+TEST(TLSProtoState, HandshakePolicyAndApplicationIoRemainSeparate) {
+
+    for(int version : {TLS1_2_VERSION, TLS1_3_VERSION}) {
+        for(bool accept_peer : {false, true}) {
+            SCOPED_TRACE(::testing::Message() << version << " accept=" << accept_peer);
+
+            auto key = make_rsa_key();
+            auto certificate = make_certificate(key.get(), 7310, "proto-state.example");
+            ASSERT_NE(certificate, nullptr);
+
+            auto context = std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)>(
+                SSL_CTX_new(TLS_method()), SSL_CTX_free);
+            ASSERT_NE(context, nullptr);
+            ASSERT_EQ(SSL_CTX_set_min_proto_version(context.get(), version), 1);
+            ASSERT_EQ(SSL_CTX_set_max_proto_version(context.get(), version), 1);
+            ASSERT_EQ(SSL_CTX_use_certificate(context.get(), certificate.get()), 1);
+            ASSERT_EQ(SSL_CTX_use_PrivateKey(context.get(), key.get()), 1);
+
+            ProtoStateSSLCom client;
+            ProtoStateSSLCom server;
+            client.accept_peer = accept_peer;
+            client.auto_upgrade(false);
+            server.auto_upgrade(false);
+            server.test_server(true);
+            client.test_peer_hello_received(true);
+            client.test_take_ssl(SSL_new(context.get()));
+            server.test_take_ssl(SSL_new(context.get()));
+            ASSERT_NE(client.test_ssl(), nullptr);
+            ASSERT_NE(server.test_ssl(), nullptr);
+
+            BIO* client_bio = nullptr;
+            BIO* server_bio = nullptr;
+            ASSERT_EQ(BIO_new_bio_pair(&client_bio, 0, &server_bio, 0), 1);
+            SSL_set_bio(client.test_ssl(), client_bio, client_bio);
+            SSL_set_bio(server.test_ssl(), server_bio, server_bio);
+
+            bool client_done = false;
+            bool server_done = false;
+            bool saw_wait = false;
+
+            for(int round = 0; round < 100 && !(client_done && server_done); ++round) {
+                if(!client_done) {
+                    const auto result = static_cast<ret_handshake>(client.test_handshake_result());
+                    if(result == ret_handshake::AGAIN) {
+                        EXPECT_EQ(client.tls_proto_state(), socle::TlsProtoState::handshake_want_read);
+                        saw_wait = true;
+                    } else if(result == ret_handshake::SUCCESS) {
+                        client_done = true;
+                    } else {
+                        ASSERT_FALSE(accept_peer);
+                        break;
+                    }
+                }
+
+                if(!server_done) {
+                    const auto result = static_cast<ret_handshake>(server.test_handshake_result());
+                    ASSERT_TRUE(result == ret_handshake::AGAIN || result == ret_handshake::SUCCESS);
+                    server_done = result == ret_handshake::SUCCESS;
+                }
+            }
+
+            EXPECT_TRUE(saw_wait);
+            EXPECT_TRUE(client.saw_checking_peer);
+            EXPECT_EQ(client.tls_proto_role(), socle::TlsProtoRole::client);
+            EXPECT_EQ(server.tls_proto_role(), socle::TlsProtoRole::server);
+
+            if(!accept_peer) {
+                EXPECT_EQ(client.tls_proto_state(), socle::TlsProtoState::failed);
+                client.test_cleanup();
+                EXPECT_EQ(client.tls_proto_state(), socle::TlsProtoState::failed);
+                continue;
+            }
+
+            ASSERT_TRUE(client_done && server_done);
+            EXPECT_EQ(client.tls_proto_state(), socle::TlsProtoState::established);
+            EXPECT_EQ(server.tls_proto_state(), socle::TlsProtoState::established);
+
+            char received = 0;
+            EXPECT_EQ(client.read(0, &received, 1, 0), -1);
+            EXPECT_EQ(client.tls_proto_state(), socle::TlsProtoState::established);
+            ASSERT_EQ(server.write(0, "x", 1, 0), 1);
+            ASSERT_EQ(client.read(0, &received, 1, 0), 1);
+            EXPECT_EQ(received, 'x');
+
+            ASSERT_EQ(SSL_shutdown(server.test_ssl()), 0);
+            EXPECT_EQ(client.read(0, &received, 1, 0), 0);
+            EXPECT_EQ(client.tls_proto_state(), socle::TlsProtoState::peer_closed);
+            client.test_cleanup();
+            EXPECT_EQ(client.tls_proto_state(), socle::TlsProtoState::closed);
+        }
+    }
+}
+
+TEST(TLSProtoState, HandshakeWantWriteUsesTheExistingOpenSslResult) {
+
+    auto context = std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)>(
+        SSL_CTX_new(TLS_client_method()), SSL_CTX_free);
+    ASSERT_NE(context, nullptr);
+
+    ProtoStateSSLCom client;
+    client.auto_upgrade(false);
+    client.test_peer_hello_received(true);
+    client.test_take_ssl(SSL_new(context.get()));
+    ASSERT_NE(client.test_ssl(), nullptr);
+
+    BIO* client_bio = nullptr;
+    BIO* peer_bio = nullptr;
+    ASSERT_EQ(BIO_new_bio_pair(&client_bio, 1, &peer_bio, 1), 1);
+    std::unique_ptr<BIO, decltype(&BIO_free)> peer(peer_bio, BIO_free);
+    SSL_set_bio(client.test_ssl(), client_bio, client_bio);
+
+    EXPECT_EQ(client.test_handshake_result(), static_cast<int>(ret_handshake::AGAIN));
+    EXPECT_EQ(client.tls_proto_state(), socle::TlsProtoState::handshake_want_write);
+    EXPECT_FALSE(client.error());
+}
+
+
+TEST(TLSProtoState, FragmentedHelloAndSkippedPrerequisiteAreDistinct) {
+
+    int sockets[2] {-1, -1};
+    ASSERT_EQ(::socketpair(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK, 0, sockets), 0);
+
+    SSLCom_Buddy outbound;
+    SSLCom_Buddy inbound;
+    outbound.peer(&inbound);
+    inbound.peer(&outbound);
+    inbound.socket(sockets[0]);
+    outbound.opt.client_hello_timeout = 60000;
+
+    ASSERT_EQ(::write(sockets[1], tls_sni_smithproxy, 6), 6);
+    EXPECT_FALSE(outbound.test_waiting_peer_hello());
+    EXPECT_EQ(outbound.tls_proto_state(), socle::TlsProtoState::waiting_peer_hello);
+    EXPECT_EQ(inbound.tls_proto_state(), socle::TlsProtoState::waiting_client_hello);
+
+    const auto remaining = sizeof(tls_sni_smithproxy) - 6;
+    ASSERT_EQ(::write(sockets[1], tls_sni_smithproxy + 6, remaining),
+              static_cast<ssize_t>(remaining));
+    EXPECT_TRUE(outbound.test_waiting_peer_hello());
+    EXPECT_EQ(outbound.tls_proto_state(), socle::TlsProtoState::peer_hello_ready);
+    EXPECT_EQ(inbound.tls_proto_state(), socle::TlsProtoState::client_hello_received);
+
+    inbound.socket(0);
+    ::close(sockets[0]);
+    ::close(sockets[1]);
+
+    SSLCom_Buddy standalone;
+    EXPECT_EQ(standalone.tls_proto_state(), socle::TlsProtoState::idle);
+    EXPECT_TRUE(standalone.test_waiting_peer_hello());
+    EXPECT_EQ(standalone.tls_proto_state(), socle::TlsProtoState::peer_hello_ready);
 }

@@ -2292,6 +2292,9 @@ void baseSSLCom<L4Proto>::init_ssl_callbacks() {
 template <class L4Proto>
 void baseSSLCom<L4Proto>::init_client() {
 
+    tls_proto_role_ = socle::TlsProtoRole::client;
+    tls_proto_state_ = socle::TlsProtoState::initializing;
+
     // A connection object may be retried after an incomplete or rejected
     // handshake. None of the peer evidence belongs to the new SSL object.
     verify_reset(verify_status_t::VRF_NOTTESTED);
@@ -2337,6 +2340,7 @@ void baseSSLCom<L4Proto>::init_client() {
     if(not sslcom_ssl) {
         _err("Client: Error creating SSL object!");
         log_if_error(iERR,"SSLCom::init_client");
+        tls_proto_state_ = socle::TlsProtoState::failed;
         error(ERROR_UNSPEC);
         return;
     }
@@ -2344,6 +2348,7 @@ void baseSSLCom<L4Proto>::init_client() {
     auto fail_client_initialization = [this]() {
         SSL_free(sslcom_ssl);
         sslcom_ssl = nullptr;
+        tls_proto_state_ = socle::TlsProtoState::failed;
         error(ERROR_UNSPEC);
     };
 
@@ -2396,11 +2401,18 @@ void baseSSLCom<L4Proto>::init_client() {
     SSL_set_mode(sslcom_ssl, SSL_MODE_ENABLE_PARTIAL_WRITE|SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER|SSL_MODE_RELEASE_BUFFERS);
 
     init_ssl_callbacks();
+
+    // Callback setup can reject verification prerequisites without freeing SSL.
+    tls_proto_state_ = error() ? socle::TlsProtoState::failed
+                               : socle::TlsProtoState::prepared;
 }
 
 
 template <class L4Proto>
 void baseSSLCom<L4Proto>::init_server() {
+
+    tls_proto_role_ = socle::TlsProtoRole::server;
+    tls_proto_state_ = socle::TlsProtoState::initializing;
 
 #ifndef USE_OPENSSL300
     if(sslcom_ecdh) {
@@ -2431,6 +2443,7 @@ void baseSSLCom<L4Proto>::init_server() {
             }
             else {
                 _dia("using default tls context is prohibited");
+                tls_proto_state_ = socle::TlsProtoState::failed;
                 error(baseCom::ERROR_UNSPEC);
                 return;
             }
@@ -2457,6 +2470,7 @@ void baseSSLCom<L4Proto>::init_server() {
     if(not sslcom_ssl) {
         _err("Server: Error creating SSL object!");
         log_if_error(iERR,"SSLCom::init_server");
+        tls_proto_state_ = socle::TlsProtoState::failed;
         error(ERROR_UNSPEC);
         return;
     }
@@ -2464,6 +2478,7 @@ void baseSSLCom<L4Proto>::init_server() {
     auto fail_server_initialization = [this]() {
         SSL_free(sslcom_ssl);
         sslcom_ssl = nullptr;
+        tls_proto_state_ = socle::TlsProtoState::failed;
         error(ERROR_UNSPEC);
     };
     if(l4_proto() == SOCK_DGRAM)
@@ -2577,6 +2592,10 @@ void baseSSLCom<L4Proto>::init_server() {
 
 
     init_ssl_callbacks();
+
+    // Callback setup can reject verification prerequisites without freeing SSL.
+    tls_proto_state_ = error() ? socle::TlsProtoState::failed
+                               : socle::TlsProtoState::prepared;
     
 }
 
@@ -2678,6 +2697,9 @@ bool baseSSLCom<L4Proto>::bypass_me_and_peer() {
         auto* speer = dynamic_cast<baseSSLCom*>(peer());
         
         if(speer) {
+            tls_proto_state_ = socle::TlsProtoState::bypassed;
+            speer->tls_proto_state_ = socle::TlsProtoState::bypassed;
+
             opt.bypass = true;
             speer->opt.bypass = true;
 
@@ -2693,6 +2715,8 @@ bool baseSSLCom<L4Proto>::bypass_me_and_peer() {
 
 template<class L4Proto>
 void baseSSLCom<L4Proto>::accept_socket (int sockfd) {
+
+    tls_proto_role_ = socle::TlsProtoRole::server;
 
     _dia("SSLCom::accept_socket[%d]: attempt %d", sockfd, counters.prof_accept_cnt);
 
@@ -2749,6 +2773,7 @@ void baseSSLCom<L4Proto>::accept_socket (int sockfd) {
                 } else {
                     if(masked_fd >= 0) ::close(masked_fd);
                     _err("SSLCom<UDP>::accept_socket: cannot create real socket for %d", sockfd);
+                    tls_proto_state_ = socle::TlsProtoState::failed;
                     error(ERROR_SOCKET);
                     return;
                 }
@@ -2756,11 +2781,13 @@ void baseSSLCom<L4Proto>::accept_socket (int sockfd) {
             } else {
                 _err("datagram record for virtual DTLS descriptor %d not found",
                      sockfd);
+                tls_proto_state_ = socle::TlsProtoState::failed;
                 error(ERROR_SOCKET);
                 return;
             }
         } else {
             _err("DTLS virtual descriptor has no UDP transport");
+            tls_proto_state_ = socle::TlsProtoState::failed;
             error(ERROR_SOCKET);
             return;
         }
@@ -2779,6 +2806,7 @@ void baseSSLCom<L4Proto>::accept_socket (int sockfd) {
     if (l4_proto() == SOCK_DGRAM) {
 
 #ifdef USE_OPENSSL11
+        tls_proto_state_ = socle::TlsProtoState::listening;
         BIO_ADDR *bia = BIO_ADDR_new();
         if (!DTLSv1_listen(sslcom_ssl, bia)) {
             BIO_ADDR_free(bia);
@@ -2786,6 +2814,7 @@ void baseSSLCom<L4Proto>::accept_socket (int sockfd) {
         }
         BIO_ADDR_free(bia);
 #else
+        tls_proto_state_ = socle::TlsProtoState::listening;
         sockaddr_storage ss;
         if (!DTLSv1_listen(sslcom_ssl,(sockaddr_in6*)&ss)) {
             return;
@@ -2794,6 +2823,7 @@ void baseSSLCom<L4Proto>::accept_socket (int sockfd) {
     }
 
     ERR_clear_error();
+    tls_proto_state_ = socle::TlsProtoState::handshaking;
     sslcom_ret = SSL_accept(sslcom_ssl);
     if (sslcom_ret > 0) {
         _dia("SSLCom::accept_socket[%d]: success at 1st attempt.", sockfd);
@@ -2801,6 +2831,7 @@ void baseSSLCom<L4Proto>::accept_socket (int sockfd) {
         sslcom_status(true);
         counters.prof_accept_ok++;
         sslcom_waiting = false;
+        tls_proto_state_ = socle::TlsProtoState::established;
 
         // reread socket
         forced_read(true);
@@ -2820,9 +2851,11 @@ void baseSSLCom<L4Proto>::accept_socket (int sockfd) {
     } else {
         const int err = SSL_get_error(sslcom_ssl, sslcom_ret);
         if (err == SSL_ERROR_WANT_READ) {
+            tls_proto_state_ = socle::TlsProtoState::handshake_want_read;
             _dia("SSLCom::accept_socket[%d]: pending on want_read", sockfd);
             set_monitor(sockfd);
         } else if (err == SSL_ERROR_WANT_WRITE) {
+            tls_proto_state_ = socle::TlsProtoState::handshake_want_write;
             _dia("SSLCom::accept_socket[%d]: pending on want_write", sockfd);
             set_write_monitor_only(sockfd);
         } else {
@@ -2831,6 +2864,7 @@ void baseSSLCom<L4Proto>::accept_socket (int sockfd) {
             if (err == SSL_ERROR_SSL || err == SSL_ERROR_SYSCALL)
                 sslcom_fatal = true;
             sslcom_waiting = false;
+            tls_proto_state_ = socle::TlsProtoState::failed;
             error(ERROR_UNSPEC);
         }
     }
@@ -2894,11 +2928,14 @@ void baseSSLCom<L4Proto>::delay_socket(int sockfd) {
 template <class L4Proto>
 int baseSSLCom<L4Proto>::upgrade_server_socket(int sockfd) {
 
+    tls_proto_role_ = socle::TlsProtoRole::server;
+
     socket(sockfd);
 
     sslcom_waiting = true;
 
     if(opt.bypass) {
+        tls_proto_state_ = socle::TlsProtoState::bypassed;
         _inf("SSLCom::upgrade_server_socket[%d]: bypassed", socket());
         return sockfd;
     }
@@ -2906,6 +2943,7 @@ int baseSSLCom<L4Proto>::upgrade_server_socket(int sockfd) {
     if(unblock() < 0) {
         _err("SSLCom::upgrade_server_socket[%d]: unusable transport descriptor",
              socket());
+        tls_proto_state_ = socle::TlsProtoState::failed;
         error(ERROR_UNSPEC);
         sslcom_waiting = false;
         return -1;
@@ -2939,10 +2977,12 @@ int baseSSLCom<L4Proto>::handshake_server() {
     ERR_clear_error();
     if(not sslcom_ssl) {
         _dia("SSLCom::handshake: socket not upgraded, failing");
+        tls_proto_state_ = socle::TlsProtoState::failed;
         error(ERROR_UNSPEC);
         return -1;
     }
 
+    tls_proto_state_ = socle::TlsProtoState::handshaking;
     sslcom_ret = SSL_accept(sslcom_ssl);
 
     if(sslcom_ret == 1) {
@@ -2972,6 +3012,7 @@ bool baseSSLCom<L4Proto>::handshake_peer_client() {
             _dia("SSLCom::waiting[%d]: executing client auto upgrade", socket());
             if(upgrade_client_socket(socket()) < 0) {
                 _err("SSLCom::waiting[%d]: client TLS upgrade failed", socket());
+                tls_proto_state_ = socle::TlsProtoState::failed;
                 error(ERROR_UNSPEC);
                 return false;
             }
@@ -3076,11 +3117,13 @@ int baseSSLCom<L4Proto>::handshake_client() {
 
     if(sslcom_ssl == nullptr) {
         _err("SSLCom::handshake_client: missing SSL object");
+        tls_proto_state_ = socle::TlsProtoState::failed;
         error(ERROR_UNSPEC);
         return -1;
     }
 
     ERR_clear_error();
+    tls_proto_state_ = socle::TlsProtoState::handshaking;
     sslcom_ret = SSL_connect(sslcom_ssl);
     if(sslcom_ret > 0) {
         sslcom_op_state = sslcom_op_state_t::READY;
@@ -3131,6 +3174,7 @@ ret_handshake baseSSLCom<L4Proto>::handshake() {
     auto fail_both_sides = [this](bool fatal) {
         sslcom_waiting = false;
         sslcom_fatal = sslcom_fatal || fatal;
+        tls_proto_state_ = socle::TlsProtoState::failed;
         error(ERROR_UNSPEC);
         if (owner_cx())
             owner_cx()->error(true);
@@ -3138,6 +3182,9 @@ ret_handshake baseSSLCom<L4Proto>::handshake() {
             ::shutdown(socket(), SHUT_RDWR);
         if (auto* other = peer()) {
             other->error(ERROR_READ);
+            if(auto* tls_peer = dynamic_cast<baseSSLCom*>(other)) {
+                tls_peer->tls_proto_state_ = socle::TlsProtoState::failed;
+            }
             if (other->owner_cx())
                 other->owner_cx()->error(true);
             if (other->socket() > 0)
@@ -3157,6 +3204,7 @@ ret_handshake baseSSLCom<L4Proto>::handshake() {
 
     if (sslcom_ssl == nullptr and ! auto_upgrade()) {
         _war("SSLCom::handshake: sslcom_ssl is NULL and auto_upgrade is not set");
+        tls_proto_state_ = socle::TlsProtoState::failed;
         return ret_handshake::ERROR;
     }
 
@@ -3212,6 +3260,7 @@ ret_handshake baseSSLCom<L4Proto>::handshake() {
         _dia("SSLCom::handshake: %s on socket %d: ret=%d, err=%d, err2=%d", op_descr, socket(), op_code, err, err2);
 
         if (err == SSL_ERROR_WANT_READ) {
+            tls_proto_state_ = socle::TlsProtoState::handshake_want_read;
             _dia("SSLCom::handshake: SSL_%s[%d]: pending on want_read", op_descr , socket());
 
             sslcom_waiting = true;
@@ -3224,6 +3273,7 @@ ret_handshake baseSSLCom<L4Proto>::handshake() {
             return ret_handshake::AGAIN;
         }
         else if (err == SSL_ERROR_WANT_WRITE) {
+            tls_proto_state_ = socle::TlsProtoState::handshake_want_write;
             _dia("SSLCom::handshake: SSL_%s[%d]: pending on want_write", op_descr, socket());
 
             sslcom_waiting = true;
@@ -3285,6 +3335,8 @@ ret_handshake baseSSLCom<L4Proto>::handshake() {
 
 
     if(!is_server()) {
+        // OpenSSL completion precedes certificate and counterpart acceptance.
+        tls_proto_state_ = socle::TlsProtoState::checking_peer;
         if (not check_cert(ssl_waiting_host)) {
             _err("SSLCom::handshake: peer certificate/counterpart setup failed");
             fail_both_sides(false);
@@ -3304,6 +3356,7 @@ ret_handshake baseSSLCom<L4Proto>::handshake() {
     _dia("SSLCom::handshake: %s finished on socket %d", op_descr, socket());
     sslcom_waiting = false;
 
+    tls_proto_state_ = socle::TlsProtoState::established;
     return ret_handshake::SUCCESS;
 }
 
@@ -3660,11 +3713,16 @@ bool baseSSLCom<L4Proto>::waiting_peer_hello() {
         return true;
     }
 
+    tls_proto_state_ = socle::TlsProtoState::waiting_peer_hello;
+
     _dum("SSLCom::waiting_peer_hello: called");
     if(peer()) {
         auto* peer_scom = dynamic_cast<baseSSLCom*>(peer());
         if(peer_scom != nullptr) {
             if(peer_scom->socket() > 0) {
+                peer_scom->tls_proto_role_ = socle::TlsProtoRole::server;
+                peer_scom->tls_proto_state_ = socle::TlsProtoState::waiting_client_hello;
+
                 _dum("SSLCom::waiting_peer_hello: peek max %d bytes from peer socket %d",sslcom_peer_hello_buffer.capacity(),peer_scom->socket());
 
                 int red = ::recv(peer_scom->socket(),sslcom_peer_hello_buffer.data(),sslcom_peer_hello_buffer.capacity(), MSG_PEEK);
@@ -3681,7 +3739,9 @@ bool baseSSLCom<L4Proto>::waiting_peer_hello() {
                         }
                         if (timeval_msdelta_now(&timer_start) > opt.client_hello_timeout) {
                             _err("handshake timeout: waiting for complete ClientHello");
+                            peer_scom->tls_proto_state_ = socle::TlsProtoState::failed;
                             peer_scom->error(ERROR_READ);
+                            tls_proto_state_ = socle::TlsProtoState::failed;
                             error(ERROR_UNSPEC);
                         } else {
                             master()->poller.rescan_in(peer_scom->socket());
@@ -3690,7 +3750,9 @@ bool baseSSLCom<L4Proto>::waiting_peer_hello() {
                     }
                     if (peek_status == client_hello_peek_t::INVALID) {
                         _err("SSLCom::waiting_peer_hello: invalid TLS ClientHello");
+                        peer_scom->tls_proto_state_ = socle::TlsProtoState::failed;
                         peer_scom->error(ERROR_READ);
+                        tls_proto_state_ = socle::TlsProtoState::failed;
                         error(ERROR_UNSPEC);
                         return false;
                     }
@@ -3706,7 +3768,9 @@ bool baseSSLCom<L4Proto>::waiting_peer_hello() {
                         }
                         catch(socle::ex::SSL_clienthello_malformed const& e) {
                             _dia("SSLCom::waiting_peer_hello: %d bytes of malformed ClientHello data",red);
+                            peer_scom->tls_proto_state_ = socle::TlsProtoState::failed;
                             peer_scom->error(ERROR_READ);
+                            tls_proto_state_ = socle::TlsProtoState::failed;
                             error(ERROR_UNSPEC);
                             return false;
                         }
@@ -3732,6 +3796,7 @@ bool baseSSLCom<L4Proto>::waiting_peer_hello() {
                                       peer_scom->to_string(iINF).c_str());
                         }
                         
+                        tls_proto_state_ = socle::TlsProtoState::failed;
                         error_flag_ = ERROR_UNSPEC; // peer nullptr or its com() is not SSLCom
                         return false;
                         
@@ -3740,6 +3805,9 @@ bool baseSSLCom<L4Proto>::waiting_peer_hello() {
                         return false;
                     }
 
+                    // Only the parsed path confirms receipt; DTLS/no-peer skips do not.
+                    peer_scom->tls_proto_state_ = socle::TlsProtoState::client_hello_received;
+
                     // Preserve the parsed ClientHello SNI on the client-facing
                     // peer, then optionally replace only this outbound value.
                     peer_scom->sslcom_sni() = sslcom_sni();
@@ -3747,6 +3815,7 @@ bool baseSSLCom<L4Proto>::waiting_peer_hello() {
                         sslcom_sni() = target->outbound_sni(sslcom_sni());
                     }
                     
+                    tls_proto_state_ = socle::TlsProtoState::peer_hello_ready;
                     sslcom_peer_hello_received(true);
                     change_monitor(socket(), EPOLLIN);
 
@@ -3759,17 +3828,23 @@ bool baseSSLCom<L4Proto>::waiting_peer_hello() {
                     // hopefully complete list of error codes allowing us to further peek peer's socket
                     if (red == 0) {
                         _err("SSLCom::waiting_peer_hello: EOF before ClientHello");
+                        peer_scom->tls_proto_state_ = socle::TlsProtoState::failed;
                         peer_scom->error(ERROR_READ);
+                        tls_proto_state_ = socle::TlsProtoState::failed;
                         error(ERROR_UNSPEC);
                     } else if (errno != EINPROGRESS && errno != EWOULDBLOCK &&
                                errno != EAGAIN && errno != EINTR) {
                         _err("SSLCom::waiting_peer_hello: unrecoverable peek errno: %s", string_error().c_str());
+                        peer_scom->tls_proto_state_ = socle::TlsProtoState::failed;
                         peer_scom->error(ERROR_READ);
+                        tls_proto_state_ = socle::TlsProtoState::failed;
                         error(ERROR_UNSPEC);
                     } else if (timeval_msdelta_now(&timer_start) >
                                opt.client_hello_timeout) {
                         _err("handshake timeout: no ClientHello received");
+                        peer_scom->tls_proto_state_ = socle::TlsProtoState::failed;
                         peer_scom->error(ERROR_READ);
+                        tls_proto_state_ = socle::TlsProtoState::failed;
                         error(ERROR_UNSPEC);
                     } else {
                         _deb("SSLCom::waiting_peer_hello: peek errno: %s",string_error().c_str());
@@ -3782,6 +3857,7 @@ bool baseSSLCom<L4Proto>::waiting_peer_hello() {
                 // This is untested code for virtual sockets
                 if(peer_scom->l4_proto() == SOCK_DGRAM) {
                     // atm don't wait for hello
+                    tls_proto_state_ = socle::TlsProtoState::peer_hello_ready;
                     sslcom_peer_hello_received(true);
                     change_monitor(socket(), EPOLLIN);
                 }
@@ -3791,6 +3867,7 @@ bool baseSSLCom<L4Proto>::waiting_peer_hello() {
         }
     } else {
         _dia("SSLCom::waiting_peer_hello: no peers, setting hello received.");
+        tls_proto_state_ = socle::TlsProtoState::peer_hello_ready;
         sslcom_peer_hello_received(true);
         set_monitor(socket());
     }
@@ -4036,6 +4113,7 @@ int baseSSLCom<L4Proto>::parse_peer_hello() {
             _dia("SSLCom::parse_peer_hello: only %d bytes in peek:\n%s",b.size(),hex_dump(b.data(),b.size(), 4, 0, true).c_str());
             if(timeval_msdelta_now(&timer_start) > opt.client_hello_timeout) {
                 _err("handshake timeout: waiting for ClientHello");
+                tls_proto_state_ = socle::TlsProtoState::failed;
                 error(ERROR_UNSPEC);
             }
         }
@@ -4044,6 +4122,7 @@ int baseSSLCom<L4Proto>::parse_peer_hello() {
     }
     catch (std::out_of_range const& e) {
         _dia("SSLCom::parse_peer_hello: failed to parse hello: %s", e.what());
+        tls_proto_state_ = socle::TlsProtoState::failed;
         error(ERROR_UNSPEC);
     }
 
@@ -4162,6 +4241,7 @@ ssize_t baseSSLCom<L4Proto>::read (int _fd, void* _buf, size_t _n, int _flags ) 
         return 0;
 
     if(opt.bypass) {
+        tls_proto_state_ = socle::TlsProtoState::bypassed;
         _deb("SSLCom::read[%d]: called: bypassed - to read max %d bytes", _fd, _n);
         return L4Proto::read(_fd, _buf, _n, _flags);
     }
@@ -4174,6 +4254,7 @@ ssize_t baseSSLCom<L4Proto>::read (int _fd, void* _buf, size_t _n, int _flags ) 
         if (c == ret_handshake::AGAIN) {
 
             if(opt.bypass) {
+                tls_proto_state_ = socle::TlsProtoState::bypassed;
                 _deb("SSLCom:: read[%d]: ssl_waiting() bypass from handshake ", _fd);
                 return L4Proto::read(_fd, _buf, _n, _flags);
             }
@@ -4188,6 +4269,7 @@ ssize_t baseSSLCom<L4Proto>::read (int _fd, void* _buf, size_t _n, int _flags ) 
         }
         else if (c == ret_handshake::FATAL) {
             _dia("SSLCom:: read[%d]: ssl_waiting() returned %d: unexpected termination!", _fd, c);
+            tls_proto_state_ = socle::TlsProtoState::failed;
             sslcom_fatal = true;
             return 0;
         }
@@ -4237,10 +4319,12 @@ ssize_t baseSSLCom<L4Proto>::read (int _fd, void* _buf, size_t _n, int _flags ) 
                 return sslcom_ret;
             }
             if(errc == SSL_ERROR_ZERO_RETURN) {
+                tls_proto_state_ = socle::TlsProtoState::peer_closed;
                 _dia("SSLCom::read[%d]: clean TLS close_notify while peeking", _fd);
                 return 0;
             }
             if(errc == SSL_ERROR_SYSCALL or errc == SSL_ERROR_SSL) {
+                tls_proto_state_ = socle::TlsProtoState::failed;
                 sslcom_fatal = true;
                 // this is bad
                 _dia("SSLCom:: read[%d]: ssl_peek() returned %d: unexpected termination!", _fd, sslcom_ret);
@@ -4316,6 +4400,7 @@ ssize_t baseSSLCom<L4Proto>::read (int _fd, void* _buf, size_t _n, int _flags ) 
                 break;
 
             case SSL_ERROR_ZERO_RETURN:
+                tls_proto_state_ = socle::TlsProtoState::peer_closed;
                 // close_notify is an orderly TLS half-close. Report EOF to the
                 // host context without poisoning the opposite write half; it
                 // may still have a final response queued for the peer.
@@ -4334,6 +4419,7 @@ ssize_t baseSSLCom<L4Proto>::read (int _fd, void* _buf, size_t _n, int _flags ) 
                 // check timers and bail on timeout
                 if(timeval_msdelta_now(&timer_read_timeout) > SSLCOM_READ_TIMEOUT) {
                     _err("SSLCom::read[%d]: wanted read timeout, closing.", _fd);
+                    tls_proto_state_ = socle::TlsProtoState::failed;
                     error(ERROR_READ);
                     return 0;
                 }
@@ -4378,6 +4464,7 @@ ssize_t baseSSLCom<L4Proto>::read (int _fd, void* _buf, size_t _n, int _flags ) 
                 // check timers and bail on timeout
                 if(timeval_msdelta_now(&timer_read_timeout) > SSLCOM_READ_TIMEOUT) {
                     _err("SSLCom::read[%d]: wanted read timeout, closing.", _fd);
+                    tls_proto_state_ = socle::TlsProtoState::failed;
                     error(ERROR_READ);
                     return 0;
                 }
@@ -4396,6 +4483,7 @@ ssize_t baseSSLCom<L4Proto>::read (int _fd, void* _buf, size_t _n, int _flags ) 
                 auto x_errno = errno;
                 _dia("SSLCom::read[%d]: syscall error: %d %s", _fd, x_errno, (x_errno == 0 ? "unexpected EOT from peer" : ""));
                 }
+                tls_proto_state_ = socle::TlsProtoState::failed;
                 sslcom_fatal = true;
 
                 if (total_r > 0) {
@@ -4415,6 +4503,7 @@ ssize_t baseSSLCom<L4Proto>::read (int _fd, void* _buf, size_t _n, int _flags ) 
                 // not return the raw -1 as if another readiness edge could
                 // make progress; that creates an endless retry loop.
                 _dia("SSLCom::read[%d]: fatal TLS protocol error", _fd);
+                tls_proto_state_ = socle::TlsProtoState::failed;
                 sslcom_fatal = true;
                 if(total_r > 0) return total_r;
                 error(ERROR_READ);
@@ -4458,6 +4547,7 @@ ssize_t baseSSLCom<L4Proto>::write (int _fd, const void* _buf, size_t _n, int _f
 
 
     if(opt.bypass) {
+        tls_proto_state_ = socle::TlsProtoState::bypassed;
         _deb("SSLCom::write[%d]: called: bypassed - to write %d bytes", _fd, _n);
         return L4Proto::write(_fd, _buf, _n, _flags);
     }
@@ -4470,6 +4560,7 @@ ssize_t baseSSLCom<L4Proto>::write (int _fd, const void* _buf, size_t _n, int _f
         if (c == ret_handshake::AGAIN) {
 
             if(opt.bypass) {
+                tls_proto_state_ = socle::TlsProtoState::bypassed;
                 _deb("SSLCom:: write[%d]: ssl_waiting() bypass from handshake", _fd);
                 return L4Proto::write(_fd, _buf, _n, _flags);
             }
@@ -4484,6 +4575,7 @@ ssize_t baseSSLCom<L4Proto>::write (int _fd, const void* _buf, size_t _n, int _f
         }
         else if (c == ret_handshake::FATAL) {
             _dia("SSLCom::write[%d]: ssl_waiting() returned %d: unexpected termination!", _fd, c);
+            tls_proto_state_ = socle::TlsProtoState::failed;
             sslcom_fatal = true;
             return -1;
         }
@@ -4602,6 +4694,7 @@ ssize_t baseSSLCom<L4Proto>::write (int _fd, const void* _buf, size_t _n, int _f
             break;
 
         case SSL_ERROR_ZERO_RETURN:
+            tls_proto_state_ = socle::TlsProtoState::peer_closed;
             _dia("SSLCom::write[%d]: TLS close_notify while writing", _fd);
             error(ERROR_WRITE);
             return -1;
@@ -4609,6 +4702,7 @@ ssize_t baseSSLCom<L4Proto>::write (int _fd, const void* _buf, size_t _n, int _f
         case SSL_ERROR_SYSCALL:
         case SSL_ERROR_SSL:
             _dia("SSLCom::write[%d]: fatal TLS write error: %d", _fd, err);
+            tls_proto_state_ = socle::TlsProtoState::failed;
             sslcom_fatal = true;
             error(ERROR_WRITE);
             return -1;
@@ -4623,6 +4717,7 @@ ssize_t baseSSLCom<L4Proto>::write (int _fd, const void* _buf, size_t _n, int _f
     
     if(apply_error_timer && timeval_msdelta_now(&timer_write_timeout) > SSLCOM_WRITE_TIMEOUT) {
         _err("SSLCom::write[%d]: write timeout, closing.", _fd);
+        tls_proto_state_ = socle::TlsProtoState::failed;
         error(ERROR_WRITE);
         is_problem = true;
     }    
@@ -4639,6 +4734,8 @@ ssize_t baseSSLCom<L4Proto>::write (int _fd, const void* _buf, size_t _n, int _f
 
 template <class L4Proto>
 void baseSSLCom<L4Proto>::cleanup()  {
+
+    record_tls_close();
 
     _dia("  prof_accept %d, prof_connect %d, prof_peek %d, prof_read %d, prof_want_read %d, prof_want_write %d, prof_write %d",
          counters.prof_accept_cnt   , counters.prof_connect_cnt   , counters.prof_peek_cnt   , counters.prof_read_cnt   ,
@@ -4678,6 +4775,8 @@ void baseSSLCom<L4Proto>::cleanup()  {
 template <class L4Proto>
 int baseSSLCom<L4Proto>::upgrade_client_socket(int sock) {
 
+    tls_proto_role_ = socle::TlsProtoRole::client;
+
     socket(sock);
 
     bool ch = waiting_peer_hello();
@@ -4688,6 +4787,7 @@ int baseSSLCom<L4Proto>::upgrade_client_socket(int sock) {
     if(ch) {
 
         if(opt.bypass) {
+            tls_proto_state_ = socle::TlsProtoState::bypassed;
             _dia("SSLCom::upgrade_client_socket[%d]: bypassed",sock);
             return sock;
         }
@@ -4712,6 +4812,7 @@ int baseSSLCom<L4Proto>::upgrade_client_socket(int sock) {
             upgraded(false);
             sslcom_waiting = false;
             handshake_timer_started = false;
+            tls_proto_state_ = socle::TlsProtoState::failed;
             error(ERROR_UNSPEC);
         };
 
@@ -4747,6 +4848,7 @@ int baseSSLCom<L4Proto>::upgrade_client_socket(int sock) {
         SSL_set_bio(sslcom_ssl,sslcom_sbio,sslcom_sbio);
 
         ERR_clear_error();
+        tls_proto_state_ = socle::TlsProtoState::handshaking;
         sslcom_ret = SSL_connect(sslcom_ssl);
         counters.prof_connect_cnt++;
 
@@ -4765,6 +4867,7 @@ int baseSSLCom<L4Proto>::upgrade_client_socket(int sock) {
             if (sslcom_ret == -1) {
                 int err = SSL_get_error(sslcom_ssl, sslcom_ret);
                 if (err == SSL_ERROR_WANT_WRITE) {
+                    tls_proto_state_ = socle::TlsProtoState::handshake_want_write;
                     _dia("upgrade_client_socket[%d]: SSL_connect: pending on want_write",sock);
                     
                     // interested in WRITE, so ignore read events
@@ -4775,6 +4878,7 @@ int baseSSLCom<L4Proto>::upgrade_client_socket(int sock) {
                    
                 }
                 else if(err == SSL_ERROR_WANT_READ) {
+                    tls_proto_state_ = socle::TlsProtoState::handshake_want_read;
                     _dia("upgrade_client_socket[%d]: SSL_connect: pending on want_read",sock);
 
                     // connect() completion may have left this socket monitored
@@ -4819,12 +4923,14 @@ int baseSSLCom<L4Proto>::upgrade_client_socket(int sock) {
         // restore peer monitoring
         monitor_peer();
 
+        tls_proto_state_ = socle::TlsProtoState::checking_peer;
         if (not check_cert(nullptr)) {
             _err("SSLCom::upgrade_client_socket[%d]: peer certificate/counterpart setup failed", sock);
             fail_client_upgrade();
             return -1;
         }
         store_session_if_needed();
+        tls_proto_state_ = socle::TlsProtoState::established;
 
         forced_read(true);
         forced_write(true);
@@ -4873,6 +4979,8 @@ bool baseSSLCom<L4Proto>::com_status() {
 
 template <class L4Proto>
 void baseSSLCom<L4Proto>::shutdown(int _fd) {
+
+    record_tls_close();
     sslcom_status(false);
     
     if(sslcom_ssl != nullptr and not sslcom_fatal) {
