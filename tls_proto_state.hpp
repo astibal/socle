@@ -1,6 +1,8 @@
 #pragma once
 
+#include <array>
 #include <cstdint>
+#include <optional>
 
 namespace socle {
 
@@ -30,6 +32,49 @@ enum class TlsProtoState : std::uint8_t {
     peer_closed,             // close_notify; the write half may still be usable.
     closed,                  // Local shutdown or cleanup, not a confirmed exchange.
     failed,                  // Retained through cleanup during shutdown and cleanup.
+};
+
+// Pending observations, owned and consumed by the COM object's thread.
+// A full buffer retains its prefix and reports the gap instead of overwriting it.
+struct TlsProtoHistory {
+    std::array<TlsProtoState, 32> states {};
+    std::uint8_t size { 0 };
+    bool overflowed { false };
+
+    // Queries inspect retained entries only, including after an overflow.
+    std::optional<TlsProtoState> last() const {
+
+        if(size == 0) {
+            return std::nullopt;
+        }
+
+        return states[size - 1];
+    }
+
+    bool contains(TlsProtoState state) const {
+
+        for(std::uint8_t index = 0; index < size; ++index) {
+            if(states[index] == state) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    void append(TlsProtoState state) {
+
+        if(size != 0 && states[size - 1] == state) {
+            return;
+        }
+
+        if(size == states.size()) {
+            overflowed = true;
+            return;
+        }
+
+        states[size++] = state;
+    }
 };
 
 } // namespace socle

@@ -259,15 +259,36 @@ public:
     socle::TlsProtoRole tls_proto_role() const { return tls_proto_role_; }
     socle::TlsProtoState tls_proto_state() const { return tls_proto_state_; }
 
+    const socle::TlsProtoHistory& tls_proto_history() const { return tls_proto_history_; }
+
+    // Acknowledge observations only after processing them on the owning thread.
+    void clear_tls_proto_history() {
+
+        tls_proto_history_.size = 0;
+        tls_proto_history_.overflowed = false;
+    }
+
 private:
     socle::TlsProtoRole tls_proto_role_ { socle::TlsProtoRole::client };
     socle::TlsProtoState tls_proto_state_ { socle::TlsProtoState::idle };
+    socle::TlsProtoHistory tls_proto_history_ {};
+
+    void record_tls_state(socle::TlsProtoState state) {
+
+        if(state == tls_proto_state_) {
+            return;
+        }
+
+        // The current snapshot remains accurate even when history is full.
+        tls_proto_state_ = state;
+        tls_proto_history_.append(state);
+    }
 
     void record_tls_close() {
 
         // Preserve the failure for an observer inspecting a retired connection.
         if(tls_proto_state_ != socle::TlsProtoState::failed) {
-            tls_proto_state_ = socle::TlsProtoState::closed;
+            record_tls_state(socle::TlsProtoState::closed);
         }
     }
 
