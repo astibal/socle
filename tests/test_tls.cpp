@@ -3709,6 +3709,16 @@ TEST(TLS_Tests, UpstreamCipherOverrideReplacesLegacyPolicyAndRejectsInvalidExpre
     EXPECT_EQ(legacy, std::vector<std::string>{selected});
     EXPECT_FALSE(connection.configure_upstream_hello("late.test", "", "ALL"));
 
+    // The start boundary updates only this SSL, before its first handshake.
+    ASSERT_TRUE(connection.configure_upstream_start("start.test", "\x08http/1.1", selected));
+    EXPECT_STREQ(SSL_get_servername(connection.test_ssl(), TLSEXT_NAMETYPE_host_name), "start.test");
+    EXPECT_EQ(connection.get_sni(), "start.test");
+
+    ASSERT_TRUE(connection.configure_upstream_start("", "", std::nullopt));
+    EXPECT_EQ(SSL_get_servername(connection.test_ssl(), TLSEXT_NAMETYPE_host_name), nullptr);
+    EXPECT_NE(connection.upstream_cipher_filter().find(" !AES128"), std::string::npos);
+    EXPECT_FALSE(connection.configure_upstream_start("", "", "UNKNOWN-CIPHER"));
+
     for(const auto* invalid : {"", "UNKNOWN-CIPHER", "TLS_AES_256_GCM_SHA384"}) {
         SSLCom_Buddy rejected;
         rejected.factory(&factory);

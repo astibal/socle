@@ -443,6 +443,13 @@ public:
         return true;
     }
 
+    // The start hook may update this SSL instance, never its shared context.
+    // Callers must terminate the handshake if OpenSSL rejects any setting.
+    bool configure_upstream_start(std::string sni, std::string alpn,
+                                  std::optional<std::string> cipher_list);
+
+    std::string upstream_cipher_filter(bool defaults = false) const;
+
     buffer const& server_hello_buffer() const { return sslcom_server_hello_buffer; }
 
 protected:

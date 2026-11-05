@@ -2290,6 +2290,58 @@ void baseSSLCom<L4Proto>::init_ssl_callbacks() {
 }
 
 template <class L4Proto>
+std::string baseSSLCom<L4Proto>::upstream_cipher_filter(bool defaults) const {
+
+    if(!defaults && upstream_cipher_list_) {
+        return *upstream_cipher_list_;
+    }
+
+    std::string filter = ci_def_filter;
+    if(!opt.right.allow_sha1) filter += " !SHA1";
+    if(!opt.right.allow_rc4) filter += " !RC4";
+    if(!opt.right.allow_aes128) filter += " !AES128";
+
+    if(!opt.right.kex_dh) filter += " !kEECDH !kEDH";
+    if(!opt.right.kex_rsa) filter += " !kRSA";
+
+    return filter;
+}
+
+
+template <class L4Proto>
+bool baseSSLCom<L4Proto>::configure_upstream_start(std::string sni, std::string alpn,
+                                                   std::optional<std::string> cipher_list) {
+
+    if(!sslcom_ssl || is_server() || !SSL_in_before(sslcom_ssl)) {
+        return false;
+    }
+
+    // Allocate before changing SSL. A rejected expression must never fall
+    // back to the previous offer or proceed with a partially applied update.
+    auto ciphers = cipher_list ? std::make_unique<std::string>(std::move(*cipher_list)) : nullptr;
+    const auto filter = ciphers ? *ciphers : upstream_cipher_filter(true);
+
+    // A session selected during initialization belongs to the original offer.
+    // Do not resume it after changing the identity or handshake parameters.
+    if(SSL_set_session(sslcom_ssl, nullptr) != 1 ||
+       SSL_set_cipher_list(sslcom_ssl, filter.c_str()) != 1 ||
+       SSL_set_tlsext_host_name(sslcom_ssl, sni.empty() ? nullptr : sni.data()) != 1 ||
+       SSL_set_alpn_protos(sslcom_ssl, reinterpret_cast<const unsigned char*>(alpn.data()),
+                          alpn.size()) != 0) {
+        _war("TLS upstream start settings rejected by OpenSSL: socket=%d", this->socket());
+        return false;
+    }
+
+    upstream_cipher_list_ = std::move(ciphers);
+
+    // Certificate verification reads the effective upstream identity here.
+    sslcom_sni_ = std::move(sni);
+    sslcom_peer_hello_alpn_ = std::move(alpn);
+    return true;
+}
+
+
+template <class L4Proto>
 void baseSSLCom<L4Proto>::init_client() {
 
     // ClientHello precedes SSL initialization; keep its recorded decision.
@@ -2356,26 +2408,7 @@ void baseSSLCom<L4Proto>::init_client() {
     };
 
     if (upstream_cipher_list_ || !uses_default_cipher_filter(opt.right)) {
-        std::string my_filter = ci_def_filter;
-
-        // An explicit OpenSSL expression replaces the legacy cipher policy.
-        // TLS 1.3 suites and protocol bounds remain separate settings.
-        if(upstream_cipher_list_) {
-            my_filter = *upstream_cipher_list_;
-        } else {
-            if(!opt.right.allow_sha1)
-                my_filter += " !SHA1";
-            if(!opt.right.allow_rc4)
-                my_filter += " !RC4";
-            if(!opt.right.allow_aes128)
-                my_filter += " !AES128";
-
-            if(!opt.right.kex_dh)
-                my_filter += " !kEECDH !kEDH";
-
-            if(!opt.right.kex_rsa)
-                my_filter += " !kRSA";
-        }
+        const auto my_filter = upstream_cipher_filter();
 
         _dia("right ciphers: %s",my_filter.c_str());
         if(SSL_set_cipher_list(sslcom_ssl,my_filter.c_str()) != 1) {
