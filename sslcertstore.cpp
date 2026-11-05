@@ -507,7 +507,10 @@ SSL_CTX* SSLFactory::client_ctx_setup(const char* ciphers) {
 #endif
 
     SSL_CTX_set_options(ctx, ctx_options); //used to be also SSL_OP_NO_TICKET+
-    SSL_CTX_set_session_cache_mode(ctx, SSL_SESS_CACHE_NO_INTERNAL);
+
+    // Keep tickets in our external cache, including post-handshake TLS 1.3
+    // tickets. The client flag enables the new-session callback.
+    SSL_CTX_set_session_cache_mode(ctx, SSL_SESS_CACHE_CLIENT | SSL_SESS_CACHE_NO_INTERNAL);
 
     SSL_CTX_sess_set_new_cb(ctx, SSLCom::new_session_callback);
     SSL_CTX_set_client_cert_cb(ctx, SSLCom::ssl_client_cert_callback);
