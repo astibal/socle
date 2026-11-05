@@ -34,6 +34,7 @@
 #include <openssl/ocsp.h>
 
 #include <sslcom.hpp>
+#include <sslcom_hooks.tpp>
 #include <sslcom_dh.hpp>
 #include <log/logger.hpp>
 #include <display.hpp>

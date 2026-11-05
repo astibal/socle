@@ -291,85 +291,13 @@ private:
     // Allocate an override only for an explicitly configured handshake.
     std::unique_ptr<std::string> upstream_cipher_list_;
 
-    socle::ProtocolHookResult dispatch_tls_client_hello() {
+    socle::ProtocolHookResult dispatch_tls_hook(
+        typename TlsHookState::Invocation& invocation,
+        socle::ProtocolHooks::Callback callback, const char* name);
 
-        auto& invocation = tls_hooks_.client_hello;
-        if(invocation.called) return invocation.result;
-
-        invocation.called = true;
-        if(!this->protocol_hooks_enabled() || l4_proto() != SOCK_STREAM) {
-            return socle::ProtocolHookResult::Continue;
-        }
-
-        const auto callback = socle::ProtocolHooks::registry().tls_client_hello;
-        invocation.result = callback ? callback(*this) : socle::ProtocolHookResult::Continue;
-        if(invocation.result == socle::ProtocolHookResult::Terminate) {
-            _war("TLS handshake terminated by callback: hook=client-hello socket=%d com=%p",
-                 this->socket(), static_cast<void*>(this));
-        }
-
-        return invocation.result;
-    }
-
-    socle::ProtocolHookResult dispatch_tls_start() {
-
-        if(!sslcom_ssl) {
-            return socle::ProtocolHookResult::Continue;
-        }
-
-        if(tls_hooks_.start.called) {
-            return tls_hooks_.start.result;
-        }
-
-        // Claim the boundary even when disabled; a resumed handshake is too
-        // late to subscribe. Only TCP TLS is wired in this first implementation.
-        tls_hooks_.start.called = true;
-        if(!this->protocol_hooks_enabled() || l4_proto() != SOCK_STREAM) {
-            return socle::ProtocolHookResult::Continue;
-        }
-
-        const auto& hooks = socle::ProtocolHooks::registry();
-        const auto callback = tls_proto_role_ == socle::TlsProtoRole::client
-            ? hooks.tls_client_start : hooks.tls_server_start;
-
-        tls_hooks_.start.result = callback ? callback(*this) : socle::ProtocolHookResult::Continue;
-        if(tls_hooks_.start.result == socle::ProtocolHookResult::Terminate) {
-            const auto* hook = tls_proto_role_ == socle::TlsProtoRole::client
-                ? "client-start" : "server-start";
-
-            _war("TLS handshake terminated by callback: hook=%s socket=%d com=%p",
-                 hook, this->socket(), static_cast<void*>(this));
-        }
-
-        return tls_hooks_.start.result;
-    }
-
-    socle::ProtocolHookResult hook_tls_start() {
-
-        const auto result = dispatch_tls_start();
-        if(result == socle::ProtocolHookResult::Terminate) {
-            reject_tls_handshake();
-        }
-
-        return result;
-    }
-
-    socle::ProtocolHookResult hook_client_hello(baseSSLCom& client) {
-
-        const auto result = dispatch_tls_client_hello();
-        if(result == socle::ProtocolHookResult::Terminate) {
-            client.reject_tls_handshake();
-            reject_tls_handshake();
-        }
-
-        return result;
-    }
-
-    void reject_tls_handshake() {
-
-        record_tls_state(socle::TlsProtoState::failed);
-        error(ERROR_UNSPEC);
-    }
+    socle::ProtocolHookResult hook_tls_start();
+    socle::ProtocolHookResult hook_client_hello(baseSSLCom& client);
+    void reject_tls_handshake();
 
     void record_tls_state(socle::TlsProtoState state) {
 
