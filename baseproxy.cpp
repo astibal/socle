@@ -233,6 +233,10 @@ int baseProxy::rsize() {
 
 
 bool baseProxy::on_cx_timer(baseHostCX* cx) {
+    if(auto* transport = cx->com()) {
+        transport->on_timer();
+    }
+
     cx->on_timer();
 	return true;
 }

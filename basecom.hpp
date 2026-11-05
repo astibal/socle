@@ -195,6 +195,9 @@ public:
     /// @brief poll socket with supported poll technique. Works automagically.
     virtual int poll();
 
+    // Transport deadlines also need attention when no socket becomes ready.
+    virtual void on_timer() {}
+
     /// @brief standardized error log with description from errno
     void err_errno(const char* fn, const char* params, int rv) const;
 

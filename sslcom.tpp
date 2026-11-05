@@ -3253,8 +3253,7 @@ ret_handshake baseSSLCom<L4Proto>::handshake() {
         }
     };
 
-    if(handshake_timer_started && opt.handshake_timeout > 0 &&
-       timeval_msdelta_now(&timer_handshake_start) > opt.handshake_timeout) {
+    if(handshake_timed_out()) {
         _err("SSLCom::handshake: TLS handshake timed out after %d ms on socket %d",
              opt.handshake_timeout, socket());
         log.event(ERR, "[%s] TLS handshake timed out after %d ms",
@@ -5043,6 +5042,23 @@ int baseSSLCom<L4Proto>::connect(const char* host, const char* port)  {
     }
 
     return sock;
+}
+
+
+template <class L4Proto>
+bool baseSSLCom<L4Proto>::handshake_timed_out() {
+    return handshake_timer_started && opt.handshake_timeout > 0 &&
+           timeval_msdelta_now(&timer_handshake_start) > opt.handshake_timeout;
+}
+
+
+template <class L4Proto>
+void baseSSLCom<L4Proto>::on_timer() {
+    // Reuse the normal timeout failure path without retrying a pending
+    // SSL operation. handshake() checks this deadline before calling OpenSSL.
+    if(sslcom_waiting && !error() && handshake_timed_out()) {
+        handshake();
+    }
 }
 
 

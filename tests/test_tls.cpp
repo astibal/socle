@@ -1703,6 +1703,42 @@ TEST(TLS_Tests, ExpiredTlsHandshakeFailsBothSidesBeforeAnotherRetry) {
     EXPECT_EQ(connection.tls_proto_state(), socle::TlsProtoState::failed);
 }
 
+TEST(TLS_Tests, TimerExpiresSilentHandshakeWithoutAnIoRetry) {
+    init_log();
+    SSLCom_Buddy connection;
+    SSLCom_Buddy peer;
+    connection.peer(&peer);
+    peer.peer(&connection);
+    connection.test_readiness(false, true);
+    connection.opt.handshake_timeout = 1;
+    connection.test_expire_tls_handshake_timer();
+
+    connection.on_timer();
+
+    EXPECT_TRUE(connection.error());
+    EXPECT_TRUE(peer.error());
+    EXPECT_EQ(connection.tls_proto_state(), socle::TlsProtoState::failed);
+    EXPECT_EQ(peer.tls_proto_state(), socle::TlsProtoState::failed);
+}
+
+TEST(TLS_Tests, TimerDoesNotRetryAnUnexpiredHandshakeOrExpireEstablishedTls) {
+    init_log();
+    SSLCom_Buddy connection;
+    connection.test_readiness(false, true);
+    connection.test_expire_tls_handshake_timer();
+    connection.opt.handshake_timeout = 120000;
+
+    // No SSL object exists: a retry here would enter uninitialized TLS setup.
+    connection.on_timer();
+    EXPECT_FALSE(connection.error());
+
+    connection.test_readiness(true, false);
+    connection.opt.handshake_timeout = 1;
+    connection.on_timer();
+    EXPECT_FALSE(connection.error());
+    EXPECT_TRUE(connection.test_sslcom_status());
+}
+
 MemoryTlsPair make_memory_tls_pair(SSL_CTX* client_context, SSL_CTX* server_context,
                                    SSLCom* client_owner = nullptr) {
     MemoryTlsPair pair;

@@ -425,6 +425,7 @@ protected:
 
     bool handshake_peer_client(); // check if peer received already ClientHello
     ret_handshake handshake();
+    bool handshake_timed_out();
         void handshake_dia_error2(int op_code, int err, unsigned int err2);
         int handshake_client();
         int handshake_server();
@@ -642,6 +643,7 @@ public:
 	void cleanup() override;
 
     bool com_status() override;
+    void on_timer() override;
     
     
     void shutdown(int _fd) override;
