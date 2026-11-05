@@ -934,7 +934,7 @@ std::string baseHostCX::to_string(int verbosity) const {
 
     if(verbosity > INF) {
         r_str << string_format(" | fd=%d | rx_cnt=%d rx_b=%d / tx_cnt=%d tx_b=%d",
-                               com() ? com()->translate_socket(socket()) : socket(),
+                               real_socket(),
                                meter_read_count, meter_read_bytes,
                                meter_write_count, meter_write_bytes);
     }
