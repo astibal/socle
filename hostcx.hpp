@@ -402,7 +402,7 @@ public:
     inline void remove_socket() { com()->remove_socket(); }
 
     [[nodiscard]] int socket() const { return com()->socket(); }
-    [[nodiscard]] int real_socket() const { return com()->translate_socket(socket()); }
+    [[nodiscard]] int real_socket() const { return com() ? com()->translate_socket(socket()) : -1; }
 
     [[maybe_unused]] [[nodiscard]] bool is_connected();
     [[nodiscard]] int closed_socket() const { return com()->closed_socket(); }
