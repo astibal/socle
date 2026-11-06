@@ -16,6 +16,7 @@
     License along with this library.
 */
 #include <tcpcom.hpp>
+#include <ancillary_ifindex.hpp>
 #include <socketinfo.hpp>
 #include <privileged_socket.hpp>
 #include <internet.hpp>
@@ -30,7 +31,8 @@ using namespace socle;
 
 void TCPCom::init(baseHostCX* owner) { 
     
-    baseCom::init(owner); 
+    baseCom::init(owner);
+    if(socket() > 0) capture_ingress_interface(socket());
 }
 
 
@@ -162,6 +164,15 @@ int TCPCom::bind(unsigned short port) {
     if (sock == -1)
         return -129;
 
+    // Required Linux API; do not silently create listeners without metadata.
+    const int enabled = 1;
+    if(::setsockopt(sock, IPPROTO_IP, IP_PKTINFO, &enabled, sizeof enabled) != 0 ||
+       (sa.ss_family == AF_INET6 &&
+        ::setsockopt(sock, IPPROTO_IPV6, IPV6_RECVPKTINFO, &enabled, sizeof enabled) != 0)) {
+        ::close(sock);
+        return -132;
+    }
+
     so_reuseaddr(sock);
     
     if(nonlocal_dst_) {
@@ -280,4 +291,21 @@ void TCPCom::on_new_socket(int _fd) {
     }
 
     baseCom::on_new_socket(_fd);
+}
+
+void TCPCom::capture_ingress_interface(int fd) {
+    // Called on the newly owned Com, never on the shared accepting listener.
+    sockaddr_storage address{};
+    socklen_t address_size = sizeof address;
+    if(::getsockname(fd, reinterpret_cast<sockaddr*>(&address), &address_size) != 0) return;
+    const bool ipv6 = address.ss_family == AF_INET6;
+    if(!ipv6 && address.ss_family != AF_INET) return;
+    alignas(cmsghdr) unsigned char control[256]{};
+    socklen_t size = sizeof control;
+    if(::getsockopt(fd, ipv6 ? IPPROTO_IPV6 : IPPROTO_IP,
+                   ipv6 ? IPV6_2292PKTOPTIONS : IP_PKTOPTIONS, control, &size) != 0) return;
+    msghdr message{};
+    message.msg_control = control;
+    message.msg_controllen = size;
+    ingress_ifindex(socle::ancillary_ifindex(message));
 }

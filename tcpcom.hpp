@@ -50,6 +50,7 @@ public:
     } config;
     
     void init(baseHostCX* owner) override;
+    void capture_ingress_interface(int fd);
     baseCom* replicate() override { return new TCPCom(); };
     
     int connect(const char* host, const char* port) override;

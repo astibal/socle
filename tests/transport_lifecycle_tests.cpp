@@ -1052,3 +1052,60 @@ TEST(TCPComReadiness, RefusedConnectRemainsFailedAfterSoErrorWasConsumed) {
     connection.close(fd);
     ::close(reserved);
 }
+
+#include <ancillary_ifindex.hpp>
+#include <net/if.h>
+
+TEST(InterfaceMetadata, ParsesPacketInfoAfterOtherControlMessages) {
+    alignas(cmsghdr) unsigned char control[CMSG_SPACE(sizeof(int)) + CMSG_SPACE(sizeof(in_pktinfo))]{};
+    msghdr msg{}; msg.msg_control = control; msg.msg_controllen = sizeof control;
+    auto* first = CMSG_FIRSTHDR(&msg);
+    first->cmsg_level = SOL_IP; first->cmsg_type = IP_TTL; first->cmsg_len = CMSG_LEN(sizeof(int));
+    auto* second = CMSG_NXTHDR(&msg, first);
+    ASSERT_NE(second, nullptr);
+    second->cmsg_level = SOL_IP; second->cmsg_type = IP_PKTINFO; second->cmsg_len = CMSG_LEN(sizeof(in_pktinfo));
+    in_pktinfo info{}; info.ipi_ifindex = 123;
+    std::memcpy(CMSG_DATA(second), &info, sizeof info);
+    EXPECT_EQ(socle::ancillary_ifindex(msg), 123U);
+    msg.msg_flags = MSG_CTRUNC;
+    EXPECT_EQ(socle::ancillary_ifindex(msg), 0U);
+    msg.msg_flags = 0;
+    second->cmsg_len = CMSG_LEN(sizeof(in_pktinfo)) - 1;
+    EXPECT_EQ(socle::ancillary_ifindex(msg), 0U);
+    Datagram original; original.ingress_ifindex = 123;
+    Datagram copy(original), assigned;
+    assigned = copy;
+    EXPECT_EQ(assigned.ingress_ifindex, 123U);
+}
+
+TEST(InterfaceMetadata, AcceptedTcpContextOwnsIndexBeforeTlsOrPayload) {
+    for(int family : {AF_INET, AF_INET6}) {
+        const int listener = ::socket(family, SOCK_STREAM | SOCK_CLOEXEC, 0);
+        ASSERT_GE(listener, 0);
+        const int enabled = 1;
+        const int level = family == AF_INET ? IPPROTO_IP : IPPROTO_IPV6;
+        ASSERT_EQ(::setsockopt(listener, level, family == AF_INET ? IP_PKTINFO : IPV6_RECVPKTINFO, &enabled, sizeof enabled), 0);
+        sockaddr_storage address{};
+        address.ss_family = family;
+        if(family == AF_INET) reinterpret_cast<sockaddr_in*>(&address)->sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        else reinterpret_cast<sockaddr_in6*>(&address)->sin6_addr = in6addr_loopback;
+        socklen_t length = family == AF_INET ? sizeof(sockaddr_in) : sizeof(sockaddr_in6);
+        ASSERT_EQ(::bind(listener, reinterpret_cast<sockaddr*>(&address), length), 0);
+        ASSERT_EQ(::getsockname(listener, reinterpret_cast<sockaddr*>(&address), &length), 0);
+        ASSERT_EQ(::listen(listener, 1), 0);
+        const int client = ::socket(family, SOCK_STREAM | SOCK_CLOEXEC, 0);
+        ASSERT_GE(client, 0);
+        ASSERT_EQ(::connect(client, reinterpret_cast<sockaddr*>(&address), length), 0);
+        const int fd = ::accept4(listener, nullptr, nullptr, SOCK_CLOEXEC);
+        ASSERT_GE(fd, 0);
+        {
+            baseHostCX accepted(new TCPCom, fd);
+            EXPECT_EQ(accepted.com()->ingress_ifindex(), if_nametoindex("lo"));
+            EXPECT_EQ(accepted.com()->egress_ifindex(), 0U);
+            auto* slave = accepted.com()->slave();
+            EXPECT_EQ(slave->ingress_ifindex(), 0U);
+            delete slave;
+        }
+        ::close(client); ::close(listener);
+    }
+}
