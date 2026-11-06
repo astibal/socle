@@ -77,6 +77,7 @@ struct AddressInfo {
 };
 
 struct SocketInfo {
+    unsigned ingress_ifindex = 0;
 
     void unpack() { src.unpack(); dst.unpack(); }
     void unpack_src() { src.unpack(); };
