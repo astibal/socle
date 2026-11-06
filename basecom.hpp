@@ -61,7 +61,15 @@ public:
     bool protocol_hooks_enabled() const { return protocol_hooks_enabled_; }
     void protocol_hooks_enabled(bool enabled) { protocol_hooks_enabled_ = enabled; }
 
+    // Per-flow interface metadata. Zero means unknown, never a wildcard.
+    unsigned ingress_ifindex() const noexcept { return ingress_ifindex_; }
+    void ingress_ifindex(unsigned value) noexcept { ingress_ifindex_ = value; }
+    unsigned egress_ifindex() const noexcept { return egress_ifindex_; }
+    void egress_ifindex(unsigned value) noexcept { egress_ifindex_ = value; }
+
 private:
+    unsigned ingress_ifindex_ = 0;
+    unsigned egress_ifindex_ = 0;
     bool protocol_hooks_enabled_ = false;
 
 public:
