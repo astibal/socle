@@ -32,7 +32,9 @@ using namespace socle;
 void TCPCom::init(baseHostCX* owner) { 
     
     baseCom::init(owner);
-    if(socket() > 0) capture_ingress_interface(socket());
+    if(socket() > 0) {
+        capture_ingress_interface(socket());
+    }
 }
 
 
@@ -297,15 +299,25 @@ void TCPCom::capture_ingress_interface(int fd) {
     // Called on the newly owned Com, never on the shared accepting listener.
     sockaddr_storage address{};
     socklen_t address_size = sizeof address;
-    if(::getsockname(fd, reinterpret_cast<sockaddr*>(&address), &address_size) != 0) return;
+    if(::getsockname(fd, reinterpret_cast<sockaddr*>(&address), &address_size) != 0) {
+        return;
+    }
+
     const bool ipv6 = address.ss_family == AF_INET6;
-    if(!ipv6 && address.ss_family != AF_INET) return;
+    if(!ipv6 && address.ss_family != AF_INET) {
+        return;
+    }
+
     alignas(cmsghdr) unsigned char control[256]{};
-    socklen_t size = sizeof control;
-    if(::getsockopt(fd, ipv6 ? IPPROTO_IPV6 : IPPROTO_IP,
-                   ipv6 ? IPV6_2292PKTOPTIONS : IP_PKTOPTIONS, control, &size) != 0) return;
+    socklen_t control_size = sizeof control;
+    const int level = ipv6 ? IPPROTO_IPV6 : IPPROTO_IP;
+    const int option = ipv6 ? IPV6_2292PKTOPTIONS : IP_PKTOPTIONS;
+    if(::getsockopt(fd, level, option, control, &control_size) != 0) {
+        return;
+    }
+
     msghdr message{};
     message.msg_control = control;
-    message.msg_controllen = size;
+    message.msg_controllen = control_size;
     ingress_ifindex(socle::ancillary_ifindex(message));
 }
