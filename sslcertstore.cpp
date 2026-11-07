@@ -48,6 +48,20 @@ std::string FILE_to_string(FILE* file) {
     return ss.str();
 }
 
+namespace {
+
+// Open one PEM source without weakening native precedence. Once CfgTar
+// supplied an entry, even an empty one is parsed from memory and cannot fall
+// through to a stale file with the same role.
+FILE* open_pem(const std::optional<std::string>& native, const std::string& path) {
+    if (native) {
+        return ::fmemopen(const_cast<char*>(native->data()), native->size(), "r");
+    }
+    return ::fopen(path.c_str(), "re");
+}
+
+} // namespace
+
 bool SSLFactory::load_custom_certificates() {
     auto const& log = get_log();
 
@@ -307,7 +321,7 @@ bool SSLFactory::load_ca_cert() {
     auto const& log = get_log();
     std::string cer = certs_path() + config_t::CA_CERTF;
 
-    FILE *fp_crt = fopen(cer.c_str(), "re");
+    FILE *fp_crt = open_pem(config.native_ca_cert, cer);
     FILE *fp_key = nullptr;
     
     if (!fp_crt) {
@@ -316,7 +330,7 @@ bool SSLFactory::load_ca_cert() {
     }
     
     std::string key = certs_path() + config_t::CA_KEYF;
-    fp_key = fopen(key.c_str(), "re");
+    fp_key = open_pem(config.native_ca_key, key);
     
     if (!fp_key) {
         _fat("SSLFactory::load_ca_cert: unable to open: %s",key.c_str());
@@ -354,7 +368,7 @@ bool SSLFactory::load_def_cl_cert() {
     auto const& log = get_log();
     std::string cer = certs_path() + config_t::CL_CERTF;
 
-    FILE *fp_crt = fopen(cer.c_str(), "re");
+    FILE *fp_crt = open_pem(config.native_cl_cert, cer);
     FILE *fp_key = nullptr;
     
     if (!fp_crt) {
@@ -363,7 +377,7 @@ bool SSLFactory::load_def_cl_cert() {
     }
     
     std::string key = certs_path() + config_t::CL_KEYF;
-    fp_key = fopen(key.c_str(), "re");
+    fp_key = open_pem(config.native_cl_key, key);
     
     if (!fp_key) {
         _fat("SSLFactory::load_def_cl_cert: unable to open: %s",key.c_str());
@@ -397,7 +411,7 @@ bool SSLFactory::load_def_po_cert() {
     auto const& log = get_log();
     std::string cer = certs_path() + config_t::PO_CERTF;
 
-    FILE *fp_crt = fopen(cer.c_str(), "re");
+    FILE *fp_crt = open_pem(config.native_po_cert, cer);
     FILE *fp_key = nullptr;
 
     if (!fp_crt) {
@@ -406,7 +420,7 @@ bool SSLFactory::load_def_po_cert() {
     }
 
     std::string key = certs_path() + config_t::PO_KEYF;
-    fp_key = fopen(key.c_str(), "re");
+    fp_key = open_pem(config.native_po_key, key);
 
     if (!fp_key) {
         _fat("SSLFactory::load_def_po_cert: unable to open: %s",key.c_str());
@@ -432,7 +446,7 @@ bool SSLFactory::load_def_sr_cert() {
     auto const& log = get_log();
     std::string cer = certs_path() + config_t::SR_CERTF;
     
-    FILE *fp_crt = fopen(cer.c_str(), "re");
+    FILE *fp_crt = open_pem(config.native_sr_cert, cer);
     FILE *fp_key = nullptr;
     
     if (!fp_crt) {
@@ -441,7 +455,7 @@ bool SSLFactory::load_def_sr_cert() {
     }
     
     std::string key = certs_path() + config_t::SR_KEYF;
-    fp_key = fopen(key.c_str(), "re");
+    fp_key = open_pem(config.native_sr_key, key);
     
     if (!fp_key) {
         _fat("SSLFactory::load_def_sr_cert: unable to open: %s",key.c_str());
