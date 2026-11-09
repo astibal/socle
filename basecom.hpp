@@ -58,6 +58,22 @@ public:
     baseHostCX* owner_cx_ = nullptr;
     inline baseHostCX* owner_cx() const { return owner_cx_; }
 
+    // Opt in on the owning thread, before entering a protocol decision point.
+    bool protocol_hooks_enabled() const { return protocol_hooks_enabled_; }
+    void protocol_hooks_enabled(bool enabled) { protocol_hooks_enabled_ = enabled; }
+
+    // Per-flow interface metadata. Zero means unknown, never a wildcard.
+    unsigned ingress_ifindex() const noexcept { return ingress_ifindex_; }
+    void ingress_ifindex(unsigned value) noexcept { ingress_ifindex_ = value; }
+    unsigned egress_ifindex() const noexcept { return egress_ifindex_; }
+    void egress_ifindex(unsigned value) noexcept { egress_ifindex_ = value; }
+
+private:
+    unsigned ingress_ifindex_ = 0;
+    unsigned egress_ifindex_ = 0;
+    bool protocol_hooks_enabled_ = false;
+
+public:
     [[maybe_unused]] static void polltime(int msec) { poll_msec = msec; }
 
     bool _static_init = false;
@@ -96,6 +112,7 @@ public:
 private:
 
     int fd_ = 0;
+    int closing_fd_ = 0; // Retained after shutdown until the context closes it.
 
     // feedback mechanism to get if the communication level is up/down
     // necessary for some mitm scenarios and connection status feedback between 2 sockets
@@ -184,6 +201,9 @@ public:
     virtual ssize_t peek(int _fd, void* _buf, size_t _n, int _flags) = 0;
     virtual ssize_t write(int _fd, const void* _buf, size_t _n, int _flags) = 0;
     virtual void shutdown(int _fd) = 0;
+    // Half-close is opt-in: TLS and virtual streams have different semantics.
+    [[nodiscard]] virtual bool supports_half_close() const { return false; }
+    virtual bool shutdown_write() { return false; }
     // Most Com implementations leave the descriptor open for baseHostCX to
     // close during destruction. Implementations which consume or transfer
     // descriptor ownership in shutdown() must override this.
@@ -194,6 +214,9 @@ public:
 
     /// @brief poll socket with supported poll technique. Works automagically.
     virtual int poll();
+
+    // Transport deadlines also need attention when no socket becomes ready.
+    virtual void on_timer() {}
 
     /// @brief standardized error log with description from errno
     void err_errno(const char* fn, const char* params, int rv) const;
@@ -221,22 +244,23 @@ public:
     virtual bool descriptor_valid(int fd) const { return fd > 0; }
     virtual int socket() const { return fd_; }
 
-    // sets a socket and closes previous socket if set
+    // Assign a descriptor without closing it. The context still controls
+    // shutdown, handoff and final close; zero clears the active descriptor.
     virtual int socket(int sock) {
-
-        if( sock !=  fd_ && fd_ > 0) {
-            _err("basecom::socket: orphaned fd %d, new socket %d", fd_, sock);
-
-            // prepared to fix https://github.com/astibal/smithproxy/issues/7
-            // auto bts = bt(true);
-            // _err("trace: \r\n%s", bts.c_str());
-            //::close(fd_);
-
-            _war("baseCom::socket(%d): possibly leaking previously held socket %d", sock, fd_);
+        if(sock != 0 && sock != fd_ && fd_ > 0) {
+            _war("baseCom::socket(%d): replacing active socket %d", sock, fd_);
         }
-
         fd_ = sock;
         return fd_;
+    }
+
+    int closed_socket() const { return closing_fd_; }
+    void closed_socket(int sock) { closing_fd_ = sock; }
+
+    // Relinquish both descriptors without closing them (handoff or replacement).
+    void remove_socket() {
+        fd_ = 0;
+        closing_fd_ = 0;
     }
 
 
@@ -272,6 +296,10 @@ public:
     // A protocol state machine may require EPOLLOUT even with an empty
     // application write buffer (for example TLS read -> WANT_WRITE).
     virtual bool write_event_pending() const { return false; }
+    // Ordinary transports may still produce a delayed response while their
+    // connection context is opening. Protocol transports can reject that
+    // fallback once their own state machine has no pending write work.
+    virtual bool opening_write_event_pending() const { return true; }
     
     // check if socket is changed
     virtual bool in_readset(int s) { return master()->poller.in_read_set(s); };

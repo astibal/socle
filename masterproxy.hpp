@@ -87,10 +87,7 @@ public:
     explicit MasterProxy(baseCom* c): baseProxy(c) {
         proxies_.reserve(subproxy_reserve);
     }
-    ~MasterProxy() override {
-        // Tear down active and deferred sessions on their owning worker.
-        MasterProxy::shutdown();
-    }
+    ~MasterProxy() override = default;
 
     vector_type <proxy_entry>& proxies() { return proxies_; };
     vector_type <proxy_entry> const& proxies() const { return proxies_; };
@@ -98,6 +95,10 @@ public:
     deferred_queue const& deferred() const { return deferred_; };
 
     void add_proxy(std::unique_ptr<baseProxy> upx) {
+        if(upx) {
+            upx->parent(this);
+            stats().count_session_opened();
+        }
         auto lc_ = std::scoped_lock(proxies_lock_);
         proxies_.emplace_back(std::move(upx));
     }
@@ -105,6 +106,12 @@ public:
     int prepare_sockets(baseCom*) override;
 	int handle_sockets_once(baseCom*) override;
 	void shutdown() override;
+
+    int run() override {
+        const int result = baseProxy::run();
+        shutdown();
+        return result;
+    }
     
     bool run_timers() override;
 

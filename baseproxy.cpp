@@ -63,8 +63,8 @@ void baseProxy::ladd(baseHostCX* cs) {
     cs->unblock();
     
     int s = cs->socket();
-    com()->set_monitor(s);
     com()->set_poll_handler(s,this);
+    com()->set_monitor(s);
     left_sockets.push_back(cs);
     cs->parent_proxy(this, 'L');
     _dia("baseProxy::ladd: added socket: %s", cs->c_type());
@@ -76,8 +76,8 @@ void baseProxy::radd(baseHostCX* cs) {
     
     //int s = cs->com()->translate_socket(cs->socket());
     int s = cs->socket();
-    com()->set_monitor(s);
     com()->set_poll_handler(s,this);
+    com()->set_monitor(s);
     right_sockets.push_back(cs);
     cs->parent_proxy(this, 'R');
     _dia("baseProxy::radd: added socket: %s", cs->c_type());
@@ -111,9 +111,10 @@ void baseProxy::rbadd(baseHostCX* cs) {
 void baseProxy::lpcadd(baseHostCX* cx) {
     cx->permanent(true);
     int s = cx->com()->translate_socket(cx->socket());
-    
-    com()->set_monitor(s);
+
     com()->set_poll_handler(s,this);
+    com()->set_monitor(s);
+    if (cx->opening()) com()->set_write_monitor(s);
     left_pc_cx.push_back(cx);
     cx->parent_proxy(this, 'L');
     _dia("baseProxy::lpcadd: added perma socket: %s", cx->c_type());
@@ -123,9 +124,10 @@ void baseProxy::lpcadd(baseHostCX* cx) {
 void baseProxy::rpcadd(baseHostCX* cx) {
     cx->permanent(true);
     int s = cx->com()->translate_socket(cx->socket());
-    
-    com()->set_monitor(s);
+
     com()->set_poll_handler(s,this);
+    com()->set_monitor(s);
+    if (cx->opening()) com()->set_write_monitor(s);
     
     right_pc_cx.push_back(cx);
     cx->parent_proxy(this,'R');
@@ -241,6 +243,10 @@ int baseProxy::rsize() {
 
 
 bool baseProxy::on_cx_timer(baseHostCX* cx) {
+    if(auto* transport = cx->com()) {
+        transport->on_timer();
+    }
+
     cx->on_timer();
 	return true;
 }
@@ -317,40 +323,39 @@ int baseProxy::prepare_sockets(baseCom* fdset_owner) {
 
 bool baseProxy::handle_cx_events(unsigned char side, baseHostCX* cx) {
 
+    auto handle_terminal = [&]() {
+        // A permanent callback reconnects synchronously. Retire the failed
+        // descriptor first so the generic terminal path cannot immediately
+        // shut down the replacement socket.
+        if(side == 'x' || side == 'y') {
+            cx->shutdown();
+            if(side == 'x') on_left_pc_error(cx);
+            else            on_right_pc_error(cx);
+        } else {
+            if(side == 'l') on_left_error(cx);
+            else            on_right_error(cx);
+            cx->shutdown();
+        }
+    };
+
     // treat non-blocking still opening sockets
         if( cx->opening_timeout() ) {
             _dia("baseProxy::handle_cx_events[%d]: opening timeout!", cx->socket());
-            
-            if     (side == 'l')  { on_left_error(cx);  }
-            else if(side == 'r')  { on_right_error(cx); }
-            else if(side == 'x')  { on_left_pc_error(cx); }
-            else if(side == 'y')  { on_right_pc_error(cx); }
-
-            cx->shutdown();
+            handle_terminal();
             return false;
         }
 
         if( cx->idle_timeout() ) {
             _dia("baseProxy::handle_cx_events[%d]: idle timeout!", cx->socket());
 
-            if     (side == 'l')  { on_left_error(cx);  }
-            else if(side == 'r')  { on_right_error(cx); }
-            else if(side == 'x')  { on_left_pc_error(cx); }
-            else if(side == 'y')  { on_right_pc_error(cx); }
-
-            cx->shutdown();
+            handle_terminal();
             return false;
         }
 
         if( cx->error() ) {
             _dia("baseProxy::handle_cx_events[%d]: error!", cx->socket());
 
-            if     (side == 'l')  { on_left_error(cx);  }
-            else if(side == 'r')  { on_right_error(cx); }
-            else if(side == 'x')  { on_left_pc_error(cx); }
-            else if(side == 'y')  { on_right_pc_error(cx); }
-
-            cx->shutdown();
+            handle_terminal();
             return false;
         }
         
@@ -393,24 +398,24 @@ bool baseProxy::handle_cx_read(unsigned char side, baseHostCX* cx,
             }
 
 
-            if     (side == 'l') { on_left_error(cx); }
-            else if(side == 'r') { on_right_error(cx); }
-            else if(side == 'x')  { on_left_pc_error(cx); }
-            else if(side == 'y')  { on_right_pc_error(cx); }
-
             // Permanent/reconnecting contexts use EOF as a reconnect signal,
             // not an end-to-end stream half-close.
             if(side == 'x' || side == 'y') {
                 cx->shutdown();
+                if(side == 'x') on_left_pc_error(cx);
+                else            on_right_pc_error(cx);
                 return false;
             }
+
+            if(side == 'l') on_left_error(cx);
+            else            on_right_error(cx);
 
             // A read EOF is a half-close, not permission to destroy the write
             // half of the same full-duplex stream. Stop read readiness while
             // retaining any independent queued/protocol-level output.
             if(!state().dead() && cx->socket() != 0) {
-                if(cx->opening() || !cx->writebuf()->empty() ||
-                   cx->com()->write_event_pending()) {
+                if((cx->opening() && cx->com()->opening_write_event_pending()) ||
+                   !cx->writebuf()->empty() || cx->com()->write_event_pending()) {
                     cx->com()->set_write_monitor_only(cx->socket());
                 } else {
                     cx->com()->unset_monitor(cx->socket());
@@ -482,6 +487,14 @@ bool baseProxy::handle_cx_write(unsigned char side, baseHostCX* cx,
         } else {
             stats_.last_write += wrt;
 
+            if(auto* owner = parent(); owner != nullptr && wrt > 0) {
+                if(side == 'l' || side == 'x') {
+                    owner->stats().count_bytes_down(wrt);
+                } else if(side == 'r' || side == 'y') {
+                    owner->stats().count_bytes_up(wrt);
+                }
+            }
+
             if(wrt > 0 and stats_.do_rate_meter) {
                 if (stats_.do_rate_meter) {
                     if (side == 'l' or side == 'x') {
@@ -502,6 +515,8 @@ bool baseProxy::handle_cx_read_once(unsigned char side, baseCom* xcom, baseHostC
 
     bool ret = true;
     bool dont_read = false;
+    const bool waiting_for_peer = cx->socket() != 0 &&
+                                  cx->read_waiting_for_peercom();
 
     _ext("%c: %d",side, cx->socket());
     if(cx->socket() == 0) {
@@ -523,7 +538,7 @@ bool baseProxy::handle_cx_read_once(unsigned char side, baseCom* xcom, baseHostC
 
 
     // waiting_for_peercom cx is subject to timeout only, no r/w is done on it ( it would return -1/0 anyway, so spare some cycles)
-    if( (!cx->read_waiting_for_peercom()) && (!dont_read) ) {
+    if((!waiting_for_peer) && (!dont_read)) {
         bool forced_read = cx->com()->forced_read_reset();
         bool in_read_set = xcom->in_readset(cx->socket());
 
@@ -551,8 +566,18 @@ bool baseProxy::handle_cx_read_once(unsigned char side, baseCom* xcom, baseHostC
             }
         }
     } else {
-        _dia("baseProxy::handle_cx_read_once[%c]: waiting_for_peercom read in cx with socket %d, in read_set: %s", side, cx->socket(),
-                                                                 xcom->in_readset(cx->socket()) ? "yes" : "no");
+        const bool ready = xcom->in_readset(cx->socket());
+        _dia("baseProxy::handle_cx_read_once[%c]: deferred read in cx with socket %d, in read_set: %s", side, cx->socket(),
+                                                                 ready ? "yes" : "no");
+
+        // A deferred level-triggered event (including EPOLLRDHUP) must leave
+        // the immediate poll set or it will spin until the read is resumed.
+        // Rescanning removes the descriptor from both current result sets.
+        // Let an already-delivered write event advance the protocol first;
+        // the write dispatcher reapplies the read pause afterwards.
+        if(ready && !xcom->in_writeset(cx->socket())) {
+            cx->defer_read_readiness();
+        }
     }
 
     // on failure, skip all operations and go here
@@ -671,9 +696,9 @@ bool baseProxy::handle_cx_write_once(unsigned char side, baseCom* xcom, baseHost
 
     bool in_writeset = xcom->in_writeset(cx->socket());
     bool in_force_writeset = cx->com()->forced_write_reset();
+    bool const write_dispatched = in_writeset || in_force_writeset || !cx->writebuf()->empty();
 
-
-    if( in_writeset || in_force_writeset || ( ! cx->writebuf()->empty() ) ) {
+    if(write_dispatched) {
 
         bool side_left = side == 'l' || side == 'L' || side == 'x' || side == 'X';
         bool side_right = side == 'r' || side == 'R' || side == 'y' || side == 'Y';
@@ -681,7 +706,13 @@ bool baseProxy::handle_cx_write_once(unsigned char side, baseCom* xcom, baseHost
         auto  orig_bytes_sz = cx->writebuf()->size();
         auto  pending_bytes_sz = orig_bytes_sz;
 
-        if(!handle_cx_write(side, cx) || cx->error()) {
+        // The write handler already owns classification of a fatal write.
+        // Feeding the same failure through the generic path invokes a
+        // permanent reconnect callback twice.
+        if(!handle_cx_write(side, cx)) {
+            return false;
+        }
+        if(cx->error()) {
             handle_cx_events(side,cx);
             return false;
         }
@@ -732,6 +763,38 @@ bool baseProxy::handle_cx_write_once(unsigned char side, baseCom* xcom, baseHost
 
                 }
             }
+        }
+    }
+    // A write may publish a context message. Dispatch it before changing
+    // readiness monitoring, since another socket event may never arrive.
+    if(cx->new_message()) {
+        return handle_cx_events(side, cx);
+    }
+
+    // Permanent contexts reconnect on EOF instead of forwarding it.
+    if((side == 'l' || side == 'r') && cx->peer() &&
+       cx->peer()->read_eof() && cx->peer()->com()->supports_half_close()) {
+        cx->shutdown_write();
+        if(cx->error()) {
+            handle_cx_events(side, cx);
+            return false;
+        }
+    }
+
+    // Inspect the pause without advancing the peer's transport state machine.
+    // A completed write must not re-arm a deferred level-triggered read.
+    bool const read_bottleneck =
+        ((side == 'l' || side == 'x') && state().write_right_bottleneck()) ||
+        ((side == 'r' || side == 'y') && state().write_left_bottleneck());
+    if((write_dispatched || cx->write_eof()) &&
+       (cx->read_paused_for_peer() || read_bottleneck)) {
+        cx->defer_read_readiness();
+    } else if(cx->read_eof()) {
+        if((cx->opening() && cx->com()->opening_write_event_pending()) ||
+           !cx->writebuf()->empty() || cx->com()->write_event_pending()) {
+            cx->com()->set_write_monitor_only(cx->socket());
+        } else {
+            cx->com()->unset_monitor(cx->socket());
         }
     }
 
@@ -869,13 +932,7 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
                     handle_last_status |= HANDLE_LEFT_PC_ERROR;
 
                     state().error_on_left_read = true;
-                    on_left_pc_error(i);
                     break;
-                } else {
-                    bool opening_status = i->opening();
-                    if (opening_status) {
-                        on_left_pc_restore(i);
-                    }
                 }
 
                //WRITES
@@ -888,17 +945,17 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
                     break;
                 }
 
+                bool const was_opening = i->opening();
+                if(was_opening && xcom->in_writeset(i->socket()) && i->is_connected()) {
+                    i->opening(false);
+                }
                 if (!handle_cx_write_once('x', xcom, i)) {
                     handle_last_status |= HANDLE_LEFT_PC_ERROR;
 
                     state().error_on_left_write = true;
-                    on_left_pc_error(i);
                     break;
-                } else {
-
-                    if (i->opening()) {
-                        on_left_pc_restore(i);
-                    }
+                } else if (was_opening && !i->opening()) {
+                    on_left_pc_restore(i);
                 }
             }
         }
@@ -920,12 +977,7 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
                     handle_last_status |= HANDLE_RIGHT_PC_ERROR;
 
                     state().error_on_right_read = true;
-                    on_right_pc_error(i);
                     break;
-                } else {
-                    if (i->opening()) {
-                        on_right_pc_restore(i);
-                    }
                 }
 
 
@@ -939,17 +991,17 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
                     break;
                 }
 
+                bool const was_opening = i->opening();
+                if(was_opening && xcom->in_writeset(i->socket()) && i->is_connected()) {
+                    i->opening(false);
+                }
                 if (!handle_cx_write_once('y', xcom, i)) {
                     handle_last_status |= HANDLE_RIGHT_PC_ERROR;
 
                     state().error_on_right_write = true;
-                    on_right_pc_error(i);
                     break;
-                } else {
-
-                    if (i->opening()) {
-                        on_right_pc_restore(i);
-                    }
+                } else if (was_opening && !i->opening()) {
+                    on_right_pc_restore(i);
                 }
             }
         }
@@ -959,13 +1011,24 @@ int baseProxy::handle_sockets_once(baseCom* xcom) {
 		
 		if (xcom->poll_result > 0) {
 
-            auto accepted = [] (baseHostCX *p, auto action) -> bool {
+            auto accepted = [xcom] (baseHostCX *p, auto action) -> bool {
                 if (!p->read_waiting_for_peercom()) {
                     p->on_accept_socket(p->socket());
 
                     action(p);
 
                     return true;
+                }
+                // Delayed TLS accepts intentionally leave ClientHello queued
+                // until the origin side is ready. Its readable edge must wake
+                // the peer's write-driven handshake; EPOLLIN on the origin
+                // cannot consume bytes which are waiting on this socket.
+                if(xcom->in_readset(p->socket()) && p->peercom()) {
+                    if(p->peer() && p->peer()->opening() &&
+                       p->peercom()->is_connected(p->peercom()->socket())) {
+                        p->peer()->opening(false);
+                    }
+                    p->peercom()->set_write_monitor(p->peercom()->socket());
                 }
                 return false;
             };
@@ -1086,8 +1149,19 @@ void baseProxy::on_left_pc_error(baseHostCX* cx) {
 	if (cx->opening()) {
 		_err("Left permanent socket connection timeout %s:", cx->c_type());
 	}
-	else if ( cx->reconnect()) {
+
+	if ( cx->reconnect()) {
 		_inf("reconnecting");
+		cx->parent_proxy(this, 'L');
+		if(!cx->com()->descriptor_valid(cx->socket())) {
+			cx->error(true);
+			_war("left permanent reconnect did not produce a valid descriptor");
+			return;
+		}
+		int s = cx->com()->translate_socket(cx->socket());
+		com()->set_poll_handler(s, this);
+		com()->set_monitor(s);
+		com()->set_write_monitor(s);
 	} 
 	else {
 		_dum("reconnection postponed");
@@ -1104,6 +1178,16 @@ void baseProxy::on_right_pc_error(baseHostCX* cx) {
 	
 	if ( cx->reconnect()) {
 		_dia("Reconnecting %s", cx->c_type());
+		cx->parent_proxy(this, 'R');
+		if(!cx->com()->descriptor_valid(cx->socket())) {
+			cx->error(true);
+			_war("right permanent reconnect did not produce a valid descriptor");
+			return;
+		}
+		int s = cx->com()->translate_socket(cx->socket());
+		com()->set_poll_handler(s, this);
+		com()->set_monitor(s);
+		com()->set_write_monitor(s);
 	} 
 	else {
 		_dum("reconnection postponed");
@@ -1138,7 +1222,7 @@ void baseProxy::on_right_new(std::unique_ptr<baseHostCX> cx) {
     cx.release();
 }
 
-auto baseProxy::run_poll_socket_null_handler(int cur_socket, epoll::set_type& real_set, socket_set_type set_type) -> metering::poll {
+auto baseProxy::run_poll_socket_null_handler(int cur_socket, epoll::set_type& real_set, socket_set_type set_type) -> ProxyStats::poll {
     int hint_socket = poller()->hint_socket();
 
     _if_deb {
@@ -1168,7 +1252,7 @@ auto baseProxy::run_poll_socket_null_handler(int cur_socket, epoll::set_type& re
             poller()->del(cur_socket);
         }
 
-        metering::poll ret; ++ret.null_count;
+        ProxyStats::poll ret; ++ret.null_count;
         return ret;
 
     } else {
@@ -1176,14 +1260,14 @@ auto baseProxy::run_poll_socket_null_handler(int cur_socket, epoll::set_type& re
         _deb("baseProxy::run: socket %d is hint socket, running proxy socket handler", cur_socket);
         handle_sockets_once(com());
 
-        metering::poll ret; ++ret.hint_count;
+        ProxyStats::poll ret; ++ret.hint_count;
         return ret;
     }
 }
 
-auto baseProxy::run_poll_socket(int cur_socket, epoll::set_type& real_set, socket_set_type set_type) -> metering::poll {
+auto baseProxy::run_poll_socket(int cur_socket, epoll::set_type& real_set, socket_set_type set_type) -> ProxyStats::poll {
 
-    metering::poll ret;
+    ProxyStats::poll ret;
 
     epoll_handler* p_handler = com()->poller.get_handler(cur_socket);
 
@@ -1267,7 +1351,7 @@ int baseProxy::run_poll() {
         return 1;
     }
 
-    metering::poll stats;
+    ProxyStats::poll stats;
 
     std::array<epoll::set_type*,5> sets;
     sets[socket_set_type::INSET] = &poller()->in_set;

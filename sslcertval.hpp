@@ -113,10 +113,17 @@ namespace inet {
         ocsp_send_request (BIO *err, OCSP_REQUEST *req, char *host, char *path, char *port, int use_ssl,
                            int req_timeout);
 
-        inet::cert::VerifyStatus ocsp_verify_response(OCSP_RESPONSE *resp, X509* cert, X509* issuer,
-                                                      X509_STORE* trust_store = nullptr);
+        bool ocsp_add_untrusted_certificates(STACK_OF(X509)* signers,
+                                             X509* cert, X509* issuer,
+                                             STACK_OF(X509)* verified_chain);
 
-        inet::cert::VerifyStatus ocsp_check_cert (X509 *x509, X509 *issuer, int req_timeout = 2);
+        inet::cert::VerifyStatus ocsp_verify_response(OCSP_RESPONSE *resp, X509* cert, X509* issuer,
+                                                      X509_STORE* trust_store = nullptr,
+                                                      STACK_OF(X509)* verified_chain = nullptr);
+
+        inet::cert::VerifyStatus ocsp_check_cert (
+            X509 *x509, X509 *issuer, int req_timeout = 2,
+            STACK_OF(X509)* verified_chain = nullptr);
 
         int ocsp_check_bytes (const char cert_bytes[], const char issuer_bytes[]);
 
@@ -138,7 +145,9 @@ namespace inet {
         X509_CRL *crl_from_bytes (buffer &b);
         X509_CRL *crl_from_file(const char *crl_filename);
 
-        int crl_verify_trust (X509 *x509, X509 *issuer, X509_CRL *crl_file, const std::string &cacerts_pem_path);
+        int crl_verify_trust (X509 *x509, X509 *issuer, X509_CRL *crl_file,
+                              const std::string &cacerts_pem_path,
+                              STACK_OF(X509) *verified_chain = nullptr);
         int crl_is_revoked_by (X509 *x509, X509 *issuer, X509_CRL *crl_file);
     }
 }

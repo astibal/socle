@@ -121,7 +121,7 @@ struct epoll {
     static constexpr int EPOLLER_MAX_EVENTS = 50;
 
     struct epoll_event events[EPOLLER_MAX_EVENTS];
-    std::atomic_int epoll_fd_ = 0;
+    std::atomic_int epoll_fd_ = -1;
     std::atomic_int hint_fd_ = 0;
     bool auto_epollout_remove = true;
     set_type in_set;
@@ -203,7 +203,7 @@ struct epoll {
     [[nodiscard]] inline int epoll_socket() const { return epoll_fd_.load(); }
 
     virtual ~epoll() {
-        if (epoll_socket() > 0) ::close(epoll_socket());
+        if (epoll_socket() >= 0) ::close(epoll_socket());
     };
 
     static inline loglevel log_level {iINF};
@@ -286,16 +286,22 @@ public:
     int fence_S = HANDLER_FENCE;
     virtual void handle_event(baseCom*) = 0;
     virtual ~epoll_handler() {
-        if(registrant != nullptr) {
+        epoller* owner = registrant;
+        if(owner != nullptr) {
             std::scoped_lock<std::mutex> l(lock_);
+            std::vector<int> sockets;
+            {
+                auto sockets_lock = std::scoped_lock(registered_sockets.get_lock());
+                sockets.assign(registered_sockets.get_ul().begin(), registered_sockets.get_ul().end());
+            }
 
-            for(auto s: registered_sockets.get_ul()) {
+            for(auto s: sockets) {
 
-                epoll_handler* owner = registrant->get_handler(s);
+                epoll_handler* registered = owner->get_handler(s);
 
                 // don't remove foreign handlers!
-                if(this == owner) {
-                    registrant->clear_handler(s);
+                if(this == registered) {
+                    owner->clear_handler(s);
                 }
             }
         }

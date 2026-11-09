@@ -378,7 +378,9 @@ public:
         if (pop_cnt) {
             // flow can be trimmed in the meantime, we need to know how many times, to adjust range
             // where we start from
-            flow_step = static_cast<int>(ret.max_pos() - pop_cnt) - 1;
+            flow_step = ret.max_pos() >= pop_cnt
+                ? ret.max_pos() - pop_cnt
+                : 0;
             _deb("flowMatch::match: pop-trim of %d applied to flow_step => %d", pop_cnt, flow_step);
         }
 

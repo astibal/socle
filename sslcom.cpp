@@ -52,7 +52,7 @@ void CompatThreading::dyn_lock_function(int mode, CompatThreading::CRYPTO_dynloc
 
 void CompatThreading::dyn_destroy_function(CompatThreading::CRYPTO_dynlock_value *l, const char *file, int line)  {
     MUTEX_CLEANUP(l->mutex);
-    free(l);
+    delete l;
 }
 
 int CompatThreading::THREAD_setup() {

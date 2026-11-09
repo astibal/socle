@@ -23,6 +23,8 @@
 
 #include <log/logger.hpp>
 #include <sys/socket.h>
+#include <fcntl.h>
+#include <unistd.h>
 
 
 std::shared_ptr<LogMux> Log::get() {
@@ -60,6 +62,51 @@ logger_profile::~logger_profile() {
             optr->flush();
         }
     }
+}
+
+LogMux::remote_log_target::~remote_log_target() {
+    if(fd >= 0) ::close(fd);
+}
+
+std::shared_ptr<const LogMux::remote_log_targets_t> LogMux::remote_targets_snapshot() const {
+    return std::atomic_load(&remote_targets_snapshot_);
+}
+
+bool LogMux::add_remote_target(std::string_view name, int descriptor,
+                               std::shared_ptr<logger_profile> profile) {
+    const int owned_descriptor = ::fcntl(descriptor, F_DUPFD_CLOEXEC, 0);
+    if(owned_descriptor < 0) return false;
+
+    auto target = std::make_shared<remote_log_target>(std::string(name), descriptor,
+                                                      owned_descriptor, std::move(profile));
+    std::scoped_lock update(remote_targets_update_mutex_);
+    auto next = std::make_shared<remote_log_targets_t>();
+    const auto current = remote_targets_snapshot();
+    next->reserve(current->size() + 1);
+    for(const auto& item : *current)
+        if(item->source_fd != descriptor) next->push_back(item);
+    next->push_back(std::move(target));
+    std::atomic_store(&remote_targets_snapshot_,
+                      std::static_pointer_cast<const remote_log_targets_t>(next));
+    return true;
+}
+
+void LogMux::remove_remote_target(int descriptor) {
+    std::scoped_lock update(remote_targets_update_mutex_);
+    const auto current = remote_targets_snapshot();
+    auto next = std::make_shared<remote_log_targets_t>();
+    next->reserve(current->size());
+    for(const auto& item : *current)
+        if(item->source_fd != descriptor) next->push_back(item);
+    std::atomic_store(&remote_targets_snapshot_,
+                      std::static_pointer_cast<const remote_log_targets_t>(next));
+}
+
+std::shared_ptr<logger_profile> LogMux::remote_target_profile(int descriptor) const {
+    const auto current = remote_targets_snapshot();
+    for(const auto& item : *current)
+        if(item->source_fd == descriptor) return item->profile;
+    return {};
 }
 
 unsigned long get_usec() {
@@ -147,83 +194,36 @@ bool LogMux::should_log_topic(loglevel& writer, loglevel& msg) {
 }
 
 size_t LogMux::write_log(loglevel level, std::string& sss) {
-
     bool really_dup = dup2_cout();
 
     // targets are ostream pointers
     for( auto const& [ target, mut ] : targets()) {
 
 
-        if(target_profiles().find((uint64_t) target.get()) != target_profiles().end()) {
-            if(target_profiles()[(uint64_t)  target.get()]->level_ < level) { continue; }
-        }
-
-        if (!should_log_topic(target_profiles()[(uint64_t) target.get()]->level_,level)) continue;
+        const auto profile = target_profiles().find((uint64_t) target.get());
+        if(profile == target_profiles().end() || !profile->second) continue;
+        if(profile->second->level_ < level) continue;
+        if (!should_log_topic(profile->second->level_,level)) continue;
 
         auto l_ = std::scoped_lock(*mut);
         *target << sss << std::endl;
     }
 
-    for(auto const& [ rem_target, mut ]: remote_targets()) {
+    const auto managed_targets = remote_targets_snapshot();
+    for(const auto& target : *managed_targets) {
+        const auto& profile = target->profile;
+        if(!profile || profile->level_ < level || !should_log_topic(profile->level_, level)) continue;
 
-        if(target_profiles().find((uint64_t) rem_target) != target_profiles().end()) {
-            if(target_profiles()[(uint64_t) rem_target]->level_ < level ) { continue; }
-        }
+        std::stringstream message;
+        if(profile->logger_type == REMOTE_SYSLOG)
+            message << string_format("<%d> ", profile->syslog_settings.prival());
+        message << sss;
+        if(profile->logger_type != REMOTE_SYSLOG) message << "\r\n";
+        const auto output = message.str();
+        if(output.empty()) continue;
 
-        if (!should_log_topic(target_profiles()[(uint64_t) rem_target]->level_,level)) continue;
-
-        std::stringstream  s;
-
-        // prefixes
-        if(target_profiles()[(uint64_t) rem_target]->logger_type == REMOTE_SYSLOG) {
-            s <<  string_format("<%d> ",target_profiles()[(uint64_t) rem_target]->syslog_settings.prival());
-        }
-
-        s << sss ;
-
-        // suffixes
-        if(target_profiles()[(uint64_t) rem_target]->logger_type != REMOTE_SYSLOG) {
-            s <<  "\r\n";
-        }
-
-        std::string to_sent_str = s.str();
-        auto& mut_ref = *mut;
-
-        auto rep_log = [&mut_ref](auto rem_sock, auto str) {
-            const int rep = 3;
-            bool ret = false;
-
-            for (int i = 0; i < rep; ++i) {
-                ssize_t sent = 0;
-
-                {
-                    // protect socket write with to_sent_str mutex lock
-                    auto l_ = std::scoped_lock(mut_ref);
-                    sent = ::send(rem_sock, str.c_str(), str.size(), MSG_DONTWAIT);
-                }
-
-                if(sent >= 0) {
-                    // return, but success is only if data have been sent
-                    // we ignore if socket is full and not all data have been written (it's just a logging, after all)
-                    ret = ( sent > 0 );
-                    break;
-                }
-                else if (sent < 0 and (errno == EAGAIN or errno == EWOULDBLOCK)) {
-                    // error, could be repeated
-                    continue;
-                }
-                // sent is negative and cannot be repeated
-                break;
-            }
-
-            return ret;
-        };
-
-
-        if(not to_sent_str.empty()) {
-            const int sock = rem_target;
-            rep_log(sock, to_sent_str);
-        }
+        std::scoped_lock write(target->write_mutex);
+        (void)::send(target->fd, output.data(), output.size(), MSG_DONTWAIT | MSG_NOSIGNAL);
     }
 
 
@@ -282,6 +282,3 @@ bool LogMux::click_timer (const std::string &xname, int interval) {
 		return true;
 	}
 }
-
-
-

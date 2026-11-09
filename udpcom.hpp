@@ -52,9 +52,11 @@
 
 struct Datagram {
 
+    unsigned ingress_ifindex = 0;
+
     Datagram() = default;
 
-    Datagram(Datagram const& r): dst(r.dst), src(r.src), socket_left(r.socket_left), reuse(r.reuse), cx(r.cx),
+    Datagram(Datagram const& r): ingress_ifindex(r.ingress_ifindex), dst(r.dst), src(r.src), socket_left(r.socket_left), reuse(r.reuse), cx(r.cx),
                                  owner_token(r.owner_token), flow_key(r.flow_key), rx_queue(r.rx_queue) {}
 
     Datagram& operator=(Datagram const& r)  {
@@ -63,6 +65,7 @@ struct Datagram {
     }
     void assign(Datagram const& r) {
 
+        ingress_ifindex = r.ingress_ifindex;
         dst = r.dst;
         src = r.src;
         socket_left = r.socket_left;

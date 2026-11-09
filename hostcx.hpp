@@ -207,8 +207,6 @@ private:
 	mutable std::string name_;      //!< human friendly name
 	mutable std::mutex name_mutex_;  // protect name_
 
-	int fds_ = 0;			//!< socket/file descriptor itself
-	int closing_fds_ = 0;   // to close com we call shutdown() which actually don't close fds_. We have to store it and close on very object destruction.
 	bool error_ = false;    //!< indicates that the last read operation on socket returned 0
 	
 	
@@ -258,6 +256,7 @@ private:
     // after writing all data into the socket we should shutdown the socket
     bool close_after_write_ = false;
     bool read_eof_ = false;
+    bool write_eof_ = false;
 
     // larval connection facility
     bool opening_ = false;
@@ -293,7 +292,7 @@ public:
 
     inline Proxy* parent_proxy() const { return parent_proxy_; };
     inline unsigned char parent_flag() const { return parent_flag_; }
-    inline void parent_proxy(Proxy* p, unsigned char flag) { parent_proxy_ = p; parent_flag_ = flag; };
+    virtual void parent_proxy(Proxy* p, unsigned char flag) { parent_proxy_ = p; parent_flag_ = flag; };
     
     bool readable() const { return com()->readable(socket()) && !io_disabled(); };
     bool writable() const { return com()->writable(socket()) && !io_disabled(); };
@@ -372,6 +371,7 @@ public:
     bool idle_timeout() const;
 
 	bool read_waiting_for_peercom ();
+    bool read_paused_for_peer() const { return read_waiting_for_peercom_; }
     bool write_waiting_for_peercom ();
     [[maybe_unused]] inline void read_waiting_for_peercom (bool p) { read_waiting_for_peercom_ = p; }
     [[maybe_unused]] inline void write_waiting_for_peercom (bool p) { write_waiting_for_peercom_ = p; }
@@ -384,28 +384,28 @@ public:
 	// this us dummy implementation returning false
 	virtual bool new_message() const { return false; }
 
-	inline int unblock() const { return com()->unblock(fds_); }
+	inline int unblock() const { return com()->unblock(socket()); }
 
 	void unhandle() const;
 	virtual void shutdown();
-	inline bool valid() const { return ( fds_ > 0 && !error() ); };
+    void shutdown_write();
+	inline bool valid() const { return ( socket() > 0 && !error() ); };
 	inline bool error() const {
         if(com() != nullptr) return (error_ || com()->error());
         return error_ ; 
     }
 	inline void error(bool b) { error_ = b; }
-	void socket(int s) {
-		if (s != 0) {
-			fds_ = s;
-		}
-	};
-    inline void remove_socket() { fds_ = 0; closing_fds_ = 0; };
+    // Compatibility facade: descriptor storage belongs to the transport.
+    void socket(int s) {
+        if(s != 0) com()->socket(s);
+    }
+    inline void remove_socket() { com()->remove_socket(); }
 
-    [[nodiscard]] int socket() const { return fds_; };
-    [[nodiscard]] int real_socket() const { if(com_) { return com_->translate_socket(fds_); } return socket(); }
+    [[nodiscard]] int socket() const { return com()->socket(); }
+    [[nodiscard]] int real_socket() const { return com() ? com()->translate_socket(socket()) : -1; }
 
     [[maybe_unused]] [[nodiscard]] bool is_connected();
-    [[nodiscard]] int closed_socket() const { return closing_fds_; };
+    [[nodiscard]] int closed_socket() const { return com()->closed_socket(); }
 
     void permanent(bool p) { permanent_=p; }
     [[nodiscard]] bool permanent() const { return permanent_; }
@@ -431,7 +431,7 @@ public:
 	inline lockbuffer const* readbuf() const { return &readbuf_; }
 
 	inline lockbuffer* writebuf() { return &writebuf_; }
-    inline lockbuffer const* writebuf() const { return &readbuf_; }
+	inline lockbuffer const* writebuf() const { return &writebuf_; }
 	
 	inline void send(buffer& b) { writebuf_.append(b); }
 	inline std::size_t peek(buffer& b) const
@@ -467,6 +467,7 @@ public:
 	}
 
 	int read();
+	void defer_read_readiness();
 	void grow_buffer();
 	ssize_t io_read(void* where, size_t len, int flags) const;
 	void after_read(std::size_t bytes);
@@ -487,6 +488,7 @@ public:
 	virtual void to_write(unsigned char* c, unsigned int l); 
 	inline bool close_after_write() const { return close_after_write_; };
 	inline void close_after_write(bool b) { close_after_write_ = b; };
+    [[nodiscard]] bool write_eof() const { return write_eof_; }
     [[nodiscard]] inline bool read_eof() const { return read_eof_; }
     inline void read_eof(bool value) { read_eof_ = value; }
 	

@@ -16,9 +16,13 @@
     License along with this library.
 */
 #include <tcpcom.hpp>
+#include <ancillary_ifindex.hpp>
 #include <socketinfo.hpp>
 #include <privileged_socket.hpp>
 #include <internet.hpp>
+#include <hostcx.hpp>
+
+#include <poll.h>
 
 #include <vars.hpp>
 #include <convert.hpp>
@@ -27,7 +31,10 @@ using namespace socle;
 
 void TCPCom::init(baseHostCX* owner) { 
     
-    baseCom::init(owner); 
+    baseCom::init(owner);
+    if(socket() > 0) {
+        capture_ingress_interface(socket());
+    }
 }
 
 
@@ -46,10 +53,17 @@ bool TCPCom::make_transparent(int sfd) {
 }
 
 int TCPCom::connect(const char* host, const char* port) {
+    connect_traced = false;
     protocol_trace(socle::trace_component::tcp,
                    socle::trace_scope::connection,
                    socle::trace_event::connect_started,
                    socle::trace_status::pending);
+    connect_proven = false;
+    connected_fd_ = 0;
+    error(ERROR_NONE);
+    connect_failed_ = false;
+    connect_error_ = 0;
+
     struct addrinfo hints{};
     struct addrinfo *gai_result, *rp;
     int sfd = -1;
@@ -104,6 +118,7 @@ int TCPCom::connect(const char* host, const char* port) {
                 _deb("TCPCom::connect[%s:%s]: socket[%d]: connect successful", host, port, sfd);
                 connect_proven = true;
                 trace_connected_once();
+                connected_fd_ = sfd;
                 break;
             }
 
@@ -113,8 +128,11 @@ int TCPCom::connect(const char* host, const char* port) {
             }
 
         } else {
-            if (::connect(sfd, rp->ai_addr, rp->ai_addrlen) == 0)
+            if (::connect(sfd, rp->ai_addr, rp->ai_addrlen) == 0) {
+                connect_proven = true;
+                connected_fd_ = sfd;
                 break;
+            }
 
             _not("TCPCom::connect[%s:%s]: socket[%d]: connect errno: %s", host, port, sfd, string_error(errno).c_str());
         }
@@ -158,6 +176,15 @@ int TCPCom::bind(unsigned short port) {
 
     if (sock == -1)
         return -129;
+
+    // Required Linux API; do not silently create listeners without metadata.
+    const int enabled = 1;
+    if(::setsockopt(sock, IPPROTO_IP, IP_PKTINFO, &enabled, sizeof enabled) != 0 ||
+       (sa.ss_family == AF_INET6 &&
+        ::setsockopt(sock, IPPROTO_IPV6, IPV6_RECVPKTINFO, &enabled, sizeof enabled) != 0)) {
+        ::close(sock);
+        return -132;
+    }
 
     so_reuseaddr(sock);
     
@@ -212,125 +239,63 @@ int TCPCom::accept ( int sockfd, sockaddr* addr, socklen_t* addrlen_ ) {
     return news;
 }
 
-bool is_socket_writable(int sock) {
-    // Create an epoll instance
-    int epoll_fd = epoll_create1(0);
-    if (epoll_fd == -1) {
-        return false;
-    }
-
-    // Register the socket with epoll for write events
-    epoll_event event;
-    event.events = EPOLLOUT;
-    event.data.fd = sock;
-    if (epoll_ctl(epoll_fd, EPOLL_CTL_ADD, sock, &event) == -1) {
-        close(epoll_fd);
-        return false;
-    }
-
-    // Wait for the socket to be writable with minimal timeout
-    epoll_event events[1];
-    int nfds = epoll_wait(epoll_fd, events, 1, 0); // 0 ms timeout
-
-    // Clean up
-    close(epoll_fd);
-
-    if (nfds > 0 && (events[0].events & EPOLLOUT)) {
-        return true;
-    }
-
-    return false;
-}
-
 bool TCPCom::is_connected(int s) {
-    auto& log = log_state;
+    // Never treat "no socket" as ready, including contexts awaiting connect().
+    if(s <= 0) return false;
+    if(connect_failed_) return false;
+    if(connect_proven && connected_fd_ == s) return true;
 
-
-    // we already **know** connection was established
-    if(connect_proven) return true;
-
-    if(socket() == 0) {
-        _deb("TCPCom::is_connected: called for non-connecting socket");
-        return true;
+    // Reuse the worker's readiness observation when available. Standalone
+    // callers still need a nonblocking probe, without allocating another epoll.
+    bool ready = master() && (master()->in_writeset(s) || master()->in_readset(s));
+    if(!ready) {
+        pollfd descriptor{s, POLLOUT, 0};
+        if(::poll(&descriptor, 1, 0) <= 0) return false;
+        ready = (descriptor.revents & (POLLOUT | POLLERR | POLLHUP)) != 0;
+        if(!ready) return false;
     }
-    
-    int error_code = 0;
-    socklen_t l = sizeof(error_code);
 
-    // tcp socket will stay in EINPROGRESS unless there is ANY stat call! Don't ask why. 
-    // fstating socket seemed to me cheapest/fastest.
-    // fstating with stat struct buffer wasn't working too!
-    // 2016-01-16: seems not needed anymore. But keep to easy revert in case.
-
-    // Keeping for reference and curiosity. This was really a thing.
-    // struct stat stb{};
-    // fstat(s, &stb);
-
-    int r_getsockopt = getsockopt(s, SOL_SOCKET, SO_ERROR, &error_code, &l);
-    _deb("TCPCom::is_connected[%d]: getsockopt error_code %d = %s", s, error_code, string_error(error_code).c_str());
-
-    if ( r_getsockopt == 0 ) {
-
-        if(error_code == 0) {
-                _deb("TCPCom::is_connected[%d]: getsockopt seems ok", s);
-
-                if(is_socket_writable(s)) {
-                    _deb("TCPCom::is_connected[%d]: epoll sees this socket writable, returning OK", s);
-                    connect_proven = true;
-                    trace_connected_once();
-                }
-                else {
-                    _deb("TCPCom::is_connected[%d]: epoll sees this socket as non-writable, returning NOK", s);
-                }
-
-            _deb("TCPCom::is_connected[%d]: %s", s, connect_proven ? "connected" : "not connected");
-            return connect_proven;
-
-        }
-
-        // connection not proven yet, so check if poll returned something about this socket
-        else if(error_code == EINPROGRESS) {
-            auto in_w = master()->in_writeset(s);
-            auto in_r = master()->in_readset(s);
-            if( in_r or in_w ) {
-
-                if(in_r) _deb("TCPCom::is_connected[%d]: in progress, in readset", s);
-                if(in_w) _deb("TCPCom::is_connected[%d]: in progress, in writeset", s);
-
-                // aye, don't check connection status anymore
-                connect_proven = true;
-                trace_connected_once();
-                return true;
-            }
-            _deb("TCPCom::is_connected[%d]: in progress, waiting for poller sets presence", s);
-
-            return false;
-        }
-        else {
-            // optimized-out in Release
-            _if_deb {
-                if (master()->poller.in_write_set(s)) {
-                    _deb("TCPCom::is_connected[%d]: in writeset, but socket error", s);
-                } else {
-                    _deb("TCPCom::is_connected[%d]: not in writeset and with a socket error", s);
-                }
-            }
-
-            return false;
-        }
-    } else {
-        _dia("TCPCom::is_connected[%d]: getsockopt failed, returned %d = %s", s, r_getsockopt, string_error(error_code).c_str());
+    int failure = 0;
+    socklen_t size = sizeof(failure);
+    if(::getsockopt(s, SOL_SOCKET, SO_ERROR, &failure, &size) < 0) {
+        failure = errno;
+        if(failure == EINTR) return false;
+    }
+    if(failure == EINPROGRESS || failure == EALREADY || failure == EWOULDBLOCK)
         return false;
-    } 
+
+    if(failure != 0) {
+        // SO_ERROR is consumed by getsockopt. Preserve the failure for later
+        // callers, including the explicit proxy's CONNECT/SOCKS reply path.
+        connect_failed_ = true;
+        connect_error_ = failure;
+        return false;
+    }
+
+    // A fresh, unconnected socket can also be writable with SO_ERROR == 0.
+    // Confirm a peer once before caching success (also covers accepted sockets).
+    sockaddr_storage peer{};
+    socklen_t peer_size = sizeof(peer);
+    if(::getpeername(s, reinterpret_cast<sockaddr*>(&peer), &peer_size) < 0)
+        return false;
+
+    connected_fd_ = s;
+    connect_proven = true;
+    trace_connected_once();
+    return true;
 }
 
+bool TCPCom::shutdown_write() {
+    int result;
+    do {
+        result = ::shutdown(socket(), SHUT_WR);
+    } while(result < 0 && errno == EINTR);
+    return result == 0;
+}
 
 bool TCPCom::com_status() {
-    auto& log = log_state;
-    
-    bool r = is_connected(socket());
-    _deb("TCPCom::com_status: connected returning %d", r);
-    return r;
+    if(error()) return false;
+    return is_connected(socket());
 }
 
 void TCPCom::on_new_socket(int _fd) {
@@ -340,4 +305,31 @@ void TCPCom::on_new_socket(int _fd) {
     }
 
     baseCom::on_new_socket(_fd);
+}
+
+void TCPCom::capture_ingress_interface(int fd) {
+    // Called on the newly owned Com, never on the shared accepting listener.
+    sockaddr_storage address{};
+    socklen_t address_size = sizeof address;
+    if(::getsockname(fd, reinterpret_cast<sockaddr*>(&address), &address_size) != 0) {
+        return;
+    }
+
+    const bool ipv6 = address.ss_family == AF_INET6;
+    if(!ipv6 && address.ss_family != AF_INET) {
+        return;
+    }
+
+    alignas(cmsghdr) unsigned char control[256]{};
+    socklen_t control_size = sizeof control;
+    const int level = ipv6 ? IPPROTO_IPV6 : IPPROTO_IP;
+    const int option = ipv6 ? IPV6_2292PKTOPTIONS : IP_PKTOPTIONS;
+    if(::getsockopt(fd, level, option, control, &control_size) != 0) {
+        return;
+    }
+
+    msghdr message{};
+    message.msg_control = control;
+    message.msg_controllen = control_size;
+    ingress_ifindex(socle::ancillary_ifindex(message));
 }

@@ -1,3 +1,4 @@
+#include <ancillary_ifindex.hpp>
 /*
     Socle - Socket Library Ecosystem
     Copyright (c) 2014, Ales Stibal <astib@mag0.net>, All rights reserved.
@@ -89,6 +90,7 @@ std::optional<SocketInfo> ThreadedReceiver<Worker>::process_anc_data(int sock, m
 
     bool found_addr = false;
     SocketInfo ret;
+    ret.ingress_ifindex = socle::ancillary_ifindex(*msg);
 
     // iterate through all the control headers
     int i = 0;
@@ -164,6 +166,7 @@ int ThreadedReceiver<Worker>::add_first_datagrams(int sock, SocketInfo& pinfo) {
     auto create_new_entry = [](SocketInfo& pinfo, std::string const& flow_key) -> std::shared_ptr<Datagram> {
         auto entry = std::make_shared<Datagram>();
 
+        entry->ingress_ifindex = pinfo.ingress_ifindex;
         entry->src = pinfo.src.ss.value();
         entry->dst = pinfo.dst.ss.value();
         entry->reuse = false;
@@ -431,10 +434,10 @@ int ThreadedReceiverProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
         throw proxy_error("PARENT is NULL");
     }
 
-    if (parent()->state().dead()) {
-        // set myself dead too!
-        this->state().dead(true);
-        return -1;
+    if (this->retiring() || parent()->state().dead()) {
+        // Existing UDP flows drain through MasterProxy; no new flow is claimed.
+        if (proxies().empty()) this->state().dead(true);
+        return MasterProxy::handle_sockets_once(com());
     }
 
     uint32_t virtual_socket = 0;
@@ -495,6 +498,7 @@ int ThreadedReceiverProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
             record->cx = cx;
 
             if(auto ucom = dynamic_cast<UDPCom*>(cx->com()); ucom) {
+                ucom->ingress_ifindex(record->ingress_ifindex);
                 record->owner_token = ucom->owner_token();
                 // set virtual socket to read early data
                 ucom->embryonics().id = virtual_socket;

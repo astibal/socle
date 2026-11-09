@@ -433,6 +433,7 @@ int baseCom::so_transparent(int sock) const {
 
 int baseCom::so_recvorigdstaddr_v4(int sock) const {
     constexpr int optval = 1;
+    if(socle::setsockopt(sock, SOL_IP, IP_PKTINFO, &optval, sizeof optval) != 0) return -1;
     int sso = socle::setsockopt(sock, SOL_IP, IP_RECVORIGDSTADDR, &optval, sizeof optval);
     if (sso != 0)
         err_errno(string_format("baseCom::so_recvorigdstaddr_v4[%d]", sock).c_str(),
@@ -443,6 +444,7 @@ int baseCom::so_recvorigdstaddr_v4(int sock) const {
 
 int baseCom::so_recvorigdstaddr_v6(int sock) const {
     constexpr int optval = 1;
+    if(socle::setsockopt(sock, SOL_IPV6, IPV6_RECVPKTINFO, &optval, sizeof optval) != 0) return -1;
     int sso = socle::setsockopt(sock, SOL_IPV6, IPV6_RECVORIGDSTADDR, &optval, sizeof optval);
     if (sso != 0)
         err_errno(string_format("baseCom::so_recvorigdstaddr_v6[%d]", sock).c_str(),

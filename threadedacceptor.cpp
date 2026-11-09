@@ -93,9 +93,10 @@ int ThreadedAcceptorProxy<SubWorker>::handle_sockets_once(baseCom* xcom) {
 		_fat("PARENT is NULL");
 	}
 
-    if (parent()->state().dead()) {
-        // set myself dead too!
-        this->state().dead(true);
+    if (this->retiring() || parent()->state().dead()) {
+        // Keep servicing owned sessions, but never dequeue another accepted fd.
+        if (proxies().empty()) this->state().dead(true);
+        return MasterProxy::handle_sockets_once(com());
     }
 
     int s = 0;

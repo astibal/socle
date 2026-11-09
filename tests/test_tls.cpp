@@ -2,9 +2,12 @@
 #include <sslcom.hpp>
 #include <sslmitmcom.hpp>
 #include <algorithm>
+#include <arpa/inet.h>
 #include <cstdio>
 #include <filesystem>
+#include <fstream>
 #include <memory>
+#include <regex>
 #include <sys/socket.h>
 #include <unistd.h>
 
@@ -15,6 +18,165 @@ std::optional<CertificateChainCtx> load_cert_pair(
 int add_ext(STACK_OF(X509_EXTENSION)* extensions, int nid, char* value);
 
 namespace {
+
+TEST(TLS_Tests, PrivilegedVirtualDtlsHandoffUsesPreparedRealSocket) {
+    if(::geteuid() != 0)
+        GTEST_SKIP() << "transparent DTLS socket setup requires root";
+
+    const int client = ::socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
+    ASSERT_GE(client, 0);
+    sockaddr_in client_address {};
+    client_address.sin_family = AF_INET;
+    client_address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    client_address.sin_port = 0;
+    ASSERT_EQ(::bind(client, reinterpret_cast<sockaddr*>(&client_address),
+                     sizeof(client_address)), 0);
+    socklen_t client_size = sizeof(client_address);
+    ASSERT_EQ(::getsockname(client, reinterpret_cast<sockaddr*>(&client_address),
+                            &client_size), 0);
+
+    auto record = std::make_shared<Datagram>();
+    std::memcpy(&record->src, &client_address, sizeof(client_address));
+    sockaddr_in intercepted {};
+    intercepted.sin_family = AF_INET;
+    ASSERT_EQ(::inet_pton(AF_INET, "127.0.0.2", &intercepted.sin_addr), 1);
+    intercepted.sin_port = 0;
+    std::memcpy(&record->dst, &intercepted, sizeof(intercepted));
+
+    constexpr uint32_t virtual_key = 0x80001234U;
+    auto pool = UDPCom::datagram_com_static();
+    {
+        auto lock = std::scoped_lock(pool->lock);
+        pool->datagrams_received[virtual_key] = record;
+    }
+
+    {
+        DTLSCom connection;
+        connection.opt.bypass = true;
+        connection.accept_socket(static_cast<int32_t>(virtual_key));
+        ASSERT_GE(connection.socket(), 0);
+        EXPECT_NE(connection.socket(), static_cast<int32_t>(virtual_key));
+        EXPECT_NE(::fcntl(connection.socket(), F_GETFD, 0) & FD_CLOEXEC, 0);
+
+        sockaddr_in peer {};
+        socklen_t peer_size = sizeof(peer);
+        ASSERT_EQ(::getpeername(connection.socket(),
+                                reinterpret_cast<sockaddr*>(&peer),
+                                &peer_size), 0);
+        EXPECT_EQ(peer.sin_addr.s_addr, client_address.sin_addr.s_addr);
+        EXPECT_EQ(peer.sin_port, client_address.sin_port);
+
+        sockaddr_in local {};
+        socklen_t local_size = sizeof(local);
+        ASSERT_EQ(::getsockname(connection.socket(),
+                                reinterpret_cast<sockaddr*>(&local),
+                                &local_size), 0);
+        EXPECT_EQ(local.sin_addr.s_addr, intercepted.sin_addr.s_addr);
+        EXPECT_NE(local.sin_port, 0);
+    }
+
+    {
+        auto lock = std::scoped_lock(pool->lock);
+        pool->datagrams_received.erase(virtual_key);
+    }
+    ::close(client);
+}
+
+TEST(TLS_Tests, PrivilegedVirtualDtlsContextTracksPromotionAndReleasesBothIdentities) {
+    if(::geteuid() != 0)
+        GTEST_SKIP() << "transparent DTLS socket setup requires root";
+
+    Log::init();
+    // HostCX initializes its COM, so give the factory the same isolated PKI
+    // used by the TLS tests rather than relying on the host's installation.
+    auto& factory = SSLFactory::factory();
+    const auto saved_certs_path = factory.certs_path();
+    const auto saved_password = factory.certs_password();
+    const auto saved_ca_file = factory.ca_file();
+    const auto saved_ca_path = factory.ca_path();
+    factory.certs_path() = "etc/certs/default/";
+    factory.certs_password() = "smithproxy";
+    factory.ca_file() = "etc/certs/default/ca-cert.pem";
+    factory.ca_path().clear();
+    auto restore_factory = raw::guard([&] {
+        factory.destroy();
+        factory.certs_path() = saved_certs_path;
+        factory.certs_password() = saved_password;
+        factory.ca_file() = saved_ca_file;
+        factory.ca_path() = saved_ca_path;
+    });
+
+    const int client = ::socket(AF_INET, SOCK_DGRAM | SOCK_CLOEXEC, 0);
+    ASSERT_GE(client, 0);
+    sockaddr_in client_address {};
+    client_address.sin_family = AF_INET;
+    client_address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    client_address.sin_port = 0;
+    ASSERT_EQ(::bind(client, reinterpret_cast<sockaddr*>(&client_address),
+                     sizeof(client_address)), 0);
+    socklen_t client_size = sizeof(client_address);
+    ASSERT_EQ(::getsockname(client, reinterpret_cast<sockaddr*>(&client_address),
+                            &client_size), 0);
+
+    auto record = std::make_shared<Datagram>();
+    std::memcpy(&record->src, &client_address, sizeof(client_address));
+    sockaddr_in intercepted {};
+    intercepted.sin_family = AF_INET;
+    ASSERT_EQ(::inet_pton(AF_INET, "127.0.0.2", &intercepted.sin_addr), 1);
+    intercepted.sin_port = 0;
+    std::memcpy(&record->dst, &intercepted, sizeof(intercepted));
+
+    constexpr uint32_t virtual_key = 0x80001234U;
+    auto pool = UDPCom::datagram_com_static();
+    {
+        auto lock = std::scoped_lock(pool->lock);
+        pool->datagrams_received[virtual_key] = record;
+    }
+
+    {
+        auto* transport = new DTLSCom();
+        baseHostCX context(transport, static_cast<int32_t>(virtual_key));
+        auto& connection = *transport;
+        connection.embryonics().id = virtual_key;
+        connection.opt.bypass = true;
+        context.on_accept_socket(static_cast<int32_t>(virtual_key));
+        EXPECT_EQ(context.socket(), connection.socket());
+        ASSERT_GE(connection.socket(), 0);
+        EXPECT_NE(connection.socket(), static_cast<int32_t>(virtual_key));
+        EXPECT_NE(::fcntl(connection.socket(), F_GETFD, 0) & FD_CLOEXEC, 0);
+
+        sockaddr_in peer {};
+        socklen_t peer_size = sizeof(peer);
+        ASSERT_EQ(::getpeername(connection.socket(),
+                                reinterpret_cast<sockaddr*>(&peer),
+                                &peer_size), 0);
+        EXPECT_EQ(peer.sin_addr.s_addr, client_address.sin_addr.s_addr);
+        EXPECT_EQ(peer.sin_port, client_address.sin_port);
+
+        sockaddr_in local {};
+        socklen_t local_size = sizeof(local);
+        ASSERT_EQ(::getsockname(connection.socket(),
+                                reinterpret_cast<sockaddr*>(&local),
+                                &local_size), 0);
+        EXPECT_EQ(local.sin_addr.s_addr, intercepted.sin_addr.s_addr);
+        EXPECT_NE(local.sin_port, 0);
+
+        const int descriptor = connection.socket();
+        context.shutdown();
+        EXPECT_EQ(context.socket(), 0);
+        EXPECT_EQ(context.closed_socket(), 0);
+        EXPECT_EQ(::fcntl(descriptor, F_GETFD), -1);
+        EXPECT_EQ(errno, EBADF);
+        auto lock = std::scoped_lock(pool->lock);
+        EXPECT_EQ(pool->datagrams_received.count(virtual_key), 0U);
+    }
+
+    {
+        auto lock = std::scoped_lock(pool->lock);
+        pool->datagrams_received.erase(virtual_key);
+    }
+    ::close(client);
+}
 
 std::unique_ptr<X509, decltype(&X509_free)> load_tls_test_certificate() {
     FILE* file = std::fopen("etc/certs/default/srv-cert.pem", "r");
@@ -58,6 +220,21 @@ TEST(TLS_Tests, CertificateFileAndExtensionHelpersCoverSuccessAndFailure) {
     sk_X509_EXTENSION_pop_free(extensions, X509_EXTENSION_free);
 }
 
+TEST(TLS_Tests, CertificateStoreReadHandlesAreCloseOnExec) {
+    std::ifstream source("socle/sslcertstore.cpp");
+    ASSERT_TRUE(source.is_open());
+    const std::string contents((std::istreambuf_iterator<char>(source)),
+                               std::istreambuf_iterator<char>());
+    EXPECT_FALSE(std::regex_search(
+        contents, std::regex(R"(fopen\([^\n]*,\s*"r"\))")))
+        << "certificate-store read opens must use the close-on-exec mode";
+
+    FILE* certificate = std::fopen("etc/certs/default/srv-cert.pem", "re");
+    ASSERT_NE(certificate, nullptr);
+    EXPECT_NE(::fcntl(::fileno(certificate), F_GETFD, 0) & FD_CLOEXEC, 0);
+    std::fclose(certificate);
+}
+
 std::unique_ptr<EVP_PKEY, decltype(&EVP_PKEY_free)> load_tls_test_key() {
     FILE* file = std::fopen("etc/certs/default/srv-key.pem", "r");
     if (!file)
@@ -82,7 +259,8 @@ std::unique_ptr<EVP_PKEY, decltype(&EVP_PKEY_free)> make_rsa_key() {
 
 std::unique_ptr<X509, decltype(&X509_free)> make_certificate(
     EVP_PKEY* key, long serial, const char* common_name,
-    X509* issuer = nullptr, EVP_PKEY* issuer_key = nullptr) {
+    X509* issuer = nullptr, EVP_PKEY* issuer_key = nullptr,
+    bool certificate_authority = false) {
     std::unique_ptr<X509, decltype(&X509_free)> certificate(X509_new(), X509_free);
     if (!certificate || X509_set_version(certificate.get(), 2) != 1 ||
         ASN1_INTEGER_set(X509_get_serialNumber(certificate.get()), serial) != 1 ||
@@ -99,7 +277,7 @@ std::unique_ptr<X509, decltype(&X509_free)> make_certificate(
                                                       : subject) != 1)
         return {nullptr, X509_free};
 
-    if (!issuer) {
+    if (!issuer || certificate_authority) {
         X509_EXTENSION* extension = X509V3_EXT_conf_nid(
             nullptr, nullptr, NID_basic_constraints,
             const_cast<char*>("critical,CA:TRUE"));
@@ -408,6 +586,54 @@ TEST(TLS_Tests, CrlVerificationUsesConfiguredCaBundleWhenPathIsEmpty) {
     EXPECT_EQ(ERR_peek_error(), 0UL);
 }
 
+TEST(TLS_Tests, CrlVerificationUsesCompleteVerifiedChain) {
+    auto root_key = make_rsa_key();
+    auto bridge_key = make_rsa_key();
+    auto issuer_key = make_rsa_key();
+    auto leaf_key = make_rsa_key();
+    auto root = make_certificate(root_key.get(), 51, "CRL chain root");
+    auto bridge = make_certificate(bridge_key.get(), 52, "CRL chain bridge",
+                                   root.get(), root_key.get(), true);
+    auto issuer = make_certificate(issuer_key.get(), 53, "CRL chain issuer",
+                                   bridge.get(), bridge_key.get(), true);
+    auto leaf = make_certificate(leaf_key.get(), 54, "CRL chain leaf",
+                                 issuer.get(), issuer_key.get());
+    auto crl = make_test_crl(issuer.get(), issuer_key.get(), leaf.get());
+    ASSERT_NE(root, nullptr);
+    ASSERT_NE(bridge, nullptr);
+    ASSERT_NE(issuer, nullptr);
+    ASSERT_NE(leaf, nullptr);
+    ASSERT_NE(crl, nullptr);
+
+    const std::filesystem::path ca_file = std::filesystem::temp_directory_path()
+        / ("smithproxy-crl-chain-root-" + std::to_string(::getpid()) + ".pem");
+    FILE* output = std::fopen(ca_file.c_str(), "w");
+    ASSERT_NE(output, nullptr);
+    ASSERT_EQ(PEM_write_X509(output, root.get()), 1);
+    std::fclose(output);
+    auto remove_ca = raw::guard([&] { std::filesystem::remove(ca_file); });
+
+    EXPECT_EQ(inet::crl::crl_verify_trust(
+                  leaf.get(), issuer.get(), crl.get(), ca_file.string()),
+              0);
+
+    STACK_OF(X509)* verified_chain = sk_X509_new_null();
+    ASSERT_NE(verified_chain, nullptr);
+    auto free_chain = raw::guard([&] { sk_X509_free(verified_chain); });
+    ASSERT_GT(sk_X509_push(verified_chain, leaf.get()), 0);
+    ASSERT_GT(sk_X509_push(verified_chain, issuer.get()), 0);
+    ASSERT_GT(sk_X509_push(verified_chain, bridge.get()), 0);
+    ASSERT_GT(sk_X509_push(verified_chain, root.get()), 0);
+
+    EXPECT_EQ(inet::crl::crl_verify_trust(
+                  leaf.get(), issuer.get(), crl.get(), ca_file.string(),
+                  verified_chain),
+              1);
+    EXPECT_EQ(inet::crl::crl_is_revoked_by(
+                  leaf.get(), issuer.get(), crl.get()),
+              1);
+}
+
 TEST(TLS_Tests, RevocationEndpointsAndOcspRequestUseCertificateExtensions) {
     auto issuer_key = make_rsa_key();
     auto leaf_key = make_rsa_key();
@@ -604,6 +830,49 @@ TEST(TLS_Tests, SignedOcspResponsesDistinguishGoodRevokedAndInvalidEvidence) {
               -1);
 }
 
+TEST(TLS_Tests, OcspVerificationUsesTheCompleteVerifiedIssuerChain) {
+    auto root_key = make_rsa_key();
+    auto upper_key = make_rsa_key();
+    auto issuer_key = make_rsa_key();
+    auto leaf_key = make_rsa_key();
+    auto root = make_certificate(root_key.get(), 24, "OCSP chain root");
+    auto upper = make_certificate(
+        upper_key.get(), 25, "OCSP chain upper", root.get(), root_key.get(), true);
+    auto issuer = make_certificate(
+        issuer_key.get(), 26, "OCSP chain issuer", upper.get(), upper_key.get(), true);
+    auto leaf = make_certificate(
+        leaf_key.get(), 27, "OCSP chain leaf", issuer.get(), issuer_key.get());
+    ASSERT_NE(root, nullptr);
+    ASSERT_NE(upper, nullptr);
+    ASSERT_NE(issuer, nullptr);
+    ASSERT_NE(leaf, nullptr);
+
+    std::unique_ptr<X509_STORE, decltype(&X509_STORE_free)> store(
+        X509_STORE_new(), X509_STORE_free);
+    ASSERT_NE(store, nullptr);
+    ASSERT_EQ(X509_STORE_add_cert(store.get(), root.get()), 1);
+    auto response = make_ocsp_response(
+        leaf.get(), issuer.get(), issuer_key.get(), V_OCSP_CERTSTATUS_GOOD);
+    ASSERT_NE(response, nullptr);
+
+    EXPECT_EQ(inet::ocsp::ocsp_verify_response(
+                  response.get(), leaf.get(), issuer.get(), store.get()).revoked,
+              -1);
+
+    STACK_OF(X509)* verified_chain = sk_X509_new_null();
+    ASSERT_NE(verified_chain, nullptr);
+    auto free_chain = raw::guard([&] { sk_X509_free(verified_chain); });
+    ASSERT_GT(sk_X509_push(verified_chain, leaf.get()), 0);
+    ASSERT_GT(sk_X509_push(verified_chain, issuer.get()), 0);
+    ASSERT_GT(sk_X509_push(verified_chain, upper.get()), 0);
+    ASSERT_GT(sk_X509_push(verified_chain, root.get()), 0);
+
+    EXPECT_EQ(inet::ocsp::ocsp_verify_response(
+                  response.get(), leaf.get(), issuer.get(), store.get(),
+                  verified_chain).revoked,
+              0);
+}
+
 TEST(TLS_Tests, OcspVerificationDefaultsToConfiguredCentralTrustStore) {
     auto issuer_key = make_rsa_key();
     auto leaf_key = make_rsa_key();
@@ -734,6 +1003,7 @@ TEST(TLS_Tests, CertificateStoreUtilitiesAndCacheHandleValidAndMissingInputs) {
 }
 
 TEST(TLS_Tests, CertificateFactoryLoadsContextsAndGeneratesMitmCertificates) {
+    Log::init();
     auto source = load_tls_test_certificate();
     ASSERT_NE(source, nullptr);
 
@@ -772,6 +1042,8 @@ TEST(TLS_Tests, CertificateFactoryLoadsContextsAndGeneratesMitmCertificates) {
     ASSERT_NE(server, nullptr);
     ASSERT_NE(dtls_client, nullptr);
     ASSERT_NE(dtls_server, nullptr);
+    EXPECT_EQ(factory.client_ctx_setup("not-a-real-cipher-suite"), nullptr);
+    EXPECT_EQ(factory.server_ctx_setup(nullptr, nullptr, "not-a-real-cipher-suite"), nullptr);
     ASSERT_NE(factory.trust_store(), nullptr);
     EXPECT_EQ(SSL_CTX_get_cert_store(client.get()), factory.trust_store());
     EXPECT_EQ(SSL_CTX_get_cert_store(server.get()), factory.trust_store());
@@ -962,7 +1234,12 @@ TEST(TLS_Tests, CertificateFactoryLoadsCustomFullchainAndSplitChainLayouts) {
     fs::copy_file("etc/certs/default/ca-cert.pem", split / "issuer.pem");
 
     factory.certs_path() = temp.string() + "/";
+    factory.session_cache().set(
+        "session-from-previous-client-identity",
+        new session_holder(nullptr));
+    ASSERT_EQ(factory.session_cache().size(), 1U);
     EXPECT_TRUE(factory.load_custom_certificates());
+    EXPECT_EQ(factory.session_cache().size(), 0U);
     EXPECT_TRUE(factory.find_custom("sni:fullchain.example").has_value());
     EXPECT_TRUE(factory.find_custom("ip:192.0.2.10").has_value());
     EXPECT_TRUE(factory.erase(factory.cache_custom(), "sni:fullchain.example"));
@@ -1151,11 +1428,25 @@ struct SSLCom_Buddy : public SSLCom {
     void test_peer_hello_received(bool value) { sslcom_peer_hello_received(value); }
     void test_sni(std::string value) { sslcom_sni() = std::move(value); }
     bool test_handshake_peer_client() { return handshake_peer_client(); }
+    bool test_sslcom_status() { return sslcom_status(); }
+    void test_readiness(bool ready, bool waiting) {
+        sslcom_status(ready);
+        sslcom_waiting = waiting;
+        verify_reset(verify_status_t::VRF_OK);
+    }
     void test_init_ssl_callbacks() { init_ssl_callbacks(); }
+    void test_init_client() { init_client(); }
     void test_context(SSL_CTX* context) { sslcom_ctx = context; }
     void test_init_server() { init_server(); }
     bool test_waiting_peer_hello() { return waiting_peer_hello(); }
     int test_handshake_result() { return static_cast<int>(handshake()); }
+    bool test_store_session() { return store_session_if_needed(); }
+    bool test_load_session() { return load_session_if_needed(); }
+    void test_ready_for_session_callbacks() {
+        sslcom_waiting = false;
+        sslcom_status(true);
+    }
+    void test_cleanup() { cleanup(); }
     void test_expire_handshake_timer() {
         gettimeofday(&timer_start, nullptr);
         timer_start.tv_sec -= 60;
@@ -1186,6 +1477,10 @@ struct SSLMitmCom_Buddy : public SSLMitmCom {
     std::optional<SpoofOptions> captured_spoof_options;
     X509* test_preferred_cert() const { return sslcom_pref_cert; }
     EVP_PKEY* test_preferred_key() const { return sslcom_pref_key; }
+    void test_preferred_identity(X509* certificate, EVP_PKEY* key) {
+        sslcom_pref_cert = certificate;
+        sslcom_pref_key = key;
+    }
     SSL* test_ssl() const { return sslcom_ssl; }
     void test_context(SSL_CTX* context) { sslcom_ctx = context; }
     void test_init_server() { init_server(); }
@@ -1208,21 +1503,28 @@ struct MemoryTlsPair {
 };
 
 TEST(TLS_Tests, WildcardSniBypassRequiresAnActualSubdomain) {
-    auto is_bypassed = [](std::string sni) {
+    auto is_bypassed = [](std::string sni, std::string filter = "*.example.test",
+                          std::optional<std::string> original_sni = std::nullopt) {
         SSLCom_Buddy client;
         SSLCom_Buddy peer;
         client.peer(&peer);
         peer.peer(&client);
+        peer.test_server(true);
+        peer.test_sni(original_sni.value_or(sni));
         client.auto_upgrade(false);
         client.test_peer_hello_received(true);
         client.sni_filter_to_bypass() =
             std::make_shared<std::vector<std::string>>(
-                std::initializer_list<std::string>{"*.example.test"});
+                std::initializer_list<std::string>{std::move(filter)});
         client.test_sni(std::move(sni));
 
         bool const handshake_continues = client.test_handshake_peer_client();
         EXPECT_EQ(client.opt.bypass, peer.opt.bypass);
         EXPECT_EQ(handshake_continues, !client.opt.bypass);
+        if(client.opt.bypass) {
+            EXPECT_EQ(client.tls_proto_state(), socle::TlsProtoState::bypassed);
+            EXPECT_EQ(peer.tls_proto_state(), socle::TlsProtoState::bypassed);
+        }
         return client.opt.bypass;
     };
 
@@ -1231,6 +1533,59 @@ TEST(TLS_Tests, WildcardSniBypassRequiresAnActualSubdomain) {
     EXPECT_FALSE(is_bypassed("notexample.test"));
     EXPECT_TRUE(is_bypassed("api.example.test"));
     EXPECT_TRUE(is_bypassed("deep.api.example.test"));
+    EXPECT_TRUE(is_bypassed("API.Example.Test"));
+    EXPECT_FALSE(is_bypassed("anything.example", ""));
+    EXPECT_FALSE(is_bypassed("anything.example", "*."));
+    EXPECT_FALSE(is_bypassed("api.example.test", "*.example.test",
+                             "client.other.test"));
+    EXPECT_TRUE(is_bypassed("origin.other.test", "*.example.test",
+                            "api.example.test"));
+}
+
+TEST(TLS_Tests, PeekWaitsForWriteWhenOpenSslNeedsHandshakeOutput) {
+    int sockets[2] {-1, -1};
+    ASSERT_EQ(::socketpair(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK, 0, sockets), 0);
+
+    std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)> context(
+        SSL_CTX_new(TLS_client_method()), SSL_CTX_free);
+    ASSERT_NE(context, nullptr);
+    SSL* ssl = SSL_new(context.get());
+    ASSERT_NE(ssl, nullptr);
+    SSL_set_connect_state(ssl);
+
+    BIO* ssl_bio = nullptr;
+    BIO* peer_bio = nullptr;
+    ASSERT_EQ(BIO_new_bio_pair(&ssl_bio, 1, &peer_bio, 1), 1);
+    SSL_set_bio(ssl, ssl_bio, ssl_bio);
+
+    SSLCom_Buddy transport;
+    transport.socket(sockets[0]);
+    transport.test_take_ssl(ssl);
+    transport.test_ready_for_session_callbacks();
+    ASSERT_TRUE(transport.poller.add(sockets[0], EPOLLIN));
+
+    std::array<unsigned char, 1> output {};
+    EXPECT_EQ(transport.read(sockets[0], output.data(), output.size(), MSG_PEEK), -1);
+    EXPECT_TRUE(SSL_want_write(transport.test_ssl()));
+    EXPECT_TRUE(transport.write_event_pending());
+    ASSERT_GT(transport.poller.wait(1000), 0);
+    EXPECT_TRUE(transport.poller.in_write_set(sockets[0]));
+
+    bool reached_read_wait = false;
+    for(int round = 0; round < 8192 && !reached_read_wait; ++round) {
+        unsigned char drained = 0;
+        while(BIO_read(peer_bio, &drained, sizeof(drained)) > 0) {}
+        EXPECT_EQ(transport.read(sockets[0], output.data(), output.size(), MSG_PEEK), -1);
+        reached_read_wait = SSL_want_read(transport.test_ssl());
+    }
+    ASSERT_TRUE(reached_read_wait);
+    EXPECT_FALSE(transport.write_event_pending());
+    EXPECT_EQ(transport.poller.wait(0), 0);
+
+    transport.socket(0);
+    BIO_free(peer_bio);
+    ::close(sockets[0]);
+    ::close(sockets[1]);
 }
 
 TEST(TLS_Tests, PartialClientHelloTimesOutAndFailsBothTlsSides) {
@@ -1248,12 +1603,80 @@ TEST(TLS_Tests, PartialClientHelloTimesOutAndFailsBothTlsSides) {
     // A TLS record header promising a longer ClientHello body. The peer must
     // not be allowed to keep the pre-handshake connection alive indefinitely.
     const unsigned char partial[] {0x16, 0x03, 0x03, 0x00, 0x40, 0x01};
-    ASSERT_EQ(::send(sockets[1], partial, sizeof(partial), MSG_NOSIGNAL),
+    // The peer remains open for the complete test, so write() cannot raise
+    // SIGPIPE here. It also keeps this local socketpair test usable in
+    // restricted runners which reject send(2) flags.
+    ASSERT_EQ(::write(sockets[1], partial, sizeof(partial)),
               static_cast<ssize_t>(sizeof(partial)));
 
     EXPECT_FALSE(outbound.test_waiting_peer_hello());
     EXPECT_TRUE(outbound.error());
     EXPECT_TRUE(inbound.error());
+    EXPECT_EQ(outbound.tls_proto_state(), socle::TlsProtoState::failed);
+    EXPECT_EQ(inbound.tls_proto_state(), socle::TlsProtoState::failed);
+    EXPECT_EQ(outbound.tls_proto_role(), socle::TlsProtoRole::client);
+    EXPECT_EQ(inbound.tls_proto_role(), socle::TlsProtoRole::server);
+
+    outbound.socket(0);
+    inbound.socket(0);
+    ::close(sockets[0]);
+    ::close(sockets[1]);
+}
+
+TEST(TLS_Tests, RejectedClientHelloMakesClientUpgradeFail) {
+    int sockets[2] {-1, -1};
+    ASSERT_EQ(::socketpair(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK, 0, sockets), 0);
+
+    SSLCom_Buddy outbound;
+    SSLCom_Buddy inbound;
+    outbound.peer(&inbound);
+    inbound.peer(&outbound);
+    inbound.socket(sockets[0]);
+    outbound.test_expire_handshake_timer();
+    outbound.opt.client_hello_timeout = 1;
+
+    EXPECT_EQ(outbound.upgrade_client_socket(sockets[1]), -1);
+    EXPECT_TRUE(outbound.error());
+    EXPECT_TRUE(inbound.error());
+    EXPECT_EQ(outbound.tls_proto_state(), socle::TlsProtoState::failed);
+    EXPECT_EQ(inbound.tls_proto_state(), socle::TlsProtoState::failed);
+    EXPECT_EQ(outbound.tls_proto_role(), socle::TlsProtoRole::client);
+    EXPECT_EQ(inbound.tls_proto_role(), socle::TlsProtoRole::server);
+    EXPECT_EQ(outbound.test_ssl(), nullptr);
+    EXPECT_FALSE(outbound.upgraded());
+
+    outbound.socket(0);
+    inbound.socket(0);
+    ::close(sockets[0]);
+    ::close(sockets[1]);
+}
+
+TEST(TLS_Tests, TlsLookingFirstRecordCannotTriggerPlaintextFallback) {
+    int sockets[2] {-1, -1};
+    ASSERT_EQ(::socketpair(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK, 0, sockets), 0);
+
+    SSLCom_Buddy outbound;
+    SSLCom_Buddy inbound;
+    outbound.peer(&inbound);
+    inbound.peer(&outbound);
+    inbound.socket(sockets[0]);
+    outbound.opt.no_fallback_bypass = false;
+
+    const unsigned char alert[] {
+        SSL3_RT_ALERT, 3, 3, 0, 2, SSL3_AL_FATAL, SSL_AD_HANDSHAKE_FAILURE
+    };
+    ASSERT_EQ(::write(sockets[1], alert, sizeof(alert)),
+              static_cast<ssize_t>(sizeof(alert)));
+
+    EXPECT_FALSE(outbound.test_waiting_peer_hello());
+    EXPECT_TRUE(outbound.error());
+    EXPECT_TRUE(inbound.error());
+    EXPECT_EQ(outbound.tls_proto_state(), socle::TlsProtoState::failed);
+    EXPECT_EQ(inbound.tls_proto_state(), socle::TlsProtoState::failed);
+    EXPECT_EQ(outbound.tls_proto_role(), socle::TlsProtoRole::client);
+    EXPECT_EQ(inbound.tls_proto_role(), socle::TlsProtoRole::server);
+    EXPECT_FALSE(outbound.opt.bypass);
+    EXPECT_FALSE(inbound.opt.bypass);
 
     outbound.socket(0);
     inbound.socket(0);
@@ -1274,6 +1697,46 @@ TEST(TLS_Tests, ExpiredTlsHandshakeFailsBothSidesBeforeAnotherRetry) {
               static_cast<int>(ret_handshake::FATAL));
     EXPECT_TRUE(connection.error());
     EXPECT_TRUE(peer.error());
+    EXPECT_EQ(connection.tls_proto_state(), socle::TlsProtoState::failed);
+    EXPECT_EQ(peer.tls_proto_state(), socle::TlsProtoState::failed);
+    connection.test_cleanup();
+    EXPECT_EQ(connection.tls_proto_state(), socle::TlsProtoState::failed);
+}
+
+TEST(TLS_Tests, TimerExpiresSilentHandshakeWithoutAnIoRetry) {
+    init_log();
+    SSLCom_Buddy connection;
+    SSLCom_Buddy peer;
+    connection.peer(&peer);
+    peer.peer(&connection);
+    connection.test_readiness(false, true);
+    connection.opt.handshake_timeout = 1;
+    connection.test_expire_tls_handshake_timer();
+
+    connection.on_timer();
+
+    EXPECT_TRUE(connection.error());
+    EXPECT_TRUE(peer.error());
+    EXPECT_EQ(connection.tls_proto_state(), socle::TlsProtoState::failed);
+    EXPECT_EQ(peer.tls_proto_state(), socle::TlsProtoState::failed);
+}
+
+TEST(TLS_Tests, TimerDoesNotRetryAnUnexpiredHandshakeOrExpireEstablishedTls) {
+    init_log();
+    SSLCom_Buddy connection;
+    connection.test_readiness(false, true);
+    connection.test_expire_tls_handshake_timer();
+    connection.opt.handshake_timeout = 120000;
+
+    // No SSL object exists: a retry here would enter uninitialized TLS setup.
+    connection.on_timer();
+    EXPECT_FALSE(connection.error());
+
+    connection.test_readiness(true, false);
+    connection.opt.handshake_timeout = 1;
+    connection.on_timer();
+    EXPECT_FALSE(connection.error());
+    EXPECT_TRUE(connection.test_sslcom_status());
 }
 
 MemoryTlsPair make_memory_tls_pair(SSL_CTX* client_context, SSL_CTX* server_context,
@@ -1317,6 +1780,45 @@ MemoryTlsPair make_memory_tls_pair(SSL_CTX* client_context, SSL_CTX* server_cont
     }
     if(not client_done or not server_done) return {};
     return pair;
+}
+
+TEST(TLS_Tests, CleanupSendsCloseNotifyDespiteStaleOpenSslErrors) {
+    auto key = make_rsa_key();
+    ASSERT_NE(key, nullptr);
+    auto certificate = make_certificate(key.get(), 4404, "cleanup.example");
+    ASSERT_NE(certificate, nullptr);
+    auto client_context = std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)>(
+        SSL_CTX_new(TLS_method()), SSL_CTX_free);
+    auto server_context = std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)>(
+        SSL_CTX_new(TLS_method()), SSL_CTX_free);
+    ASSERT_NE(client_context, nullptr);
+    ASSERT_NE(server_context, nullptr);
+    ASSERT_EQ(SSL_CTX_set_max_proto_version(client_context.get(), TLS1_2_VERSION), 1);
+    ASSERT_EQ(SSL_CTX_set_max_proto_version(server_context.get(), TLS1_2_VERSION), 1);
+    SSL_CTX_set_verify(client_context.get(), SSL_VERIFY_NONE, nullptr);
+    ASSERT_EQ(SSL_CTX_use_certificate(server_context.get(), certificate.get()), 1);
+    ASSERT_EQ(SSL_CTX_use_PrivateKey(server_context.get(), key.get()), 1);
+
+    auto pair = make_memory_tls_pair(client_context.get(), server_context.get());
+    ASSERT_NE(pair.client, nullptr);
+    ASSERT_NE(pair.server, nullptr);
+
+    int sent_close_notify = 0;
+    SSL_set_msg_callback_arg(pair.client.get(), &sent_close_notify);
+    SSL_set_msg_callback(pair.client.get(),
+        [](int write_p, int, int content_type, const void* data,
+           std::size_t size, SSL*, void* arg) {
+            if(write_p == 1 && content_type == SSL3_RT_ALERT && size >= 2 &&
+               static_cast<unsigned char const*>(data)[1] == SSL_AD_CLOSE_NOTIFY) {
+                ++*static_cast<int*>(arg);
+            }
+        });
+    SSLCom_Buddy transport;
+    transport.test_take_ssl(pair.client.release());
+    transport.test_ready_for_session_callbacks();
+    ERR_put_error(ERR_LIB_SSL, 0, SSL_R_BAD_DATA, __FILE__, __LINE__);
+    transport.test_cleanup();
+    EXPECT_EQ(sent_close_notify, 1);
 }
 
 TEST(TLS_Tests, ClientCertificateActionsCompleteTls12AndTls13RequestsSafely) {
@@ -1399,6 +1901,14 @@ TEST(TLS_Tests, ClientHandshakeRejectsMissingSslObject) {
     EXPECT_TRUE(client.error());
 }
 
+TEST(TLS_Tests, ZeroLengthReadDoesNotAdvanceTlsState) {
+    SSLCom_Buddy connection;
+
+    EXPECT_EQ(connection.read(123, nullptr, 0, 0), 0);
+    EXPECT_FALSE(connection.error());
+    EXPECT_FALSE(connection.test_sslcom_status());
+}
+
 TEST(TLS_Tests, CertificateCheckRejectsMissingSslState) {
     SSLCom_Buddy client;
     EXPECT_FALSE(client.test_check_cert());
@@ -1413,6 +1923,49 @@ TEST(TLS_Tests, CertificateCheckRejectsMissingSslState) {
     no_peer_certificate.test_take_ssl(SSL_new(context.get()));
     ASSERT_NE(no_peer_certificate.test_ssl(), nullptr);
     EXPECT_FALSE(no_peer_certificate.test_check_cert("missing-peer.example"));
+}
+
+TEST(TLS_Tests, MismatchedPreferredServerIdentityFailsClosed) {
+    auto certificate_key = make_rsa_key();
+    auto unrelated_key = make_rsa_key();
+    auto certificate = make_certificate(
+        certificate_key.get(), 5100, "mismatched-identity.example");
+    ASSERT_NE(certificate_key, nullptr);
+    ASSERT_NE(unrelated_key, nullptr);
+    ASSERT_NE(certificate, nullptr);
+
+    auto context = std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)>(
+        SSL_CTX_new(TLS_method()), SSL_CTX_free);
+    ASSERT_NE(context, nullptr);
+
+    SSLMitmCom_Buddy connection;
+    connection.l4_proto(SOCK_STREAM);
+    connection.test_context(context.get());
+    connection.test_preferred_identity(certificate.get(), unrelated_key.get());
+    connection.test_init_server();
+
+    EXPECT_TRUE(connection.error());
+    EXPECT_EQ(connection.tls_proto_role(), socle::TlsProtoRole::server);
+    EXPECT_EQ(connection.tls_proto_state(), socle::TlsProtoState::failed);
+    EXPECT_EQ(connection.test_ssl(), nullptr);
+}
+
+TEST(TLS_Tests, RejectedServerCryptoPolicyLeavesNoUsableSslState) {
+    auto context = std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)>(
+        SSL_CTX_new(TLS_method()), SSL_CTX_free);
+    ASSERT_NE(context, nullptr);
+
+    SSLCom_Buddy connection;
+    connection.l4_proto(SOCK_STREAM);
+    connection.test_context(context.get());
+    connection.opt.left.kex_dh = false;
+    connection.opt.left.kex_rsa = false;
+    connection.test_init_server();
+
+    EXPECT_TRUE(connection.error());
+    EXPECT_EQ(connection.tls_proto_role(), socle::TlsProtoRole::server);
+    EXPECT_EQ(connection.tls_proto_state(), socle::TlsProtoState::failed);
+    EXPECT_EQ(connection.test_ssl(), nullptr);
 }
 
 TEST(TLS_Tests, MitmCertificateSelectionRequiresAnExplicitAvailableSource) {
@@ -1722,6 +2275,43 @@ TEST(TLS_Tests, SniRewriteKeepsOriginalClientIdentityForSpoofedCertificate) {
               downstream.captured_spoof_options->sans.end());
 }
 
+TEST(TLS_Tests, MitmHostnameValidationStillRunsAfterChainFailure) {
+    auto certificate = load_tls_test_certificate();
+    auto key = load_tls_test_key();
+    ASSERT_NE(certificate, nullptr);
+    ASSERT_NE(key, nullptr);
+
+    auto client_context = std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)>(
+        SSL_CTX_new(TLS_method()), SSL_CTX_free);
+    auto server_context = std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)>(
+        SSL_CTX_new(TLS_method()), SSL_CTX_free);
+    ASSERT_NE(client_context, nullptr);
+    ASSERT_NE(server_context, nullptr);
+    SSL_CTX_set_verify(client_context.get(), SSL_VERIFY_NONE, nullptr);
+    ASSERT_EQ(SSL_CTX_use_certificate(server_context.get(), certificate.get()), 1);
+    ASSERT_EQ(SSL_CTX_use_PrivateKey(server_context.get(), key.get()), 1);
+
+    auto tls = make_memory_tls_pair(client_context.get(), server_context.get());
+    ASSERT_NE(tls.client, nullptr);
+
+    SSLMitmCom_Buddy upstream;
+    SSLMitmCom_Buddy downstream;
+    upstream.peer(&downstream);
+    downstream.peer(&upstream);
+    upstream.test_take_ssl(tls.client.release());
+    upstream.verify_reset(SSLCom::verify_status_t::VRF_UNKNOWN_ISSUER);
+    upstream.opt.cert.allow_unknown_issuer = true;
+    upstream.test_sni("wrong-hostname.example");
+    upstream.test_peer_sni_shortcut(true);
+
+    EXPECT_TRUE(upstream.check_cert(nullptr));
+    EXPECT_TRUE(upstream.verify_bitcheck(
+        SSLCom::verify_status_t::VRF_UNKNOWN_ISSUER));
+    EXPECT_TRUE(upstream.verify_bitcheck(
+        SSLCom::verify_status_t::VRF_HOSTNAME_FAILED));
+    EXPECT_FALSE(upstream.is_verify_status_opt_allowed());
+}
+
 TEST(TLS_Tests, MitmIpValidationUsesTheConnectionDestinationWithoutSni) {
     auto source = load_tls_test_certificate();
     ASSERT_NE(source, nullptr);
@@ -1883,6 +2473,25 @@ TEST(TLS_Tests, RevocationCallbacksHandleMissingCertificateState) {
     EXPECT_EQ(SSLCom::certificate_status_oob_check(&connection, 0), 1);
     EXPECT_TRUE(connection.verify_bitcheck(SSLCom::verify_status_t::VRF_ALLFAILED));
     EXPECT_EQ(SSLCom::certificate_status_oob_check(nullptr, 7), 7);
+}
+
+TEST(TLS_Tests, OptionalOcspQueryFailureRespectsSoftFailPolicy) {
+    SSLCom_Buddy connection;
+    connection.opt.ocsp.enforce_in_verify = true;
+    connection.opt.cert.failed_check_replacement = false;
+    connection.verify_reset(static_cast<SSLCom::verify_status_t>(
+        SSLCom::verify_status_t::VRF_OK |
+        SSLCom::verify_status_t::VRF_DEFERRED));
+
+    // Missing target certificate state makes the explicit OCSP lookup return
+    // UNKNOWN. Optional OCSP must preserve the successful certificate verdict
+    // instead of converting an unavailable responder into a hard failure.
+    EXPECT_EQ(SSLCom::certificate_status_oob_check(&connection, 1), 1);
+    EXPECT_TRUE(connection.verify_bitcheck(SSLCom::verify_status_t::VRF_OK));
+    EXPECT_FALSE(connection.verify_bitcheck(
+        SSLCom::verify_status_t::VRF_ALLFAILED));
+    EXPECT_FALSE(connection.verify_bitcheck(
+        SSLCom::verify_status_t::VRF_DEFERRED));
 }
 
 TEST(TLS_Tests, StaplingParserClassifiesMalformedAndIncompleteResponses) {
@@ -2376,6 +2985,15 @@ TEST(TLS_Tests, VerificationOptionMaskRequiresEveryFailureToBeAllowed) {
     connection.opt.cert.allow_unknown_issuer = true;
     EXPECT_TRUE(connection.is_verify_status_opt_allowed());
 
+    connection.verify_reset(SSLCom::verify_status_t::VRF_ALLFAILED);
+    EXPECT_FALSE(connection.is_verify_status_opt_allowed());
+    connection.verify_reset(SSLCom::verify_status_t::VRF_DEFERRED);
+    EXPECT_FALSE(connection.is_verify_status_opt_allowed());
+    connection.verify_reset(static_cast<SSLCom::verify_status_t>(
+        SSLCom::verify_status_t::VRF_UNKNOWN_ISSUER |
+        SSLCom::verify_status_t::VRF_ALLFAILED));
+    EXPECT_TRUE(connection.is_verify_status_opt_allowed());
+
     EXPECT_EQ(SSLCom::verify_origin_str(SSLCom::verify_origin_t::NONE), "none");
     EXPECT_EQ(SSLCom::verify_origin_str(SSLCom::verify_origin_t::OCSP_STAPLING),
               "ocsp stapling");
@@ -2524,12 +3142,121 @@ TEST(TLS_Tests, ValidationErrorAllowListAndCachedAlpnAreExact) {
     ASSERT_EQ(SSL_set_ex_data(ssl.get(), SSLCom::extdata_index(), &connection), 1);
     const unsigned char* selected = nullptr;
     unsigned char selected_length = 0;
+    static constexpr unsigned char h2_offer[] = {2, 'h', '2'};
     EXPECT_EQ(SSLCom::ssl_alpn_select_callback(
-                  ssl.get(), &selected, &selected_length, nullptr, 0, nullptr),
+                  ssl.get(), &selected, &selected_length,
+                  h2_offer, sizeof(h2_offer), nullptr),
               SSL_TLSEXT_ERR_OK);
     ASSERT_NE(selected, nullptr);
     EXPECT_EQ(std::string(reinterpret_cast<const char*>(selected), selected_length), "h2");
+
+    static constexpr unsigned char http11_offer[] = {
+        8, 'h', 't', 't', 'p', '/', '1', '.', '1'
+    };
+    selected = reinterpret_cast<unsigned char const*>(1);
+    selected_length = 1;
+    EXPECT_EQ(SSLCom::ssl_alpn_select_callback(
+                  ssl.get(), &selected, &selected_length,
+                  http11_offer, sizeof(http11_offer), nullptr),
+              SSL_TLSEXT_ERR_NOACK);
+    EXPECT_EQ(selected, nullptr);
+    EXPECT_EQ(selected_length, 0);
+
+    static constexpr unsigned char zero_length_offer[] = {0};
+    static constexpr unsigned char truncated_offer[] = {2, 'h'};
+    static constexpr unsigned char match_then_truncated_offer[] = {
+        2, 'h', '2', 2, 'h'
+    };
+    for (const auto malformed : {
+             std::pair<const unsigned char*, unsigned int>{nullptr, 0},
+             std::pair<const unsigned char*, unsigned int>{
+                 zero_length_offer, sizeof(zero_length_offer)},
+             std::pair<const unsigned char*, unsigned int>{
+                 truncated_offer, sizeof(truncated_offer)},
+             std::pair<const unsigned char*, unsigned int>{
+                 match_then_truncated_offer,
+                 sizeof(match_then_truncated_offer)}}) {
+        selected = reinterpret_cast<unsigned char const*>(1);
+        selected_length = 1;
+        EXPECT_EQ(SSLCom::ssl_alpn_select_callback(
+                      ssl.get(), &selected, &selected_length,
+                      malformed.first, malformed.second, nullptr),
+                  SSL_TLSEXT_ERR_NOACK);
+        EXPECT_EQ(selected, nullptr);
+        EXPECT_EQ(selected_length, 0);
+    }
     EXPECT_NE(connection.test_flags().find(":ssl<a>"), std::string::npos);
+}
+
+TEST(TLS_Tests, UpstreamNegotiatedAlpnMustStillBeOfferedByClient) {
+    auto certificate = load_tls_test_certificate();
+    auto key = load_tls_test_key();
+    ASSERT_NE(certificate, nullptr);
+    ASSERT_NE(key, nullptr);
+
+    auto client_context = std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)>(
+        SSL_CTX_new(TLS_method()), SSL_CTX_free);
+    auto server_context = std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)>(
+        SSL_CTX_new(TLS_method()), SSL_CTX_free);
+    ASSERT_NE(client_context, nullptr);
+    ASSERT_NE(server_context, nullptr);
+    ASSERT_EQ(SSL_CTX_use_certificate(server_context.get(), certificate.get()), 1);
+    ASSERT_EQ(SSL_CTX_use_PrivateKey(server_context.get(), key.get()), 1);
+    static constexpr unsigned char h2_offer[] = {2, 'h', '2'};
+    ASSERT_EQ(SSL_CTX_set_alpn_protos(
+                  client_context.get(), h2_offer, sizeof(h2_offer)), 0);
+    SSL_CTX_set_alpn_select_cb(
+        server_context.get(),
+        [](SSL*, const unsigned char** output, unsigned char* output_size,
+           const unsigned char* input, unsigned int input_size, void*) {
+            return SSL_select_next_proto(
+                       const_cast<unsigned char**>(output), output_size,
+                       h2_offer, sizeof(h2_offer), input, input_size)
+                       == OPENSSL_NPN_NEGOTIATED
+                ? SSL_TLSEXT_ERR_OK : SSL_TLSEXT_ERR_NOACK;
+        }, nullptr);
+
+    auto negotiated = make_memory_tls_pair(client_context.get(), server_context.get());
+    ASSERT_NE(negotiated.client, nullptr);
+    ASSERT_NE(negotiated.server, nullptr);
+
+    SSLCom_Buddy downstream;
+    SSLCom_Buddy upstream;
+    downstream.peer(&upstream);
+    upstream.peer(&downstream);
+    upstream.test_take_ssl(negotiated.client.release());
+
+    std::unique_ptr<SSL, decltype(&SSL_free)> callback_ssl(
+        SSL_new(server_context.get()), SSL_free);
+    ASSERT_NE(callback_ssl, nullptr);
+    ASSERT_EQ(SSL_set_ex_data(
+                  callback_ssl.get(), SSLCom::extdata_index(), &downstream), 1);
+
+    const unsigned char* selected = nullptr;
+    unsigned char selected_length = 0;
+    static constexpr unsigned char http11_offer[] = {
+        8, 'h', 't', 't', 'p', '/', '1', '.', '1'
+    };
+    EXPECT_EQ(SSLCom::ssl_alpn_select_callback(
+                  callback_ssl.get(), &selected, &selected_length,
+                  http11_offer, sizeof(http11_offer), nullptr),
+              SSL_TLSEXT_ERR_NOACK);
+    EXPECT_EQ(selected, nullptr);
+    EXPECT_EQ(selected_length, 0);
+
+    EXPECT_EQ(SSLCom::ssl_alpn_select_callback(
+                  callback_ssl.get(), &selected, &selected_length,
+                  h2_offer, sizeof(h2_offer), nullptr),
+              SSL_TLSEXT_ERR_OK);
+    ASSERT_NE(selected, nullptr);
+    EXPECT_EQ(std::string(
+                  reinterpret_cast<const char*>(selected), selected_length), "h2");
+
+    downstream.opt.alpn_block = true;
+    EXPECT_EQ(SSLCom::ssl_alpn_select_callback(
+                  callback_ssl.get(), &selected, &selected_length,
+                  h2_offer, sizeof(h2_offer), nullptr),
+              SSL_TLSEXT_ERR_NOACK);
 }
 
 TEST(TLS_Tests, CertificateValidationHelpersRejectIncompleteInputsSafely) {
@@ -2712,6 +3439,37 @@ TEST(TLS_Tests, ClientCertificateAndSessionCallbacksRespectPolicyState) {
     EXPECT_EQ(SSLCom::new_session_callback(ssl.get(), session.get()), 0);
 }
 
+TEST(TLS_Tests, ClientRetryClearsPreviousHandshakeEvidence) {
+    auto certificate = load_tls_test_certificate();
+    ASSERT_NE(certificate, nullptr);
+
+    SSLCom_Buddy connection;
+    connection.test_peer_chain_three(
+        certificate.get(), certificate.get(), certificate.get());
+    connection.verify_reset(static_cast<SSLCom::verify_status_t>(
+        SSLCom::verify_status_t::VRF_OK |
+        SSLCom::verify_status_t::VRF_REVOKED |
+        SSLCom::verify_status_t::VRF_EXTENDED_INFO));
+    connection.verify_extended_info().push_back(
+        SSLCom::vrf_other_values_t::VRF_OTHER_CT_FAILED);
+    connection.verify_origin(SSLCom::verify_origin_t::CRL_CACHE);
+    connection.ocsp_cert_is_revoked = 1;
+    connection.opt.ocsp.enforce_in_verify = true;
+    connection.sslcom_op_state = SSLCom::sslcom_op_state_t::READY;
+
+    connection.test_init_client();
+
+    EXPECT_EQ(connection.verify_get(), SSLCom::verify_status_t::VRF_NOTTESTED);
+    EXPECT_TRUE(connection.verify_extended_info().empty());
+    EXPECT_EQ(connection.verify_origin(), SSLCom::verify_origin_t::NONE);
+    EXPECT_EQ(connection.ocsp_cert_is_revoked, -1);
+    EXPECT_FALSE(connection.opt.ocsp.enforce_in_verify);
+    EXPECT_EQ(connection.sslcom_op_state, SSLCom::sslcom_op_state_t::UNKNOWN);
+    EXPECT_EQ(connection.target_cert(), nullptr);
+    EXPECT_EQ(connection.target_issuer(), nullptr);
+    EXPECT_EQ(connection.target_issuer_issuer(), nullptr);
+}
+
 TEST(TLS_Tests, SessionCacheSeparatesEveryVerificationAndCryptoPolicy) {
     SSLComOptions baseline;
     auto const baseline_key = SSLCom::session_policy_fingerprint(baseline);
@@ -2747,6 +3505,17 @@ TEST(TLS_Tests, SessionCacheSeparatesEveryVerificationAndCryptoPolicy) {
     });
     expect_partition([](auto& value) { ++value.ocsp.stapling_mode; });
     expect_partition([](auto& value) { ++value.ocsp.mode; });
+    expect_partition([](auto& value) { value.left.kex_dh = !value.left.kex_dh; });
+    expect_partition([](auto& value) { value.left.kex_rsa = !value.left.kex_rsa; });
+    expect_partition([](auto& value) {
+        value.left.allow_sha1 = !value.left.allow_sha1;
+    });
+    expect_partition([](auto& value) {
+        value.left.allow_rc4 = !value.left.allow_rc4;
+    });
+    expect_partition([](auto& value) {
+        value.left.allow_aes128 = !value.left.allow_aes128;
+    });
     expect_partition([](auto& value) { value.right.kex_dh = !value.right.kex_dh; });
     expect_partition([](auto& value) { value.right.kex_rsa = !value.right.kex_rsa; });
     expect_partition([](auto& value) {
@@ -2930,6 +3699,76 @@ TEST(TLS_Tests, CryptoPolicyRestrictsTls13AlongsideLegacyCipherList) {
               TLS1_2_VERSION);
 }
 #endif
+
+TEST(TLS_Tests, UpstreamCipherOverrideReplacesLegacyPolicyAndRejectsInvalidExpressions) {
+    init_log();
+    auto& factory = SSLFactory::factory();
+    const auto saved_path = factory.certs_path();
+    const auto saved_password = factory.certs_password();
+    const auto saved_ca_file = factory.ca_file();
+    const auto saved_ca_path = factory.ca_path();
+    factory.destroy();
+    factory.certs_path() = "etc/certs/default/";
+    factory.certs_password() = "smithproxy";
+    factory.ca_file() = "etc/certs/default/ca-cert.pem";
+    factory.ca_path().clear();
+    auto restore = raw::guard([&] {
+        factory.destroy();
+        factory.certs_path() = saved_path;
+        factory.certs_password() = saved_password;
+        factory.ca_file() = saved_ca_file;
+        factory.ca_path() = saved_ca_path;
+    });
+    factory.init();
+    ASSERT_NE(factory.default_tls_client_cx(), nullptr);
+
+    const std::string selected = "ECDHE-RSA-AES128-GCM-SHA256";
+    SSLCom_Buddy connection;
+    connection.factory(&factory);
+    connection.l4_proto(SOCK_STREAM);
+    connection.opt.ct_enable = false;
+    connection.opt.right.allow_aes128 = false;
+    ASSERT_TRUE(connection.configure_upstream_hello("example.test", "", selected));
+
+    connection.test_init_client();
+
+    ASSERT_NE(connection.test_ssl(), nullptr);
+    ASSERT_FALSE(connection.error());
+    std::vector<std::string> legacy;
+    const auto* ciphers = SSL_get_ciphers(connection.test_ssl());
+    for(int i = 0; i < sk_SSL_CIPHER_num(ciphers); ++i) {
+        const auto* cipher = sk_SSL_CIPHER_value(ciphers, i);
+        if(std::string_view(SSL_CIPHER_get_version(cipher)) != "TLSv1.3") {
+            legacy.emplace_back(SSL_CIPHER_get_name(cipher));
+        }
+    }
+    EXPECT_EQ(legacy, std::vector<std::string>{selected});
+    EXPECT_FALSE(connection.configure_upstream_hello("late.test", "", "ALL"));
+
+    // The start boundary updates only this SSL, before its first handshake.
+    ASSERT_TRUE(connection.configure_upstream_start("start.test", "\x08http/1.1", selected));
+    EXPECT_STREQ(SSL_get_servername(connection.test_ssl(), TLSEXT_NAMETYPE_host_name), "start.test");
+    EXPECT_EQ(connection.get_sni(), "start.test");
+
+    ASSERT_TRUE(connection.configure_upstream_start("", "", std::nullopt));
+    EXPECT_EQ(SSL_get_servername(connection.test_ssl(), TLSEXT_NAMETYPE_host_name), nullptr);
+    EXPECT_NE(connection.upstream_cipher_filter().find(" !AES128"), std::string::npos);
+    EXPECT_FALSE(connection.configure_upstream_start("", "", "UNKNOWN-CIPHER"));
+
+    for(const auto* invalid : {"", "UNKNOWN-CIPHER", "TLS_AES_256_GCM_SHA384"}) {
+        SSLCom_Buddy rejected;
+        rejected.factory(&factory);
+        rejected.l4_proto(SOCK_STREAM);
+        rejected.opt.ct_enable = false;
+        ASSERT_TRUE(rejected.configure_upstream_hello("example.test", "", std::string(invalid)));
+
+        rejected.test_init_client();
+
+        EXPECT_EQ(rejected.test_ssl(), nullptr) << invalid;
+        EXPECT_TRUE(rejected.error()) << invalid;
+        EXPECT_EQ(rejected.tls_proto_state(), socle::TlsProtoState::failed);
+    }
+}
 
 TEST(TLS_Tests, CompleteClientHelloNormalizationReusesInputBuffer) {
     buffer complete(tls_sni_smithproxy, sizeof(tls_sni_smithproxy));
@@ -3257,3 +4096,294 @@ TEST(TLS_Tests, RejectsAmbiguousSNIHostNames) {
     EXPECT_THROW(duplicate_connection.test_parse_extension(duplicate_input),
                  socle::ex::SSL_clienthello_malformed);
 }
+
+TEST(SSLComReadiness, HandshakeWaitingErrorAndBypass) {
+    int sockets[2];
+    ASSERT_EQ(::socketpair(AF_UNIX, SOCK_STREAM, 0, sockets), 0);
+    SSLCom_Buddy connection;
+    connection.socket(sockets[0]);
+    connection.test_readiness(false, true);
+    EXPECT_FALSE(connection.com_status());
+    connection.test_readiness(true, true);
+    EXPECT_FALSE(connection.com_status());
+    connection.test_readiness(true, false);
+    EXPECT_TRUE(connection.com_status());
+    connection.error(baseCom::ERROR_UNSPEC);
+    EXPECT_FALSE(connection.com_status());
+    // A failed upper layer does not erase evidence of an established TCP leg.
+    EXPECT_TRUE(connection.is_connected(sockets[0]));
+    connection.error(baseCom::ERROR_NONE);
+    connection.test_readiness(false, true);
+    connection.opt.bypass = true;
+    EXPECT_TRUE(connection.com_status());
+    connection.shutdown(sockets[0]);
+    EXPECT_FALSE(connection.com_status());
+    ::close(sockets[0]);
+    ::close(sockets[1]);
+}
+
+
+// Exercise observation through the real COM handshake/read/write paths. The
+// policy seam only lets us reject a completed wire handshake deterministically.
+struct ProtoStateSSLCom : SSLCom_Buddy {
+    bool accept_peer = true;
+    bool saw_checking_peer = false;
+
+    bool check_cert(const char*) override {
+
+        saw_checking_peer = tls_proto_state() == socle::TlsProtoState::checking_peer;
+        return accept_peer;
+    }
+};
+
+TEST(TLSProtoState, HandshakePolicyAndApplicationIoRemainSeparate) {
+
+    for(int version : {TLS1_2_VERSION, TLS1_3_VERSION}) {
+        for(bool accept_peer : {false, true}) {
+            SCOPED_TRACE(::testing::Message() << version << " accept=" << accept_peer);
+
+            auto key = make_rsa_key();
+            auto certificate = make_certificate(key.get(), 7310, "proto-state.example");
+            ASSERT_NE(certificate, nullptr);
+
+            auto context = std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)>(
+                SSL_CTX_new(TLS_method()), SSL_CTX_free);
+            ASSERT_NE(context, nullptr);
+            ASSERT_EQ(SSL_CTX_set_min_proto_version(context.get(), version), 1);
+            ASSERT_EQ(SSL_CTX_set_max_proto_version(context.get(), version), 1);
+            ASSERT_EQ(SSL_CTX_use_certificate(context.get(), certificate.get()), 1);
+            ASSERT_EQ(SSL_CTX_use_PrivateKey(context.get(), key.get()), 1);
+
+            ProtoStateSSLCom client;
+            ProtoStateSSLCom server;
+            client.accept_peer = accept_peer;
+            client.auto_upgrade(false);
+            server.auto_upgrade(false);
+            server.test_server(true);
+            client.test_peer_hello_received(true);
+            client.test_take_ssl(SSL_new(context.get()));
+            server.test_take_ssl(SSL_new(context.get()));
+            ASSERT_NE(client.test_ssl(), nullptr);
+            ASSERT_NE(server.test_ssl(), nullptr);
+
+            BIO* client_bio = nullptr;
+            BIO* server_bio = nullptr;
+            ASSERT_EQ(BIO_new_bio_pair(&client_bio, 0, &server_bio, 0), 1);
+            SSL_set_bio(client.test_ssl(), client_bio, client_bio);
+            SSL_set_bio(server.test_ssl(), server_bio, server_bio);
+
+            bool client_done = false;
+            bool server_done = false;
+            bool saw_wait = false;
+
+            for(int round = 0; round < 100 && !(client_done && server_done); ++round) {
+                if(!client_done) {
+                    const auto result = static_cast<ret_handshake>(client.test_handshake_result());
+                    if(result == ret_handshake::AGAIN) {
+                        EXPECT_EQ(client.tls_proto_state(), socle::TlsProtoState::handshake_want_read);
+                        saw_wait = true;
+                    } else if(result == ret_handshake::SUCCESS) {
+                        client_done = true;
+                    } else {
+                        ASSERT_FALSE(accept_peer);
+                        break;
+                    }
+                }
+
+                if(!server_done) {
+                    const auto result = static_cast<ret_handshake>(server.test_handshake_result());
+                    ASSERT_TRUE(result == ret_handshake::AGAIN || result == ret_handshake::SUCCESS);
+                    server_done = result == ret_handshake::SUCCESS;
+                }
+            }
+
+            EXPECT_TRUE(saw_wait);
+            EXPECT_TRUE(client.saw_checking_peer);
+            EXPECT_EQ(client.tls_proto_role(), socle::TlsProtoRole::client);
+            EXPECT_EQ(server.tls_proto_role(), socle::TlsProtoRole::server);
+
+            if(!accept_peer) {
+                EXPECT_EQ(client.tls_proto_state(), socle::TlsProtoState::failed);
+                client.test_cleanup();
+                EXPECT_EQ(client.tls_proto_state(), socle::TlsProtoState::failed);
+                continue;
+            }
+
+            ASSERT_TRUE(client_done && server_done);
+            EXPECT_EQ(client.tls_proto_state(), socle::TlsProtoState::established);
+            EXPECT_EQ(server.tls_proto_state(), socle::TlsProtoState::established);
+
+            char received = 0;
+            EXPECT_EQ(client.read(0, &received, 1, 0), -1);
+            EXPECT_EQ(client.tls_proto_state(), socle::TlsProtoState::established);
+            ASSERT_EQ(server.write(0, "x", 1, 0), 1);
+            ASSERT_EQ(client.read(0, &received, 1, 0), 1);
+            EXPECT_EQ(received, 'x');
+
+            ASSERT_EQ(SSL_shutdown(server.test_ssl()), 0);
+            EXPECT_EQ(client.read(0, &received, 1, 0), 0);
+            EXPECT_EQ(client.tls_proto_state(), socle::TlsProtoState::peer_closed);
+            client.test_cleanup();
+            EXPECT_EQ(client.tls_proto_state(), socle::TlsProtoState::closed);
+        }
+    }
+}
+
+TEST(TLSProtoState, HandshakeWantWriteUsesTheExistingOpenSslResult) {
+
+    auto context = std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)>(
+        SSL_CTX_new(TLS_client_method()), SSL_CTX_free);
+    ASSERT_NE(context, nullptr);
+
+    ProtoStateSSLCom client;
+    client.auto_upgrade(false);
+    client.test_peer_hello_received(true);
+    client.test_take_ssl(SSL_new(context.get()));
+    ASSERT_NE(client.test_ssl(), nullptr);
+
+    BIO* client_bio = nullptr;
+    BIO* peer_bio = nullptr;
+    ASSERT_EQ(BIO_new_bio_pair(&client_bio, 1, &peer_bio, 1), 1);
+    std::unique_ptr<BIO, decltype(&BIO_free)> peer(peer_bio, BIO_free);
+    SSL_set_bio(client.test_ssl(), client_bio, client_bio);
+
+    EXPECT_EQ(client.test_handshake_result(), static_cast<int>(ret_handshake::AGAIN));
+    EXPECT_EQ(client.tls_proto_state(), socle::TlsProtoState::handshake_want_write);
+    EXPECT_FALSE(client.error());
+}
+
+
+TEST(TLSProtoState, FragmentedHelloAndSkippedPrerequisiteAreDistinct) {
+
+    int sockets[2] {-1, -1};
+    ASSERT_EQ(::socketpair(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK, 0, sockets), 0);
+
+    SSLCom_Buddy outbound;
+    SSLCom_Buddy inbound;
+    outbound.peer(&inbound);
+    inbound.peer(&outbound);
+    inbound.socket(sockets[0]);
+    outbound.opt.client_hello_timeout = 60000;
+
+    ASSERT_EQ(::write(sockets[1], tls_sni_smithproxy, 6), 6);
+    EXPECT_FALSE(outbound.test_waiting_peer_hello());
+    EXPECT_EQ(outbound.tls_proto_state(), socle::TlsProtoState::waiting_peer_hello);
+    EXPECT_EQ(inbound.tls_proto_state(), socle::TlsProtoState::waiting_client_hello);
+
+    const auto remaining = sizeof(tls_sni_smithproxy) - 6;
+    ASSERT_EQ(::write(sockets[1], tls_sni_smithproxy + 6, remaining),
+              static_cast<ssize_t>(remaining));
+    EXPECT_TRUE(outbound.test_waiting_peer_hello());
+    EXPECT_EQ(outbound.tls_proto_state(), socle::TlsProtoState::peer_hello_ready);
+    EXPECT_EQ(inbound.tls_proto_state(), socle::TlsProtoState::client_hello_received);
+
+    inbound.socket(0);
+    ::close(sockets[0]);
+    ::close(sockets[1]);
+
+    SSLCom_Buddy standalone;
+    EXPECT_EQ(standalone.tls_proto_state(), socle::TlsProtoState::idle);
+    EXPECT_TRUE(standalone.test_waiting_peer_hello());
+    EXPECT_EQ(standalone.tls_proto_state(), socle::TlsProtoState::peer_hello_ready);
+}
+
+namespace {
+
+class ClientHelloHookTest : public ::testing::Test {
+protected:
+    SSLCom_Buddy outbound;
+    SSLCom_Buddy inbound;
+    int sockets[2] {-1, -1};
+    socle::ProtocolHooks::Callback previous = nullptr;
+    unsigned calls = 0;
+    bool parsed_before_start = false;
+    socle::ProtocolHookResult result = socle::ProtocolHookResult::Continue;
+    inline static ClientHelloHookTest* active = nullptr;
+
+    static socle::ProtocolHookResult observe(baseCom& com) noexcept {
+        auto& test = *active;
+        ++test.calls;
+        test.parsed_before_start = &com == &test.outbound &&
+            test.outbound.get_sni() == "smithproxy.org" &&
+            test.inbound.get_sni() == "smithproxy.org" &&
+            test.outbound.test_ssl() == nullptr &&
+            test.outbound.tls_proto_state() == socle::TlsProtoState::waiting_peer_hello;
+        return test.result;
+    }
+
+    void SetUp() override {
+        ASSERT_EQ(::socketpair(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK, 0, sockets), 0);
+        outbound.peer(&inbound);
+        inbound.peer(&outbound);
+        inbound.socket(sockets[0]);
+        outbound.opt.client_hello_timeout = 60000;
+        outbound.protocol_hooks_enabled(true);
+        active = this;
+        previous = socle::ProtocolHooks::registry().tls_client_hello;
+        socle::ProtocolHooks::registry().tls_client_hello = &observe;
+    }
+
+    void TearDown() override {
+        socle::ProtocolHooks::registry().tls_client_hello = previous;
+        active = nullptr;
+        inbound.socket(0);
+        if(sockets[0] >= 0) ::close(sockets[0]);
+        if(sockets[1] >= 0) ::close(sockets[1]);
+    }
+};
+
+TEST_F(ClientHelloHookTest, CompleteHelloIsObservedOnceBeforeTlsStartup) {
+    ASSERT_EQ(::write(sockets[1], tls_sni_smithproxy, 6), 6);
+    EXPECT_FALSE(outbound.test_waiting_peer_hello());
+    EXPECT_EQ(calls, 0U);
+
+    const auto remaining = sizeof(tls_sni_smithproxy) - 6;
+    ASSERT_EQ(::write(sockets[1], tls_sni_smithproxy + 6, remaining),
+              static_cast<ssize_t>(remaining));
+    EXPECT_TRUE(outbound.test_waiting_peer_hello());
+    EXPECT_TRUE(parsed_before_start);
+    EXPECT_TRUE(outbound.test_waiting_peer_hello());
+    EXPECT_EQ(calls, 1U);
+}
+
+TEST_F(ClientHelloHookTest, TerminateFailsBothLegsAndCannotBecomeAccepted) {
+    init_log();
+    logan::get()->entry("com.tls")->level(iWAR);
+    testing::internal::CaptureStdout();
+
+    result = socle::ProtocolHookResult::Terminate;
+    ASSERT_EQ(::write(sockets[1], tls_sni_smithproxy, sizeof(tls_sni_smithproxy)),
+              static_cast<ssize_t>(sizeof(tls_sni_smithproxy)));
+    EXPECT_FALSE(outbound.test_waiting_peer_hello());
+    EXPECT_TRUE(parsed_before_start);
+    EXPECT_TRUE(outbound.error());
+    EXPECT_TRUE(inbound.error());
+    EXPECT_FALSE(outbound.test_waiting_peer_hello());
+    EXPECT_EQ(calls, 1U);
+    EXPECT_EQ(outbound.tls_proto_state(), socle::TlsProtoState::failed);
+    EXPECT_EQ(inbound.tls_proto_state(), socle::TlsProtoState::failed);
+
+    const auto output = testing::internal::GetCapturedStdout();
+    const std::string warning = "TLS handshake terminated by callback: hook=client-hello";
+    const auto first = output.find(warning);
+    ASSERT_NE(first, std::string::npos);
+    EXPECT_EQ(output.find(warning, first + warning.size()), std::string::npos);
+}
+
+TEST_F(ClientHelloHookTest, DisabledObserverDoesNotDispatch) {
+    outbound.protocol_hooks_enabled(false);
+    ASSERT_EQ(::write(sockets[1], tls_sni_smithproxy, sizeof(tls_sni_smithproxy)),
+              static_cast<ssize_t>(sizeof(tls_sni_smithproxy)));
+    EXPECT_TRUE(outbound.test_waiting_peer_hello());
+    EXPECT_EQ(calls, 0U);
+}
+
+TEST_F(ClientHelloHookTest, InvalidHelloDoesNotDispatch) {
+    const unsigned char invalid[] {0x16, 0x01, 0x01, 0, 1, 0};
+    ASSERT_EQ(::write(sockets[1], invalid, sizeof(invalid)),
+              static_cast<ssize_t>(sizeof(invalid)));
+    EXPECT_FALSE(outbound.test_waiting_peer_hello());
+    EXPECT_EQ(calls, 0U);
+}
+
+} // namespace

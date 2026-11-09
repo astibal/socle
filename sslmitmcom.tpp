@@ -75,6 +75,31 @@ bool baseSSLMitmCom<SSLProto>::check_cert(const char* peer_name) {
                 spo.sans.push_back(san);
         };
 
+        // Chain and reference-identity validation are independent. A
+        // tolerated issuer/time error must not suppress the hostname check.
+        bool identity_validated = false;
+        if(not this->sslcom_sni().empty()) {
+            if(inet::is_ipv4_address(this->sslcom_sni()) ||
+               inet::is_ipv6_address(this->sslcom_sni())) {
+                identity_validated = X509_check_ip_asc(
+                    cert, this->sslcom_sni().c_str(), 0) == 1;
+            } else {
+                identity_validated = X509_check_host(
+                    cert, this->sslcom_sni().c_str(),
+                    this->sslcom_sni().size(), 0, nullptr) == 1;
+            }
+        } else if(this->owner_cx()) {
+            identity_validated = X509_check_ip_asc(
+                cert, this->owner_cx()->host().c_str(), 0) == 1;
+        }
+
+        if(identity_validated) {
+            _dia("SSL hostname check succeeded");
+        } else {
+            _war("SSL hostname check failed (sni '%s').", this->sslcom_sni().c_str());
+            this->verify_bitset(verify_status_t::VRF_HOSTNAME_FAILED);
+        }
+
         // Routing may rewrite only the origin-facing SNI. The certificate
         // presented back to the client must retain the identity it requested.
         if(client_sni != this->sslcom_sni())
@@ -95,53 +120,6 @@ bool baseSSLMitmCom<SSLProto>::check_cert(const char* peer_name) {
                     spo.sans.push_back(string_format("IP:%s",this->owner_cx()->host().c_str()));
                 }
             }
-        } else {
-
-            // If certificate is formally valid, see if it also matches SNI. This is extra check,
-            // to avoid SNI evasions.
-
-            bool validated = false;
-            if(not this->sslcom_sni().empty()) {
-                if(inet::is_ipv4_address(this->sslcom_sni()) ||
-                   inet::is_ipv6_address(this->sslcom_sni())) {
-                    validated = X509_check_ip_asc(
-                        cert, this->sslcom_sni().c_str(), 0) == 1;
-                } else {
-                    validated = X509_check_host(
-                        cert, this->sslcom_sni().c_str(), this->sslcom_sni().size(),
-                        0, nullptr) == 1;
-                }
-            } else if(this->owner_cx()) {
-                validated = X509_check_ip_asc(
-                    cert, this->owner_cx()->host().c_str(), 0) == 1;
-            }
-
-            if(validated) {
-                _dia("SSL hostname check succeeded");
-            }
-            else {
-                _war("SSL hostname check failed (sni '%s').", this->sslcom_sni().c_str());
-                this->verify_bitset(verify_status_t::VRF_HOSTNAME_FAILED);
-
-                if(!this->opt.cert.failed_check_replacement) {
-                    spo.self_signed = true;
-                } else {
-                    // if neither DNS nor IP could be added, fallback to self-signed cert
-                    spo.self_signed = true;
-
-                    if(not client_sni.empty()) {
-                        add_client_sni();
-                        spo.self_signed = false;
-                    }
-                    else if(this->owner_cx()) {
-                        // we WILL pretend target certificate is OK 
-                        spo.sans.push_back(string_format("IP:%s",this->owner_cx()->host().c_str()));
-                        spo.self_signed = false;
-                    }
-                }
-
-            }
-
         }
 
 
@@ -196,9 +174,11 @@ template <class SSLProto>
 bool baseSSLMitmCom<SSLProto>::use_cert_null() {
     auto const& log = log::mitm();
 
-    _dia("SSLMitmCom::use_cert_null: unsetting certifiace key-pair");
+    _dia("SSLMitmCom::use_cert_null: unsetting certificate key-pair");
+    this->release_preferred_identity();
     this->sslcom_pref_cert = nullptr;
     this->sslcom_pref_key = nullptr;
+    this->sslcom_pref_ctx = nullptr;
 
     return false;
 }
@@ -215,12 +195,10 @@ bool baseSSLMitmCom<SSLProto>::use_cert_sni(SpoofOptions &spo) {
         if (parek) {
             _dia("SSLMitmCom::use_cert_sni: factory found SNI match: '%s'", spo.sni.c_str());
 
+            this->use_cert_null();
             this->sslcom_pref_cert = parek.value().chain.cert;
             this->sslcom_pref_key = parek.value().chain.key;
-
-            auto custom_ctx = parek.value().ctx;
-            if(custom_ctx)
-                this->sslcom_pref_ctx = custom_ctx;
+            this->sslcom_pref_ctx = parek.value().ctx;
 
             return true;
         }
@@ -243,13 +221,14 @@ bool baseSSLMitmCom<SSLProto>::use_cert_ip(SpoofOptions &spo) {
             if (parek) {
                 _dia("SSLMitmCom::use_cert_ip: factory found IP match: '%s'", address.c_str());
 
+                this->use_cert_null();
                 this->sslcom_pref_cert = parek.value().chain.cert;
                 this->sslcom_pref_key = parek.value().chain.key;
 
                 auto custom_ctx = parek.value().ctx;
+                this->sslcom_pref_ctx = custom_ctx;
                 if(custom_ctx) {
                     _dia("SSLMitmCom::use_cert_ip: custom context set");
-                    this->sslcom_pref_ctx = custom_ctx;
                 }
 
                 return true;
@@ -276,12 +255,10 @@ bool baseSSLMitmCom<SSLProto>::use_cert_mitm(X509 *cert_orig, SpoofOptions &spo)
     auto parek = this->factory()->find_mitm(store_key);
     if (parek.has_value()) {
         _dia("SSLMitmCom::use_cert_mitm: factory found '%s'", store_key.c_str());
+        this->use_cert_null();
         this->sslcom_pref_cert = parek.value().chain.cert;
         this->sslcom_pref_key = parek.value().chain.key;
-
-        auto custom_ctx = parek.value().ctx;
-        if(custom_ctx)
-            this->sslcom_pref_ctx = custom_ctx;
+        this->sslcom_pref_ctx = parek.value().ctx;
 
         return true;
     }
@@ -295,24 +272,20 @@ bool baseSSLMitmCom<SSLProto>::use_cert_mitm(X509 *cert_orig, SpoofOptions &spo)
             return false;
         }
         else {
+            this->use_cert_null();
             this->sslcom_pref_cert = spoof_ret.value().chain.cert;
             this->sslcom_pref_key  = spoof_ret.value().chain.key;
-
-            auto custom_ctx = spoof_ret.value().ctx;
-            if(custom_ctx)
-                this->sslcom_pref_ctx = custom_ctx;
-
-#ifdef USE_OPENSSL11
-            EVP_PKEY_up_ref(this->sslcom_pref_key);
-#else
-            // just increment key refcount, cert is new (made from key), thus refcount is already 1
-            CRYPTO_add(&this->sslcom_pref_key->references,+1,CRYPTO_LOCK_EVP_PKEY);
-#endif //USE_OPENSSL11
+            this->sslcom_pref_ctx = spoof_ret.value().ctx;
 
             if (!this->factory()->add_mitm(store_key, spoof_ret.value())) {
                 _dia("SSLMitmCom::use_cert_mitm: spoofed, but cache failed to update with %s", store_key.c_str());
-                return true;
             }
+
+            // spoof() transfers the generated certificate but lends the
+            // factory key. Adopt the certificate and one key reference as a
+            // balanced connection-owned pair on both cache outcomes.
+            this->adopt_generated_identity();
+            spoof_ret.value().nullify();
         }
     }
 

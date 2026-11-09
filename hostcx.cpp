@@ -38,10 +38,7 @@ namespace std
 }
 
 bool operator==(const Host& h, const Host& hh) {
-    std::string s = h.chost() + ":" + h.cport();
-    std::string ss = hh.chost() + ":" + hh.cport();
-
-    return s == ss;
+    return h.chost() == hh.chost() && h.cport() == hh.cport();
 }
 
 
@@ -61,7 +58,7 @@ baseHostCX::baseHostCX(baseCom* c, const char* h, const char* p): Host(h, p) {
     com()->init(this);
 }
 
-baseHostCX::baseHostCX(baseCom* c, int s): fds_(s) {
+baseHostCX::baseHostCX(baseCom* c, int s) {
 
     writebuf_.capacity(baseHostCX::params_t::buffsize);
     readbuf_.capacity(baseHostCX::params_t::buffsize);
@@ -74,26 +71,35 @@ baseHostCX::baseHostCX(baseCom* c, int s): fds_(s) {
     }
 
     com_ = std::unique_ptr<baseCom>(c);
+    com()->socket(s);
     com()->init(this);
 }
 
 baseHostCX::~baseHostCX() {
     com()->cleanup();
 
-    if(fds_ > 0) {
-        com()->set_poll_handler(fds_,nullptr);
-        com()->close(fds_);
+    if(socket() > 0) {
+        com()->set_poll_handler(socket(),nullptr);
+        com()->close(socket());
     }
 
-    if(closing_fds_ > 0) {
-        com()->set_poll_handler(closing_fds_,nullptr);
-        com()->close(closing_fds_);
+    if(closed_socket() > 0) {
+        com()->set_poll_handler(closed_socket(),nullptr);
+        com()->close(closed_socket());
     }
 }
 
 
 void baseHostCX::com(baseCom* c) {
-    com_ = std::unique_ptr<baseCom>(c);
+    if(!c) throw socle::com_is_null();
+    if(c == com()) return;
+
+    // STARTTLS replaces the transport, not the connection. Move descriptor
+    // storage before destroying the old COM; initialization remains explicit.
+    c->socket(socket());
+    c->closed_socket(closed_socket());
+    com()->remove_socket();
+    com_.reset(c);
 }
 
 int baseHostCX::connect() {
@@ -105,20 +111,22 @@ int baseHostCX::connect() {
     // A reconnect reuses this context. Retire the descriptor saved by the
     // preceding shutdown before it can be overwritten by another cycle, and
     // reset directional state belonging to the old stream.
-    if(closing_fds_ > 0) {
-        com()->close(closing_fds_);
-        closing_fds_ = 0;
+    if(closed_socket() > 0) {
+        com()->close(closed_socket());
+        com()->closed_socket(0);
     }
     read_eof(false);
+    write_eof_ = false;
 
     opening(true);
 
     _deb("HostCX::connect[%s]: blocking=%d",c_type(), baseCom::GLOBAL_IO_BLOCKING());
-    fds_ = com()->connect(host_.c_str(),port_.c_str());
+    const int descriptor = com()->connect(host_.c_str(), port_.c_str());
+    com()->socket(descriptor);
     error_ = false;
 
-    if (fds_ > 0 && baseCom::GLOBAL_IO_BLOCKING()) {
-        _deb("HostCX::connect[%s]: blocking, connected successfully, socket %d",c_type(),fds_);
+    if (socket() > 0 && baseCom::GLOBAL_IO_BLOCKING()) {
+        _deb("HostCX::connect[%s]: blocking, connected successfully, socket %d",c_type(),socket());
         opening(false);
     }
     else if (baseCom::GLOBAL_IO_BLOCKING()) {
@@ -126,7 +134,7 @@ int baseHostCX::connect() {
         opening(false);
     }
 
-    return fds_;
+    return socket();
 }
 
 
@@ -243,12 +251,31 @@ void baseHostCX::unhandle() const {
     }
 }
 
+void baseHostCX::shutdown_write() {
+    if(write_eof_ || !com()->supports_half_close() || opening() ||
+       !writebuf()->empty() || com()->write_event_pending()) {
+        return;
+    }
+
+    // FIN must follow all application and transport output.
+    if(!com()->shutdown_write()) {
+        error(true);
+        return;
+    }
+    write_eof_ = true;
+
+    // Removing the monitor also clears cached events and scheduled rescans.
+    // A mask change alone can leave a stale write that fails with EPIPE.
+    com()->unset_monitor(socket());
+    if(!read_eof()) com()->set_monitor(socket());
+}
+
 void baseHostCX::shutdown() {
 
     parent_proxy(nullptr, '-');
 
-    if(fds_ != 0) {
-        closing_fds_ = fds_;
+    if(socket() != 0) {
+        com()->closed_socket(socket());
 
         if(com()) {
             // Stop dispatching before shutdown: UDP shutdown closes the fd
@@ -257,15 +284,15 @@ void baseHostCX::shutdown() {
             unhandle();
             _deb("baseHostCX::shutdown[%s]: handler removed", c_type());
 
-            com()->shutdown(closing_fds_);
+            com()->shutdown(closed_socket());
             _deb("baseHostCX::shutdown[%s]: socket shutdown on com", c_type());
 
             // UDPCom either closes the socket or transfers a shared cached
             // socket to another session. In both cases this HostCX must not
             // close the numeric fd again later: it may already be reused.
-            if(com()->shutdown_consumes_fd()) closing_fds_ = 0;
+            if(com()->shutdown_consumes_fd()) com()->closed_socket(0);
         }
-        fds_ = 0;
+        com()->socket(0);
     } else {
         _deb("baseHostCX::shutdown[%s]: no-op, cannot be shutdown",c_type());
     }
@@ -287,7 +314,7 @@ std::string& baseHostCX::name(int level, bool force) const {
             if (valid()) {
 
                 if(com() != nullptr) {
-                    com()->resolve_socket_src(fds_, &res_host, &res_port);
+                    com()->resolve_socket_src(socket(), &res_host, &res_port);
                     host(res_host);
                     port(res_port);
                 }
@@ -412,6 +439,14 @@ void baseHostCX::after_read(std::size_t buffer_written_len) {
 
 }
 
+void baseHostCX::defer_read_readiness() {
+    if(opening() || !writebuf()->empty() || com()->write_event_pending()) {
+        com()->rescan_write(socket());
+    } else {
+        com()->rescan_read(socket());
+    }
+}
+
 int baseHostCX::read() {
 
     if(io_disabled()) {
@@ -425,14 +460,7 @@ int baseHostCX::read() {
 
     if(peer() && peer()->writebuf()->size() > baseHostCX::params_t::write_full) {
         _deb("baseHostCX::read[%d]: deferring read operation",socket());
-        // rescan_read() temporarily removes the descriptor and restores it as
-        // EPOLLIN-only. Preserve an independent queued/protocol-level write
-        // (notably TLS WANT_WRITE) by using the IN|OUT rescan path instead.
-        if(opening() || !writebuf()->empty() || com()->write_event_pending()) {
-            com()->rescan_write(socket());
-        } else {
-            com()->rescan_read(socket());
-        }
+        defer_read_readiness();
         return -1;
     }
 
@@ -490,6 +518,13 @@ int baseHostCX::read() {
         // A full buffer which cannot grow must not be presented to recv()/SSL_read()
         // as a zero-length read: zero means EOF to the caller.
         if(max_bytes_left == 0) {
+            // Give process_in() one complete dispatch to consume bytes which
+            // filled the buffer. If a later dispatch still has no free tail,
+            // the retention bound is exhausted; this is a local error, not EOF.
+            if(buffer_written_len == 0) {
+                error(true);
+                buffer_written_len = -1;
+            }
             break;
         }
 
@@ -597,6 +632,13 @@ ssize_t baseHostCX::io_write(unsigned char* data, size_t tx_size, int flags = 0)
 }
 
 int baseHostCX::write() {
+    if(write_eof_) {
+        if(writebuf()->empty()) return 0;
+        error(true);
+        errno = EPIPE;
+        return -1;
+    }
+
 
     auto _debug_tx_size = [this](auto tx_size_orig, auto tx_size, const char* fname) {
 
@@ -788,7 +830,11 @@ std::size_t baseHostCX::process_out() {
 
 
 std::size_t baseHostCX::finish() {
-    if( readbuf()->size() >= (unsigned int)processed_in_ && processed_in_ > 0)
+    if(processed_in_ == 0) {
+        _dum("baseHostCX::finish[%s]: no processed bytes to flush", c_type());
+        return 0;
+    }
+    if( readbuf()->size() >= (unsigned int)processed_in_)
     {
         _deb("baseHostCX::finish[%s]: flushing %d bytes in readbuf_ size %d", c_type(), processed_in_, readbuf()->size());
         readbuf()->flush(processed_in_);
@@ -888,7 +934,7 @@ std::string baseHostCX::to_string(int verbosity) const {
 
     if(verbosity > INF) {
         r_str << string_format(" | fd=%d | rx_cnt=%d rx_b=%d / tx_cnt=%d tx_b=%d",
-                               com() ? com()->translate_socket(socket()) : socket(),
+                               real_socket(),
                                meter_read_count, meter_read_bytes,
                                meter_write_count, meter_write_bytes);
     }

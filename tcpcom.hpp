@@ -50,6 +50,7 @@ public:
     } config;
     
     void init(baseHostCX* owner) override;
+    void capture_ingress_interface(int fd);
     baseCom* replicate() override { return new TCPCom(); };
     
     int connect(const char* host, const char* port) override;
@@ -71,14 +72,23 @@ public:
         return r;
     };
     void shutdown(int _fd) override {
+        connect_proven = false;
+        connected_fd_ = 0;
+        connect_failed_ = true;
+        connect_error_ = ENOTCONN;
         int r = ::shutdown(_fd, SHUT_RDWR);
         if(r < 0 && errno != ENOTCONN)
             _dia("%s::shutdown[%d]: %s", c_type(), _fd, string_error().c_str());
     };
     
+    [[nodiscard]] bool supports_half_close() const override { return true; }
+    bool shutdown_write() override;
+
     void cleanup() override {};
     
     bool is_connected(int s) override;
+    bool connect_failed() const noexcept { return connect_failed_; }
+    int connect_error() const noexcept { return connect_error_; }
     bool com_status() override;
 
     void on_new_socket(int _fd) override;
@@ -104,11 +114,15 @@ protected:
                        socle::trace_event::connected,
                        socle::trace_status::ok);
     }
+    int connected_fd_ = 0;
+    bool connect_failed_ = false;
+    int connect_error_ = 0;
 
     TYPENAME_OVERRIDE("TCPCom")
     DECLARE_LOGGING(to_string)
 
 private:
+
     static inline logan_lite log {"com.tcp"};
     static inline logan_lite log_state {"com.tcp.state"};
 };

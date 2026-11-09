@@ -72,6 +72,10 @@ bool MasterProxy::run_timers()
             }
         }
 
+        // Quiet workers still need to publish final observations and release
+        // retired sessions. Do not rely only on traffic-driven reap ticks.
+        reap_deferred(deferred_pressure_batch, deferred_reap_time_budget);
+
         return true;
     }
 
@@ -83,7 +87,10 @@ void MasterProxy::defer_proxy_ul(proxy_entry&& entry) {
     // Deferring object destruction protects callbacks which may still hold a
     // pointer for the current dispatch. It must not defer transport teardown:
     // an idle worker may not get the future traffic-driven reap ticks at all.
-    if(entry) entry->shutdown();
+    if(entry) {
+        stats().count_session_closed();
+        entry->shutdown();
+    }
 
     {
         auto l_ = std::scoped_lock(deferred_lock_);
@@ -94,9 +101,11 @@ void MasterProxy::defer_proxy_ul(proxy_entry&& entry) {
 
 MasterProxy::pressure_level MasterProxy::get_pressure_level() const {
     auto lock = std::scoped_lock(deferred_lock_);
-    return deferred().size() >= deferred_pressure_threshold
-        ? pressure_level::elevated
-        : pressure_level::nominal;
+    auto const size = deferred().size();
+    if(size >= deferred_emergency_threshold) return pressure_level::emergency;
+    if(size >= deferred_critical_threshold) return pressure_level::critical;
+    if(size >= deferred_pressure_threshold) return pressure_level::elevated;
+    return pressure_level::nominal;
 }
 
 void MasterProxy::reap_deferred(std::size_t count_budget,
@@ -119,6 +128,7 @@ void MasterProxy::reap_deferred(std::size_t count_budget,
 
         // HostCX and Com teardown has worker-thread affinity. Keep destruction
         // on the MasterProxy worker, but outside both queue locks.
+        if(entry) entry->finalize();
         entry.reset();
 
         ++reaped;
@@ -247,7 +257,10 @@ void MasterProxy::shutdown() {
 		// atomically moved to the local shutdown list.
 		auto l_ = std::scoped_lock(proxies_lock_);
 		shutdown_entries.reserve(proxies().size());
-		for(auto& entry : proxies()) shutdown_entries.emplace_back(std::move(entry));
+		for(auto& entry : proxies()) {
+            if(entry) stats().count_session_closed();
+            shutdown_entries.emplace_back(std::move(entry));
+        }
 		proxies().clear();
 	}
 
@@ -265,6 +278,7 @@ void MasterProxy::shutdown() {
 
         if(proxy) {
             proxy->shutdown();
+            proxy->finalize();
         }
         i++;
     }

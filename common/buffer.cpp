@@ -293,10 +293,10 @@ void buffer::assign (const void* d, size_type s)
         }
         else {
             data_ = new unsigned char[s];
+            capacity_ = s;
             counter_alloc(s);
         }
 
-        capacity_ = s;
         free_ = true;
     }
 
@@ -308,6 +308,9 @@ void buffer::assign (const void* d, size_type s)
 
 void buffer::assign (void* d, size_type s, size_type c, bool own)
 {
+    if(s > c)
+        throw std::invalid_argument("size greater than capacity");
+
     dealloc();
 
     data_ = static_cast<unsigned char*> (d);
@@ -339,10 +342,23 @@ void buffer::append (const void* d, size_type s)
 {
     if (s != 0)
     {
+        if(s > std::numeric_limits<size_type>::max() - size_)
+            throw std::length_error("buffer append size overflow");
+
+        auto const source_address = reinterpret_cast<std::uintptr_t>(d);
+        auto const storage_address = reinterpret_cast<std::uintptr_t>(data_);
+        auto const source_offset = source_address >= storage_address
+            ? source_address - storage_address
+            : std::numeric_limits<std::uintptr_t>::max();
+        auto const aliases_data = data_ != nullptr && source_offset <= size_ &&
+            s <= size_ - source_offset;
         size_type ns (size_ + s);
 
-        if (capacity_ < ns)
+        if (capacity_ < ns) {
             capacity (ns);
+            if(aliases_data)
+                d = data_ + source_offset;
+        }
 
         std::memcpy (data_ + size_, d, s);
         size_ = ns;
@@ -533,7 +549,7 @@ buffer buffer::view(size_type pos, buffer::size_type len) const {
     if (pos < size_) {
         // starting pos in the buffer
 
-        if( pos+len <= size_) {
+        if(len <= size_ - pos) {
             // view inside buffer
             return {data_ +pos, len, len, false};
         } else {

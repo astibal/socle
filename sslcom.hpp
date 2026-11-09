@@ -23,6 +23,7 @@
 #include <atomic>
 #include <string>
 #include <string_view>
+#include <optional>
 #include <thread>
 
 #include <openssl/rsa.h>
@@ -36,6 +37,8 @@
 #include <buffer.hpp>
 #include <basecom.hpp>
 #include <tcpcom.hpp>
+#include <tls_proto_state.hpp>
+#include <protocol_hooks.hpp>
 #include <udpcom.hpp>
 #include <sslcertstore.hpp>
 #include <sslcertval.hpp>
@@ -253,6 +256,69 @@ public:
     std::string const& get_peer_id() const { return sslcom_peer_hello_id(); }
     std::string const& get_peer_alpn() const { return sslcom_peer_hello_alpn(); }
 
+    // Protocol observation only. Readiness and handshake control keep using
+    // their existing flags; these snapshots never drive connection behavior.
+    socle::TlsProtoRole tls_proto_role() const { return tls_proto_role_; }
+    socle::TlsProtoState tls_proto_state() const { return tls_proto_state_; }
+
+    const socle::TlsProtoHistory& tls_proto_history() const { return tls_proto_history_; }
+
+    // Acknowledge observations only after processing them on the owning thread.
+    void clear_tls_proto_history() {
+
+        tls_proto_history_.size = 0;
+        tls_proto_history_.overflowed = false;
+    }
+
+private:
+    socle::TlsProtoRole tls_proto_role_ { socle::TlsProtoRole::client };
+    socle::TlsProtoState tls_proto_state_ { socle::TlsProtoState::idle };
+    socle::TlsProtoHistory tls_proto_history_ {};
+
+    // Per-handshake bookkeeping, grouped by hook as more boundaries are added.
+    struct TlsHookState {
+        struct Invocation {
+            bool called = false;
+            socle::ProtocolHookResult result = socle::ProtocolHookResult::Continue;
+        };
+
+        Invocation client_hello;
+        Invocation start;
+    };
+
+    TlsHookState tls_hooks_;
+
+    // Allocate an override only for an explicitly configured handshake.
+    std::unique_ptr<std::string> upstream_cipher_list_;
+
+    socle::ProtocolHookResult dispatch_tls_hook(
+        typename TlsHookState::Invocation& invocation,
+        socle::ProtocolHooks::Callback callback, const char* name);
+
+    socle::ProtocolHookResult hook_tls_start();
+    socle::ProtocolHookResult hook_client_hello(baseSSLCom& client);
+    void reject_tls_handshake();
+
+    void record_tls_state(socle::TlsProtoState state) {
+
+        if(state == tls_proto_state_) {
+            return;
+        }
+
+        // The current snapshot remains accurate even when history is full.
+        tls_proto_state_ = state;
+        tls_proto_history_.append(state);
+    }
+
+    void record_tls_close() {
+
+        // Preserve the failure for an observer inspecting a retired connection.
+        if(tls_proto_state_ != socle::TlsProtoState::failed) {
+            record_tls_state(socle::TlsProtoState::closed);
+        }
+    }
+
+public:
     // does not indicate SSL state, but operational level of the socket
     // UNKNOWN - default value
     // READY - successful handshake by SSL_accept() or SSL_connect()
@@ -287,12 +353,40 @@ public:
     }
     std::string const& sslcom_sni() const { return sslcom_sni_; }
     buffer const& client_hello_buffer() const { return sslcom_peer_hello_buffer; }
+
+    // Apply an already validated outbound offer before OpenSSL owns it.
+    // Keep the peer's original ClientHello and certificate identity intact.
+    bool configure_upstream_hello(std::string sni, std::string alpn,
+                                  std::optional<std::string> cipher_list = std::nullopt) {
+
+        if(sslcom_ssl || is_server()) {
+            return false;
+        }
+
+        auto ciphers = cipher_list ? std::make_unique<std::string>(std::move(*cipher_list)) : nullptr;
+
+        sslcom_sni_ = std::move(sni);
+        sslcom_peer_hello_alpn_ = std::move(alpn);
+        upstream_cipher_list_ = std::move(ciphers);
+        return true;
+    }
+
+    // The start hook may update this SSL instance, never its shared context.
+    // Callers must terminate the handshake if OpenSSL rejects any setting.
+    bool configure_upstream_start(std::string sni, std::string alpn,
+                                  std::optional<std::string> cipher_list);
+
+    std::string upstream_cipher_filter(bool defaults = false) const;
+
     buffer const& server_hello_buffer() const { return sslcom_server_hello_buffer; }
 
 protected:
 
 	SSL_CTX* sslcom_ctx = nullptr;
 	SSL*     sslcom_ssl = nullptr;
+	// Non-owning only while OpenSSL invokes new_session_callback(). TLS 1.3
+	// may deliver a ticket session different from SSL_get0_session(ssl).
+	SSL_SESSION* sslcom_callback_session = nullptr;
 	BIO*	 sslcom_sbio = nullptr;
     int      sslcom_ret = 0;  // return value of last SSL_get_error() capable calls:
                               // SSL_connect, SSL_accept, SSL_do_handshake, SSL_read, SSL_peek,
@@ -331,6 +425,7 @@ protected:
 
     bool handshake_peer_client(); // check if peer received already ClientHello
     ret_handshake handshake();
+    bool handshake_timed_out();
         void handshake_dia_error2(int op_code, int err, unsigned int err2);
         int handshake_client();
         int handshake_server();
@@ -446,6 +541,31 @@ protected:
     inline void sslcom_status(bool b) { sslcom_status_ = b; }
 
     std::string flags_str() override;
+    void adopt_generated_identity() {
+        if(!sslcom_pref_key || !sslcom_pref_cert)
+            return;
+#ifdef USE_OPENSSL11
+        EVP_PKEY_up_ref(sslcom_pref_key);
+#else
+        CRYPTO_add(&sslcom_pref_key->references,+1,CRYPTO_LOCK_EVP_PKEY);
+#endif
+        // SSLFactory::spoof() transfers the new certificate but lends its
+        // factory-owned signing key. The added key reference makes the pair
+        // symmetrically connection-owned.
+        sslcom_refcount_incremented_ = true;
+    }
+    void release_preferred_identity() {
+        if(!sslcom_refcount_incremented_)
+            return;
+#ifdef USE_OPENSSL11
+        EVP_PKEY_free(sslcom_pref_key);
+        X509_free(sslcom_pref_cert);
+#else
+        CRYPTO_add(&sslcom_pref_key->references,-1,CRYPTO_LOCK_EVP_PKEY);
+        CRYPTO_add(&sslcom_pref_cert->references,-1,CRYPTO_LOCK_X509);
+#endif
+        sslcom_refcount_incremented_ = false;
+    }
 private:
     typedef enum { HSK_REUSED = 0x4 } sslcom_flags;
     unsigned long flags_ = 0;
@@ -500,7 +620,11 @@ public:
 
     bool is_server() const  { return sslcom_server_; }
 protected:
-    void is_server(bool b) { sslcom_server_ = b; }
+    void is_server(bool b) {
+
+        sslcom_server_ = b;
+        tls_proto_role_ = b ? socle::TlsProtoRole::server : socle::TlsProtoRole::client;
+    }
 public:
 
     bool is_verify_status_opt_allowed();
@@ -516,6 +640,9 @@ public:
 	bool writable (int s) override;
     bool write_event_pending() const override {
         return sslcom_read_blocked_on_write > 0 || sslcom_write_blocked_on_write > 0;
+    }
+    bool opening_write_event_pending() const override {
+        return write_event_pending();
     }
 	
 	void accept_socket (int sockfd) override;
@@ -538,9 +665,12 @@ public:
 	void cleanup() override;
 
     bool com_status() override;
+    void on_timer() override;
     
     
     void shutdown(int _fd) override;
+    [[nodiscard]] bool supports_half_close() const override { return false; }
+    bool shutdown_write() override { return false; }
     ~baseSSLCom() override {
         if(sslcom_refcount_incremented_) {
 #ifdef USE_OPENSSL11
@@ -616,6 +746,12 @@ public:
         result += std::to_string(options.ocsp.stapling_mode);
         result.push_back(':');
         result += std::to_string(options.ocsp.mode);
+        result.push_back(':');
+        add_bool(options.left.kex_dh);
+        add_bool(options.left.kex_rsa);
+        add_bool(options.left.allow_sha1);
+        add_bool(options.left.allow_rc4);
+        add_bool(options.left.allow_aes128);
         result.push_back(':');
         add_bool(options.right.kex_dh);
         add_bool(options.right.kex_rsa);

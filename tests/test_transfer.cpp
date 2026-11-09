@@ -12,6 +12,7 @@
 
 #include "hostcx.hpp"
 #include "baseproxy.hpp"
+#include "masterproxy.hpp"
 #include "tcpcom.hpp"
 #include "udpcom.hpp"
 
@@ -33,6 +34,18 @@ public:
 class WriteEventPendingTCPCom : public CountingTCPCom {
 public:
     bool write_event_pending() const override { return true; }
+};
+
+class OneShotWriteEventTCPCom : public TCPCom {
+public:
+    bool write_event_pending() const override { return pending_; }
+    ssize_t write(int fd, const void* source, size_t size, int flags) override {
+        pending_ = false;
+        return TCPCom::write(fd, source, size, flags);
+    }
+
+private:
+    bool pending_ = true;
 };
 
 class ChunkedTCPCom : public TCPCom {
@@ -157,6 +170,12 @@ private:
     std::size_t write_calls_ = 0;
 };
 
+class CompletedProtocolTCPCom : public LifecycleTCPCom {
+public:
+    using LifecycleTCPCom::LifecycleTCPCom;
+    bool opening_write_event_pending() const override { return false; }
+};
+
 class CrossDirectionTCPCom : public LifecycleTCPCom {
 public:
     explicit CrossDirectionTCPCom(LifecycleState* state)
@@ -199,6 +218,23 @@ private:
     int accepted_fd_;
 };
 
+class CountingAcceptTCPCom : public TCPCom {
+public:
+    baseCom* replicate() override { return new CountingAcceptTCPCom(); }
+    int accept(int, sockaddr*, socklen_t*) override {
+        ++accept_calls;
+        if(successful_accepts < available_accepts) {
+            return 301 + static_cast<int>(successful_accepts++);
+        }
+        errno = EAGAIN;
+        return -1;
+    }
+
+    static constexpr std::size_t available_accepts = 300;
+    std::size_t accept_calls = 0;
+    std::size_t successful_accepts = 0;
+};
+
 class ReconnectingTCPCom : public LifecycleTCPCom {
 public:
     explicit ReconnectingTCPCom(LifecycleState* state)
@@ -210,6 +246,27 @@ public:
 private:
     LifecycleState* state_;
     int next_fd_ = 101;
+};
+
+class ReadyEofReconnectTCPCom : public ReconnectingTCPCom {
+public:
+    explicit ReadyEofReconnectTCPCom(LifecycleState* state)
+        : ReconnectingTCPCom(state) {}
+
+    bool readable(int) override { return true; }
+    ssize_t read(int, void*, size_t, int) override { return 0; }
+};
+
+class FailingReconnectTCPCom : public LifecycleTCPCom {
+public:
+    explicit FailingReconnectTCPCom(LifecycleState* state)
+        : LifecycleTCPCom(state) {}
+
+    int connect(const char*, const char*) override {
+        return connect_calls++ == 0 ? 101 : -1;
+    }
+
+    std::size_t connect_calls = 0;
 };
 
 class ConnectResultTCPCom : public LifecycleTCPCom {
@@ -240,6 +297,14 @@ private:
     bool incremental_;
 };
 
+class StallingHostCX : public baseHostCX {
+public:
+    explicit StallingHostCX(baseCom* transport) : baseHostCX(transport, -1) {}
+
+protected:
+    std::size_t process_in() override { return 0; }
+};
+
 class ScopedIoBatch {
 public:
     explicit ScopedIoBatch(std::size_t value)
@@ -247,6 +312,20 @@ public:
     ~ScopedIoBatch() { baseHostCX::params_t::io_batch = previous_; }
 private:
     std::size_t previous_;
+};
+
+class ScopedBufferLimits {
+public:
+    ScopedBufferLimits(std::size_t initial, std::size_t multiplier)
+        : previous_initial_(baseHostCX::params_t::buffsize.exchange(initial)),
+          previous_multiplier_(baseHostCX::params_t::buffsize_maxmul.exchange(multiplier)) {}
+    ~ScopedBufferLimits() {
+        baseHostCX::params_t::buffsize = previous_initial_;
+        baseHostCX::params_t::buffsize_maxmul = previous_multiplier_;
+    }
+private:
+    std::size_t previous_initial_;
+    std::size_t previous_multiplier_;
 };
 
 class RawAcceptCountingProxy : public baseProxy {
@@ -283,6 +362,26 @@ public:
     void restore_right(baseHostCX* cx) { baseProxy::on_right_pc_restore(cx); }
     void adopt_left(std::unique_ptr<baseHostCX> cx) { baseProxy::on_left_new(std::move(cx)); }
     void adopt_right(std::unique_ptr<baseHostCX> cx) { baseProxy::on_right_new(std::move(cx)); }
+};
+
+class PermanentReconnectProxy : public baseProxy {
+public:
+    explicit PermanentReconnectProxy(baseCom* transport) : baseProxy(transport) {}
+
+    void retry_left(baseHostCX* cx) { baseProxy::on_left_pc_error(cx); }
+    void retry_right(baseHostCX* cx) { baseProxy::on_right_pc_error(cx); }
+};
+
+class PressureProbeMasterProxy : public MasterProxy {
+public:
+    PressureProbeMasterProxy() : MasterProxy(new TCPCom()) {}
+
+    pressure_level pressure() const { return get_pressure_level(); }
+    void deferred_size(std::size_t size) {
+        deferred().clear();
+        while(deferred().size() < size)
+            deferred().push_back({nullptr, std::chrono::steady_clock::time_point{}});
+    }
 };
 
 class ConnectFactoryProxy : public RecordingProxy {
@@ -370,6 +469,12 @@ std::size_t send_available(int fd, std::vector<std::uint8_t> const& data) {
     }
     return sent;
 }
+
+class CountingPollHandler : public epoll_handler {
+public:
+    void handle_event(baseCom*) override { ++calls; }
+    std::size_t calls = 0;
+};
 
 TEST(TransferDrain, ReadConsumesMultipleSocketChunksPerDispatch) {
     SocketPair sockets;
@@ -556,6 +661,100 @@ TEST(TransferLifecycle, PreservesWrittenPrefixAndMarksFatalTailError) {
                            connection.writebuf()->data()));
 }
 
+TEST(TransferLifecycle, AcceptedDescriptorIsVisibleDuringTransportInitialization) {
+    class InspectingTCPCom : public TCPCom {
+    public:
+        void init(baseHostCX* owner) override {
+            TCPCom::init(owner);
+            initialized_socket = socket();
+        }
+        int initialized_socket = 0;
+    };
+
+    SocketPair sockets;
+    ASSERT_TRUE(sockets.valid());
+    auto* transport = new InspectingTCPCom();
+    const int descriptor = sockets.release_first();
+    baseHostCX connection(transport, descriptor);
+    EXPECT_EQ(transport->initialized_socket, descriptor);
+    EXPECT_EQ(transport->socket(), connection.socket());
+}
+
+TEST(TransferLifecycle, DescriptorFacadePreservesVirtualTokensAndHandoff) {
+    auto* transport = new TCPCom();
+    baseHostCX connection(transport, -17);
+    EXPECT_EQ(transport->socket(), -17);
+
+    connection.socket(-23);
+    EXPECT_EQ(transport->socket(), -23);
+    transport->socket(-29);
+    EXPECT_EQ(connection.socket(), -29);
+    connection.socket(0); // Preserve the existing setter's no-op contract.
+    EXPECT_EQ(connection.socket(), -29);
+
+    transport->closed_socket(-17);
+    connection.remove_socket();
+    EXPECT_EQ(transport->socket(), 0);
+    EXPECT_EQ(transport->closed_socket(), 0);
+}
+
+TEST(TransferLifecycle, TransportReplacementPreservesLiveSocketWithoutClosingIt) {
+    SocketPair sockets;
+    ASSERT_TRUE(sockets.valid());
+    const int descriptor = sockets.release_first();
+    {
+        baseHostCX connection(new TCPCom(), descriptor);
+        auto* replacement = new TCPCom();
+        connection.com(replacement);
+        replacement->init(&connection);
+        ASSERT_EQ(replacement->socket(), descriptor);
+        ASSERT_EQ(connection.socket(), descriptor);
+
+        // Exercise actual I/O after the old transport has been destroyed.
+        const char sent = 'x';
+        char received = 0;
+        ASSERT_EQ(replacement->write(descriptor, &sent, 1, 0), 1);
+        ASSERT_EQ(::recv(sockets.second(), &received, 1, 0), 1);
+        EXPECT_EQ(received, sent);
+    }
+    EXPECT_EQ(::fcntl(descriptor, F_GETFD), -1);
+    EXPECT_EQ(errno, EBADF);
+}
+
+TEST(TransferLifecycle, TransportReplacementPreservesDeferredCloseExactlyOnce) {
+    LifecycleState original;
+    LifecycleState replacement;
+    {
+        baseHostCX connection(new LifecycleTCPCom(&original), 101);
+        connection.shutdown();
+        EXPECT_EQ(connection.com()->socket(), 0);
+        EXPECT_EQ(connection.com()->closed_socket(), 101);
+
+        connection.com(new LifecycleTCPCom(&replacement));
+        EXPECT_EQ(connection.socket(), 0);
+        EXPECT_EQ(connection.closed_socket(), 101);
+        EXPECT_EQ(original.close_calls, 0U);
+    }
+    EXPECT_EQ(original.shutdown_calls, 1U);
+    EXPECT_EQ(original.close_calls, 0U);
+    EXPECT_EQ(replacement.close_calls, 1U);
+    EXPECT_EQ(replacement.close_fd, 101);
+}
+
+TEST(TransferLifecycle, NullAndSameTransportReplacementPreserveConnection) {
+    LifecycleState state;
+    {
+        auto* transport = new LifecycleTCPCom(&state);
+        baseHostCX connection(transport, 101);
+        EXPECT_THROW(connection.com(nullptr), socle::com_is_null);
+        connection.com(transport);
+        EXPECT_EQ(connection.com(), transport);
+        EXPECT_EQ(connection.socket(), 101);
+        EXPECT_EQ(state.close_calls, 0U);
+    }
+    EXPECT_EQ(state.close_calls, 1U);
+}
+
 TEST(TransferLifecycle, CloseAfterWriteDefersRegularDescriptorCloseExactlyOnce) {
     auto const payload = pattern(1024);
     LifecycleState state;
@@ -676,7 +875,9 @@ TEST(ProxyLifecycle, PartialWriteThenFatalErrorStopsWithoutBottleneckRetry) {
     auto const payload = pattern(chunk * 3);
     LifecycleState master_state;
     LifecycleState connection_state;
+    PressureProbeMasterProxy owner;
     RecordingProxy proxy(new LifecycleTCPCom(&master_state));
+    proxy.parent(&owner);
     auto* transport = new LifecycleTCPCom(&connection_state, {}, false, chunk, 1);
     baseHostCX connection(transport, -1);
     connection.opening(false);
@@ -687,6 +888,8 @@ TEST(ProxyLifecycle, PartialWriteThenFatalErrorStopsWithoutBottleneckRetry) {
     EXPECT_FALSE(proxy.state().write_left_bottleneck());
     EXPECT_EQ(connection.socket(), 0);
     EXPECT_EQ(connection.writebuf()->size(), payload.size() - chunk);
+    EXPECT_EQ(owner.stats().bytes_down(), chunk);
+    EXPECT_EQ(owner.stats().bytes_up(), 0U);
 }
 
 TEST(ProxyLifecycle, DispatchesMessageBeforePeerWaitCanPauseIt) {
@@ -722,7 +925,9 @@ TEST(ProxyLifecycle, DispatchesMessagesFromNormalAndPermanentSides) {
 
 TEST(ProxyLifecycle, SuccessfulReadWriteAndWriteErrorsRouteEverySide) {
     LifecycleState master_state;
+    PressureProbeMasterProxy owner;
     RecordingProxy proxy(new LifecycleTCPCom(&master_state));
+    proxy.parent(&owner);
     constexpr std::array<unsigned char, 4> sides {'l', 'r', 'x', 'y'};
     auto const payload = pattern(64);
 
@@ -748,6 +953,17 @@ TEST(ProxyLifecycle, SuccessfulReadWriteAndWriteErrorsRouteEverySide) {
     EXPECT_EQ(proxy.stats().last_write, static_cast<int>(payload.size() * sides.size()));
     EXPECT_EQ(proxy.stats().mtr_down.total(), payload.size() * 2);
     EXPECT_EQ(proxy.stats().mtr_up.total(), payload.size() * 2);
+    EXPECT_EQ(owner.stats().bytes_down(), payload.size() * 2);
+    EXPECT_EQ(owner.stats().bytes_up(), payload.size() * 2);
+
+    {
+        LifecycleState state;
+        baseHostCX connection(new LifecycleTCPCom(&state), -49);
+        connection.opening(false);
+        EXPECT_TRUE(proxy.handle_cx_write('l', &connection));
+        EXPECT_EQ(owner.stats().bytes_down(), payload.size() * 2);
+        EXPECT_EQ(owner.stats().bytes_up(), payload.size() * 2);
+    }
 
     for(std::size_t i = 0; i < sides.size(); ++i) {
         LifecycleState state;
@@ -763,6 +979,8 @@ TEST(ProxyLifecycle, SuccessfulReadWriteAndWriteErrorsRouteEverySide) {
     EXPECT_EQ(proxy.right_errors, 1U);
     EXPECT_EQ(proxy.left_pc_errors, 1U);
     EXPECT_EQ(proxy.right_pc_errors, 1U);
+    EXPECT_EQ(owner.stats().bytes_down(), payload.size() * 2);
+    EXPECT_EQ(owner.stats().bytes_up(), payload.size() * 2);
 }
 
 TEST(ProxyLifecycle, CrossDirectionRetriesAreConsumedOnlyByMatchingEvents) {
@@ -926,6 +1144,30 @@ TEST(ProxyLifecycle, ReadEofKeepsWriteHalfAvailableForDelayedResponse) {
     ::close(sockets[1]);
 }
 
+TEST(ProxyLifecycle, CompletedProtocolEofDoesNotKeepStaleOpeningWriteInterest) {
+    int sockets[2] = {-1, -1};
+    ASSERT_EQ(::socketpair(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK, 0, sockets), 0);
+
+    LifecycleState master_state;
+    LifecycleState connection_state;
+    RecordingProxy proxy(new LifecycleTCPCom(&master_state));
+    auto* transport = new CompletedProtocolTCPCom(&connection_state, {}, true);
+    transport->master(proxy.com());
+    baseHostCX connection(transport, sockets[0]);
+    ASSERT_TRUE(connection.opening());
+    proxy.com()->set_monitor(sockets[0]);
+
+    ASSERT_TRUE(proxy.handle_cx_read('l', &connection));
+    ASSERT_TRUE(connection.read_eof());
+
+    EXPECT_EQ(proxy.poller()->wait(0), 0)
+        << "EOF without pending output must not spin merely because opening is stale";
+
+    connection.remove_socket();
+    ::close(sockets[0]);
+    ::close(sockets[1]);
+}
+
 TEST(ProxyLifecycle, PollDispatchDeliversQueuedOutputAfterReadHalfClose) {
     int sockets[2] = {-1, -1};
     ASSERT_EQ(::socketpair(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK, 0, sockets), 0);
@@ -955,6 +1197,302 @@ TEST(ProxyLifecycle, PollDispatchDeliversQueuedOutputAfterReadHalfClose) {
         << "delivered half-closed output must leave no readiness spin";
 
     ::close(sockets[1]);
+}
+
+TEST(ProxyLifecycle, PeerShutdownBreaksDeferredReadReadinessLoop) {
+    int sockets[2] {-1, -1};
+    ASSERT_EQ(::socketpair(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK, 0, sockets), 0);
+
+    LifecycleState master_state;
+    RecordingProxy proxy(new LifecycleTCPCom(&master_state));
+    auto* transport = new TCPCom();
+    transport->master(proxy.com());
+    auto* connection = new baseHostCX(transport, sockets[0]);
+    connection->opening(false);
+    connection->read_waiting_for_peercom(true);
+    proxy.ladd(connection);
+
+    ASSERT_EQ(::shutdown(sockets[1], SHUT_WR), 0);
+    ASSERT_NE(proxy.poller(), nullptr);
+    ASSERT_GT(proxy.poller()->wait(1000), 0);
+    proxy.run_poll();
+
+    EXPECT_EQ(proxy.poller()->wait(0), 0)
+        << "peer shutdown must not spin while TLS defers application reads";
+
+    ::close(sockets[1]);
+}
+
+TEST(ProxyLifecycle, WriteHandlerObservesOpeningBeforeConnectCompletion) {
+    class ConnectReplyProxy : public RecordingProxy {
+    public:
+        using RecordingProxy::RecordingProxy;
+        bool replied = false;
+        bool handle_cx_write(unsigned char side, baseHostCX* cx,
+                             bool cross_direction_retry = false) override {
+            if(side == 'r' && cx->opening()) {
+                replied = true;
+                cx->opening(false);
+            }
+            return RecordingProxy::handle_cx_write(side, cx, cross_direction_retry);
+        }
+    };
+
+    SocketPair sockets;
+    ASSERT_TRUE(sockets.valid());
+    LifecycleState master_state;
+    ConnectReplyProxy proxy(new LifecycleTCPCom(&master_state));
+    auto* transport = new TCPCom();
+    transport->master(proxy.com());
+    auto* connection = new baseHostCX(transport, sockets.release_first());
+    proxy.radd(connection);
+    transport->set_write_monitor_only(connection->socket());
+    ASSERT_GT(proxy.poller()->wait(1000), 0);
+    ASSERT_TRUE(proxy.handle_cx_write_once('r', proxy.com(), connection));
+    EXPECT_TRUE(proxy.replied)
+        << "SOCKS/CONNECT must see opening to acknowledge the upstream connection";
+    EXPECT_FALSE(connection->opening());
+}
+
+TEST(ProxyLifecycle, IdleWriteDispatchDoesNotAdvancePeerReadWait) {
+    SocketPair sockets;
+    ASSERT_TRUE(sockets.valid());
+    LifecycleState master_state;
+    LifecycleState peer_state;
+    baseHostCX peer(new LifecycleTCPCom(&peer_state), -1);
+    RecordingProxy proxy(new LifecycleTCPCom(&master_state));
+    auto* transport = new TCPCom();
+    transport->master(proxy.com());
+    auto* connection = new baseHostCX(transport, sockets.release_first());
+    connection->opening(false);
+    connection->peer(&peer);
+    connection->read_waiting_for_peercom(true);
+    proxy.ladd(connection);
+
+    ASSERT_EQ(proxy.poller()->wait(0), 0);
+    ASSERT_TRUE(proxy.handle_cx_write_once('l', proxy.com(), connection));
+    EXPECT_TRUE(connection->read_paused_for_peer())
+        << "an idle write dispatch must not consume the peer readiness transition";
+    EXPECT_TRUE(proxy.poller()->rescans_empty())
+        << "without a write, dispatch must not remove and requeue read readiness";
+}
+
+TEST(ProxyLifecycle, DeferredHalfClosePreservesDeliveredProtocolWriteEvent) {
+    SocketPair sockets;
+    ASSERT_TRUE(sockets.valid());
+    LifecycleState master_state;
+    RecordingProxy proxy(new LifecycleTCPCom(&master_state));
+    auto* transport = new CountingTCPCom();
+    transport->master(proxy.com());
+    auto* connection = new baseHostCX(transport, sockets.release_first());
+    connection->opening(false);
+    connection->read_waiting_for_peercom(true);
+    proxy.ladd(connection);
+    transport->set_write_monitor(connection->socket());
+    ASSERT_EQ(::shutdown(sockets.second(), SHUT_WR), 0);
+    ASSERT_GT(proxy.poller()->wait(1000), 0);
+    ASSERT_TRUE(transport->in_readset(connection->socket()));
+    ASSERT_TRUE(transport->in_writeset(connection->socket()));
+
+    ASSERT_TRUE(proxy.handle_cx_read_once('l', proxy.com(), connection));
+    EXPECT_TRUE(transport->in_writeset(connection->socket()))
+        << "deferring RDHUP must not consume a protocol write event";
+    ASSERT_TRUE(proxy.handle_cx_write_once('l', proxy.com(), connection));
+    EXPECT_EQ(transport->write_calls, 1);
+    EXPECT_EQ(proxy.poller()->wait(0), 0);
+}
+
+TEST(ProxyLifecycle, WriteTickDispatchesHandoffBeforeDeferringReadiness) {
+    class HandoffHostCX : public MessageHostCX {
+    public:
+        using MessageHostCX::MessageHostCX;
+        void pre_write() override {
+            has_message = true;
+            read_waiting_for_peercom(true);
+        }
+    };
+    SocketPair sockets;
+    ASSERT_TRUE(sockets.valid());
+    LifecycleState master_state;
+    RecordingProxy proxy(new LifecycleTCPCom(&master_state));
+    auto* transport = new CountingTCPCom();
+    transport->master(proxy.com());
+    auto* connection = new HandoffHostCX(transport, sockets.release_first());
+    connection->has_message = false;
+    connection->opening(false);
+    proxy.ladd(connection);
+    transport->set_write_monitor_only(connection->socket());
+    ASSERT_GT(proxy.poller()->wait(1000), 0);
+    EXPECT_FALSE(proxy.handle_cx_write_once('l', proxy.com(), connection));
+    EXPECT_EQ(proxy.left_messages, 1U)
+        << "write-driven handoff must not wait for another socket event";
+}
+
+TEST(ProxyLifecycle, HalfCloseCoversEveryDeferredPeerAndWriteState) {
+    // Model a protocol handler consuming its own connect completion. A raw
+    // socketpair cannot model the SOCKS/CONNECT acknowledgement state machine.
+    class CompletingProxy : public RecordingProxy {
+    public:
+        using RecordingProxy::RecordingProxy;
+        bool handle_cx_write(unsigned char side, baseHostCX* cx,
+                             bool cross_direction_retry = false) override {
+            cx->opening(false);
+            return RecordingProxy::handle_cx_write(side, cx, cross_direction_retry);
+        }
+    };
+    enum class peer_wait_state {
+        disabled,
+        missing,
+        blocked,
+        ready,
+    };
+
+    constexpr std::array<unsigned char, 2> sides {'l', 'r'};
+    constexpr std::array<peer_wait_state, 4> peer_states {
+        peer_wait_state::disabled,
+        peer_wait_state::missing,
+        peer_wait_state::blocked,
+        peer_wait_state::ready,
+    };
+
+    // Exercise the full state product around a read half-close:
+    // 2 sides x 4 peer-wait states x 2 bottleneck states x the 8 possible
+    // combinations of opening/buffered/protocol-write work.
+    for(auto const side: sides) {
+        for(auto const peer_state: peer_states) {
+            for(bool const bottleneck: {false, true}) {
+                for(unsigned int write_state = 0; write_state < 8; ++write_state) {
+                    bool const opening = write_state & 1U;
+                    bool const buffered = write_state & 2U;
+                    bool const protocol_write = write_state & 4U;
+                    SCOPED_TRACE(testing::Message()
+                        << "side=" << side
+                        << " peer_state=" << static_cast<int>(peer_state)
+                        << " bottleneck=" << bottleneck
+                        << " opening=" << opening
+                        << " buffered=" << buffered
+                        << " protocol_write=" << protocol_write);
+
+                    LifecycleState master_state;
+                    LifecycleState peer_lifecycle;
+                    CompletingProxy proxy(new LifecycleTCPCom(&master_state));
+
+                    auto* peer_transport = new LifecycleTCPCom(&peer_lifecycle);
+                    baseHostCX peer(peer_transport, -1);
+                    peer_transport->master(proxy.com());
+                    peer_transport->ready(peer_state == peer_wait_state::ready);
+                    peer.opening(false);
+
+                    SocketPair sockets;
+                    ASSERT_TRUE(sockets.valid());
+
+                    baseCom* transport = protocol_write
+                        ? static_cast<baseCom*>(new OneShotWriteEventTCPCom())
+                        : static_cast<baseCom*>(new TCPCom());
+                    transport->master(proxy.com());
+                    auto* connection = new baseHostCX(transport, sockets.release_first());
+                    connection->opening(opening);
+                    if(buffered) connection->to_write("pending-response");
+
+                    if(peer_state != peer_wait_state::disabled) {
+                        connection->read_waiting_for_peercom(true);
+                        if(peer_state != peer_wait_state::missing) {
+                            connection->peer(&peer);
+                        }
+                    }
+                    if(bottleneck) {
+                        if(side == 'l') proxy.state().write_right_bottleneck(true);
+                        else proxy.state().write_left_bottleneck(true);
+                    }
+
+                    if(side == 'l') proxy.ladd(connection);
+                    else proxy.radd(connection);
+
+                    ASSERT_EQ(::shutdown(sockets.second(), SHUT_WR), 0)
+                        << "fd=" << sockets.second() << " errno=" << errno;
+                    ASSERT_NE(proxy.poller(), nullptr);
+                    ASSERT_GT(proxy.poller()->wait(1000), 0);
+                    proxy.run_poll();
+
+                    bool const peer_blocks =
+                        peer_state == peer_wait_state::missing ||
+                        peer_state == peer_wait_state::blocked;
+                    bool const read_deferred = peer_blocks || bottleneck;
+                    EXPECT_EQ(connection->read_eof(), !read_deferred);
+
+                    int next_events = 0;
+                    for(unsigned int dispatch = 0; dispatch < 4; ++dispatch) {
+                        next_events = proxy.poller()->wait(0);
+                        if(next_events == 0) break;
+                        EXPECT_FALSE(connection->com()->in_readset(connection->socket()))
+                            << "half-close must not remain read-ready while deferred";
+                        proxy.run_poll();
+                    }
+                    EXPECT_EQ(next_events, 0)
+                        << "half-close must settle after independent write work";
+
+                    if(buffered) {
+                        std::array<char, 32> received{};
+                        auto const count = ::recv(sockets.second(), received.data(),
+                                                  received.size(), 0);
+                        ASSERT_EQ(count, 16);
+                        EXPECT_EQ(std::string_view(received.data(), count),
+                                  "pending-response");
+                    }
+
+                    // The proxy owns connection; detach its borrowed peer before
+                    // the stack peer is destroyed at the end of this iteration.
+                    connection->peer(nullptr);
+                }
+            }
+        }
+    }
+}
+
+TEST(ProxyLifecycle, DeferredReapPressureUsesEveryConfiguredTier) {
+    auto const old_elevated = MasterProxy::deferred_pressure_threshold;
+    auto const old_critical = MasterProxy::deferred_critical_threshold;
+    auto const old_emergency = MasterProxy::deferred_emergency_threshold;
+    struct threshold_restore {
+        std::size_t elevated;
+        std::size_t critical;
+        std::size_t emergency;
+        ~threshold_restore() {
+            MasterProxy::deferred_pressure_threshold = elevated;
+            MasterProxy::deferred_critical_threshold = critical;
+            MasterProxy::deferred_emergency_threshold = emergency;
+        }
+    } restore {old_elevated, old_critical, old_emergency};
+
+    MasterProxy::deferred_pressure_threshold = 2;
+    MasterProxy::deferred_critical_threshold = 4;
+    MasterProxy::deferred_emergency_threshold = 6;
+    PressureProbeMasterProxy proxy;
+
+    proxy.deferred_size(1);
+    EXPECT_EQ(proxy.pressure(), MasterProxy::pressure_level::nominal);
+    proxy.deferred_size(2);
+    EXPECT_EQ(proxy.pressure(), MasterProxy::pressure_level::elevated);
+    proxy.deferred_size(4);
+    EXPECT_EQ(proxy.pressure(), MasterProxy::pressure_level::critical);
+    proxy.deferred_size(6);
+    EXPECT_EQ(proxy.pressure(), MasterProxy::pressure_level::emergency);
+}
+
+TEST(ProxyLifecycle, MasterOwnsChildStatsAndLifecycle) {
+    PressureProbeMasterProxy owner;
+    auto child = std::make_unique<RecordingProxy>(new TCPCom());
+    auto* child_ptr = child.get();
+
+    owner.add_proxy(std::move(child));
+
+    EXPECT_EQ(child_ptr->parent(), &owner);
+    EXPECT_EQ(owner.stats().sessions_total(), 1U);
+    EXPECT_EQ(owner.stats().sessions_active(), 1U);
+
+    owner.shutdown();
+    EXPECT_EQ(owner.stats().sessions_total(), 1U);
+    EXPECT_EQ(owner.stats().sessions_active(), 0U);
 }
 
 TEST(TransferLifecycle, ReconnectResetsReadEofAndClosesRetiredDescriptor) {
@@ -1031,6 +1569,26 @@ TEST(ProxyLifecycle, ExceptionDuringAcceptedContextHandoffClosesExactlyOnce) {
 
     // LifecycleTCPCom records close operations without calling the syscall.
     ::close(accepted_fd);
+}
+
+TEST(ProxyLifecycle, MissingListenerLockDoesNotDrainASecondBatchBeforeFailing) {
+    LifecycleState listener_state;
+    auto* transport = new CountingAcceptTCPCom();
+    RawAcceptCountingProxy proxy(transport);
+    auto* listener = new baseHostCX(new LifecycleTCPCom(&listener_state), 424242);
+
+    ASSERT_EQ(locks::fd().lock(listener->socket()), nullptr);
+    proxy.lbs().push_back(listener);
+    proxy.com()->set_monitor(listener->socket());
+    proxy.com()->poll_result = 1;
+    ASSERT_NE(proxy.poller(), nullptr);
+    proxy.poller()->in_set.insert(listener->socket());
+
+    EXPECT_THROW(proxy.handle_sockets_once(proxy.com()), std::runtime_error);
+
+    EXPECT_EQ(transport->successful_accepts, 256U);
+    EXPECT_EQ(transport->accept_calls, 256U);
+    EXPECT_EQ(proxy.left_callbacks, 256U);
 }
 
 TEST(ProxyLifecycle, RegistersOwnsAndShutsDownEveryContextClass) {
@@ -1185,3 +1743,302 @@ TEST(TransferLifecycle, HostFormattingRawWritesAndReconnectGuardsCoverDetachedSt
 }
 
 } // namespace
+TEST(TransferLifecycle, ConstWriteBufferAccessorReturnsTheOutputQueue) {
+    LifecycleState state;
+    baseHostCX connection(new LifecycleTCPCom(&state), -1);
+    connection.readbuf()->assign("input");
+    connection.writebuf()->assign("output");
+
+    baseHostCX const& view = connection;
+    ASSERT_NE(view.readbuf(), view.writebuf());
+    EXPECT_EQ(std::string(reinterpret_cast<char const*>(view.readbuf()->data()),
+                          view.readbuf()->size()), "input");
+    EXPECT_EQ(std::string(reinterpret_cast<char const*>(view.writebuf()->data()),
+                          view.writebuf()->size()), "output");
+}
+
+TEST(TransferLifecycle, HostIdentityDoesNotCollapseAcrossFieldBoundary) {
+    Host first("alpha:beta", "443");
+    Host second("alpha", "beta:443");
+
+    EXPECT_FALSE(first == second);
+    EXPECT_NE(std::hash<Host>{}(first), std::hash<Host>{}(second));
+}
+TEST(ProxyLifecycle, OpeningPermanentTimeoutReconnectsBothDirections) {
+    LifecycleState master_state;
+    LifecycleState left_state;
+    LifecycleState right_state;
+    PermanentReconnectProxy proxy(new LifecycleTCPCom(&master_state));
+    baseHostCX left(new ReconnectingTCPCom(&left_state), "127.0.0.1", "1");
+    baseHostCX right(new ReconnectingTCPCom(&right_state), "127.0.0.1", "1");
+
+    ASSERT_EQ(left.connect(), 101);
+    ASSERT_EQ(right.connect(), 101);
+    left.permanent(true);
+    right.permanent(true);
+    left.error(true);
+    right.error(true);
+    left.opening(true);
+    right.opening(true);
+    left.parent_proxy(&proxy, 'L');
+    right.parent_proxy(&proxy, 'R');
+
+    proxy.retry_left(&left);
+    proxy.retry_right(&right);
+
+    EXPECT_EQ(left.socket(), 102);
+    EXPECT_EQ(right.socket(), 102);
+    EXPECT_EQ(left_state.shutdown_calls, 1U);
+    EXPECT_EQ(right_state.shutdown_calls, 1U);
+    EXPECT_EQ(left.parent_proxy(), &proxy);
+    EXPECT_EQ(right.parent_proxy(), &proxy);
+    EXPECT_EQ(left.parent_flag(), 'L');
+    EXPECT_EQ(right.parent_flag(), 'R');
+}
+
+TEST(ProxyLifecycle, PermanentTerminalEventsDoNotShutdownReplacementSocket) {
+    LifecycleState master_state;
+    LifecycleState eof_state;
+    LifecycleState error_state;
+    PermanentReconnectProxy proxy(new LifecycleTCPCom(&master_state));
+    baseHostCX eof_connection(new ReadyEofReconnectTCPCom(&eof_state),
+                              "127.0.0.1", "1");
+    baseHostCX error_connection(new ReconnectingTCPCom(&error_state),
+                                "127.0.0.1", "1");
+
+    ASSERT_EQ(eof_connection.connect(), 101);
+    eof_connection.permanent(true);
+    eof_connection.opening(false);
+    EXPECT_FALSE(proxy.handle_cx_read('x', &eof_connection));
+    EXPECT_EQ(eof_connection.socket(), 102);
+    EXPECT_EQ(eof_state.shutdown_calls, 1U);
+
+    ASSERT_EQ(error_connection.connect(), 101);
+    error_connection.permanent(true);
+    error_connection.opening(false);
+    error_connection.error(true);
+    EXPECT_FALSE(proxy.handle_cx_events('y', &error_connection));
+    EXPECT_EQ(error_connection.socket(), 102);
+    EXPECT_EQ(error_state.shutdown_calls, 1U);
+}
+
+TEST(ProxyLifecycle, PermanentDispatchReportsEachTerminalEventExactlyOnce) {
+    LifecycleState master_state;
+    LifecycleState left_state;
+    LifecycleState right_state;
+    RecordingProxy proxy(new LifecycleTCPCom(&master_state));
+    auto* left = new baseHostCX(
+        new LifecycleTCPCom(&left_state, {}, true), 201);
+    auto* right = new baseHostCX(
+        new LifecycleTCPCom(&right_state, {}, false, 16 * 1024, 0), 202);
+    left->opening(false);
+    right->opening(false);
+    right->writebuf()->append("x", 1);
+    proxy.lpcadd(left);
+    proxy.rpcadd(right);
+
+    proxy.com()->poll_result = 2;
+    proxy.poller()->in_set.insert(left->socket());
+    proxy.poller()->out_set.insert(right->socket());
+    proxy.handle_sockets_once(proxy.com());
+
+    EXPECT_EQ(proxy.left_pc_errors, 1U);
+    EXPECT_EQ(proxy.right_pc_errors, 1U);
+    EXPECT_TRUE(proxy.state().error_on_left_read);
+    EXPECT_TRUE(proxy.state().error_on_right_write);
+    EXPECT_EQ(left_state.shutdown_calls, 1U);
+    EXPECT_EQ(right_state.shutdown_calls, 1U);
+}
+
+TEST(ProxyLifecycle, FailedTcpReconnectIsNotRegisteredAsAVirtualDescriptor) {
+    LifecycleState master_state;
+    LifecycleState connection_state;
+    PermanentReconnectProxy proxy(new LifecycleTCPCom(&master_state));
+    baseHostCX connection(new FailingReconnectTCPCom(&connection_state),
+                          "127.0.0.1", "1");
+
+    ASSERT_EQ(connection.connect(), 101);
+    connection.permanent(true);
+    connection.error(true);
+    proxy.retry_left(&connection);
+
+    EXPECT_EQ(connection.socket(), -1);
+    EXPECT_TRUE(connection.error());
+    if(proxy.poller() != nullptr) {
+        EXPECT_EQ(proxy.com()->poller.get_handler(-1), nullptr);
+    }
+}
+TEST(TransferDrain, SaturatedUnconsumedBufferFailsWithoutInventingEof) {
+    ScopedBufferLimits limits(64, 1);
+    auto const payload = pattern(4096);
+    StallingHostCX connection(new ChunkedTCPCom(payload, 64));
+    connection.opening(false);
+
+    while(connection.readbuf()->size() < connection.readbuf()->capacity()) {
+        ASSERT_GT(connection.read(), 0);
+    }
+    EXPECT_FALSE(connection.error());
+    EXPECT_FALSE(connection.read_eof());
+
+    EXPECT_EQ(connection.read(), -1);
+    EXPECT_TRUE(connection.error());
+    EXPECT_FALSE(connection.read_eof());
+    EXPECT_EQ(connection.readbuf()->size(), connection.readbuf()->capacity());
+}
+
+TEST(TransferDrain, ZeroProcessedBytesRemainBufferedForTheNextDispatch) {
+    ScopedBufferLimits limits(64, 1);
+    auto const payload = pattern(64);
+    StallingHostCX connection(new ChunkedTCPCom(payload, 64));
+    connection.opening(false);
+
+    ASSERT_EQ(connection.read(), 64);
+    ASSERT_EQ(connection.readbuf()->size(), 64U);
+    EXPECT_EQ(connection.finish(), 0U);
+    EXPECT_EQ(connection.readbuf()->size(), 64U);
+    EXPECT_TRUE(std::equal(payload.begin(), payload.end(),
+                           connection.readbuf()->data()));
+}
+TEST(ProxyLifecycle, OpeningPermanentConnectionsMonitorWriteCompletion) {
+    LifecycleState master_state;
+    RecordingProxy proxy(new LifecycleTCPCom(&master_state));
+    std::array<LifecycleState, 2> states{};
+    std::array<int, 2> peers {-1, -1};
+
+    auto make_opening_connection = [&](std::size_t index) {
+        int pair[2] {-1, -1};
+        EXPECT_EQ(::socketpair(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK, 0, pair), 0);
+        peers[index] = pair[1];
+        auto* transport = new LifecycleTCPCom(&states[index]);
+        transport->master(proxy.com());
+        auto* connection = new baseHostCX(transport, pair[0]);
+        connection->opening(true);
+        return connection;
+    };
+
+    auto* left = make_opening_connection(0);
+    auto* right = make_opening_connection(1);
+    auto const left_fd = left->socket();
+    auto const right_fd = right->socket();
+    proxy.lpcadd(left);
+    proxy.rpcadd(right);
+
+    // An unrelated callback must not declare a nonblocking connect restored
+    // before this descriptor has delivered writable readiness.
+    proxy.handle_sockets_once(proxy.com());
+    EXPECT_TRUE(left->opening());
+    EXPECT_TRUE(right->opening());
+
+    ASSERT_GE(proxy.poller()->wait(1000), 2);
+    EXPECT_TRUE(proxy.poller()->in_write_set(left_fd));
+    EXPECT_TRUE(proxy.poller()->in_write_set(right_fd));
+    proxy.handle_sockets_once(proxy.com());
+    EXPECT_FALSE(left->opening());
+    EXPECT_FALSE(right->opening());
+
+    proxy.shutdown();
+    for (auto fd : peers) ::close(fd);
+}
+
+TEST(TransferLifecycle, ReplacedPollHandlerCannotResurrectItsFormerSocket) {
+    epoller first;
+    epoller second;
+    CountingPollHandler replaced;
+    CountingPollHandler current;
+
+    first.set_handler(11, &replaced);
+    first.set_handler(11, &current);
+    second.set_handler(22, &replaced);
+
+    EXPECT_EQ(first.get_handler(11), &current);
+    EXPECT_EQ(second.get_handler(11), nullptr)
+        << "moving a replaced handler must not copy its stale reverse index";
+    EXPECT_EQ(second.get_handler(22), &replaced);
+}
+
+TEST(TransferLifecycle, MovingPollHandlerRemovesItsOldRegistrantMappings) {
+    epoller first;
+    epoller second;
+
+    {
+        CountingPollHandler handler;
+        first.set_handler(31, &handler);
+        second.set_handler(32, &handler);
+
+        EXPECT_EQ(first.get_handler(31), nullptr);
+        EXPECT_EQ(second.get_handler(31), &handler);
+        EXPECT_EQ(second.get_handler(32), &handler);
+    }
+
+    EXPECT_EQ(first.get_handler(31), nullptr)
+        << "the prior poller must not retain a dangling handler";
+    EXPECT_EQ(second.get_handler(31), nullptr);
+    EXPECT_EQ(second.get_handler(32), nullptr);
+}
+
+namespace {
+
+class FinalizationProbe : public baseProxy {
+public:
+    explicit FinalizationProbe(std::vector<std::string>& events)
+        : baseProxy(new TCPCom()), events_(events) {}
+
+    void shutdown() override { events_.push_back("shutdown"); }
+    void finalize() noexcept override { events_.push_back("finalize"); }
+    ~FinalizationProbe() override { events_.push_back("destroy"); }
+
+private:
+    std::vector<std::string>& events_;
+};
+
+} // namespace
+
+TEST(ProxyFinalization, OwnerShutdownFinalizesBeforeDestruction) {
+    std::vector<std::string> events;
+    {
+        MasterProxy owner(new TCPCom());
+        owner.add_proxy(std::make_unique<FinalizationProbe>(events));
+        owner.shutdown();
+        EXPECT_EQ(events, (std::vector<std::string>{"shutdown", "finalize", "destroy"}));
+    }
+    EXPECT_EQ(events.size(), 3U);
+}
+
+TEST(ProxyFinalization, ReaperFinalizesOutsideTheQueueBeforeDestruction) {
+    std::vector<std::string> events;
+    MasterProxy owner(new TCPCom());
+    owner.deferred().push_back({std::make_unique<FinalizationProbe>(events),
+                               std::chrono::steady_clock::time_point{}});
+
+    for(std::size_t tick = 0; tick < MasterProxy::deferred_reap_every; ++tick) {
+        owner.handle_sockets_once(owner.com());
+    }
+
+    EXPECT_EQ(events, (std::vector<std::string>{"finalize", "destroy"}));
+    EXPECT_TRUE(owner.deferred().empty());
+}
+
+TEST(ProxyFinalization, DestructorDoesNotInvokeLifecycleCallbacks) {
+    std::vector<std::string> events;
+    {
+        MasterProxy owner(new TCPCom());
+        owner.add_proxy(std::make_unique<FinalizationProbe>(events));
+    }
+    EXPECT_EQ(events, (std::vector<std::string>{"destroy"}));
+}
+
+TEST(ProxyFinalization, TimerReapsRetiredSessionsWithoutSocketTraffic) {
+    std::vector<std::string> events;
+    class DueTimerMaster final : public MasterProxy {
+    public:
+        DueTimerMaster() : MasterProxy(new TCPCom()) { clicker_.last_tick_ = 0; }
+    };
+    DueTimerMaster owner;
+    owner.deferred().push_back({std::make_unique<FinalizationProbe>(events),
+                               std::chrono::steady_clock::time_point{}});
+
+    owner.run_timers();
+
+    EXPECT_EQ(events, (std::vector<std::string>{"finalize", "destroy"}));
+    EXPECT_TRUE(owner.deferred().empty());
+}

@@ -8,14 +8,89 @@
 #include <traflog/filewriter.hpp>
 #include <mpdisplay.hpp>
 #include <protocoltracer.hpp>
+#include <ancillary_address.hpp>
+#include <fdq.hpp>
+#include <threadedworker.hpp>
 
 #include <array>
+#include <hostcx.hpp>
+#include <poll.h>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <vector>
 
+long purge_socket(int socket);
+
+TEST(ThreadedWorkerLifecycle, RetirementStopsNewWorkWithoutKillingTheWorker) {
+    threadedProxyWorker worker(7, proxyType::proxy());
+    EXPECT_FALSE(worker.retiring());
+    EXPECT_EQ(worker.worker_id_, 7U);
+
+    worker.retire();
+    EXPECT_TRUE(worker.retiring());
+}
+
+
 namespace {
+
+TEST(AncillaryAddress, CopiesOnlyTheDeclaredIpv4OrIpv6Address) {
+    alignas(cmsghdr) std::array<unsigned char, CMSG_SPACE(sizeof(sockaddr_in6))>
+        storage{};
+    auto* control = reinterpret_cast<cmsghdr*>(storage.data());
+    sockaddr_storage copied{};
+
+    control->cmsg_level = SOL_IP;
+    control->cmsg_type = IP_RECVORIGDSTADDR;
+    control->cmsg_len = CMSG_LEN(sizeof(sockaddr_in));
+    sockaddr_in ipv4{};
+    ipv4.sin_family = AF_INET;
+    ipv4.sin_port = htons(8443);
+    ASSERT_EQ(inet_pton(AF_INET, "192.0.2.55", &ipv4.sin_addr), 1);
+    std::memcpy(CMSG_DATA(control), &ipv4, sizeof(ipv4));
+
+    ASSERT_TRUE(socle_detail::copy_original_destination(copied, control));
+    auto const* copied4 = reinterpret_cast<const sockaddr_in*>(&copied);
+    EXPECT_EQ(copied4->sin_family, AF_INET);
+    EXPECT_EQ(copied4->sin_port, htons(8443));
+    EXPECT_EQ(copied4->sin_addr.s_addr, ipv4.sin_addr.s_addr);
+
+    storage.fill(0);
+    control = reinterpret_cast<cmsghdr*>(storage.data());
+    control->cmsg_level = SOL_IPV6;
+    control->cmsg_type = IPV6_RECVORIGDSTADDR;
+    control->cmsg_len = CMSG_LEN(sizeof(sockaddr_in6));
+    sockaddr_in6 ipv6{};
+    ipv6.sin6_family = AF_INET6;
+    ipv6.sin6_port = htons(9443);
+    ASSERT_EQ(inet_pton(AF_INET6, "2001:db8::55", &ipv6.sin6_addr), 1);
+    std::memcpy(CMSG_DATA(control), &ipv6, sizeof(ipv6));
+
+    ASSERT_TRUE(socle_detail::copy_original_destination(copied, control));
+    auto const* copied6 = reinterpret_cast<const sockaddr_in6*>(&copied);
+    EXPECT_EQ(copied6->sin6_family, AF_INET6);
+    EXPECT_EQ(copied6->sin6_port, htons(9443));
+    EXPECT_EQ(std::memcmp(&copied6->sin6_addr, &ipv6.sin6_addr,
+                          sizeof(ipv6.sin6_addr)), 0);
+}
+
+TEST(AncillaryAddress, RejectsTruncatedAndMismatchedAddresses) {
+    alignas(cmsghdr) std::array<unsigned char, CMSG_SPACE(sizeof(sockaddr_in6))>
+        storage{};
+    auto* control = reinterpret_cast<cmsghdr*>(storage.data());
+    sockaddr_storage copied{};
+
+    control->cmsg_level = SOL_IP;
+    control->cmsg_type = IP_RECVORIGDSTADDR;
+    control->cmsg_len = CMSG_LEN(sizeof(sockaddr_in) - 1);
+    EXPECT_FALSE(socle_detail::copy_original_destination(copied, control));
+
+    sockaddr_in6 ipv6{};
+    ipv6.sin6_family = AF_INET6;
+    EXPECT_FALSE(socle_detail::copy_socket_address(
+        copied, &ipv6, sizeof(sockaddr_in)));
+    EXPECT_FALSE(socle_detail::copy_socket_address(copied, nullptr, 0));
+}
 
 uint64_t virtual_key(int fd) {
     return static_cast<uint32_t>(fd);
@@ -126,6 +201,92 @@ TEST(ProtocolTracer, BaseComDerivesSideAndSlaveInheritsTracer) {
     EXPECT_EQ(trace.events.front().side, socle::trace_side::right);
     EXPECT_EQ(trace.events.front().detail, "route=3");
     EXPECT_EQ(slave->protocol_tracer(), &trace);
+}
+
+TEST(FdQueueLifecycle, WorkerWakeupDescriptorsNeverUseReservedZero) {
+    int saved_stdin = ::fcntl(STDIN_FILENO, F_DUPFD_CLOEXEC, 1);
+    ASSERT_GE(saved_stdin, 0);
+    ASSERT_EQ(::close(STDIN_FILENO), 0);
+    struct stdin_guard {
+        int* saved;
+        ~stdin_guard() {
+            if(*saved >= 0) {
+                ::dup2(*saved, STDIN_FILENO);
+                ::close(*saved);
+            }
+        }
+    } restore {&saved_stdin};
+
+    {
+        FdQueue queue;
+        auto const descriptors = queue.new_pair(8);
+        EXPECT_GT(descriptors.first, 0);
+        EXPECT_GT(descriptors.second, 0);
+        errno = 0;
+        EXPECT_EQ(::fcntl(STDIN_FILENO, F_GETFD), -1);
+        EXPECT_EQ(errno, EBADF);
+    }
+}
+
+TEST(FdQueueLifecycle, WakeupDrainSupportsThePipeFallback) {
+    int descriptors[2] {-1, -1};
+    ASSERT_EQ(::pipe2(descriptors, O_NONBLOCK | O_CLOEXEC), 0);
+    constexpr char wakeups[] = "AAAA";
+    ASSERT_EQ(::write(descriptors[1], wakeups, sizeof(wakeups) - 1),
+              static_cast<ssize_t>(sizeof(wakeups) - 1));
+
+    EXPECT_EQ(purge_socket(descriptors[0]),
+              static_cast<long>(sizeof(wakeups) - 1));
+    unsigned char byte = 0;
+    errno = 0;
+    EXPECT_EQ(::read(descriptors[0], &byte, 1), -1);
+    EXPECT_TRUE(errno == EAGAIN || errno == EWOULDBLOCK);
+
+    ::close(descriptors[0]);
+    ::close(descriptors[1]);
+}
+
+TEST(FdQueueLifecycle, EmptyFeedbackCannotSuppressAnotherQueuesWorkers) {
+    FdQueue idle_queue;
+    ASSERT_GE(idle_queue.new_pair(0).first, 0);
+    ASSERT_EQ(idle_queue.push_all(903), 1U);
+    ASSERT_EQ(idle_queue.pop(0), 903);
+
+    FdQueue busy_queue;
+    for(unsigned int worker = 0; worker < 3; ++worker) {
+        auto const endpoints = busy_queue.new_pair(worker);
+        ASSERT_GE(endpoints.first, 0);
+        ASSERT_GE(endpoints.second, 0);
+    }
+
+    ASSERT_EQ(busy_queue.push_all(904), 3U);
+
+    std::size_t notified = 0;
+    char byte = 0;
+    for(unsigned int worker = 0; worker < 3; ++worker) {
+        auto const endpoints = busy_queue.hint_pair(worker);
+        auto const red = ::read(endpoints.first, &byte, sizeof(byte));
+        if(red == 1) ++notified;
+        else EXPECT_TRUE(red < 0 && (errno == EAGAIN || errno == EWOULDBLOCK));
+    }
+    EXPECT_EQ(notified, 2U);
+    auto queued = busy_queue.pop_if([](int) { return true; });
+    ASSERT_TRUE(queued.has_value());
+    EXPECT_EQ(*queued, 904);
+}
+
+TEST(FdQueueLifecycle, ShutdownClosesQueuedAcceptedDescriptors) {
+    int descriptors[2] {-1, -1};
+    ASSERT_EQ(::socketpair(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK, 0,
+                           descriptors), 0);
+    FdQueue queue;
+    ASSERT_GE(queue.new_pair(0).first, 0);
+    ASSERT_EQ(queue.push_all(descriptors[0]), 1U);
+    EXPECT_GT(queue.close_all(), 0);
+    errno = 0;
+    EXPECT_EQ(::fcntl(descriptors[0], F_GETFD), -1);
+    EXPECT_EQ(errno, EBADF);
+    ::close(descriptors[1]);
 }
 
 TEST(EpollLifecycle, PeerHalfCloseIsReadableButNotSocketError) {
@@ -583,7 +744,7 @@ TEST(UDPComLifecycle, ConnectsLoopbackAndDescribesRealSocket) {
     EXPECT_EQ(com.to_string(iINF), "UDPCom");
     EXPECT_TRUE(com.connections.gen_cache_key(fd).has_value());
     std::unique_ptr<baseCom> copy(com.replicate());
-    EXPECT_EQ(copy->c_type(), "UDPCom");
+    EXPECT_STREQ(copy->c_type(), "UDPCom");
 
     com.shutdown(fd);
     ::close(receiver);
@@ -763,4 +924,260 @@ TEST(MpDisplay, FormatsBinaryCsvSplitAndLongStrings) {
     EXPECT_EQ(formatted.size(), long_value.size() + 2);
     EXPECT_EQ(formatted.front(), '[');
     EXPECT_EQ(formatted.back(), ']');
+}
+
+TEST(EpollLifecycle, ErrorReadinessRetractsIdleWatchGenerations) {
+    epoll poller;
+    poller.idle_watched_pre.insert(42);
+    poller.idle_watched.insert(42);
+    poller.idle_set.insert(42);
+    poller.events[0].data.fd = 42;
+    poller.events[0].events = EPOLLERR;
+
+    ASSERT_EQ(poller.process_epoll_events(1), 1);
+    EXPECT_TRUE(poller.err_set.find(42));
+    EXPECT_FALSE(poller.idle_watched_pre.find(42));
+    EXPECT_FALSE(poller.idle_watched.find(42));
+    EXPECT_FALSE(poller.idle_set.find(42));
+}
+
+TEST(EpollLifecycle, SameWaitReadActivityRetractsPublishedIdleTimeout) {
+    epoll poller;
+    constexpr int descriptor = 43;
+    poller.idle_set.insert(descriptor);
+    poller.events[0].data.fd = descriptor;
+    poller.events[0].events = EPOLLIN;
+
+    ASSERT_EQ(poller.process_epoll_events(1), 1);
+    EXPECT_TRUE(poller.in_set.find(descriptor));
+    EXPECT_FALSE(poller.idle_set.find(descriptor));
+}
+
+TEST(EpollLifecycle, DeleteRetractsAlreadyCollectedEvents) {
+    int pair[2] {-1, -1};
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK, 0, pair), 0);
+
+    epoll poller;
+    ASSERT_GE(poller.init(), 0);
+    ASSERT_TRUE(poller.add(pair[0], EPOLLIN | EPOLLOUT));
+
+    poller.events[0].data.fd = pair[0];
+    poller.events[0].events = EPOLLIN | EPOLLOUT | EPOLLERR | EPOLLHUP;
+    ASSERT_EQ(poller.process_epoll_events(1), 1);
+    ASSERT_TRUE(poller.in_set.find(pair[0]));
+    ASSERT_TRUE(poller.out_set.find(pair[0]));
+    ASSERT_TRUE(poller.err_set.find(pair[0]));
+    ASSERT_TRUE(poller.hup_set.find(pair[0]));
+
+    ASSERT_TRUE(poller.del(pair[0]));
+    EXPECT_FALSE(poller.in_set.find(pair[0]));
+    EXPECT_FALSE(poller.out_set.find(pair[0]));
+    EXPECT_FALSE(poller.err_set.find(pair[0]));
+    EXPECT_FALSE(poller.hup_set.find(pair[0]));
+
+    ::close(pair[0]);
+    ::close(pair[1]);
+}
+
+TEST(EpollLifecycle, DeleteRetractsEveryDeferredSyntheticEvent) {
+    int pair[2] {-1, -1};
+    ASSERT_EQ(socketpair(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK, 0, pair), 0);
+
+    epoll poller;
+    ASSERT_GE(poller.init(), 0);
+    ASSERT_TRUE(poller.add(pair[0], EPOLLIN));
+    ASSERT_TRUE(poller.enforce_in(pair[0]));
+    poller.rescan_set_in.insert(pair[0]);
+    poller.rescan_set_out.insert(pair[0]);
+    poller.idle_watched_pre.insert(pair[0]);
+    poller.idle_watched.insert(pair[0]);
+    poller.idle_set.insert(pair[0]);
+
+    ASSERT_TRUE(poller.del(pair[0]));
+    EXPECT_FALSE(poller.enforce_in_set.find(pair[0]));
+    EXPECT_FALSE(poller.rescan_set_in.find(pair[0]));
+    EXPECT_FALSE(poller.rescan_set_out.find(pair[0]));
+    EXPECT_FALSE(poller.idle_watched_pre.find(pair[0]));
+    EXPECT_FALSE(poller.idle_watched.find(pair[0]));
+    EXPECT_FALSE(poller.idle_set.find(pair[0]));
+
+    ASSERT_EQ(poller.wait(0), 0);
+    EXPECT_FALSE(poller.in_set.find(pair[0]))
+        << "a removed descriptor must not be synthetically reactivated";
+
+    ::close(pair[0]);
+    ::close(pair[1]);
+}
+
+TEST(EpollLifecycle, ActivityRetractsBothIdleWatchGenerations) {
+    epoll poller;
+    poller.idle_watched_pre.insert(41);
+    poller.idle_watched.insert(41);
+    poller.idle_set.insert(41);
+
+    EXPECT_EQ(poller.clear_idle_watch(41), 3U);
+    EXPECT_FALSE(poller.idle_watched_pre.find(41));
+    EXPECT_FALSE(poller.idle_watched.find(41));
+    EXPECT_FALSE(poller.idle_set.find(41));
+}
+
+TEST(EpollLifecycle, DescriptorZeroIsValidAndClosed) {
+    int saved_stdin = ::fcntl(STDIN_FILENO, F_DUPFD_CLOEXEC, 1);
+    ASSERT_GE(saved_stdin, 0);
+    ASSERT_EQ(::close(STDIN_FILENO), 0);
+
+    int descriptor = -1;
+    int descriptor_flags = -1;
+    {
+        epoll poller;
+        descriptor = poller.init();
+        descriptor_flags = ::fcntl(descriptor, F_GETFD);
+    }
+    errno = 0;
+    const int closed_result = ::fcntl(STDIN_FILENO, F_GETFD);
+    const int closed_error = errno;
+    ASSERT_EQ(::dup2(saved_stdin, STDIN_FILENO), STDIN_FILENO);
+    ::close(saved_stdin);
+
+    EXPECT_EQ(descriptor, STDIN_FILENO);
+    EXPECT_NE(descriptor_flags & FD_CLOEXEC, 0);
+    EXPECT_EQ(closed_result, -1);
+    EXPECT_EQ(closed_error, EBADF);
+}
+
+// Readiness must describe an established transport, not just a writable fd.
+TEST(ProtocolTracer, ConnectedReadinessEmitsOneEvent) {
+    struct recorder final : socle::ProtocolTracer {
+        unsigned connected = 0;
+        void trace(socle::protocol_trace_event const& event) noexcept override {
+            if(event.component == socle::trace_component::tcp &&
+               event.event == socle::trace_event::connected) ++connected;
+        }
+    } trace;
+    int pair[2] {-1, -1};
+    ASSERT_EQ(::socketpair(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK, 0, pair), 0);
+    TCPCom connection;
+    connection.protocol_tracer(&trace);
+    EXPECT_FALSE(connection.is_connected(-1));
+    EXPECT_EQ(trace.connected, 0U);
+    EXPECT_TRUE(connection.is_connected(pair[0]));
+    EXPECT_TRUE(connection.is_connected(pair[0]));
+    EXPECT_EQ(trace.connected, 1U);
+    ::close(pair[0]);
+    ::close(pair[1]);
+}
+
+TEST(TCPComReadiness, FreshSocketAndListenerAreNotConnected) {
+    TCPCom connection;
+    EXPECT_FALSE(connection.com_status());
+    int fd = ::socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
+    ASSERT_GT(fd, 0);
+    connection.socket(fd);
+    EXPECT_FALSE(connection.is_connected(fd));
+    EXPECT_FALSE(connection.com_status());
+    ::close(fd);
+
+    IPv4TCPCom listener;
+    listener.use_ipv4_listener();
+    fd = listener.bind(static_cast<unsigned short>(0));
+    ASSERT_GT(fd, 0);
+    EXPECT_FALSE(listener.com_status());
+    listener.close(fd);
+}
+
+TEST(TCPComReadiness, AcceptedContextAndShutdown) {
+    int pair[2];
+    ASSERT_EQ(::socketpair(AF_UNIX, SOCK_STREAM, 0, pair), 0);
+    {
+        baseHostCX accepted(new TCPCom(), pair[0]);
+        // Accepted contexts and their COM share one descriptor source.
+        EXPECT_EQ(accepted.com()->socket(), pair[0]);
+        EXPECT_TRUE(accepted.com()->com_status());
+        EXPECT_TRUE(accepted.com()->com_status());
+        accepted.com()->shutdown(pair[0]);
+        EXPECT_FALSE(accepted.com()->com_status());
+    }
+    ::close(pair[1]);
+}
+
+TEST(TCPComReadiness, RefusedConnectRemainsFailedAfterSoErrorWasConsumed) {
+    int reserved = ::socket(AF_INET, SOCK_STREAM, 0);
+    ASSERT_GT(reserved, 0);
+    sockaddr_in address{};
+    address.sin_family = AF_INET;
+    address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+    ASSERT_EQ(::bind(reserved, reinterpret_cast<sockaddr*>(&address), sizeof(address)), 0);
+    socklen_t size = sizeof(address);
+    ASSERT_EQ(getsockname(reserved, reinterpret_cast<sockaddr*>(&address), &size), 0);
+
+    TCPCom connection;
+    const auto port = std::to_string(ntohs(address.sin_port));
+    const int fd = connection.connect("127.0.0.1", port.c_str());
+    ASSERT_GT(fd, 0);
+    pollfd event{fd, POLLOUT, 0};
+    ASSERT_GT(::poll(&event, 1, 1000), 0);
+    EXPECT_FALSE(connection.is_connected(fd));
+    EXPECT_TRUE(connection.connect_failed());
+    EXPECT_EQ(connection.connect_error(), ECONNREFUSED);
+    EXPECT_FALSE(connection.is_connected(fd));
+    EXPECT_FALSE(connection.com_status());
+    connection.close(fd);
+    ::close(reserved);
+}
+
+#include <ancillary_ifindex.hpp>
+#include <net/if.h>
+
+TEST(InterfaceMetadata, ParsesPacketInfoAfterOtherControlMessages) {
+    alignas(cmsghdr) unsigned char control[CMSG_SPACE(sizeof(int)) + CMSG_SPACE(sizeof(in_pktinfo))]{};
+    msghdr msg{}; msg.msg_control = control; msg.msg_controllen = sizeof control;
+    auto* first = CMSG_FIRSTHDR(&msg);
+    first->cmsg_level = SOL_IP; first->cmsg_type = IP_TTL; first->cmsg_len = CMSG_LEN(sizeof(int));
+    auto* second = CMSG_NXTHDR(&msg, first);
+    ASSERT_NE(second, nullptr);
+    second->cmsg_level = SOL_IP; second->cmsg_type = IP_PKTINFO; second->cmsg_len = CMSG_LEN(sizeof(in_pktinfo));
+    in_pktinfo info{}; info.ipi_ifindex = 123;
+    std::memcpy(CMSG_DATA(second), &info, sizeof info);
+    EXPECT_EQ(socle::ancillary_ifindex(msg), 123U);
+    msg.msg_flags = MSG_CTRUNC;
+    EXPECT_EQ(socle::ancillary_ifindex(msg), 0U);
+    msg.msg_flags = 0;
+    second->cmsg_len = CMSG_LEN(sizeof(in_pktinfo)) - 1;
+    EXPECT_EQ(socle::ancillary_ifindex(msg), 0U);
+    Datagram original; original.ingress_ifindex = 123;
+    Datagram copy(original), assigned;
+    assigned = copy;
+    EXPECT_EQ(assigned.ingress_ifindex, 123U);
+}
+
+TEST(InterfaceMetadata, AcceptedTcpContextOwnsIndexBeforeTlsOrPayload) {
+    for(int family : {AF_INET, AF_INET6}) {
+        const int listener = ::socket(family, SOCK_STREAM | SOCK_CLOEXEC, 0);
+        ASSERT_GE(listener, 0);
+        const int enabled = 1;
+        const int level = family == AF_INET ? IPPROTO_IP : IPPROTO_IPV6;
+        ASSERT_EQ(::setsockopt(listener, level, family == AF_INET ? IP_PKTINFO : IPV6_RECVPKTINFO, &enabled, sizeof enabled), 0);
+        sockaddr_storage address{};
+        address.ss_family = family;
+        if(family == AF_INET) reinterpret_cast<sockaddr_in*>(&address)->sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+        else reinterpret_cast<sockaddr_in6*>(&address)->sin6_addr = in6addr_loopback;
+        socklen_t length = family == AF_INET ? sizeof(sockaddr_in) : sizeof(sockaddr_in6);
+        ASSERT_EQ(::bind(listener, reinterpret_cast<sockaddr*>(&address), length), 0);
+        ASSERT_EQ(::getsockname(listener, reinterpret_cast<sockaddr*>(&address), &length), 0);
+        ASSERT_EQ(::listen(listener, 1), 0);
+        const int client = ::socket(family, SOCK_STREAM | SOCK_CLOEXEC, 0);
+        ASSERT_GE(client, 0);
+        ASSERT_EQ(::connect(client, reinterpret_cast<sockaddr*>(&address), length), 0);
+        const int fd = ::accept4(listener, nullptr, nullptr, SOCK_CLOEXEC);
+        ASSERT_GE(fd, 0);
+        {
+            baseHostCX accepted(new TCPCom, fd);
+            EXPECT_EQ(accepted.com()->ingress_ifindex(), if_nametoindex("lo"));
+            EXPECT_EQ(accepted.com()->egress_ifindex(), 0U);
+            auto* slave = accepted.com()->slave();
+            EXPECT_EQ(slave->ingress_ifindex(), 0U);
+            delete slave;
+        }
+        ::close(client); ::close(listener);
+    }
 }

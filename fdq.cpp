@@ -15,11 +15,11 @@ std::pair<int, int> FdQueue::new_pair(uint32_t id) {
     auto l_ = std::scoped_lock(get_lock());
 
 #ifdef USE_SOCKETPAIR
-    if(0 == ::socketpair(AF_UNIX, SOCK_STREAM|SOCK_NONBLOCK, 0, hint_pair)) {
+    if(0 == ::socketpair(AF_UNIX, SOCK_STREAM|SOCK_NONBLOCK|SOCK_CLOEXEC, 0, hint_pair)) {
         _inf("acceptor: using socketpair");
         sq_type_ = sq_type_t::SQ_SOCKETPAIR;
     }
-    else if( 0 == pipe2(hint_pair, O_DIRECT | O_NONBLOCK)) {
+    else if( 0 == pipe2(hint_pair, O_DIRECT | O_NONBLOCK | O_CLOEXEC)) {
         _inf("acceptor: using pipe2");
         sq_type_ = sq_type_t::SQ_PIPE;
     }
@@ -38,7 +38,24 @@ std::pair<int, int> FdQueue::new_pair(uint32_t id) {
     }
 #endif
 
+    for(auto& descriptor: hint_pair) {
+        if(descriptor != 0) continue;
+        int promoted;
+        do {
+            promoted = ::fcntl(descriptor, F_DUPFD_CLOEXEC, 1);
+        } while(promoted < 0 && errno == EINTR);
+        const int saved_errno = errno;
+        ::close(descriptor);
+        descriptor = promoted;
+        errno = saved_errno;
+    }
+
     auto pa = std::make_pair(hint_pair[0], hint_pair[1]);
+    if(pa.first < 0 || pa.second < 0) {
+        if(pa.first >= 0) ::close(pa.first);
+        if(pa.second >= 0) ::close(pa.second);
+        return {-1, -1};
+    }
     hint_pairs_[id] = WorkerPipe(pa);
 
     return pa;
@@ -51,6 +68,7 @@ FdQueue::~FdQueue() {
 int FdQueue::close_all() {
 
     int s = 0;
+    auto lc_ = std::scoped_lock(sq_lock_);
     std::for_each(hint_pairs_.begin(), hint_pairs_.end(), [&](auto const& pair) {
 
         auto const& worker_pipe = pair.second;
@@ -62,6 +80,12 @@ int FdQueue::close_all() {
     });
 
     hint_pairs_.clear();
+
+    while(!sq_.empty()) {
+        auto const descriptor = sq_.back();
+        sq_.pop_back();
+        if(descriptor > 0) ::close(descriptor);
+    }
 
     return s;
 }
@@ -106,19 +130,19 @@ std::size_t FdQueue::push_all(int s) {
         _deb("FdQueue::push: candidate with load %d inserted", pipes.seen_worker_load.load());
     }
 
+    const auto wake_target = std::max<uint64_t>(1, (entry_count + 1) / 2);
     for(auto const& candy: candidates) {
-        ++written_sum;
-        if(written_sum > entry_count/2) break;
+        if(written_sum >= wake_target) break;
 
         _deb("FdQueue::push: candidate with load %d summoned", candy.second->seen_worker_load.load());
         auto sock = candy.second->pipe_to_worker();
-        written_sum += write_to_socket(sock);
+        auto const notified = write_to_socket(sock);
+        written_sum += notified;
 
         // mechanism to help further avoid spurious wake-ups.
         // if reported from worker, we stop notifying the rest.
-        if(WorkerPipe::feedback_queue_empty) {
+        if(notified > 0 && feedback_queue_empty_.exchange(false)) {
             _deb("FdQueue::push: feedback - queue is already empty");
-            WorkerPipe::feedback_queue_empty = false;
             break;
         }
     }
@@ -202,7 +226,11 @@ std::string FdQueue::stats_str(int indent) const {
 long purge_socket(int socket) {
     constexpr size_t max_sz = 10240;
     std::array<unsigned char, max_sz> dummy{};
-    return ::recv(socket, dummy.data(), max_sz, MSG_DONTWAIT);
+    long result;
+    do {
+        result = ::read(socket, dummy.data(), max_sz);
+    } while(result < 0 && errno == EINTR);
+    return result;
 }
 
 int FdQueue::pop(uint32_t worker_id) {
@@ -274,7 +302,7 @@ int FdQueue::pop(uint32_t worker_id) {
         if (sq_.empty()) {
 
             // report to scheduler queue is empty. It's not required, but it's nice from us.
-            WorkerPipe::feedback_queue_empty = true;
+            feedback_queue_empty_ = true;
             purged = purge_socket(my_hint_socket);
         } else {
 
@@ -283,7 +311,7 @@ int FdQueue::pop(uint32_t worker_id) {
 
             // do another check and report to scheduler
             if (sq_.empty()) {
-                WorkerPipe::feedback_queue_empty = true;
+                feedback_queue_empty_ = true;
                 purged = purge_socket(my_hint_socket);
             }
         }

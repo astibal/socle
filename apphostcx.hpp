@@ -31,6 +31,27 @@ struct FlowNotFound : public std::logic_error {
     using std::logic_error::logic_error;
 };
 
+class AppFlowCtx {
+public:
+    duplexFlow& flow() {
+        if(not flow_) flow_ = std::make_unique<duplexFlow>();
+        return *flow_;
+    }
+
+    [[nodiscard]] bool have_flow() const { return flow_ != nullptr; }
+
+    duplexFlow const& cflow() const {
+        if(not flow_) throw FlowNotFound("flow not found");
+        return *flow_;
+    }
+
+    SignatureTree& signatures() { return signatures_; }
+
+private:
+    std::unique_ptr<duplexFlow> flow_;
+    SignatureTree signatures_ {2};
+};
+
 class AppHostCX: public baseHostCX {
 public:
     using sensorType = SignatureTree::sensorType;
@@ -72,17 +93,23 @@ public:
     mode_t mode() const { return mode_; }
     void mode(mode_t m) { mode_ = m; }
     
-    auto starttls_sensor() { return signatures_.sensors_[0]; };
-    auto base_sensor() { return signatures_.sensors_[1]; };
-    auto get_sensor(unsigned int index) { return signatures_.sensors_[index]; }
+    auto starttls_sensor() { return signatures().sensors_[0]; };
+    auto base_sensor() { return signatures().sensors_[1]; };
+    auto get_sensor(unsigned int index) { return signatures().sensors_[index]; }
 
     // create pairs of results and pointers to (somewhere, already created) signatures.
     static int make_sig_states(std::shared_ptr<sensorType> sig_states, std::shared_ptr<sensorType> source_signatures);
     
-    inline duplexFlow& flow() { if(not appflow_) { appflow_ = std::make_unique<duplexFlow>(); } return *appflow_; }
-    inline bool have_flow() const { return (appflow_ != nullptr); }
+    duplexFlow& flow() { return app_ctx_->flow(); }
+    [[nodiscard]] bool have_flow() const { return app_ctx_->have_flow(); }
 
-    inline duplexFlow const& cflow() const { if(not appflow_) { throw FlowNotFound("flow not found"); } return *appflow_; }
+    duplexFlow const& cflow() const { return app_ctx_->cflow(); }
+
+    std::shared_ptr<AppFlowCtx> app_context() const { return app_ctx_; }
+    void app_context(std::shared_ptr<AppFlowCtx> ctx, bool driven);
+
+    // Feed one canonical flow block when a proxy owns application ordering.
+    bool ingest(char side, buffer const& data);
 
 protected:
 
@@ -99,7 +126,7 @@ protected:
     
     bool detect (const std::shared_ptr<sensorType> &cur_sensor); // signature detection engine
     bool detect ();
-    SignatureTree& signatures() { return signatures_; }
+    SignatureTree& signatures() { return app_ctx_->signatures(); }
 
     virtual void inspect(char side) = 0; // to be overridden for ALG inspectors
     
@@ -108,14 +135,14 @@ protected:
 
 
 private:
+    std::shared_ptr<AppFlowCtx> app_ctx_ = std::make_shared<AppFlowCtx>();
+    bool driven_ = false;
 
-    std::unique_ptr<duplexFlow> appflow_ = nullptr;
     buffer::size_type peek_read_counter = 0;
     buffer::size_type peek_write_counter = 0;
 
     bool upgrade_starttls = false;
 
-    SignatureTree signatures_ {2};
     mode_t mode_ = mode_t::NONE;
 
     // how many continuous flow data should we capture in CONTINUOUS before switching to NONE
