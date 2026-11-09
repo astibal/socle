@@ -259,6 +259,18 @@ public:
         std::string def_po_cert_str;
         std::string def_po_key_str;
 
+        // Native configuration resources are kept separate from the parsed
+        // PEM strings above. An engaged optional is authoritative even when
+        // empty, allowing malformed CfgTar content to fail without file fallback.
+        std::optional<std::string> native_ca_cert;
+        std::optional<std::string> native_ca_key;
+        std::optional<std::string> native_sr_cert;
+        std::optional<std::string> native_sr_key;
+        std::optional<std::string> native_cl_cert;
+        std::optional<std::string> native_cl_key;
+        std::optional<std::string> native_po_cert;
+        std::optional<std::string> native_po_key;
+
 
         constexpr static size_t SSLCERTSTORE_BUFSIZE = 512;
 

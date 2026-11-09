@@ -1196,6 +1196,43 @@ TEST(TLS_Tests, CertificateFactoryRejectsMissingPkiAndTrustLocations) {
     EXPECT_FALSE(factory.set_verify_locations(context.get()));
 }
 
+TEST(TLS_Tests, CertificateFactoryLoadsDefaultPkiFromNativeMemory) {
+    Log::init();
+    Log::get()->level(WAR);
+    auto& factory = SSLFactory::factory();
+    const auto saved_config = factory.config;
+    const std::string saved_certs_path = factory.certs_path();
+    const std::string saved_password = factory.certs_password();
+    auto restore_factory = raw::guard([&] {
+        factory.destroy();
+        factory.config = saved_config;
+        factory.certs_path() = saved_certs_path;
+        factory.certs_password() = saved_password;
+    });
+    auto read = [](const char* name) {
+        std::ifstream input(std::string("etc/certs/default/") + name,
+                            std::ios::binary);
+        return std::string(std::istreambuf_iterator<char>(input), {});
+    };
+
+    factory.destroy();
+    factory.certs_path() = "/definitely/missing/native-pki/";
+    factory.certs_password() = "smithproxy";
+    factory.config.native_ca_cert = read(SSLFactory::config_t::CA_CERTF);
+    factory.config.native_ca_key = read(SSLFactory::config_t::CA_KEYF);
+    factory.config.native_sr_cert = read(SSLFactory::config_t::SR_CERTF);
+    factory.config.native_sr_key = read(SSLFactory::config_t::SR_KEYF);
+    factory.config.native_cl_cert = read(SSLFactory::config_t::CL_CERTF);
+    factory.config.native_cl_key = read(SSLFactory::config_t::CL_KEYF);
+    factory.config.native_po_cert = read(SSLFactory::config_t::PO_CERTF);
+    factory.config.native_po_key = read(SSLFactory::config_t::PO_KEYF);
+
+    ASSERT_TRUE(factory.load_from_files());
+    EXPECT_FALSE(factory.config.def_ca_cert_str.empty());
+    EXPECT_FALSE(factory.config.def_sr_key_str.empty());
+    EXPECT_FALSE(factory.config.def_po_cert_str.empty());
+}
+
 TEST(TLS_Tests, CertificateFactoryLoadsCustomFullchainAndSplitChainLayouts) {
     namespace fs = std::filesystem;
     Log::init();
