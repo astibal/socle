@@ -43,6 +43,7 @@ namespace socle::traflog {
         bool native_packets_written_ = false;
         void flush_pending_metadata();
         void write_metadata_now(buffer const& block);
+        void export_pcapng_records(buffer const& blocks, pcap::connection_details const& details);
     public:
         explicit PcapLog (baseProxy *parent, const char* d_dir, const char* f_prefix, const char* f_suffix, bool create_dirs);
         ~PcapLog() override;
