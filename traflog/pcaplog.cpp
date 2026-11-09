@@ -20,6 +20,7 @@
 #include <privileged_socket.hpp>
 #include <traflog/filewriter.hpp>
 #include <xorshift.hpp>
+#include <cstring>
 
 namespace socle::traflog {
 
@@ -163,6 +164,8 @@ namespace socle::traflog {
                             if (self->ip_packet_hook) f2.ip_packet_hook = self->ip_packet_hook;
 
                             f2.append_TCP(out, "", 0, 1, TCPFLAG_FIN | TCPFLAG_ACK, details);
+
+                            self->export_pcapng_records(out, details);
 
                             if (not ip_packet_hook_only)
                                 writer->write(fs.filename_full, out);
@@ -338,6 +341,7 @@ namespace socle::traflog {
         if(ip_packet_hook) ack.ip_packet_hook = ip_packet_hook;
         ack.append_TCP(out, "", 0, 0, TCPFLAG_ACK, real_details);
 
+        export_pcapng_records(out, real_details);
 
         if(not ip_packet_hook_only) {
             _deb("pcaplog::write[%s]/tcp-hs : about to write %dB", FS.filename_full.c_str(), out.size());
@@ -354,6 +358,34 @@ namespace socle::traflog {
     }
 
 
+    void PcapLog::export_pcapng_records(buffer const& blocks, connection_details const& real_details) {
+        if (not pcapng_record_hook) return;
+
+        // Handshakes and segmented writes can contain several native-endian
+        // PCAPNG blocks. Export each whole block separately, in capture order;
+        // the IP hook remains reserved for the legacy remote/traffic format.
+        auto const* bytes = static_cast<unsigned char const*>(blocks.data());
+        size_t offset = 0;
+        while (offset < blocks.size()) {
+            if (blocks.size() - offset < 12) {
+                throw std::invalid_argument("truncated PCAPNG export block");
+            }
+            uint32_t length = 0;
+            std::memcpy(&length, bytes + offset + 4, sizeof(length));
+            if (length < 12 || length % 4 != 0 || length > blocks.size() - offset) {
+                throw std::invalid_argument("invalid PCAPNG export block length");
+            }
+            uint32_t trailer = 0;
+            std::memcpy(&trailer, bytes + offset + length - 4, sizeof(trailer));
+            if (trailer != length) {
+                throw std::invalid_argument("inconsistent PCAPNG export block length");
+            }
+            buffer record(bytes + offset, length);
+            pcapng_record_hook->execute(real_details, record);
+            offset += length;
+        }
+    }
+
     void PcapLog::write_tcp_data(side_t side, buffer const& b, tcp_details& real_details) {
         auto const& log = log_write;
 
@@ -365,6 +397,8 @@ namespace socle::traflog {
 
 
         if(data.append_TCP(out, (const char*)b.data(), b.size(), side == side_t::RIGHT, TCPFLAG_ACK, real_details) > 0) {
+
+            export_pcapng_records(out, real_details);
 
             if(not ip_packet_hook_only) {
                 _deb("pcaplog::write[%s]/tcp-data : about to write %dB", FS.filename_full.c_str(), out.size());
@@ -430,6 +464,8 @@ namespace socle::traflog {
 
         if(comment_frame(u1)) { _dia("comment inserted"); };
         if(u1.append_UDP(out, (const char*)b.data(), b.size(), side == side_t::RIGHT, real_details) > 0) {
+
+            export_pcapng_records(out, real_details);
 
             if(not ip_packet_hook_only) {
                 _deb("pcaplog::write[%s]/udp : about to write %dB", FS.filename_full.c_str(), out.size());

@@ -328,6 +328,66 @@ TEST(NgTest, NativePacketAndSecretsProduceRemotePcapngRecords) {
 }
 
 
+TEST(NgTest, SyntheticTcpAndUdpProduceRemotePcapngRecords) {
+    auto& logger = socle::traflog::PcapLog::single_instance();
+    struct restore_state {
+        socle::traflog::PcapLog& logger;
+        bool remote_only;
+        std::shared_ptr<IP_Hook> ip_hook;
+        std::shared_ptr<Record_Hook> record_hook;
+        ~restore_state() {
+            socle::traflog::PcapLog::ip_packet_hook_only = remote_only;
+            logger.ip_packet_hook = std::move(ip_hook);
+            logger.pcapng_record_hook = std::move(record_hook);
+        }
+    } restore {logger, socle::traflog::PcapLog::ip_packet_hook_only,
+               logger.ip_packet_hook, logger.pcapng_record_hook};
+
+    auto sink = std::make_shared<record_hook>();
+    socle::traflog::PcapLog::ip_packet_hook_only = true;
+    logger.ip_packet_hook.reset();
+    logger.pcapng_record_hook = sink;
+
+    SocketInfo endpoints;
+    endpoints.src.str_host = "192.0.2.1";
+    endpoints.dst.str_host = "198.51.100.2";
+    endpoints.src.port = 54321;
+    endpoints.dst.port = 80;
+    endpoints.src.pack();
+    endpoints.dst.pack();
+    ASSERT_TRUE(endpoints.src.ss.has_value());
+    ASSERT_TRUE(endpoints.dst.ss.has_value());
+    tcp_details details {};
+    details.source = endpoints.src.ss.value();
+    details.destination = endpoints.dst.ss.value();
+
+    // No local writer or IP hook: all three handshake EPBs must reach
+    // the record hook, not just native QUIC packets and metadata.
+    logger.write_tcp_start(details);
+    ASSERT_EQ(sink->records.size(), 3U);
+    logger.write_tcp_data(socle::side_t::LEFT, buffer("hello", 5), details);
+    ASSERT_EQ(sink->records.size(), 4U);
+    logger.write_udp_data(socle::side_t::RIGHT, buffer("reply", 5), details);
+    ASSERT_EQ(sink->records.size(), 5U);
+
+    // A large write can generate multiple EPBs; never ship them as one
+    // ambiguous record or omit all but the first segment.
+    std::string payload(65536, 'x');
+    logger.write_tcp_data(socle::side_t::LEFT,
+                          buffer(payload.data(), payload.size()), details);
+    ASSERT_GT(sink->records.size(), 6U);
+    for (auto const& record : sink->records) {
+        ASSERT_GE(record.size(), 32U);
+        uint32_t type = 0, length = 0, trailer = 0;
+        std::memcpy(&type, record.data(), 4);
+        std::memcpy(&length, record.data() + 4, 4);
+        std::memcpy(&trailer, record.data() + record.size() - 4, 4);
+        EXPECT_EQ(type, 6U);
+        EXPECT_EQ(length, record.size());
+        EXPECT_EQ(trailer, length);
+    }
+}
+
 TEST(NgTest, BasicHttp) {
 
     SocketInfo s;
