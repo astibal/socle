@@ -245,10 +245,10 @@ public:
         constexpr static const char* CA_CERTF = "ca-cert.pem";
         constexpr static const char* CA_KEYF =  "ca-key.pem";
 
-        constexpr static const char* SNI_DIR =  "sni/";
-        constexpr static const char* IP_DIR =  "ip/";
-        constexpr static const char* CC_SNI_DIR =  "cc-sni/";
-        constexpr static const char* CC_IP_DIR =  "cc-ip/";
+        constexpr static const char* SNI_DIR =  "server/sni/";
+        constexpr static const char* IP_DIR =  "server/ip/";
+        constexpr static const char* CC_SNI_DIR =  "client/sni/";
+        constexpr static const char* CC_IP_DIR =  "client/ip/";
 
         std::string def_ca_cert_str;
         std::string def_ca_key_str;
