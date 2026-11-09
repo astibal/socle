@@ -139,6 +139,9 @@ namespace socle::traflog {
     }
 
     PcapLog::~PcapLog() {
+        // A failed/no-payload connection still needs its diagnostics, but must
+        // not acquire a fabricated successful TCP handshake just for metadata.
+        try { flush_pending_metadata(); } catch(...) {}
         if(writer_) {
 
             // if no parent is set, there is nothing to write
@@ -486,6 +489,8 @@ namespace socle::traflog {
                 tcp_start_written = true;
             }
 
+            flush_pending_metadata();
+
             if (b.size() > 0)
                 self->write_tcp_data(side, b, details);
 
@@ -552,6 +557,8 @@ namespace socle::traflog {
             auto const written = writer->write(fs.filename_full, output);
             self->stat_bytes_written += written;
         }
+        native_packets_written_ = true;
+        flush_pending_metadata();
     }
 
     void PcapLog::write_secret(traffic_secret_format format, buffer const& data) {
@@ -602,6 +609,25 @@ namespace socle::traflog {
 
     void PcapLog::write_metadata(buffer const& block) {
         if(not status() || block.empty()) return;
+
+        // Synthetic TCP packets are created lazily by write(). Keep early
+        // lifecycle/TLS records behind that handshake and before first data.
+        // Do not defer datagrams or the shared sink's native packet records.
+        if(parent && details.next_proto == connection_details::TCP
+           && !tcp_start_written && !native_packets_written_) {
+            pending_metadata_.push_back(block);
+            return;
+        }
+        write_metadata_now(block);
+    }
+
+    void PcapLog::flush_pending_metadata() {
+        auto pending = std::move(pending_metadata_);
+        pending_metadata_.clear();
+        for(auto const& block : pending) write_metadata_now(block);
+    }
+
+    void PcapLog::write_metadata_now(buffer const& block) {
 
         PcapLog* self = single_only ? &single_instance() : this;
         auto const local_output = not ip_packet_hook_only;

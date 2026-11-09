@@ -28,6 +28,7 @@
 #include <traflog/threadedpoolwriter.hpp>
 
 #include <memory>
+#include <vector>
 
 
 namespace socle::traflog {
@@ -37,6 +38,11 @@ namespace socle::traflog {
     class PcapLog : public baseTrafficLogger {
 
         PcapLog() = default; // just for singleton, which is set up later
+        // Owned by the flow logger, never the shared single-file sink.
+        std::vector<buffer> pending_metadata_;
+        bool native_packets_written_ = false;
+        void flush_pending_metadata();
+        void write_metadata_now(buffer const& block);
     public:
         explicit PcapLog (baseProxy *parent, const char* d_dir, const char* f_prefix, const char* f_suffix, bool create_dirs);
         ~PcapLog() override;

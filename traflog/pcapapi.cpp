@@ -906,8 +906,8 @@ namespace socle::pcapng {
         auto* cur_data = const_cast<char*>(data);
         auto to_write = details.max_data_size <= 0 ? data_size : std::min(details.max_data_size, data_size);
 
-        if(to_write == 0 and not ((tcpflags & TCPFLAG_FIN) or (tcpflags & TCPFLAG_SYN)) ) {
-            // don't send empty ACKs
+        if(to_write == 0 and not (tcpflags & (TCPFLAG_FIN | TCPFLAG_SYN | TCPFLAG_ACK))) {
+            // Explicit ACKs include the third leg of the synthetic handshake.
             return -1;
         }
 
