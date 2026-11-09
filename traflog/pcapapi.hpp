@@ -355,12 +355,13 @@ namespace socle::pcapng {
     };
 
     /**
-     * PCAPNG non-copyable Custom Block using the shared ecosystem envelope:
+     * PCAPNG Custom Block using the shared ecosystem envelope:
      * PEN, four raw namespace bytes, uint16 type/version and uint32 payload
      * length. Numeric fields follow the containing section byte order.
      */
     struct pcapng_custom_block {
         static constexpr uint32_t non_copyable_type = 0x40000BADU;
+        static constexpr uint32_t copyable_type = 0x00000BADU;
         static constexpr size_t fixed_size = 28U;
 
         uint32_t pen = 0;
@@ -369,6 +370,7 @@ namespace socle::pcapng {
         uint16_t version = 0;
         std::shared_ptr<buffer> payload;
         byte_order order = byte_order::little;
+        bool copyable = false;
 
         [[nodiscard]] bool valid() const;
         [[nodiscard]] size_t size() const;

@@ -100,6 +100,22 @@ TEST(NgTest, CustomEnvelopeMatchesBigEndianCzvwVector) {
     EXPECT_EQ(std::memcmp(output.data(), expected.data(), expected.size()), 0);
 }
 
+TEST(NgTest, CustomEnvelopeCanBeCopyable) {
+    pcapng_custom_block block;
+    block.pen = 67005;
+    block.name_space = {'S', 'X', 'M', 'E'};
+    block.entry_type = 1;
+    block.version = 1;
+    block.payload = std::make_shared<buffer>("{}", 2);
+    block.copyable = true;
+    buffer output;
+
+    ASSERT_EQ(block.append(output), 32U);
+    uint32_t type = 0;
+    std::memcpy(&type, output.data(), sizeof(type));
+    EXPECT_EQ(type, pcapng_custom_block::copyable_type);
+}
+
 TEST(NgTest, CustomEnvelopeRejectsUnregisteredIdentityFields) {
     pcapng_custom_block block;
     block.pen = 67005;

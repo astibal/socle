@@ -786,7 +786,7 @@ namespace socle::pcapng {
 
         auto const original_size = out.size();
         auto const payload_size = payload ? payload->size() : 0U;
-        append_ordered(out, non_copyable_type, order);
+        append_ordered(out, copyable ? copyable_type : non_copyable_type, order);
         append_ordered(out, static_cast<uint32_t>(total_length), order);
         append_ordered(out, pen, order);
         out.append(name_space.data(), name_space.size());
