@@ -1260,8 +1260,8 @@ TEST(TLS_Tests, CertificateFactoryLoadsCustomFullchainAndSplitChainLayouts) {
     factory.ca_path().clear();
     ASSERT_TRUE(factory.load_from_files());
 
-    const fs::path fullchain = temp / "sni" / "fullchain.example";
-    const fs::path split = temp / "ip" / "192.0.2.10";
+    const fs::path fullchain = temp / "server" / "sni" / "fullchain.example";
+    const fs::path split = temp / "server" / "ip" / "192.0.2.10";
     fs::create_directories(fullchain);
     fs::create_directories(split);
     fs::copy_file("etc/certs/default/srv-cert.pem", fullchain / "fullchain.pem");
