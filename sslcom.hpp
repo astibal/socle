@@ -334,6 +334,14 @@ public:
     };
 
     SSL* get_SSL() const { return sslcom_ssl; }
+    // Revocation consumers may supply an owned snapshot instead of a live transport.
+    virtual STACK_OF(X509)* verified_peer_chain() const {
+#ifdef USE_OPENSSL11
+        return sslcom_ssl ? SSL_get0_verified_chain(sslcom_ssl) : nullptr;
+#else
+        return nullptr;
+#endif
+    }
     X509* target_cert() const { return sslcom_target_cert; }
     X509* target_issuer() const { return sslcom_target_issuer; };
     X509* target_issuer_issuer() const { return sslcom_target_issuer_issuer; };

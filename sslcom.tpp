@@ -1108,7 +1108,7 @@ int baseSSLCom<L4Proto>::certificate_status_ocsp_check(baseSSLCom* com) {
             STACK_OF(X509)* verified_chain = nullptr;
 #ifdef USE_OPENSSL11
             if(com->sslcom_ssl)
-                verified_chain = SSL_get0_verified_chain(com->sslcom_ssl);
+                verified_chain = com->verified_peer_chain();
 #endif
             res = inet::ocsp::ocsp_check_cert(
                 com->sslcom_target_cert, com->sslcom_target_issuer,
@@ -1249,7 +1249,7 @@ int baseSSLCom<L4Proto>::certificate_status_ocsp_check(baseSSLCom* com) {
                             com->factory()->ca_path().c_str(),
 #ifdef USE_OPENSSL11
                             com->sslcom_ssl
-                                ? SSL_get0_verified_chain(com->sslcom_ssl)
+                                ? com->verified_peer_chain()
                                 : nullptr
 #else
                             nullptr
@@ -1321,7 +1321,7 @@ int baseSSLCom<L4Proto>::certificate_status_ocsp_check(baseSSLCom* com) {
         std::vector<std::pair<X509*, X509*>> chain_pairs;
 #ifdef USE_OPENSSL11
         STACK_OF(X509)* verified_chain = com->sslcom_ssl
-            ? SSL_get0_verified_chain(com->sslcom_ssl) : nullptr;
+            ? com->verified_peer_chain() : nullptr;
         const int chain_size = verified_chain
             ? sk_X509_num(verified_chain) : 0;
         for(int i = 1; i + 1 < chain_size; ++i) {
@@ -1559,7 +1559,7 @@ std::pair<typename baseSSLCom<L4Proto>::staple_code_t, int> baseSSLCom<L4Proto>:
 
     signers = sk_X509_new_null();
 #ifdef USE_OPENSSL11
-    verified_chain = SSL_get0_verified_chain(ssl);
+    verified_chain = com->verified_peer_chain();
 #endif
     if (!inet::ocsp::ocsp_add_untrusted_certificates(
             signers, com->sslcom_target_cert,
@@ -1900,7 +1900,7 @@ int baseSSLCom<L4Proto>::status_resp_callback(SSL* ssl, void* arg) {
                 std::vector<std::pair<X509*, X509*>> chain_pairs;
 #ifdef USE_OPENSSL11
                 STACK_OF(X509)* verified_chain = com->sslcom_ssl
-                    ? SSL_get0_verified_chain(com->sslcom_ssl) : nullptr;
+                    ? com->verified_peer_chain() : nullptr;
                 const int chain_size = verified_chain
                     ? sk_X509_num(verified_chain) : 0;
                 for(int i = 1; i + 1 < chain_size; ++i) {
