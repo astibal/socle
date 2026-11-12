@@ -161,7 +161,9 @@ TEST(Text,HexDump) {
 TEST(Display, FormattingAndNumericBoundaries) {
     EXPECT_EQ(string_format("%s:%d", "port", 443), "port:443");
     EXPECT_EQ(string_format_old("%s:%d", "port", 443), "port:443");
-    EXPECT_EQ(number_suffixed(1023), "1023.0");
+    EXPECT_EQ(number_suffixed(0), "0");
+    EXPECT_EQ(number_suffixed(32), "32");
+    EXPECT_EQ(number_suffixed(1023), "1023");
     EXPECT_EQ(number_suffixed(1024), "1.00k");
     EXPECT_EQ(number_suffixed(1024 * 1024), "1.00M");
     EXPECT_EQ(number_suffixed(1024UL * 1024 * 1024), "1.00G");

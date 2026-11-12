@@ -295,7 +295,7 @@ std::string number_suffixed(unsigned long xn) {
     auto n = static_cast<double>(xn);
 
     if(n < POW_1 ) {
-        return string_format("%.1f", n);
+        return string_format("%.0f", n);
     } else 
     if(n >= POW_1 && n < POW_2 ) {
         return string_format("%.2fk", n / POW_1);
