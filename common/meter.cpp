@@ -1,48 +1,63 @@
 #include <common/meter.hpp>
 
-#include <mutex>
+#include <algorithm>
 
 namespace socle {
 
-unsigned long meter::update(unsigned long val) {
-    auto now = std::chrono::system_clock::now();
-    total_ += val;
-    cnt_updates++;
+std::uint64_t meter::tick_at(clock::time_point now) const {
+    if (now <= start_) return latest_tick_;
+    auto const elapsed = std::chrono::duration_cast<std::chrono::seconds>(now - start_).count();
+    return std::max(latest_tick_, static_cast<std::uint64_t>(elapsed) / interval_);
+}
 
-    std::chrono::system_clock::time_point last_update_copy;
-    {
-        auto lock = std::shared_lock(chrono_lock_);
-        last_update_copy = last_update;
+unsigned long meter::update(unsigned long val) {
+    auto lock = std::lock_guard(lock_);
+    return update_locked(val, clock::now());
+}
+
+unsigned long meter::update(unsigned long val, clock::time_point now) {
+    auto lock = std::lock_guard(lock_);
+    return update_locked(val, now);
+}
+
+unsigned long meter::update_locked(unsigned long val, clock::time_point now) {
+    auto const tick = tick_at(now);
+    latest_tick_ = tick;
+
+    auto& current = samples_[tick % window_size];
+    if (current.tick != tick) {
+        current = {tick, 0};
     }
-    if (now - last_update_copy >= std::chrono::seconds(interval_)) {
-        if (now - last_update_copy >= std::chrono::seconds(2 * interval_)) {
-            auto missed = (now - last_update_copy) / std::chrono::seconds(interval_) - 1;
-            if (missed > scoreboard_sz) missed = scoreboard_sz;
-            for (unsigned int i = 0; i < missed; ++i) push_score(0);
-        }
-        {
-            auto lock = std::unique_lock(chrono_lock_);
-            last_update = now;
-        }
-        push_score(prev_counter_);
-        prev_counter_ = curr_counter_.load();
-        curr_counter_ = val;
-    } else {
-        curr_counter_ += val;
+    current.bytes += val;
+    total_.fetch_add(val, std::memory_order_relaxed);
+
+    if (tick == 0) {
+        return 0;
     }
-    return prev_counter_;
+
+    auto const previous_tick = tick - 1;
+    auto const& previous = samples_[previous_tick % window_size];
+    return previous.tick == previous_tick ? previous.bytes : 0;
 }
 
 unsigned long meter::get() const {
-    auto now = std::chrono::system_clock::now();
-    {
-        auto lock = std::shared_lock(chrono_lock_);
-        if (now > last_update + (1 + scoreboard_sz) * std::chrono::seconds(interval_)) return 0;
+    auto lock = std::lock_guard(lock_);
+    return get_locked(clock::now());
+}
+
+unsigned long meter::get(clock::time_point now) const {
+    auto lock = std::lock_guard(lock_);
+    return get_locked(now);
+}
+
+unsigned long meter::get_locked(clock::time_point now) const {
+    auto const tick = tick_at(now);
+    unsigned long bytes = 0;
+    for (auto const& sample : samples_) {
+        if (tick >= sample.tick && tick - sample.tick < window_size) bytes += sample.bytes;
     }
-    unsigned long divisor = (1 + scoreboard_sz) * interval_;
-    if (cnt_updates < 1 + scoreboard_sz) divisor = cnt_updates.load() * interval_;
-    if (!divisor) divisor = 1;
-    return (prev_counter_ + sum_score()) / divisor;
+    auto const intervals = std::min<std::uint64_t>(tick, window_size - 1) + 1;
+    return bytes / (intervals * interval_);
 }
 
 } // namespace socle
