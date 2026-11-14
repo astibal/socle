@@ -4,9 +4,11 @@
 #include <tcpcom.hpp>
 #include <traflog/pcapapi.hpp>
 #include <traflog/pcaplog.hpp>
+#include <traflog/filewriter.hpp>
 
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 
 using namespace socle::pcap;
 
@@ -486,6 +488,73 @@ TEST(PcapLogTest, WritesTcpAndUdpFlowsThroughHighLevelLogger) {
     // Three synthetic TCP handshake packets plus the two payload writes.
     EXPECT_GE(packets->packets, 5U);
     std::filesystem::remove_all(directory);
+}
+
+TEST(PcapLogTest, MetadataFollowsHandshakeAndPrecedesPayload) {
+    for(bool with_payload : {false, true}) {
+        auto directory = std::filesystem::temp_directory_path()
+            / ("socle-metadata-order-" + std::to_string(::getpid()));
+        std::filesystem::create_directories(directory);
+        CaptureProxy proxy;
+        proxy.attach(new baseHostCX(new TCPCom(), "127.0.0.1", "12345"),
+                     new baseHostCX(new TCPCom(), "127.0.0.2", "443"));
+        std::filesystem::path output;
+        socle::fileWriter synchronous_writer;
+        {
+            socle::traflog::PcapLog capture(
+                &proxy, directory.c_str(), "order-", "pcapng", true);
+            capture.writer_ = &synchronous_writer;
+            output = capture.FS.filename_full;
+            socle::pcapng::pcapng_custom_block event;
+            event.pen = 67005;
+            event.copyable = true;
+            event.name_space = {'S', 'X', 'P', 'P'};
+            event.entry_type = 1;
+            event.version = 2;
+            event.payload = std::make_shared<buffer>("CONNECTED", 9);
+            buffer serialized;
+            event.append(serialized);
+            capture.write_metadata(serialized);
+            EXPECT_FALSE(capture.tcp_start_written);
+            if(with_payload) {
+                buffer payload("request", 7);
+                capture.write(socle::side_t::LEFT, payload);
+                EXPECT_TRUE(capture.tcp_start_written);
+            }
+        }
+        std::ifstream input(output, std::ios::binary);
+        ASSERT_TRUE(input);
+        std::vector<unsigned char> bytes((std::istreambuf_iterator<char>(input)), {});
+        std::vector<uint32_t> kinds;
+        std::vector<unsigned char> flags;
+        for(size_t offset = 0; offset < bytes.size();) {
+            ASSERT_GE(bytes.size() - offset, 12U);
+            uint32_t kind, length;
+            std::memcpy(&kind, bytes.data() + offset, 4);
+            std::memcpy(&length, bytes.data() + offset + 4, 4);
+            ASSERT_GE(length, 12U);
+            ASSERT_LE(length, bytes.size() - offset);
+            kinds.push_back(kind);
+            if(kind == 6) {
+                // EPB header + Linux cooked v1 + IPv4 header + TCP flags.
+                ASSERT_GT(length, 28U + 16U + 20U + 13U);
+                flags.push_back(bytes[offset + 28 + 16 + 20 + 13]);
+            }
+            offset += length;
+        }
+        if(with_payload) {
+            ASSERT_GE(kinds.size(), 7U);
+            EXPECT_EQ((std::vector<uint32_t>{0x0a0d0d0a, 1, 6, 6, 6, 0xBAD, 6}),
+                      std::vector<uint32_t>(kinds.begin(), kinds.begin() + 7));
+            ASSERT_GE(flags.size(), 3U);
+            EXPECT_EQ(flags[0], 0x02); // SYN
+            EXPECT_EQ(flags[1], 0x12); // SYN/ACK
+            EXPECT_EQ(flags[2], 0x10); // ACK
+        } else {
+            EXPECT_EQ((std::vector<uint32_t>{0x0a0d0d0a, 1, 0xBAD}), kinds);
+        }
+        std::filesystem::remove_all(directory);
+    }
 }
 
 // UDP

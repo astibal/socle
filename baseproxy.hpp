@@ -175,10 +175,15 @@ protected:
     unsigned int handle_last_status = 0;
         
     bool pollroot_ = false;    
+    socle::ProtocolTracer* protocol_tracer_ = nullptr;
 
 public:
     ProxyStats& stats() { return stats_; }
     ProxyStats const& stats() const { return stats_; }
+    void protocol_tracer(socle::ProtocolTracer* tracer) noexcept;
+    [[nodiscard]] socle::ProtocolTracer* protocol_tracer() const noexcept {
+        return protocol_tracer_;
+    }
     proxy_state& state() { return status_; }
     proxy_state const& state() const { return status_; }
 

@@ -108,6 +108,15 @@ protected:
     int connected_fd_ = 0;
     bool connect_failed_ = false;
     int connect_error_ = 0;
+    bool connect_traced = false;
+    void trace_connected_once() noexcept {
+        if(connect_traced) return;
+        connect_traced = true;
+        protocol_trace(socle::trace_component::tcp,
+                       socle::trace_scope::connection,
+                       socle::trace_event::connected,
+                       socle::trace_status::ok);
+    }
 
     TYPENAME_OVERRIDE("TCPCom")
     DECLARE_LOGGING(to_string)

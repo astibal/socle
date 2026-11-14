@@ -54,6 +54,9 @@ namespace socle {
         /** Attach decryption material to this capture when its format supports it. */
         virtual void write_secret(traffic_secret_format, buffer const&) {}
 
+        /** Write one fully serialized PCAPNG metadata block unchanged. */
+        virtual void write_metadata(buffer const&) {}
+
         /** Emit a capture-visible metadata event without borrowing a data frame. */
         virtual void write_annotation(side_t side, std::string const& text) {
             write(side, text);
