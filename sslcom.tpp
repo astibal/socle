@@ -19,6 +19,7 @@
 #ifndef SSLCOM_INCL
 #define SSLCOM_INCL
 
+#include <ossl_util.hpp>
 #include <linux/in6.h>
 
 #include <openssl/rsa.h>
@@ -992,7 +993,7 @@ unsigned long baseSSLCom<L4Proto>::log_if_error(unsigned int level, const char* 
     auto err2 = ERR_get_error();
     do {
         if(err2 != 0) {
-            log.log(loglevel(level,0), "%s: error code:%u:%s", prefix, err2, ERR_error_string(err2, nullptr));
+            log.log(loglevel(level,0), "%s: error code:%u:%s", prefix, err2, socle::ossl::error_text(err2).c_str());
             err2 = ERR_get_error();
         }
     } while (err2 != 0);
@@ -1573,7 +1574,7 @@ std::pair<typename baseSSLCom<L4Proto>::staple_code_t, int> baseSSLCom<L4Proto>:
     if (ocsp_status <= 0) {
         const unsigned long err = ERR_peek_last_error();
         if(err != 0)
-            _dia("    error: %s", ERR_error_string(err, nullptr));
+            _dia("    error: %s", socle::ossl::error_text(err).c_str());
 
         if(not opt_ocsp_strict) {
             _not("[%s] OCSP stapling response failed verification",name.c_str());
@@ -2593,7 +2594,7 @@ void baseSSLCom<L4Proto>::init_server() {
            SSL_check_private_key(sslcom_ssl) != 1) {
             const auto err = ERR_get_error();
             _err("cannot apply preferred TLS server certificate identity: %s",
-                 ERR_error_string(err, nullptr));
+                 socle::ossl::error_text(err).c_str());
             fail_server_initialization();
             return;
         }
@@ -3204,11 +3205,9 @@ void baseSSLCom<L4Proto>::handshake_dia_error2(int op_code, int err, unsigned in
 
     do {
         if(err2 != 0) {
-            constexpr unsigned int sz = 256;
-            char err_desc[sz]; memset(err_desc, 0, sz);
-            ERR_error_string(err2, err_desc);
+            auto err_desc = socle::ossl::error_text(err2);
 
-            _dia("SSLCom::handshake:  opcode: %d, error1: %d, error2: %d code2: %s", op_code, err, err2, err_desc);
+            _dia("SSLCom::handshake:  opcode: %d, error1: %d, error2: %d code2: %s", op_code, err, err2, err_desc.c_str());
             err2 = ERR_get_error();
         }
 

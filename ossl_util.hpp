@@ -2,6 +2,7 @@
 
 #include <openssl/x509v3.h>
 #include <openssl/pem.h>
+#include <openssl/err.h>
 #include <arpa/inet.h>
 #include <array>
 #include <ctime>
@@ -14,6 +15,29 @@
 // Borrowed OpenSSL inputs; these helpers never take ownership of certificates.
 // No JSON or proxy dependencies: presentation schemas belong to callers.
 namespace socle::ossl {
+
+// Formatting alone never consumes the thread-local OpenSSL error queue.
+inline std::string error_text(unsigned long code, size_t buffer_size = 256) {
+    if(buffer_size == 0) return {};
+    std::vector<char> text(buffer_size, 0);
+    ERR_error_string_n(code, text.data(), text.size());
+    return text.data();
+}
+
+// Consume exactly one entry, retaining OpenSSL's textual representation of 0.
+inline std::string take_error_text(size_t buffer_size = 256) {
+    return error_text(ERR_get_error(), buffer_size);
+}
+
+// Explicitly drain the entire queue, oldest error first.
+inline std::string drain_error_text() {
+    std::string result;
+    while(auto code = ERR_get_error()) {
+        if(!result.empty()) result += "; ";
+        result += error_text(code);
+    }
+    return result;
+}
 
 using bio_ptr = std::unique_ptr<BIO, decltype(&BIO_free)>;
 

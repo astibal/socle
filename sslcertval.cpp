@@ -774,7 +774,7 @@ namespace inet {
                     is_revoked = -1;
 
                     int err = static_cast<int>(ERR_get_error());
-                    _dia("    error: %s",ERR_error_string(err,nullptr));
+                    _dia("    error: %s",socle::ossl::error_text(err).c_str());
                     ERR_clear_error();
 
                 } else {

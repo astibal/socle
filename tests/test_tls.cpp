@@ -4572,3 +4572,27 @@ TEST(OpenSSLUtilities, DiagnosticTimeAndExtensionIndentationStayCompatible) {
         EXPECT_NE(text.find("DNS:example.test"), std::string::npos);
     }
 }
+
+TEST(OpenSSLUtilities, ErrorFormattingPreservesQueueConsumptionSemantics) {
+    ERR_clear_error();
+    ERR_raise(ERR_LIB_USER, 101);
+    ERR_raise(ERR_LIB_USER, 102);
+    auto first = ERR_peek_error();
+    auto last = ERR_peek_last_error();
+    char expected[256]{};
+    ERR_error_string_n(first, expected, sizeof(expected));
+    EXPECT_EQ(socle::ossl::error_text(first), expected);
+    EXPECT_EQ(ERR_peek_error(), first);
+    EXPECT_EQ(ERR_peek_last_error(), last);
+    EXPECT_EQ(socle::ossl::take_error_text(), expected);
+    EXPECT_EQ(ERR_peek_error(), last);
+    EXPECT_EQ(socle::ossl::drain_error_text(), socle::ossl::error_text(last));
+    EXPECT_EQ(ERR_peek_error(), 0UL);
+    EXPECT_TRUE(socle::ossl::drain_error_text().empty());
+    EXPECT_EQ(socle::ossl::take_error_text(), socle::ossl::error_text(0));
+    ERR_raise(ERR_LIB_USER, 101);
+    ERR_raise(ERR_LIB_USER, 102);
+    EXPECT_EQ(socle::ossl::drain_error_text(),
+              socle::ossl::error_text(first) + "; " + socle::ossl::error_text(last));
+    EXPECT_EQ(ERR_peek_error(), 0UL);
+}

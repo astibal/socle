@@ -234,11 +234,8 @@ bool SSLFactory::update_ssl_ctx_chainfiles(CertificateChainCtx& chain, std::stri
     if(build_chain > 0) {
         int ret = SSL_CTX_build_cert_chain(chain.ctx, SSL_BUILD_CHAIN_FLAG_CHECK | SSL_BUILD_CHAIN_FLAG_NO_ROOT);
         if(ret < 1) {
-            int err = ERR_get_error();
-
-            std::array<char, 128> buf {};
-            ERR_error_string_n(err, buf.data(), buf.size() - 1);
-            _err("chain not built: %s", buf.data());
+            auto error = socle::ossl::take_error_text(127);
+            _err("chain not built: %s", error.c_str());
         }
     }
 
@@ -1604,8 +1601,5 @@ std::string SSLFactory::print_ASN1_OCTET_STRING(ASN1_OCTET_STRING* ostr) {
 }
 
 std::string SSLFactory::print_error() {
-    int err = ERR_get_error();
-    std::array<char, 128> buf {};
-    ERR_error_string_n(err, buf.data(), buf.size() - 1);
-    return std::string(buf.data());
+    return socle::ossl::take_error_text(127);
 }
