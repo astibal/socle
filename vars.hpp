@@ -24,6 +24,7 @@
 #include <cstdio>
 #include <unistd.h>
 #include <functional>
+#include <utility>
 
 namespace socle {
 
@@ -52,21 +53,19 @@ namespace socle {
 
     namespace raw {
 
+        // Scope-bound owners: neither copyable nor movable. Deleters must not
+        // throw and must accept the resource's empty/invalid sentinel.
+        // var/lax always invoke cleanup; unique may relinquish it via release().
+
         struct guard {
             guard() = delete;
-            guard(std::function<void()> dter): deleter(dter) {}
+            guard(std::function<void()> dter): deleter(std::move(dter)) {}
             ~guard() {
                 deleter();
             }
 
-            guard(guard const& r) {
-                if(&r != this) {
-                    deleter = r.deleter;
-                }
-            }
-            void operator=(guard const& v) {
-                deleter = v.deleter;
-            }
+            guard(guard const&) = delete;
+            guard& operator=(guard const&) = delete;
 
             std::function<void()> deleter;
         };
@@ -74,24 +73,12 @@ namespace socle {
         template <class T>
         struct lax {
             lax() = delete;
-            lax(T&& v, std::function<void(T&)> dter): value(std::move(v)), deleter(dter) {}
-            lax(T v, std::function<void(T&)> dter): value(v), deleter(dter) {}
+            lax(T v, std::function<void(T&)> dter): value(std::move(v)), deleter(std::move(dter)) {}
+            lax(lax const&) = delete;
+            lax& operator=(lax const&) = delete;
 
             ~lax() {
                 deleter(value);
-            }
-
-            lax(lax& r) {
-                if(&r != this) {
-                    deleter(value);
-                    value = r.value;
-                }
-            }
-            lax& operator=(lax const& v) {
-                deleter(value);
-                value = v;
-
-                return *this;
             }
 
             T value;
@@ -101,8 +88,9 @@ namespace socle {
 
         template <typename T>
         struct var {
-            var(T&& v, std::function<void(T&)> dter): value(std::move(v)), deleter(dter) {}
-            var(var&) = delete;
+            var(T v, std::function<void(T&)> dter): value(std::move(v)), deleter(std::move(dter)) {}
+            var(var const&) = delete;
+            var& operator=(var const&) = delete;
             ~var() {
                 deleter(value);
             }
@@ -114,8 +102,8 @@ namespace socle {
 
         template <typename T>
         struct unique {
-            unique(T&& v, std::function<void(T&)> dter): value(std::move(v)), deleter(dter) {}
-            unique(unique &) = delete;
+            unique(T v, std::function<void(T&)> dter): value(std::move(v)), deleter(std::move(dter)) {}
+            unique(unique const&) = delete;
 
             ~unique() {
                 if(own) deleter(value);
@@ -134,10 +122,10 @@ namespace socle {
 
 
         struct call_scope_exit {
-            explicit call_scope_exit(std::function<void()> cb): cb_(cb) {}
+            explicit call_scope_exit(std::function<void()> cb): cb_(std::move(cb)) {}
 
             call_scope_exit& operator=(call_scope_exit const&) = delete;
-            call_scope_exit(call_scope_exit &) = delete;
+            call_scope_exit(call_scope_exit const&) = delete;
 
             ~call_scope_exit() {
                 cb_();
@@ -148,10 +136,10 @@ namespace socle {
 
         template <typename T>
         struct watch_scope_exit {
-            explicit watch_scope_exit(T& ref, std::function<void(T&)> cb): value_(ref), cb_(cb) {}
+            explicit watch_scope_exit(T& ref, std::function<void(T&)> cb): value_(ref), cb_(std::move(cb)) {}
 
             watch_scope_exit& operator=(watch_scope_exit const&) = delete;
-            watch_scope_exit(watch_scope_exit &) = delete;
+            watch_scope_exit(watch_scope_exit const&) = delete;
 
             ~watch_scope_exit() {
                 cb_(value_);

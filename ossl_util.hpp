@@ -12,7 +12,7 @@
 #include <ctime>
 #include <climits>
 #include <limits>
-#include <memory>
+#include <vars.hpp>
 #include <string>
 #include <vector>
 
@@ -79,7 +79,7 @@ inline std::string selected_alpn(SSL const* ssl) {
     return bytes && size ? std::string(reinterpret_cast<char const*>(bytes), size) : std::string{};
 }
 
-using bio_ptr = std::unique_ptr<BIO, decltype(&BIO_free)>;
+using bio_ptr = socle::raw::var<BIO*>;
 
 inline std::string bio_text(BIO* bio) {
     if(!bio) return {};
@@ -92,16 +92,16 @@ inline std::string bio_text(BIO* bio) {
 inline std::string certificate_pem(X509 const* certificate) {
     if(!certificate) return {};
     bio_ptr output(BIO_new(BIO_s_mem()), BIO_free);
-    if(!output || PEM_write_bio_X509(output.get(), certificate) != 1) return {};
-    return bio_text(output.get());
+    if(!output.value || PEM_write_bio_X509(output.value, certificate) != 1) return {};
+    return bio_text(output.value);
 }
 
 // Unbounded diagnostic rendering, unlike the legacy fixed-buffer overloads.
 inline std::string time_text_full(ASN1_TIME const* value) {
     if(!value) return {};
     bio_ptr output(BIO_new(BIO_s_mem()), BIO_free);
-    if(!output || ASN1_TIME_print(output.get(), value) != 1) return {};
-    return bio_text(output.get());
+    if(!output.value || ASN1_TIME_print(output.value, value) != 1) return {};
+    return bio_text(output.value);
 }
 
 // The buffer size is explicit so legacy callers retain their truncation policy.
@@ -123,16 +123,16 @@ inline std::string name_oneline(X509_NAME const* name, size_t buffer_size = 512)
 inline std::string distinguished_name(X509_NAME const* name) {
     if(!name) return {};
     bio_ptr output(BIO_new(BIO_s_mem()), BIO_free);
-    if(!output || X509_NAME_print_ex(output.get(), name, 0, XN_FLAG_RFC2253) < 0) return {};
-    return bio_text(output.get());
+    if(!output.value || X509_NAME_print_ex(output.value, name, 0, XN_FLAG_RFC2253) < 0) return {};
+    return bio_text(output.value);
 }
 
 inline bool time_text(ASN1_TIME const* value, char* output, size_t size) {
     if(!value || !output || size == 0 || size > static_cast<size_t>(INT_MAX)) return false;
     output[0] = '\0';
     bio_ptr bio(BIO_new(BIO_s_mem()), BIO_free);
-    return bio && ASN1_TIME_print(bio.get(), value) > 0 &&
-           BIO_gets(bio.get(), output, static_cast<int>(size)) > 0;
+    return bio.value && ASN1_TIME_print(bio.value, value) > 0 &&
+           BIO_gets(bio.value, output, static_cast<int>(size)) > 0;
 }
 
 inline std::string time_text(ASN1_TIME const* value, size_t buffer_size = 512) {
@@ -165,13 +165,13 @@ inline std::string hex_encode(unsigned char const* bytes, size_t size,
 
 // Empty input is valid. The caller decides whether its domain allows it.
 inline std::optional<std::string> sha256(std::string_view input) {
-    std::unique_ptr<EVP_MD_CTX, decltype(&EVP_MD_CTX_free)> context(EVP_MD_CTX_new(), EVP_MD_CTX_free);
-    if(!context) return std::nullopt;
+    socle::raw::var<EVP_MD_CTX*> context(EVP_MD_CTX_new(), EVP_MD_CTX_free);
+    if(!context.value) return std::nullopt;
     std::array<unsigned char, EVP_MAX_MD_SIZE> digest{};
     unsigned size = 0;
-    if(EVP_DigestInit_ex(context.get(), EVP_sha256(), nullptr) != 1 ||
-       EVP_DigestUpdate(context.get(), input.data(), input.size()) != 1 ||
-       EVP_DigestFinal_ex(context.get(), digest.data(), &size) != 1) return std::nullopt;
+    if(EVP_DigestInit_ex(context.value, EVP_sha256(), nullptr) != 1 ||
+       EVP_DigestUpdate(context.value, input.data(), input.size()) != 1 ||
+       EVP_DigestFinal_ex(context.value, digest.data(), &size) != 1) return std::nullopt;
     return hex_encode(digest.data(), size);
 }
 
@@ -193,12 +193,12 @@ inline std::string fingerprint(X509 const* certificate, EVP_MD const* algorithm,
 
 inline std::string serial_hex(X509 const* certificate) {
     if(!certificate) return {};
-    std::unique_ptr<BIGNUM, decltype(&BN_free)> serial(
+    socle::raw::var<BIGNUM*> serial(
         ASN1_INTEGER_to_BN(X509_get0_serialNumber(certificate), nullptr), BN_free);
-    if(!serial) return {};
+    if(!serial.value) return {};
     auto free_hex = [](char* value) { OPENSSL_free(value); };
-    std::unique_ptr<char, decltype(free_hex)> hex(BN_bn2hex(serial.get()), free_hex);
-    return hex ? std::string(hex.get()) : std::string{};
+    socle::raw::var<char*> hex(BN_bn2hex(serial.value), free_hex);
+    return hex.value ? std::string(hex.value) : std::string{};
 }
 
 struct public_key_info {
@@ -246,16 +246,16 @@ inline alternative_names_result alternative_names(
     for(int e = 0; e < sk_X509_EXTENSION_num(extensions); ++e) {
         auto* extension = sk_X509_EXTENSION_value(extensions, e);
         if(!extension || OBJ_obj2nid(X509_EXTENSION_get_object(extension)) != NID_subject_alt_name) continue;
-        std::unique_ptr<GENERAL_NAMES, decltype(&GENERAL_NAMES_free)> names(
+        socle::raw::var<GENERAL_NAMES*> names(
             static_cast<GENERAL_NAMES*>(X509V3_EXT_d2i(extension)), GENERAL_NAMES_free);
-        if(!names) continue;
+        if(!names.value) continue;
         result.present = true;
-        for(int i = 0; i < sk_GENERAL_NAME_num(names.get()); ++i) {
+        for(int i = 0; i < sk_GENERAL_NAME_num(names.value); ++i) {
             if(inspected++ >= options.maximum_names) {
                 result.truncated = true;
                 return result;
             }
-            auto const* name = sk_GENERAL_NAME_value(names.get(), i);
+            auto const* name = sk_GENERAL_NAME_value(names.value, i);
             if(!name) continue;
             if(name->type == GEN_DNS) {
                 auto const* value = name->d.dNSName;
@@ -293,9 +293,9 @@ inline bool extensions_text(X509 const* certificate, std::string& text, int inde
     text.clear();
     if(!certificate) return false;
     bio_ptr output(BIO_new(BIO_s_mem()), BIO_free);
-    if(!output) return false;
-    X509V3_extensions_print(output.get(), nullptr, X509_get0_extensions(certificate), 0, indent);
-    text = bio_text(output.get());
+    if(!output.value) return false;
+    X509V3_extensions_print(output.value, nullptr, X509_get0_extensions(certificate), 0, indent);
+    text = bio_text(output.value);
     return true;
 }
 
