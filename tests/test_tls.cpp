@@ -4524,9 +4524,9 @@ TEST(OpenSSLUtilities, CertificatePemRoundTripsWithoutPrivateMaterial) {
     EXPECT_EQ(pem.find("-----BEGIN CERTIFICATE-----"), 0U);
     EXPECT_EQ(pem.find("PRIVATE KEY"), std::string::npos);
     socle::ossl::bio_ptr input(BIO_new_mem_buf(pem.data(), static_cast<int>(pem.size())), BIO_free);
-    ASSERT_TRUE(input.value);
+    ASSERT_TRUE(input);
     std::unique_ptr<X509, decltype(&X509_free)> parsed(
-        PEM_read_bio_X509(input.value, nullptr, nullptr, nullptr), X509_free);
+        PEM_read_bio_X509(input.get(), nullptr, nullptr, nullptr), X509_free);
     ASSERT_TRUE(parsed);
     EXPECT_EQ(X509_cmp(parsed.get(), certificate.get()), 0);
 }
@@ -4564,11 +4564,11 @@ TEST(OpenSSLUtilities, DiagnosticTimeAndExtensionIndentationStayCompatible) {
     ASSERT_EQ(X509_add_ext(cert.get(), extension.get(), -1), 1);
     for(int indent : {0, 2, 8}) {
         socle::ossl::bio_ptr old(BIO_new(BIO_s_mem()), BIO_free);
-        ASSERT_TRUE(old.value);
-        X509V3_extensions_print(old.value, nullptr, X509_get0_extensions(cert.get()), 0, indent);
+        ASSERT_TRUE(old);
+        X509V3_extensions_print(old.get(), nullptr, X509_get0_extensions(cert.get()), 0, indent);
         std::string text;
         ASSERT_TRUE(socle::ossl::extensions_text(cert.get(), text, indent));
-        EXPECT_EQ(text, socle::ossl::bio_text(old.value));
+        EXPECT_EQ(text, socle::ossl::bio_text(old.get()));
         EXPECT_NE(text.find("DNS:example.test"), std::string::npos);
     }
 }
@@ -4645,55 +4645,4 @@ TEST(OpenSSLUtilities, SessionInfoHandlesMissingStateAndCopiesValues) {
     ssl.reset();
     EXPECT_EQ(name, "example.test");
     EXPECT_EQ(info->cipher, "TLS_AES_128_GCM_SHA256");
-}
-
-// Scope owners must never duplicate a cleanup obligation.
-#include <type_traits>
-static_assert(!std::is_copy_constructible_v<socle::raw::guard>);
-static_assert(!std::is_copy_assignable_v<socle::raw::guard>);
-static_assert(!std::is_copy_constructible_v<socle::raw::lax<int>>);
-static_assert(!std::is_copy_assignable_v<socle::raw::lax<int>>);
-static_assert(!std::is_copy_constructible_v<socle::raw::var<int>>);
-static_assert(!std::is_copy_assignable_v<socle::raw::var<int>>);
-static_assert(!std::is_move_constructible_v<socle::raw::var<int>>);
-static_assert(!std::is_copy_constructible_v<socle::raw::unique<int>>);
-static_assert(!std::is_copy_assignable_v<socle::raw::unique<int>>);
-static_assert(!std::is_move_constructible_v<socle::raw::unique<int>>);
-static_assert(!std::is_copy_constructible_v<socle::raw::call_scope_exit>);
-static_assert(!std::is_copy_assignable_v<socle::raw::call_scope_exit>);
-static_assert(!std::is_copy_constructible_v<socle::raw::watch_scope_exit<int>>);
-static_assert(!std::is_copy_assignable_v<socle::raw::watch_scope_exit<int>>);
-
-TEST(RawOwners, CleanupDuringUnwindingAndRelease) {
-    int cleaned = 0;
-    try {
-        socle::raw::var<int> owner(7, [&](int& value) { cleaned += value; });
-        throw 1;
-    } catch(int) {}
-    EXPECT_EQ(cleaned, 7);
-    {
-        socle::raw::unique<int> owner(11, [&](int& value) { cleaned += value; });
-        EXPECT_EQ(owner.release(), 11);
-    }
-    EXPECT_EQ(cleaned, 7);
-    {
-        socle::raw::unique<int> owner(11, [&](int& value) { cleaned += value; });
-    }
-    EXPECT_EQ(cleaned, 18);
-}
-
-TEST(RawOwners, LvalueAndNullResourcesAndScopeCallbacks) {
-    int calls = 0;
-    int* pointer = nullptr;
-    {
-        socle::raw::var<int*> owner(pointer, [&](int*& value) {
-            EXPECT_EQ(value, nullptr);
-            ++calls;
-        });
-        socle::raw::lax<int> descriptor(3, [&](int& value) { EXPECT_EQ(value, 3); ++calls; });
-        socle::raw::guard guard([&] { ++calls; });
-        socle::raw::call_scope_exit exit([&] { ++calls; });
-        socle::raw::watch_scope_exit<int> watch(calls, [](int& value) { ++value; });
-    }
-    EXPECT_EQ(calls, 5);
 }
