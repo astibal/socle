@@ -651,7 +651,8 @@ namespace socle::traflog {
         // Do not defer datagrams or the shared sink's native packet records.
         if(parent && details.next_proto == connection_details::TCP
            && !tcp_start_written && !native_packets_written_) {
-            pending_metadata_.push_back(block);
+            // Metadata may be a borrowed view whose owner ends this call.
+            pending_metadata_.emplace_back(block.data(), block.size());
             return;
         }
         write_metadata_now(block);

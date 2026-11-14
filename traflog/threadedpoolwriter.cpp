@@ -85,7 +85,9 @@ namespace socle {
         auto sz = buf.size();
 
         std::scoped_lock<std::mutex> l_(queue_lock_);
-        task_queue_.emplace(fnm, buf);
+        // A buffer copy can retain a non-owning view. The worker must own
+        // these bytes after the caller returns.
+        task_queue_.emplace(fnm, buffer(buf.data(), sz));
 
         return sz;
     }

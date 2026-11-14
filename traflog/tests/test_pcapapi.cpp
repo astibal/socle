@@ -5,6 +5,9 @@
 #include <traflog/pcapapi.hpp>
 #include <traflog/pcaplog.hpp>
 #include <traflog/filewriter.hpp>
+#include <traflog/threadedpoolwriter.hpp>
+#include <chrono>
+#include <thread>
 
 #include <cstring>
 #include <filesystem>
@@ -514,7 +517,10 @@ TEST(PcapLogTest, MetadataFollowsHandshakeAndPrecedesPayload) {
             event.payload = std::make_shared<buffer>("CONNECTED", 9);
             buffer serialized;
             event.append(serialized);
-            capture.write_metadata(serialized);
+            buffer borrowed(serialized.data(), serialized.size(), serialized.size(), false);
+            capture.write_metadata(borrowed);
+            // Mutating the source must not alter the deferred record.
+            std::memset(serialized.data(), 0, serialized.size());
             EXPECT_FALSE(capture.tcp_start_written);
             if(with_payload) {
                 buffer payload("request", 7);
@@ -615,4 +621,36 @@ TEST(PcapTest, L4_chksum) {
     std::cout << string_format("chksum: 0x%x\n", udp_header.check);
     CONFIG::CALCULATE_CHECKSUMS = calculate_checksums;
     ASSERT_TRUE(udp_header.check == ntohs(0xf685));
+}
+
+TEST(ThreadedPoolFileWriterTest, BorrowedBytesSurviveUntilAsyncWrite) {
+    auto* writer = socle::threadedPoolFileWriter::instance();
+    auto path = std::filesystem::temp_directory_path()
+        / ("socle-borrowed-write-" + std::to_string(::getpid()));
+    std::filesystem::remove(path);
+    auto drain = [&] {
+        for(unsigned attempt = 0; attempt < 1000; ++attempt) {
+            {
+                std::lock_guard lock(writer->queue_lock());
+                if(writer->queue().empty()) return true;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        return false;
+    };
+    ASSERT_TRUE(drain());
+    char source[] = "metadata";
+    buffer borrowed(source, sizeof(source) - 1, sizeof(source) - 1, false);
+    {
+        // Block disk IO so the source is certainly changed before consumption.
+        std::lock_guard lock(writer->ofstream_lock());
+        ASSERT_EQ(writer->write(path.string(), borrowed), sizeof(source) - 1);
+        std::memset(source, 'x', sizeof(source) - 1);
+    }
+    ASSERT_TRUE(drain());
+    writer->close(path.string());
+    std::ifstream input(path, std::ios::binary);
+    std::string actual((std::istreambuf_iterator<char>(input)), {});
+    EXPECT_EQ(actual, "metadata");
+    std::filesystem::remove(path);
 }
