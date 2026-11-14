@@ -1,4 +1,5 @@
 #include <gtest/gtest.h>
+#include <ossl_util.hpp>
 #include <sslcom.hpp>
 #include <sslmitmcom.hpp>
 #include <algorithm>
@@ -4424,3 +4425,87 @@ TEST_F(ClientHelloHookTest, InvalidHelloDoesNotDispatch) {
 }
 
 } // namespace
+
+
+TEST(OpenSSLUtilities, NullInputsAndInvalidTimeAreSafe) {
+    using namespace socle::ossl;
+    EXPECT_TRUE(common_name(nullptr).empty());
+    EXPECT_TRUE(name_oneline(nullptr).empty());
+    EXPECT_TRUE(distinguished_name(nullptr).empty());
+    EXPECT_TRUE(time_iso8601(nullptr).empty());
+    EXPECT_TRUE(time_text(nullptr).empty());
+    EXPECT_TRUE(fingerprint(nullptr, EVP_sha256()).empty());
+    EXPECT_TRUE(serial_hex(nullptr).empty());
+    EXPECT_FALSE(public_key(nullptr).present);
+    EXPECT_FALSE(alternative_names(nullptr).present);
+    std::unique_ptr<ASN1_TIME, decltype(&ASN1_TIME_free)> time(ASN1_TIME_new(), ASN1_TIME_free);
+    ASSERT_TRUE(time);
+    EXPECT_TRUE(time_iso8601(time.get()).empty());
+}
+
+TEST(OpenSSLUtilities, NamesAndTimesKeepLegacyAndStructuredFormats) {
+    std::unique_ptr<X509, decltype(&X509_free)> cert(X509_new(), X509_free);
+    ASSERT_TRUE(cert);
+    auto* subject = X509_get_subject_name(cert.get());
+    ASSERT_EQ(X509_NAME_add_entry_by_txt(subject, "CN", MBSTRING_ASC,
+        reinterpret_cast<unsigned char const*>("alpha,beta"), -1, -1, 0), 1);
+    ASSERT_EQ(X509_set_issuer_name(cert.get(), subject), 1);
+    ASSERT_EQ(ASN1_TIME_set_string(X509_getm_notBefore(cert.get()), "20260102030405Z"), 1);
+    EXPECT_EQ(socle::ossl::common_name(subject), "alpha,beta");
+    EXPECT_EQ(socle::ossl::name_oneline(subject), "/CN=alpha,beta");
+    EXPECT_EQ(socle::ossl::distinguished_name(subject), "CN=alpha\\,beta");
+    EXPECT_EQ(SSLFactory::print_cn(cert.get()), "alpha,beta");
+    EXPECT_EQ(SSLFactory::print_issuer(cert.get()), "alpha,beta");
+    EXPECT_EQ(SSLFactory::print_not_before(cert.get()), "Jan  2 03:04:05 2026 GMT");
+    EXPECT_EQ(socle::ossl::time_iso8601(X509_get0_notBefore(cert.get())), "2026-01-02T03:04:05Z");
+}
+
+TEST(OpenSSLUtilities, AlternativeNamesPreserveOrderAndExplicitLimits) {
+    std::unique_ptr<X509, decltype(&X509_free)> cert(X509_new(), X509_free);
+    ASSERT_TRUE(cert);
+    std::unique_ptr<X509_EXTENSION, decltype(&X509_EXTENSION_free)> extension(
+        X509V3_EXT_conf_nid(nullptr, nullptr, NID_subject_alt_name,
+            const_cast<char*>("DNS:example.test,IP:192.0.2.1,DNS:other.test,IP:2001:db8::1")), X509_EXTENSION_free);
+    ASSERT_TRUE(extension);
+    ASSERT_EQ(X509_add_ext(cert.get(), extension.get(), -1), 1);
+    EXPECT_EQ(SSLFactory::get_sans(cert.get()), (std::vector<std::string>{
+        "DNS:example.test", "IP:192.0.2.1", "DNS:other.test", "IP:2001:db8::1"}));
+    auto bounded = socle::ossl::alternative_names(cert.get(), {2, true, true});
+    ASSERT_EQ(bounded.names.size(), 2U);
+    EXPECT_TRUE(bounded.truncated);
+    EXPECT_EQ(bounded.names[1].type, socle::ossl::alternative_name_type::ip);
+    EXPECT_EQ(bounded.names[1].value, "192.0.2.1");
+    EXPECT_FALSE(socle::ossl::alternative_names(cert.get(), {4, true, true}).truncated);
+    ASSERT_EQ(X509_add_ext(cert.get(), extension.get(), -1), 1);
+    EXPECT_EQ(socle::ossl::alternative_names(cert.get()).names.size(), 8U);
+    EXPECT_FALSE(socle::ossl::alternative_names(cert.get(), {256, true, true}).present);
+}
+
+TEST(OpenSSLUtilities, AlternativeNamesRejectEmbeddedNulAndMalformedIp) {
+    std::unique_ptr<X509, decltype(&X509_free)> cert(X509_new(), X509_free);
+    std::unique_ptr<GENERAL_NAMES, decltype(&GENERAL_NAMES_free)> names(sk_GENERAL_NAME_new_null(), GENERAL_NAMES_free);
+    ASSERT_TRUE(cert);
+    ASSERT_TRUE(names);
+    auto add = [&](int type, unsigned char const* data, int length) {
+        auto* name = GENERAL_NAME_new();
+        ASSERT_NE(name, nullptr);
+        auto* value = ASN1_STRING_type_new(type == GEN_DNS ? V_ASN1_IA5STRING : V_ASN1_OCTET_STRING);
+        ASSERT_NE(value, nullptr);
+        ASSERT_EQ(ASN1_STRING_set(value, data, length), 1);
+        GENERAL_NAME_set0_value(name, type, value);
+        ASSERT_GT(sk_GENERAL_NAME_push(names.get(), name), 0);
+    };
+    unsigned char nul_dns[] = {'a', 0, 'b'};
+    unsigned char non_ascii[] = {'a', 0xff};
+    unsigned char invalid_ip[] = {1, 2, 3};
+    add(GEN_DNS, nul_dns, sizeof(nul_dns));
+    add(GEN_DNS, non_ascii, sizeof(non_ascii));
+    add(GEN_IPADD, invalid_ip, sizeof(invalid_ip));
+    ASSERT_EQ(X509_add1_ext_i2d(cert.get(), NID_subject_alt_name, names.get(), 0, 0), 1);
+    auto strict = socle::ossl::alternative_names(cert.get(), {256, true, true});
+    EXPECT_TRUE(strict.present);
+    EXPECT_TRUE(strict.names.empty());
+    auto legacy = socle::ossl::alternative_names(cert.get());
+    ASSERT_EQ(legacy.names.size(), 1U);
+    EXPECT_EQ(legacy.names[0].value, std::string(reinterpret_cast<char*>(non_ascii), 2));
+}

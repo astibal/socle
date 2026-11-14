@@ -32,6 +32,7 @@ add_library(socle_lib
         sslmitmcom.hpp
         sslmitmcom.cpp
         sslcertstore.hpp
+        ossl_util.hpp
         sslcertstore.cpp
         apphostcx.cpp
         common/meter.cpp
