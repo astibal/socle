@@ -133,16 +133,28 @@ inline std::string certificate_pem(X509 const* certificate) {
 // Keep empty PEM results so callers can choose their own serialization policy.
 inline std::vector<std::string> peer_certificates_pem(SSL* ssl) {
     std::vector<std::string> result;
-    if(!ssl) return result;
+
+    if (!ssl) {
+        return result;
+    }
+
     std::unique_ptr<X509, decltype(&X509_free)> leaf(
         SSL_get_peer_certificate(ssl), X509_free);
-    if(leaf) result.push_back(certificate_pem(leaf.get()));
-    auto const* chain = SSL_get_peer_cert_chain(ssl);
-    for(int i = 0; chain && i < sk_X509_num(chain); ++i) {
-        auto* certificate = sk_X509_value(chain, i);
-        if(!leaf || X509_cmp(leaf.get(), certificate) != 0)
-            result.push_back(certificate_pem(certificate));
+
+    if (leaf) {
+        result.push_back(certificate_pem(leaf.get()));
     }
+
+    auto const* chain = SSL_get_peer_cert_chain(ssl);
+
+    for (int i = 0; chain && i < sk_X509_num(chain); ++i) {
+        auto* certificate = sk_X509_value(chain, i);
+
+        if (!leaf || X509_cmp(leaf.get(), certificate) != 0) {
+            result.push_back(certificate_pem(certificate));
+        }
+    }
+
     return result;
 }
 
