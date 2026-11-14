@@ -88,20 +88,52 @@ inline std::string bio_text(BIO* bio) {
     return size > 0 ? std::string(bytes, static_cast<size_t>(size)) : std::string{};
 }
 
+// Owns one writable memory BIO, never a BIO chain. get() only lends it to
+// OpenSSL; callers must not free it or transfer its ownership elsewhere.
+// Extraction copies unread bytes without consuming them, including embedded NULs.
+class memory_bio {
+public:
+    memory_bio(): bio_(BIO_new(BIO_s_mem()), BIO_free) {}
+    memory_bio(memory_bio const&) = delete;
+    memory_bio& operator=(memory_bio const&) = delete;
+    memory_bio(memory_bio&&) noexcept = default;
+    memory_bio& operator=(memory_bio&&) noexcept = default;
+
+    BIO* get() const noexcept { return bio_.get(); }
+    explicit operator bool() const noexcept { return static_cast<bool>(bio_); }
+
+    size_t size() const noexcept {
+        char* bytes = nullptr;
+        auto length = bio_ ? BIO_get_mem_data(bio_.get(), &bytes) : 0;
+        return length > 0 ? static_cast<size_t>(length) : 0;
+    }
+
+    std::string str(size_t limit = std::numeric_limits<size_t>::max()) const {
+        char* bytes = nullptr;
+        auto length = bio_ ? BIO_get_mem_data(bio_.get(), &bytes) : 0;
+        if(length <= 0 || limit == 0) return {};
+        auto count = static_cast<size_t>(length);
+        return std::string(bytes, count < limit ? count : limit);
+    }
+
+private:
+    bio_ptr bio_;
+};
+
 // Public certificate only; the returned PEM never includes a private key.
 inline std::string certificate_pem(X509 const* certificate) {
     if(!certificate) return {};
-    bio_ptr output(BIO_new(BIO_s_mem()), BIO_free);
+    memory_bio output;
     if(!output || PEM_write_bio_X509(output.get(), certificate) != 1) return {};
-    return bio_text(output.get());
+    return output.str();
 }
 
 // Unbounded diagnostic rendering, unlike the legacy fixed-buffer overloads.
 inline std::string time_text_full(ASN1_TIME const* value) {
     if(!value) return {};
-    bio_ptr output(BIO_new(BIO_s_mem()), BIO_free);
+    memory_bio output;
     if(!output || ASN1_TIME_print(output.get(), value) != 1) return {};
-    return bio_text(output.get());
+    return output.str();
 }
 
 // The buffer size is explicit so legacy callers retain their truncation policy.
@@ -122,15 +154,15 @@ inline std::string name_oneline(X509_NAME const* name, size_t buffer_size = 512)
 
 inline std::string distinguished_name(X509_NAME const* name) {
     if(!name) return {};
-    bio_ptr output(BIO_new(BIO_s_mem()), BIO_free);
+    memory_bio output;
     if(!output || X509_NAME_print_ex(output.get(), name, 0, XN_FLAG_RFC2253) < 0) return {};
-    return bio_text(output.get());
+    return output.str();
 }
 
 inline bool time_text(ASN1_TIME const* value, char* output, size_t size) {
     if(!value || !output || size == 0 || size > static_cast<size_t>(INT_MAX)) return false;
     output[0] = '\0';
-    bio_ptr bio(BIO_new(BIO_s_mem()), BIO_free);
+    memory_bio bio;
     return bio && ASN1_TIME_print(bio.get(), value) > 0 &&
            BIO_gets(bio.get(), output, static_cast<int>(size)) > 0;
 }
@@ -292,10 +324,10 @@ inline std::string signature_algorithm(X509 const* certificate) {
 inline bool extensions_text(X509 const* certificate, std::string& text, int indent = 0) {
     text.clear();
     if(!certificate) return false;
-    bio_ptr output(BIO_new(BIO_s_mem()), BIO_free);
+    memory_bio output;
     if(!output) return false;
     X509V3_extensions_print(output.get(), nullptr, X509_get0_extensions(certificate), 0, indent);
-    text = bio_text(output.get());
+    text = output.str();
     return true;
 }
 

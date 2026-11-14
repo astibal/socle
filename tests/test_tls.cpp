@@ -4653,3 +4653,49 @@ static_assert(!std::is_copy_assignable_v<socle::raw::var<int>>);
 static_assert(!std::is_move_assignable_v<socle::raw::var<int>>);
 static_assert(!std::is_copy_assignable_v<socle::raw::var<X509*>>);
 static_assert(!std::is_move_assignable_v<socle::raw::var<X509*>>);
+
+static_assert(!std::is_copy_constructible_v<socle::ossl::memory_bio>);
+static_assert(!std::is_copy_assignable_v<socle::ossl::memory_bio>);
+static_assert(std::is_nothrow_move_constructible_v<socle::ossl::memory_bio>);
+static_assert(std::is_nothrow_move_assignable_v<socle::ossl::memory_bio>);
+
+TEST(OpenSSLUtilities, MemoryBioCopiesBinaryDataWithoutConsumingIt) {
+    socle::ossl::memory_bio bio;
+    ASSERT_TRUE(bio);
+    EXPECT_EQ(bio.size(), 0U);
+    EXPECT_TRUE(bio.str().empty());
+    std::string payload("a\0b", 3);
+    ASSERT_EQ(BIO_write(bio.get(), payload.data(), payload.size()), 3);
+    EXPECT_EQ(bio.str(), payload);
+    EXPECT_EQ(bio.str(), payload);
+    EXPECT_EQ(bio.str(2), payload.substr(0, 2));
+    EXPECT_TRUE(bio.str(0).empty());
+    EXPECT_EQ(bio.str(99), payload);
+    auto snapshot = bio.str();
+    ASSERT_EQ(BIO_write(bio.get(), "c", 1), 1);
+    EXPECT_EQ(snapshot, payload);
+    EXPECT_EQ(bio.size(), 4U);
+    char consumed = 0;
+    ASSERT_EQ(BIO_read(bio.get(), &consumed, 1), 1);
+    EXPECT_EQ(consumed, 'a');
+    EXPECT_EQ(bio.str(), std::string("\0bc", 3));
+}
+
+TEST(OpenSSLUtilities, MemoryBioMovesAndSupportsLargeBoundedCopies) {
+    socle::ossl::memory_bio source;
+    ASSERT_TRUE(source);
+    std::string payload(1024 * 1024, 'x');
+    ASSERT_EQ(BIO_write(source.get(), payload.data(), payload.size()), payload.size());
+    socle::ossl::memory_bio moved(std::move(source));
+    EXPECT_FALSE(source);
+    EXPECT_EQ(source.size(), 0U);
+    EXPECT_TRUE(source.str().empty());
+    EXPECT_EQ(moved.size(), payload.size());
+    EXPECT_EQ(moved.str(8192), payload.substr(0, 8192));
+    socle::ossl::memory_bio destination;
+    ASSERT_TRUE(destination);
+    ASSERT_EQ(BIO_write(destination.get(), "old", 3), 3);
+    destination = std::move(moved);
+    EXPECT_FALSE(moved);
+    EXPECT_EQ(destination.str(), payload);
+}
