@@ -959,19 +959,19 @@ bool SSLFactory::add_to_cache(SSLFactory::X509_CACHE &cache, std::string const& 
 
 std::string SSLFactory::make_store_key(X509* cert_orig, const SpoofOptions& spo) {
 
-    char tmp[512];
-    X509_NAME_oneline( X509_get_subject_name(cert_orig) , tmp, 512);
+    // name_oneline reserves one byte; preserve the original OpenSSL limit of 512.
+    auto subject = socle::ossl::name_oneline(X509_get_subject_name(cert_orig), 513);
     std::vector<std::string> const cert_sans = SSLFactory::get_sans(cert_orig);
 
     const std::string cert_fingerprint = fingerprint(cert_orig);
-    std::size_t key_size = std::strlen(tmp) + 6 + cert_fingerprint.size()
+    std::size_t key_size = subject.size() + 6 + cert_fingerprint.size()
                            + (spo.self_signed ? 12 : 0);
     for(auto const& san: cert_sans) key_size += 5 + san.size();
     for(auto const& san: spo.sans) key_size += 5 + san.size();
 
     std::string store_key;
     store_key.reserve(key_size);
-    store_key.append(tmp);
+    store_key.append(subject);
     store_key.append("+cert:").append(cert_fingerprint);
 
     if(spo.self_signed) {
@@ -996,8 +996,6 @@ std::string SSLFactory::make_store_key(X509* cert_orig, const SpoofOptions& spo)
 
 std::string SSLFactory::make_store_key(X509* cert_orig, const SpoofOptions& spo) {
 
-    std::array<char, 512> tmp {};
-
     const ASN1_BIT_STRING* bs = nullptr;
     const X509_ALGOR* pal = nullptr;
 
@@ -1005,11 +1003,12 @@ std::string SSLFactory::make_store_key(X509* cert_orig, const SpoofOptions& spo)
 
     //TODO: add signature as part of the key, to cover new orig certificates with also new spoofed ones
 
-    X509_NAME_oneline( X509_get_subject_name(cert_orig) , tmp.data(), 512);
+    // name_oneline reserves one byte; preserve the original OpenSSL limit of 512.
+    auto subject = socle::ossl::name_oneline(X509_get_subject_name(cert_orig), 513);
     std::vector<std::string> const cert_sans = SSLFactory::get_sans(cert_orig);
 
     const std::string cert_fingerprint = fingerprint(cert_orig);
-    std::size_t key_size = 5 + std::strlen(tmp.data()) + 6 + cert_fingerprint.size()
+    std::size_t key_size = 5 + subject.size() + 6 + cert_fingerprint.size()
                            + (spo.self_signed ? 12 : 0);
     for(auto const& san: cert_sans) key_size += 5 + san.size();
     for(auto const& san: spo.sans) key_size += 5 + san.size();
@@ -1017,7 +1016,7 @@ std::string SSLFactory::make_store_key(X509* cert_orig, const SpoofOptions& spo)
     std::string store_key;
     store_key.reserve(key_size);
     store_key.append("subj:");
-    store_key.append(tmp.data());
+    store_key.append(subject);
     store_key.append("+cert:").append(cert_fingerprint);
 
     if(spo.self_signed) {
@@ -1463,11 +1462,11 @@ std::string SSLFactory::print_cert(X509* x, int indent, bool add_cr) {
     }
 
 #ifdef USE_OPENSSL11
-    int pkey_nid = X509_get_signature_type(x);
+    auto sslbuf = socle::ossl::signature_algorithm(x);
 #else
     int pkey_nid = OBJ_obj2nid(x->cert_info->key->algor->algorithm);
-#endif
     const char* sslbuf = OBJ_nid2ln(pkey_nid);
+#endif
     s << pref << "Signature type: ";
     s << sslbuf;
     ar(); s << "\n ";
@@ -1485,24 +1484,12 @@ std::string SSLFactory::print_cert(X509* x, int indent, bool add_cr) {
 
 
 #ifdef USE_OPENSSL11
-    const STACK_OF(X509_EXTENSION) *exts = X509_get0_extensions(x);
-
-    BIO *ext_bio = BIO_new(BIO_s_mem());
-    if (!ext_bio) {
+    std::string extensions;
+    if(!socle::ossl::extensions_text(x, extensions, indent)) {
         s << " ... unable to allocate BIO";
         return s.str();
     }
-
-    X509V3_extensions_print(ext_bio, nullptr, exts, 0, indent);
-
-    BUF_MEM *bptr = nullptr;
-    BIO_get_mem_ptr(ext_bio, &bptr);
-    BIO_set_close(ext_bio, BIO_CLOSE);
-
-    std::string it(bptr->data, bptr->length);
-    s << pref << it;
-
-    BIO_free(ext_bio);
+    s << pref << extensions;
 
 #else
     STACK_OF(X509_EXTENSION) *exts = x->cert_info->extensions;

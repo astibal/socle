@@ -1,6 +1,7 @@
 #pragma once
 
 #include <openssl/x509v3.h>
+#include <openssl/pem.h>
 #include <arpa/inet.h>
 #include <array>
 #include <ctime>
@@ -21,6 +22,22 @@ inline std::string bio_text(BIO* bio) {
     char* bytes = nullptr;
     auto size = BIO_get_mem_data(bio, &bytes);
     return size > 0 ? std::string(bytes, static_cast<size_t>(size)) : std::string{};
+}
+
+// Public certificate only; the returned PEM never includes a private key.
+inline std::string certificate_pem(X509 const* certificate) {
+    if(!certificate) return {};
+    bio_ptr output(BIO_new(BIO_s_mem()), BIO_free);
+    if(!output || PEM_write_bio_X509(output.get(), certificate) != 1) return {};
+    return bio_text(output.get());
+}
+
+// Unbounded diagnostic rendering, unlike the legacy fixed-buffer overloads.
+inline std::string time_text_full(ASN1_TIME const* value) {
+    if(!value) return {};
+    bio_ptr output(BIO_new(BIO_s_mem()), BIO_free);
+    if(!output || ASN1_TIME_print(output.get(), value) != 1) return {};
+    return bio_text(output.get());
 }
 
 // The buffer size is explicit so legacy callers retain their truncation policy.
@@ -183,12 +200,21 @@ inline std::string signature_algorithm(X509 const* certificate) {
     return algorithm ? algorithm : "";
 }
 
-inline std::string extensions_text(X509 const* certificate) {
-    if(!certificate) return {};
+// Report allocation failure separately for legacy diagnostic callers.
+inline bool extensions_text(X509 const* certificate, std::string& text, int indent = 0) {
+    text.clear();
+    if(!certificate) return false;
     bio_ptr output(BIO_new(BIO_s_mem()), BIO_free);
-    if(!output) return {};
-    X509V3_extensions_print(output.get(), nullptr, X509_get0_extensions(certificate), 0, 0);
-    return bio_text(output.get());
+    if(!output) return false;
+    X509V3_extensions_print(output.get(), nullptr, X509_get0_extensions(certificate), 0, indent);
+    text = bio_text(output.get());
+    return true;
+}
+
+inline std::string extensions_text(X509 const* certificate) {
+    std::string text;
+    extensions_text(certificate, text);
+    return text;
 }
 
 } // namespace socle::ossl

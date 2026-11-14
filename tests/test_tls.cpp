@@ -4509,3 +4509,66 @@ TEST(OpenSSLUtilities, AlternativeNamesRejectEmbeddedNulAndMalformedIp) {
     ASSERT_EQ(legacy.names.size(), 1U);
     EXPECT_EQ(legacy.names[0].value, std::string(reinterpret_cast<char*>(non_ascii), 2));
 }
+
+
+TEST(OpenSSLUtilities, CertificatePemRoundTripsWithoutPrivateMaterial) {
+    EXPECT_TRUE(socle::ossl::certificate_pem(nullptr).empty());
+    auto close_file = [](FILE* file) { if(file) std::fclose(file); };
+    std::unique_ptr<FILE, decltype(close_file)> file(
+        std::fopen("etc/certs/default/srv-cert.pem", "r"), close_file);
+    ASSERT_TRUE(file);
+    std::unique_ptr<X509, decltype(&X509_free)> certificate(
+        PEM_read_X509(file.get(), nullptr, nullptr, nullptr), X509_free);
+    ASSERT_TRUE(certificate);
+    auto pem = socle::ossl::certificate_pem(certificate.get());
+    EXPECT_EQ(pem.find("-----BEGIN CERTIFICATE-----"), 0U);
+    EXPECT_EQ(pem.find("PRIVATE KEY"), std::string::npos);
+    socle::ossl::bio_ptr input(BIO_new_mem_buf(pem.data(), static_cast<int>(pem.size())), BIO_free);
+    ASSERT_TRUE(input);
+    std::unique_ptr<X509, decltype(&X509_free)> parsed(
+        PEM_read_bio_X509(input.get(), nullptr, nullptr, nullptr), X509_free);
+    ASSERT_TRUE(parsed);
+    EXPECT_EQ(X509_cmp(parsed.get(), certificate.get()), 0);
+}
+
+TEST(OpenSSLUtilities, CacheSubjectKeepsOriginalOpenSslTruncation) {
+    std::unique_ptr<X509, decltype(&X509_free)> cert(X509_new(), X509_free);
+    ASSERT_TRUE(cert);
+    auto* name = X509_get_subject_name(cert.get());
+    for(int i = 0; i < 12; ++i) {
+        std::string value(60, static_cast<char>('a' + i));
+        ASSERT_EQ(X509_NAME_add_entry_by_txt(name, "OU", MBSTRING_ASC,
+            reinterpret_cast<unsigned char const*>(value.data()), value.size(), -1, 0), 1);
+    }
+    char old_subject[512]{};
+    ASSERT_NE(X509_NAME_oneline(name, old_subject, sizeof(old_subject)), nullptr);
+    EXPECT_EQ(socle::ossl::name_oneline(name, 513), old_subject);
+    SpoofOptions options;
+    auto key = SSLFactory::make_store_key(cert.get(), options);
+    EXPECT_EQ(key.substr(0, key.find("+cert:")), "subj:" + std::string(old_subject));
+}
+
+TEST(OpenSSLUtilities, DiagnosticTimeAndExtensionIndentationStayCompatible) {
+    EXPECT_TRUE(socle::ossl::time_text_full(nullptr).empty());
+    std::unique_ptr<ASN1_TIME, decltype(&ASN1_TIME_free)> time(ASN1_TIME_new(), ASN1_TIME_free);
+    ASSERT_TRUE(time);
+    EXPECT_TRUE(socle::ossl::time_text_full(time.get()).empty());
+    ASSERT_EQ(ASN1_TIME_set_string(time.get(), "20260102030405Z"), 1);
+    EXPECT_EQ(socle::ossl::time_text_full(time.get()), "Jan  2 03:04:05 2026 GMT");
+    std::unique_ptr<X509, decltype(&X509_free)> cert(X509_new(), X509_free);
+    ASSERT_TRUE(cert);
+    std::unique_ptr<X509_EXTENSION, decltype(&X509_EXTENSION_free)> extension(
+        X509V3_EXT_conf_nid(nullptr, nullptr, NID_subject_alt_name,
+            const_cast<char*>("DNS:example.test")), X509_EXTENSION_free);
+    ASSERT_TRUE(extension);
+    ASSERT_EQ(X509_add_ext(cert.get(), extension.get(), -1), 1);
+    for(int indent : {0, 2, 8}) {
+        socle::ossl::bio_ptr old(BIO_new(BIO_s_mem()), BIO_free);
+        ASSERT_TRUE(old);
+        X509V3_extensions_print(old.get(), nullptr, X509_get0_extensions(cert.get()), 0, indent);
+        std::string text;
+        ASSERT_TRUE(socle::ossl::extensions_text(cert.get(), text, indent));
+        EXPECT_EQ(text, socle::ossl::bio_text(old.get()));
+        EXPECT_NE(text.find("DNS:example.test"), std::string::npos);
+    }
+}
