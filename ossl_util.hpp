@@ -3,6 +3,9 @@
 #include <openssl/x509v3.h>
 #include <openssl/pem.h>
 #include <openssl/err.h>
+#include <openssl/rand.h>
+#include <optional>
+#include <string_view>
 #include <arpa/inet.h>
 #include <array>
 #include <ctime>
@@ -111,20 +114,44 @@ inline std::string time_iso8601(ASN1_TIME const* value) {
 
 enum class hex_case { lower, upper };
 
+inline std::string hex_encode(unsigned char const* bytes, size_t size,
+                              hex_case casing = hex_case::lower) {
+    auto const* hex = casing == hex_case::upper ? "0123456789ABCDEF" : "0123456789abcdef";
+    std::string result;
+    result.reserve(size * 2);
+    for(size_t i = 0; i < size; ++i) {
+        result += hex[bytes[i] >> 4];
+        result += hex[bytes[i] & 15];
+    }
+    return result;
+}
+
+// Empty input is valid. The caller decides whether its domain allows it.
+inline std::optional<std::string> sha256(std::string_view input) {
+    std::unique_ptr<EVP_MD_CTX, decltype(&EVP_MD_CTX_free)> context(EVP_MD_CTX_new(), EVP_MD_CTX_free);
+    if(!context) return std::nullopt;
+    std::array<unsigned char, EVP_MAX_MD_SIZE> digest{};
+    unsigned size = 0;
+    if(EVP_DigestInit_ex(context.get(), EVP_sha256(), nullptr) != 1 ||
+       EVP_DigestUpdate(context.get(), input.data(), input.size()) != 1 ||
+       EVP_DigestFinal_ex(context.get(), digest.data(), &size) != 1) return std::nullopt;
+    return hex_encode(digest.data(), size);
+}
+
+inline std::optional<std::string> random_hex(size_t bytes) {
+    if(bytes == 0 || bytes > static_cast<size_t>(INT_MAX)) return std::nullopt;
+    std::vector<unsigned char> random(bytes);
+    if(RAND_bytes(random.data(), static_cast<int>(random.size())) != 1) return std::nullopt;
+    return hex_encode(random.data(), random.size());
+}
+
 inline std::string fingerprint(X509 const* certificate, EVP_MD const* algorithm,
                                hex_case casing = hex_case::lower) {
     if(!certificate || !algorithm) return {};
     std::array<unsigned char, EVP_MAX_MD_SIZE> digest{};
     unsigned size = 0;
     if(X509_digest(certificate, algorithm, digest.data(), &size) != 1) return {};
-    auto const* hex = casing == hex_case::upper ? "0123456789ABCDEF" : "0123456789abcdef";
-    std::string result;
-    result.reserve(size * 2);
-    for(unsigned i = 0; i < size; ++i) {
-        result += hex[digest[i] >> 4];
-        result += hex[digest[i] & 15];
-    }
-    return result;
+    return hex_encode(digest.data(), size, casing);
 }
 
 inline std::string serial_hex(X509 const* certificate) {

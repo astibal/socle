@@ -4596,3 +4596,19 @@ TEST(OpenSSLUtilities, ErrorFormattingPreservesQueueConsumptionSemantics) {
               socle::ossl::error_text(first) + "; " + socle::ossl::error_text(last));
     EXPECT_EQ(ERR_peek_error(), 0UL);
 }
+
+TEST(OpenSSLUtilities, HashAndTokenPrimitivesPreserveEncodingAndBounds) {
+    EXPECT_EQ(socle::ossl::sha256("abc"),
+        "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+    EXPECT_EQ(socle::ossl::sha256(""),
+        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+    EXPECT_FALSE(socle::ossl::random_hex(0));
+    EXPECT_FALSE(socle::ossl::random_hex(static_cast<size_t>(INT_MAX) + 1));
+    auto token = socle::ossl::random_hex(16);
+    ASSERT_TRUE(token);
+    EXPECT_EQ(token->size(), 32U);
+    EXPECT_EQ(token->find_first_not_of("0123456789abcdef"), std::string::npos);
+    unsigned char bytes[] = {0, 0xab, 0xff};
+    EXPECT_EQ(socle::ossl::hex_encode(bytes, 3), "00abff");
+    EXPECT_EQ(socle::ossl::hex_encode(bytes, 3, socle::ossl::hex_case::upper), "00ABFF");
+}
