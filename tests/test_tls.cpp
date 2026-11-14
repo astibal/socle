@@ -4612,3 +4612,37 @@ TEST(OpenSSLUtilities, HashAndTokenPrimitivesPreserveEncodingAndBounds) {
     EXPECT_EQ(socle::ossl::hex_encode(bytes, 3), "00abff");
     EXPECT_EQ(socle::ossl::hex_encode(bytes, 3, socle::ossl::hex_case::upper), "00ABFF");
 }
+
+TEST(OpenSSLUtilities, SessionInfoHandlesMissingStateAndCopiesValues) {
+    EXPECT_FALSE(socle::ossl::session_details(nullptr));
+    EXPECT_FALSE(socle::ossl::server_name(nullptr));
+    EXPECT_TRUE(socle::ossl::selected_alpn(nullptr).empty());
+    std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)> context(SSL_CTX_new(TLS_method()), SSL_CTX_free);
+    ASSERT_TRUE(context);
+    std::unique_ptr<SSL, decltype(&SSL_free)> ssl(SSL_new(context.get()), SSL_free);
+    ASSERT_TRUE(ssl);
+    EXPECT_FALSE(socle::ossl::session_details(ssl.get()));
+    EXPECT_FALSE(socle::ossl::server_name(ssl.get()));
+    EXPECT_TRUE(socle::ossl::selected_alpn(ssl.get()).empty());
+    ASSERT_EQ(SSL_set_tlsext_host_name(ssl.get(), "example.test"), 1);
+    auto name = socle::ossl::server_name(ssl.get());
+    EXPECT_EQ(name, "example.test");
+    std::unique_ptr<SSL_SESSION, decltype(&SSL_SESSION_free)> session(SSL_SESSION_new(), SSL_SESSION_free);
+    ASSERT_TRUE(session);
+    ASSERT_EQ(SSL_SESSION_set_protocol_version(session.get(), TLS1_3_VERSION), 1);
+    unsigned char cipher_id[] = {0x13, 0x01};
+    auto const* cipher = SSL_CIPHER_find(ssl.get(), cipher_id);
+    ASSERT_NE(cipher, nullptr);
+    ASSERT_EQ(SSL_SESSION_set_cipher(session.get(), cipher), 1);
+    ASSERT_EQ(SSL_set_session(ssl.get(), session.get()), 1);
+    auto info = socle::ossl::session_details(ssl.get());
+    ASSERT_TRUE(info);
+    EXPECT_EQ(info->protocol_version, TLS1_3_VERSION);
+    EXPECT_EQ(info->cipher, "TLS_AES_128_GCM_SHA256");
+    EXPECT_EQ(info->transport_version, SSL_get_version(ssl.get()));
+    EXPECT_FALSE(info->has_ticket);
+    EXPECT_EQ(info->ticket_lifetime_hint, 0UL);
+    ssl.reset();
+    EXPECT_EQ(name, "example.test");
+    EXPECT_EQ(info->cipher, "TLS_AES_128_GCM_SHA256");
+}

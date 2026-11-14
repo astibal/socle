@@ -4,6 +4,7 @@
 #include <openssl/pem.h>
 #include <openssl/err.h>
 #include <openssl/rand.h>
+#include <openssl/ssl.h>
 #include <optional>
 #include <string_view>
 #include <arpa/inet.h>
@@ -40,6 +41,42 @@ inline std::string drain_error_text() {
         result += error_text(code);
     }
     return result;
+}
+
+// Read on the SSL object's owning thread. Returned values own their storage.
+// No handshake/policy decisions: callers decide when these fields are valid.
+struct session_info {
+    std::string transport_version; // SSL_get_version: can describe QUIC, not TLS.
+    int protocol_version = 0;       // SSL_SESSION_get_protocol_version: TLS version.
+    std::string cipher;
+    bool has_ticket = false;
+    unsigned long ticket_lifetime_hint = 0;
+};
+
+inline std::optional<session_info> session_details(SSL const* ssl) {
+    auto const* session = ssl ? SSL_get_session(ssl) : nullptr;
+    if(!session) return std::nullopt;
+    session_info result;
+    result.transport_version = SSL_get_version(ssl);
+    result.protocol_version = SSL_SESSION_get_protocol_version(session);
+    result.cipher = SSL_CIPHER_get_name(SSL_SESSION_get0_cipher(session));
+    result.has_ticket = SSL_SESSION_has_ticket(session) != 0;
+    if(result.has_ticket)
+        result.ticket_lifetime_hint = SSL_SESSION_get_ticket_lifetime_hint(session);
+    return result;
+}
+
+inline std::optional<std::string> server_name(SSL const* ssl) {
+    auto const* name = ssl ? SSL_get_servername(ssl, TLSEXT_NAMETYPE_host_name) : nullptr;
+    return name ? std::optional<std::string>(name) : std::nullopt;
+}
+
+inline std::string selected_alpn(SSL const* ssl) {
+    if(!ssl) return {};
+    unsigned char const* bytes = nullptr;
+    unsigned int size = 0;
+    SSL_get0_alpn_selected(ssl, &bytes, &size);
+    return bytes && size ? std::string(reinterpret_cast<char const*>(bytes), size) : std::string{};
 }
 
 using bio_ptr = std::unique_ptr<BIO, decltype(&BIO_free)>;
