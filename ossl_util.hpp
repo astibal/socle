@@ -79,7 +79,22 @@ inline std::string selected_alpn(SSL const* ssl) {
     return bytes && size ? std::string(reinterpret_cast<char const*>(bytes), size) : std::string{};
 }
 
+// Owning OpenSSL pointers. Pass the matching deleter at construction.
 using bio_ptr = std::unique_ptr<BIO, decltype(&BIO_free)>;
+using x509_ptr = std::unique_ptr<X509, decltype(&X509_free)>;
+using x509_crl_ptr = std::unique_ptr<X509_CRL, decltype(&X509_CRL_free)>;
+using x509_name_ptr = std::unique_ptr<X509_NAME, decltype(&X509_NAME_free)>;
+using x509_req_ptr = std::unique_ptr<X509_REQ, decltype(&X509_REQ_free)>;
+using x509_extension_ptr = std::unique_ptr<X509_EXTENSION, decltype(&X509_EXTENSION_free)>;
+using x509_store_ptr = std::unique_ptr<X509_STORE, decltype(&X509_STORE_free)>;
+using pkey_ptr = std::unique_ptr<EVP_PKEY, decltype(&EVP_PKEY_free)>;
+using md_ctx_ptr = std::unique_ptr<EVP_MD_CTX, decltype(&EVP_MD_CTX_free)>;
+using bignum_ptr = std::unique_ptr<BIGNUM, decltype(&BN_free)>;
+using general_names_ptr = std::unique_ptr<GENERAL_NAMES, decltype(&GENERAL_NAMES_free)>;
+using ssl_ptr = std::unique_ptr<SSL, decltype(&SSL_free)>;
+using ssl_ctx_ptr = std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)>;
+using ssl_session_ptr = std::unique_ptr<SSL_SESSION, decltype(&SSL_SESSION_free)>;
+using openssl_string_ptr = std::unique_ptr<char, void (*)(char*)>;
 
 inline std::string bio_text(BIO* bio) {
     if(!bio) return {};
@@ -138,7 +153,7 @@ inline std::vector<std::string> peer_certificates_pem(SSL* ssl) {
         return result;
     }
 
-    std::unique_ptr<X509, decltype(&X509_free)> leaf(
+    x509_ptr leaf(
         SSL_get_peer_certificate(ssl), X509_free);
 
     if (leaf) {
@@ -227,7 +242,7 @@ inline std::string hex_encode(unsigned char const* bytes, size_t size,
 
 // Empty input is valid. The caller decides whether its domain allows it.
 inline std::optional<std::string> sha256(std::string_view input) {
-    std::unique_ptr<EVP_MD_CTX, decltype(&EVP_MD_CTX_free)> context(EVP_MD_CTX_new(), EVP_MD_CTX_free);
+    md_ctx_ptr context(EVP_MD_CTX_new(), EVP_MD_CTX_free);
     if(!context) return std::nullopt;
     std::array<unsigned char, EVP_MAX_MD_SIZE> digest{};
     unsigned size = 0;
@@ -255,11 +270,11 @@ inline std::string fingerprint(X509 const* certificate, EVP_MD const* algorithm,
 
 inline std::string serial_hex(X509 const* certificate) {
     if(!certificate) return {};
-    std::unique_ptr<BIGNUM, decltype(&BN_free)> serial(
+    bignum_ptr serial(
         ASN1_INTEGER_to_BN(X509_get0_serialNumber(certificate), nullptr), BN_free);
     if(!serial) return {};
     auto free_hex = [](char* value) { OPENSSL_free(value); };
-    std::unique_ptr<char, decltype(free_hex)> hex(BN_bn2hex(serial.get()), free_hex);
+    openssl_string_ptr hex(BN_bn2hex(serial.get()), free_hex);
     return hex ? std::string(hex.get()) : std::string{};
 }
 
@@ -308,7 +323,7 @@ inline alternative_names_result alternative_names(
     for(int e = 0; e < sk_X509_EXTENSION_num(extensions); ++e) {
         auto* extension = sk_X509_EXTENSION_value(extensions, e);
         if(!extension || OBJ_obj2nid(X509_EXTENSION_get_object(extension)) != NID_subject_alt_name) continue;
-        std::unique_ptr<GENERAL_NAMES, decltype(&GENERAL_NAMES_free)> names(
+        general_names_ptr names(
             static_cast<GENERAL_NAMES*>(X509V3_EXT_d2i(extension)), GENERAL_NAMES_free);
         if(!names) continue;
         result.present = true;
