@@ -16,6 +16,7 @@
     License along with this library.
 */
 
+#include <ossl_util.hpp>
 #include <sslcertval.hpp>
 #include <display.hpp>
 
@@ -137,17 +138,7 @@ namespace inet {
                             is_revoked = 1;
                             const ASN1_TIME *tm = X509_REVOKED_get0_revocationDate(myentry);
 
-                            std::string revocation_date;
-                            BIO *time_bio = BIO_new(BIO_s_mem());
-                            if (time_bio) {
-                                if (ASN1_TIME_print(time_bio, tm) == 1) {
-                                    char* text = nullptr;
-                                    const long length = BIO_get_mem_data(time_bio, &text);
-                                    if (length > 0 && text)
-                                        revocation_date.assign(text, static_cast<std::size_t>(length));
-                                }
-                                BIO_free(time_bio);
-                            }
+                            auto revocation_date = socle::ossl::time_text_full(tm);
                             _dia("certificate revoked: %s", revocation_date.c_str());
                         }
 
@@ -783,7 +774,7 @@ namespace inet {
                     is_revoked = -1;
 
                     int err = static_cast<int>(ERR_get_error());
-                    _dia("    error: %s",ERR_error_string(err,nullptr));
+                    _dia("    error: %s",socle::ossl::error_text(err).c_str());
                     ERR_clear_error();
 
                 } else {

@@ -23,6 +23,7 @@
 #include <hostcx.hpp>
 
 #include <poll.h>
+#include <memory>
 
 #include <vars.hpp>
 #include <convert.hpp>
@@ -83,7 +84,7 @@ int TCPCom::connect(const char* host, const char* port) {
         return -2;
     }
 
-    auto gai_r = raw::lax<addrinfo*>(gai_result, [](auto& r) { freeaddrinfo(r); } );
+    std::unique_ptr<addrinfo, decltype(&freeaddrinfo)> gai_r(gai_result, freeaddrinfo);
 
     /* getaddrinfo() returns a list of address structures.
     Try each address until we successfully connect(2).

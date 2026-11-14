@@ -179,7 +179,7 @@ TEST(TLS_Tests, PrivilegedVirtualDtlsContextTracksPromotionAndReleasesBothIdenti
     ::close(client);
 }
 
-std::unique_ptr<X509, decltype(&X509_free)> load_tls_test_certificate() {
+socle::ossl::x509_ptr load_tls_test_certificate() {
     FILE* file = std::fopen("etc/certs/default/srv-cert.pem", "r");
     if (!file)
         return {nullptr, X509_free};
@@ -236,7 +236,7 @@ TEST(TLS_Tests, CertificateStoreReadHandlesAreCloseOnExec) {
     std::fclose(certificate);
 }
 
-std::unique_ptr<EVP_PKEY, decltype(&EVP_PKEY_free)> load_tls_test_key() {
+socle::ossl::pkey_ptr load_tls_test_key() {
     FILE* file = std::fopen("etc/certs/default/srv-key.pem", "r");
     if (!file)
         return {nullptr, EVP_PKEY_free};
@@ -245,7 +245,7 @@ std::unique_ptr<EVP_PKEY, decltype(&EVP_PKEY_free)> load_tls_test_key() {
     return {key, EVP_PKEY_free};
 }
 
-std::unique_ptr<EVP_PKEY, decltype(&EVP_PKEY_free)> make_rsa_key() {
+socle::ossl::pkey_ptr make_rsa_key() {
     EVP_PKEY_CTX* context = EVP_PKEY_CTX_new_id(EVP_PKEY_RSA, nullptr);
     EVP_PKEY* key = nullptr;
     if (!context || EVP_PKEY_keygen_init(context) <= 0 ||
@@ -258,11 +258,11 @@ std::unique_ptr<EVP_PKEY, decltype(&EVP_PKEY_free)> make_rsa_key() {
     return {key, EVP_PKEY_free};
 }
 
-std::unique_ptr<X509, decltype(&X509_free)> make_certificate(
+socle::ossl::x509_ptr make_certificate(
     EVP_PKEY* key, long serial, const char* common_name,
     X509* issuer = nullptr, EVP_PKEY* issuer_key = nullptr,
     bool certificate_authority = false) {
-    std::unique_ptr<X509, decltype(&X509_free)> certificate(X509_new(), X509_free);
+    socle::ossl::x509_ptr certificate(X509_new(), X509_free);
     if (!certificate || X509_set_version(certificate.get(), 2) != 1 ||
         ASN1_INTEGER_set(X509_get_serialNumber(certificate.get()), serial) != 1 ||
         !X509_gmtime_adj(X509_getm_notBefore(certificate.get()), -60) ||
@@ -293,11 +293,11 @@ std::unique_ptr<X509, decltype(&X509_free)> make_certificate(
     return certificate;
 }
 
-std::unique_ptr<X509_CRL, decltype(&X509_CRL_free)> make_test_crl(
+socle::ossl::x509_crl_ptr make_test_crl(
     X509* issuer, EVP_PKEY* issuer_key, X509* revoked_certificate = nullptr,
     long last_update_offset = -60, long next_update_offset = 3600,
     bool omit_next_update = false) {
-    std::unique_ptr<X509_CRL, decltype(&X509_CRL_free)> crl(X509_CRL_new(), X509_CRL_free);
+    socle::ossl::x509_crl_ptr crl(X509_CRL_new(), X509_CRL_free);
     if (!crl || X509_CRL_set_version(crl.get(), 1) != 1 ||
         X509_CRL_set_issuer_name(crl.get(), X509_get_subject_name(issuer)) != 1)
         return {nullptr, X509_CRL_free};
@@ -346,7 +346,7 @@ TEST(TLS_Tests, CrlLoadersAcceptDerAndPemWithoutPollutingErrors) {
     auto free_der = raw::guard([&] { OPENSSL_free(der_data); });
     buffer der;
     der.append(reinterpret_cast<const char*>(der_data), der_size);
-    std::unique_ptr<X509_CRL, decltype(&X509_CRL_free)> parsed_der(
+    socle::ossl::x509_crl_ptr parsed_der(
         inet::crl::crl_from_bytes(der), X509_CRL_free);
     ASSERT_NE(parsed_der, nullptr);
     EXPECT_EQ(X509_CRL_verify(parsed_der.get(), issuer_key.get()), 1);
@@ -359,7 +359,7 @@ TEST(TLS_Tests, CrlLoadersAcceptDerAndPemWithoutPollutingErrors) {
     EXPECT_EQ(inet::crl::crl_from_bytes(der_with_trailing_data), nullptr);
     EXPECT_EQ(ERR_peek_error(), 0U);
 
-    std::unique_ptr<BIO, decltype(&BIO_free)> pem_bio(
+    socle::ossl::bio_ptr pem_bio(
         BIO_new(BIO_s_mem()), BIO_free);
     ASSERT_NE(pem_bio, nullptr);
     ASSERT_EQ(PEM_write_bio_X509_CRL(pem_bio.get(), crl.get()), 1);
@@ -368,7 +368,7 @@ TEST(TLS_Tests, CrlLoadersAcceptDerAndPemWithoutPollutingErrors) {
     ASSERT_GT(pem_size, 0);
     ASSERT_NE(pem_data, nullptr);
     const std::string pem(pem_data, static_cast<std::size_t>(pem_size));
-    std::unique_ptr<X509_CRL, decltype(&X509_CRL_free)> parsed_pem(
+    socle::ossl::x509_crl_ptr parsed_pem(
         inet::crl::crl_from_bytes(pem.c_str()), X509_CRL_free);
     ASSERT_NE(parsed_pem, nullptr);
     EXPECT_EQ(X509_CRL_verify(parsed_pem.get(), issuer_key.get()), 1);
@@ -383,7 +383,7 @@ TEST(TLS_Tests, CrlLoadersAcceptDerAndPemWithoutPollutingErrors) {
     ASSERT_EQ(PEM_write_X509_CRL(output, crl.get()), 1);
     std::fclose(output);
     auto remove_pem = raw::guard([&] { std::filesystem::remove(pem_path); });
-    std::unique_ptr<X509_CRL, decltype(&X509_CRL_free)> parsed_file(
+    socle::ossl::x509_crl_ptr parsed_file(
         inet::crl::crl_from_file(pem_path.c_str()), X509_CRL_free);
     ASSERT_NE(parsed_file, nullptr);
     EXPECT_EQ(X509_CRL_verify(parsed_file.get(), issuer_key.get()), 1);
@@ -767,7 +767,7 @@ TEST(TLS_Tests, SignedOcspResponsesDistinguishGoodRevokedAndInvalidEvidence) {
     ASSERT_NE(leaf, nullptr);
     ASSERT_NE(unrelated, nullptr);
 
-    std::unique_ptr<X509_STORE, decltype(&X509_STORE_free)> store(
+    socle::ossl::x509_store_ptr store(
         X509_STORE_new(), X509_STORE_free);
     ASSERT_NE(store, nullptr);
     ASSERT_EQ(X509_STORE_add_cert(store.get(), issuer.get()), 1);
@@ -848,7 +848,7 @@ TEST(TLS_Tests, OcspVerificationUsesTheCompleteVerifiedIssuerChain) {
     ASSERT_NE(issuer, nullptr);
     ASSERT_NE(leaf, nullptr);
 
-    std::unique_ptr<X509_STORE, decltype(&X509_STORE_free)> store(
+    socle::ossl::x509_store_ptr store(
         X509_STORE_new(), X509_STORE_free);
     ASSERT_NE(store, nullptr);
     ASSERT_EQ(X509_STORE_add_cert(store.get(), root.get()), 1);
@@ -1031,13 +1031,13 @@ TEST(TLS_Tests, CertificateFactoryLoadsContextsAndGeneratesMitmCertificates) {
     }
     EXPECT_TRUE(factory.load_trust_store());
 
-    auto client = std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)>(
+    auto client = socle::ossl::ssl_ctx_ptr(
         factory.client_ctx_setup(), SSL_CTX_free);
-    auto server = std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)>(
+    auto server = socle::ossl::ssl_ctx_ptr(
         factory.server_ctx_setup(), SSL_CTX_free);
-    auto dtls_client = std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)>(
+    auto dtls_client = socle::ossl::ssl_ctx_ptr(
         factory.client_dtls_ctx_setup(), SSL_CTX_free);
-    auto dtls_server = std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)>(
+    auto dtls_server = socle::ossl::ssl_ctx_ptr(
         factory.server_dtls_ctx_setup(), SSL_CTX_free);
     ASSERT_NE(client, nullptr);
     ASSERT_NE(server, nullptr);
@@ -1077,14 +1077,14 @@ TEST(TLS_Tests, CertificateFactoryLoadsContextsAndGeneratesMitmCertificates) {
     X509_free(self_signed->chain.cert);
     self_signed->nullify();
 
-    std::unique_ptr<SSL_SESSION, decltype(&SSL_SESSION_free)> cached_session(
+    socle::ossl::ssl_session_ptr cached_session(
         SSL_SESSION_new(), SSL_SESSION_free);
     ASSERT_NE(cached_session, nullptr);
     factory.session_cache().set(
         "trust-generation-session",
         new session_holder(cached_session.release()));
 
-    std::unique_ptr<X509_CRL, decltype(&X509_CRL_free)> cached_crl(
+    socle::ossl::x509_crl_ptr cached_crl(
         X509_CRL_new(), X509_CRL_free);
     ASSERT_NE(cached_crl, nullptr);
     factory.crl_cache().set(
@@ -1103,7 +1103,7 @@ TEST(TLS_Tests, CertificateFactoryLoadsContextsAndGeneratesMitmCertificates) {
 
 TEST(TLS_Tests, TrustStoreTeardownInvalidatesCachedSessions) {
     auto& factory = SSLFactory::factory();
-    std::unique_ptr<SSL_SESSION, decltype(&SSL_SESSION_free)> session(
+    socle::ossl::ssl_session_ptr session(
         SSL_SESSION_new(), SSL_SESSION_free);
     ASSERT_NE(session, nullptr);
     factory.session_cache().set(
@@ -1186,7 +1186,7 @@ TEST(TLS_Tests, CertificateFactoryRejectsMissingPkiAndTrustLocations) {
     factory.ca_file() = "/definitely/missing/ca-bundle.pem";
     factory.ca_path().clear();
     EXPECT_FALSE(factory.load_trust_store());
-    auto context = std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)>(
+    auto context = socle::ossl::ssl_ctx_ptr(
         SSL_CTX_new(TLS_method()), SSL_CTX_free);
     ASSERT_NE(context, nullptr);
     EXPECT_FALSE(factory.set_verify_locations(context.get()));
@@ -1536,8 +1536,8 @@ struct SSLMitmCom_Buddy : public SSLMitmCom {
 };
 
 struct MemoryTlsPair {
-    std::unique_ptr<SSL, decltype(&SSL_free)> client {nullptr, SSL_free};
-    std::unique_ptr<SSL, decltype(&SSL_free)> server {nullptr, SSL_free};
+    socle::ossl::ssl_ptr client {nullptr, SSL_free};
+    socle::ossl::ssl_ptr server {nullptr, SSL_free};
 };
 
 TEST(TLS_Tests, WildcardSniBypassRequiresAnActualSubdomain) {
@@ -1584,7 +1584,7 @@ TEST(TLS_Tests, PeekWaitsForWriteWhenOpenSslNeedsHandshakeOutput) {
     int sockets[2] {-1, -1};
     ASSERT_EQ(::socketpair(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK, 0, sockets), 0);
 
-    std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)> context(
+    socle::ossl::ssl_ctx_ptr context(
         SSL_CTX_new(TLS_client_method()), SSL_CTX_free);
     ASSERT_NE(context, nullptr);
     SSL* ssl = SSL_new(context.get());
@@ -1825,9 +1825,9 @@ TEST(TLS_Tests, CleanupSendsCloseNotifyDespiteStaleOpenSslErrors) {
     ASSERT_NE(key, nullptr);
     auto certificate = make_certificate(key.get(), 4404, "cleanup.example");
     ASSERT_NE(certificate, nullptr);
-    auto client_context = std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)>(
+    auto client_context = socle::ossl::ssl_ctx_ptr(
         SSL_CTX_new(TLS_method()), SSL_CTX_free);
-    auto server_context = std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)>(
+    auto server_context = socle::ossl::ssl_ctx_ptr(
         SSL_CTX_new(TLS_method()), SSL_CTX_free);
     ASSERT_NE(client_context, nullptr);
     ASSERT_NE(server_context, nullptr);
@@ -1868,9 +1868,9 @@ TEST(TLS_Tests, ClientCertificateActionsCompleteTls12AndTls13RequestsSafely) {
 
     for(const int version : {TLS1_2_VERSION, TLS1_3_VERSION}) {
         for(const int action : {0, 1, 2, 3}) {
-            auto client_context = std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)>(
+            auto client_context = socle::ossl::ssl_ctx_ptr(
                 SSL_CTX_new(TLS_method()), SSL_CTX_free);
-            auto server_context = std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)>(
+            auto server_context = socle::ossl::ssl_ctx_ptr(
                 SSL_CTX_new(TLS_method()), SSL_CTX_free);
             ASSERT_NE(client_context, nullptr);
             ASSERT_NE(server_context, nullptr);
@@ -1954,7 +1954,7 @@ TEST(TLS_Tests, CertificateCheckRejectsMissingSslState) {
     SSLMitmCom mitm;
     EXPECT_FALSE(mitm.check_cert(nullptr));
 
-    auto context = std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)>(
+    auto context = socle::ossl::ssl_ctx_ptr(
         SSL_CTX_new(TLS_method()), SSL_CTX_free);
     ASSERT_NE(context, nullptr);
     SSLCom_Buddy no_peer_certificate;
@@ -1972,7 +1972,7 @@ TEST(TLS_Tests, MismatchedPreferredServerIdentityFailsClosed) {
     ASSERT_NE(unrelated_key, nullptr);
     ASSERT_NE(certificate, nullptr);
 
-    auto context = std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)>(
+    auto context = socle::ossl::ssl_ctx_ptr(
         SSL_CTX_new(TLS_method()), SSL_CTX_free);
     ASSERT_NE(context, nullptr);
 
@@ -1989,7 +1989,7 @@ TEST(TLS_Tests, MismatchedPreferredServerIdentityFailsClosed) {
 }
 
 TEST(TLS_Tests, RejectedServerCryptoPolicyLeavesNoUsableSslState) {
-    auto context = std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)>(
+    auto context = socle::ossl::ssl_ctx_ptr(
         SSL_CTX_new(TLS_method()), SSL_CTX_free);
     ASSERT_NE(context, nullptr);
 
@@ -2073,7 +2073,7 @@ TEST(TLS_Tests, MitmCertificateGenerationIsCachedAndReusable) {
         factory.ca_path() = saved_ca_path;
     });
     ASSERT_TRUE(factory.load_from_files());
-    auto server_context = std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)>(
+    auto server_context = socle::ossl::ssl_ctx_ptr(
         factory.server_ctx_setup(), SSL_CTX_free);
     ASSERT_NE(server_context, nullptr);
 
@@ -2131,9 +2131,9 @@ TEST(TLS_Tests, MitmHostnameValidationUsesTheNegotiatedPeerCertificate) {
     ASSERT_NE(certificate, nullptr);
     ASSERT_NE(key, nullptr);
 
-    auto client_context = std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)>(
+    auto client_context = socle::ossl::ssl_ctx_ptr(
         SSL_CTX_new(TLS_method()), SSL_CTX_free);
-    auto server_context = std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)>(
+    auto server_context = socle::ossl::ssl_ctx_ptr(
         SSL_CTX_new(TLS_method()), SSL_CTX_free);
     ASSERT_NE(client_context, nullptr);
     ASSERT_NE(server_context, nullptr);
@@ -2176,9 +2176,9 @@ TEST(TLS_Tests, MitmHostnameValidationDoesNotLetCommonNameOverrideDnsSan) {
     ASSERT_EQ(X509_check_host(certificate.get(), "requested.example", 0,
                               X509_CHECK_FLAG_ALWAYS_CHECK_SUBJECT, nullptr), 1);
 
-    auto client_context = std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)>(
+    auto client_context = socle::ossl::ssl_ctx_ptr(
         SSL_CTX_new(TLS_method()), SSL_CTX_free);
-    auto server_context = std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)>(
+    auto server_context = socle::ossl::ssl_ctx_ptr(
         SSL_CTX_new(TLS_method()), SSL_CTX_free);
     ASSERT_NE(client_context, nullptr);
     ASSERT_NE(server_context, nullptr);
@@ -2213,9 +2213,9 @@ TEST(TLS_Tests, NumericSniRequiresAnIpSubjectAltName) {
     ASSERT_EQ(X509_check_host(certificate.get(), "192.0.2.81", 0, 0, nullptr), 1);
     ASSERT_EQ(X509_check_ip_asc(certificate.get(), "192.0.2.81", 0), 0);
 
-    auto client_context = std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)>(
+    auto client_context = socle::ossl::ssl_ctx_ptr(
         SSL_CTX_new(TLS_method()), SSL_CTX_free);
-    auto server_context = std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)>(
+    auto server_context = socle::ossl::ssl_ctx_ptr(
         SSL_CTX_new(TLS_method()), SSL_CTX_free);
     ASSERT_NE(client_context, nullptr);
     ASSERT_NE(server_context, nullptr);
@@ -2253,9 +2253,9 @@ TEST(TLS_Tests, BaseCertificateCheckRejectsHostnameMismatch) {
     ASSERT_NE(certificate, nullptr);
     ASSERT_NE(key, nullptr);
 
-    auto client_context = std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)>(
+    auto client_context = socle::ossl::ssl_ctx_ptr(
         SSL_CTX_new(TLS_method()), SSL_CTX_free);
-    auto server_context = std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)>(
+    auto server_context = socle::ossl::ssl_ctx_ptr(
         SSL_CTX_new(TLS_method()), SSL_CTX_free);
     ASSERT_NE(client_context, nullptr);
     ASSERT_NE(server_context, nullptr);
@@ -2280,9 +2280,9 @@ TEST(TLS_Tests, SniRewriteKeepsOriginalClientIdentityForSpoofedCertificate) {
     ASSERT_NE(key, nullptr);
     ASSERT_NE(certificate, nullptr);
 
-    auto client_context = std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)>(
+    auto client_context = socle::ossl::ssl_ctx_ptr(
         SSL_CTX_new(TLS_method()), SSL_CTX_free);
-    auto server_context = std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)>(
+    auto server_context = socle::ossl::ssl_ctx_ptr(
         SSL_CTX_new(TLS_method()), SSL_CTX_free);
     ASSERT_NE(client_context, nullptr);
     ASSERT_NE(server_context, nullptr);
@@ -2319,9 +2319,9 @@ TEST(TLS_Tests, MitmHostnameValidationStillRunsAfterChainFailure) {
     ASSERT_NE(certificate, nullptr);
     ASSERT_NE(key, nullptr);
 
-    auto client_context = std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)>(
+    auto client_context = socle::ossl::ssl_ctx_ptr(
         SSL_CTX_new(TLS_method()), SSL_CTX_free);
-    auto server_context = std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)>(
+    auto server_context = socle::ossl::ssl_ctx_ptr(
         SSL_CTX_new(TLS_method()), SSL_CTX_free);
     ASSERT_NE(client_context, nullptr);
     ASSERT_NE(server_context, nullptr);
@@ -2379,9 +2379,9 @@ TEST(TLS_Tests, MitmIpValidationUsesTheConnectionDestinationWithoutSni) {
     ASSERT_NE(generated->chain.key, nullptr);
     ASSERT_EQ(X509_check_ip_asc(generated->chain.cert, "192.0.2.8", 0), 1);
 
-    auto client_context = std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)>(
+    auto client_context = socle::ossl::ssl_ctx_ptr(
         SSL_CTX_new(TLS_method()), SSL_CTX_free);
-    auto server_context = std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)>(
+    auto server_context = socle::ossl::ssl_ctx_ptr(
         SSL_CTX_new(TLS_method()), SSL_CTX_free);
     ASSERT_NE(client_context, nullptr);
     ASSERT_NE(server_context, nullptr);
@@ -2426,10 +2426,10 @@ TEST(TLS_Tests, OpenSslCallbacksFailClosedDuringPartialInitialization) {
     EXPECT_EQ(missing_staple.first, SSLCom::staple_code_t::NOT_PROCESSED);
     EXPECT_EQ(missing_staple.second, -1);
 
-    std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)> context(
+    socle::ossl::ssl_ctx_ptr context(
         SSL_CTX_new(TLS_method()), SSL_CTX_free);
     ASSERT_NE(context, nullptr);
-    std::unique_ptr<SSL, decltype(&SSL_free)> ssl(SSL_new(context.get()), SSL_free);
+    socle::ossl::ssl_ptr ssl(SSL_new(context.get()), SSL_free);
     ASSERT_NE(ssl, nullptr);
 
     const unsigned char* selected = nullptr;
@@ -2461,10 +2461,10 @@ TEST(TLS_Tests, OpenSslCallbacksFailClosedDuringPartialInitialization) {
 }
 
 TEST(TLS_Tests, DisabledOcspCannotEraseCertificateVerificationFailure) {
-    std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)> context(
+    socle::ossl::ssl_ctx_ptr context(
         SSL_CTX_new(TLS_method()), SSL_CTX_free);
     ASSERT_NE(context, nullptr);
-    std::unique_ptr<SSL, decltype(&SSL_free)> ssl(SSL_new(context.get()), SSL_free);
+    socle::ossl::ssl_ptr ssl(SSL_new(context.get()), SSL_free);
     ASSERT_NE(ssl, nullptr);
     SSLCom_Buddy connection;
     ASSERT_EQ(SSL_set_ex_data(ssl.get(), SSLCom::extdata_index(), &connection), 1);
@@ -2484,10 +2484,10 @@ TEST(TLS_Tests, DisabledOcspCannotEraseCertificateVerificationFailure) {
 }
 
 TEST(TLS_Tests, RevocationCallbacksHandleMissingCertificateState) {
-    std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)> context(
+    socle::ossl::ssl_ctx_ptr context(
         SSL_CTX_new(TLS_method()), SSL_CTX_free);
     ASSERT_NE(context, nullptr);
-    std::unique_ptr<SSL, decltype(&SSL_free)> ssl(SSL_new(context.get()), SSL_free);
+    socle::ossl::ssl_ptr ssl(SSL_new(context.get()), SSL_free);
     ASSERT_NE(ssl, nullptr);
     SSLCom_Buddy connection;
     ASSERT_EQ(SSL_set_ex_data(ssl.get(), SSLCom::extdata_index(), &connection), 1);
@@ -2533,14 +2533,14 @@ TEST(TLS_Tests, OptionalOcspQueryFailureRespectsSoftFailPolicy) {
 }
 
 TEST(TLS_Tests, StaplingParserClassifiesMalformedAndIncompleteResponses) {
-    std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)> context(
+    socle::ossl::ssl_ctx_ptr context(
         SSL_CTX_new(TLS_method()), SSL_CTX_free);
     ASSERT_NE(context, nullptr);
     SSLCom_Buddy connection;
     connection.opt.ocsp.stapling_mode = 2;
 
     auto check = [&](unsigned char* body, int length) {
-        std::unique_ptr<SSL, decltype(&SSL_free)> ssl(
+        socle::ossl::ssl_ptr ssl(
             SSL_new(context.get()), SSL_free);
         EXPECT_NE(ssl, nullptr);
         EXPECT_EQ(SSL_set_tlsext_status_ocsp_resp(ssl.get(), body, length), 1);
@@ -2644,9 +2644,9 @@ TEST(TLS_Tests, StapledOcspGoodRevokedAndStaleResponsesDrivePolicyState) {
         ASSERT_GT(encoded_length, 0);
         ASSERT_NE(encoded, nullptr);
 
-        std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)> context(
+        socle::ossl::ssl_ctx_ptr context(
             SSL_CTX_new(TLS_method()), SSL_CTX_free);
-        std::unique_ptr<SSL, decltype(&SSL_free)> ssl(
+        socle::ossl::ssl_ptr ssl(
             SSL_new(context.get()), SSL_free);
         ASSERT_NE(context, nullptr);
         ASSERT_NE(ssl, nullptr);
@@ -2739,9 +2739,9 @@ TEST(TLS_Tests, FullChainOcspModeContinuesAfterGoodLeafStaple) {
     ASSERT_GT(encoded_length, 0);
     ASSERT_NE(encoded, nullptr);
 
-    std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)> context(
+    socle::ossl::ssl_ctx_ptr context(
         SSL_CTX_new(TLS_method()), SSL_CTX_free);
-    std::unique_ptr<SSL, decltype(&SSL_free)> ssl(
+    socle::ossl::ssl_ptr ssl(
         SSL_new(context.get()), SSL_free);
     ASSERT_NE(context, nullptr);
     ASSERT_NE(ssl, nullptr);
@@ -3051,11 +3051,11 @@ TEST(TLS_Tests, OpenSslVerifyCallbackMapsFailuresAndHonorsOnlyMatchingExceptions
 
     auto exercise = [&](int error, SSLCom::verify_status_t expected_status,
                         auto configure, int expected_result) {
-        std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)> ssl_context(
+        socle::ossl::ssl_ctx_ptr ssl_context(
             SSL_CTX_new(TLS_method()), SSL_CTX_free);
-        std::unique_ptr<SSL, decltype(&SSL_free)> ssl(
+        socle::ossl::ssl_ptr ssl(
             SSL_new(ssl_context.get()), SSL_free);
-        std::unique_ptr<X509_STORE, decltype(&X509_STORE_free)> store(
+        socle::ossl::x509_store_ptr store(
             X509_STORE_new(), X509_STORE_free);
         std::unique_ptr<X509_STORE_CTX, decltype(&X509_STORE_CTX_free)> verify_context(
             X509_STORE_CTX_new(), X509_STORE_CTX_free);
@@ -3169,9 +3169,9 @@ TEST(TLS_Tests, ValidationErrorAllowListAndCachedAlpnAreExact) {
     EXPECT_FALSE(connection.is_cert_validation_err_code_allowed_by_options(
         X509_V_ERR_CERT_REVOKED));
 
-    std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)> context(
+    socle::ossl::ssl_ctx_ptr context(
         SSL_CTX_new(TLS_method()), SSL_CTX_free);
-    std::unique_ptr<SSL, decltype(&SSL_free)> ssl(SSL_new(context.get()), SSL_free);
+    socle::ossl::ssl_ptr ssl(SSL_new(context.get()), SSL_free);
     ASSERT_NE(context, nullptr);
     ASSERT_NE(ssl, nullptr);
     SSLCom_Buddy peer;
@@ -3232,9 +3232,9 @@ TEST(TLS_Tests, UpstreamNegotiatedAlpnMustStillBeOfferedByClient) {
     ASSERT_NE(certificate, nullptr);
     ASSERT_NE(key, nullptr);
 
-    auto client_context = std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)>(
+    auto client_context = socle::ossl::ssl_ctx_ptr(
         SSL_CTX_new(TLS_method()), SSL_CTX_free);
-    auto server_context = std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)>(
+    auto server_context = socle::ossl::ssl_ctx_ptr(
         SSL_CTX_new(TLS_method()), SSL_CTX_free);
     ASSERT_NE(client_context, nullptr);
     ASSERT_NE(server_context, nullptr);
@@ -3264,7 +3264,7 @@ TEST(TLS_Tests, UpstreamNegotiatedAlpnMustStillBeOfferedByClient) {
     upstream.peer(&downstream);
     upstream.test_take_ssl(negotiated.client.release());
 
-    std::unique_ptr<SSL, decltype(&SSL_free)> callback_ssl(
+    socle::ossl::ssl_ptr callback_ssl(
         SSL_new(server_context.get()), SSL_free);
     ASSERT_NE(callback_ssl, nullptr);
     ASSERT_EQ(SSL_set_ex_data(
@@ -3335,10 +3335,10 @@ TEST(TLS_Tests, VerifyCallbackMapsCertificateErrorsAndPolicyExceptions) {
     init_log();
     auto certificate = load_tls_test_certificate();
     ASSERT_NE(certificate, nullptr);
-    std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)> ssl_context(
+    socle::ossl::ssl_ctx_ptr ssl_context(
         SSL_CTX_new(TLS_method()), SSL_CTX_free);
-    std::unique_ptr<SSL, decltype(&SSL_free)> ssl(SSL_new(ssl_context.get()), SSL_free);
-    std::unique_ptr<X509_STORE, decltype(&X509_STORE_free)> store(
+    socle::ossl::ssl_ptr ssl(SSL_new(ssl_context.get()), SSL_free);
+    socle::ossl::x509_store_ptr store(
         X509_STORE_new(), X509_STORE_free);
     std::unique_ptr<X509_STORE_CTX, decltype(&X509_STORE_CTX_free)> verify_context(
         X509_STORE_CTX_new(), X509_STORE_CTX_free);
@@ -3428,9 +3428,9 @@ TEST(TLS_Tests, DelayedMitmAcceptGetsAReplacementReadEdge) {
 
 TEST(TLS_Tests, ClientCertificateAndSessionCallbacksRespectPolicyState) {
     init_log();
-    std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)> context(
+    socle::ossl::ssl_ctx_ptr context(
         SSL_CTX_new(TLS_method()), SSL_CTX_free);
-    std::unique_ptr<SSL, decltype(&SSL_free)> ssl(SSL_new(context.get()), SSL_free);
+    socle::ossl::ssl_ptr ssl(SSL_new(context.get()), SSL_free);
     ASSERT_NE(context, nullptr);
     ASSERT_NE(ssl, nullptr);
 
@@ -3467,7 +3467,7 @@ TEST(TLS_Tests, ClientCertificateAndSessionCallbacksRespectPolicyState) {
     EXPECT_EQ(SSLCom::ssl_client_cert_callback(
                   ssl.get(), &certificate, &key), 0);
 
-    std::unique_ptr<SSL_SESSION, decltype(&SSL_SESSION_free)> session(
+    socle::ossl::ssl_session_ptr session(
         SSL_SESSION_new(), SSL_SESSION_free);
     ASSERT_NE(session, nullptr);
     EXPECT_EQ(SSLCom::server_get_session_callback(
@@ -3574,7 +3574,7 @@ TEST(TLS_Tests, SessionCacheSeparatesEveryVerificationAndCryptoPolicy) {
 TEST(TLS_Tests, SessionFreshnessCannotOutliveCertificateOrRevocationEvidence) {
     auto key = make_rsa_key();
     auto certificate = make_certificate(key.get(), 4401, "session.example.test");
-    std::unique_ptr<SSL_SESSION, decltype(&SSL_SESSION_free)> session(
+    socle::ossl::ssl_session_ptr session(
         SSL_SESSION_new(), SSL_SESSION_free);
     ASSERT_NE(key, nullptr);
     ASSERT_NE(certificate, nullptr);
@@ -3644,9 +3644,9 @@ TEST(TLS_Tests, CertificateTransparencyInsufficientValidEntriesFailsClosed) {
 }
 
 TEST(TLS_Tests, CertificateTransparencyRemainsEnabledWithoutLogList) {
-    std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)> context(
+    socle::ossl::ssl_ctx_ptr context(
         SSL_CTX_new(TLS_method()), SSL_CTX_free);
-    std::unique_ptr<SSL, decltype(&SSL_free)> ssl(
+    socle::ossl::ssl_ptr ssl(
         SSL_new(context.get()), SSL_free);
     ASSERT_NE(context, nullptr);
     ASSERT_NE(ssl, nullptr);
@@ -3663,9 +3663,9 @@ TEST(TLS_Tests, CertificateTransparencyRemainsEnabledWithoutLogList) {
 }
 
 TEST(TLS_Tests, RequestedOcspFailsClosedWithoutTrustStore) {
-    std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)> context(
+    socle::ossl::ssl_ctx_ptr context(
         SSL_CTX_new(TLS_method()), SSL_CTX_free);
-    std::unique_ptr<SSL, decltype(&SSL_free)> ssl(
+    socle::ossl::ssl_ptr ssl(
         SSL_new(context.get()), SSL_free);
     ASSERT_NE(context, nullptr);
     ASSERT_NE(ssl, nullptr);
@@ -3703,7 +3703,7 @@ TEST(TLS_Tests, RequestedOcspFailsClosedWithoutTrustStore) {
 
 #ifdef USE_OPENSSL111
 TEST(TLS_Tests, CryptoPolicyRestrictsTls13AlongsideLegacyCipherList) {
-    std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)> context(
+    socle::ossl::ssl_ctx_ptr context(
         SSL_CTX_new(TLS_method()), SSL_CTX_free);
     ASSERT_NE(context, nullptr);
 
@@ -3995,9 +3995,9 @@ TEST(TLS_Tests, DiagnosticCallbacksClassifyEveryRecordAndVersion) {
                                  handshake, sizeof(handshake), nullptr, nullptr);
     }
 
-    std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)> context(
+    socle::ossl::ssl_ctx_ptr context(
         SSL_CTX_new(TLS_method()), SSL_CTX_free);
-    std::unique_ptr<SSL, decltype(&SSL_free)> ssl(SSL_new(context.get()), SSL_free);
+    socle::ossl::ssl_ptr ssl(SSL_new(context.get()), SSL_free);
     ASSERT_NE(context, nullptr);
     ASSERT_NE(ssl, nullptr);
     SSLCom::ssl_info_callback(ssl.get(), SSL_ST_CONNECT | SSL_CB_LOOP, 1);
@@ -4184,7 +4184,7 @@ TEST(TLSProtoState, HandshakePolicyAndApplicationIoRemainSeparate) {
             auto certificate = make_certificate(key.get(), 7310, "proto-state.example");
             ASSERT_NE(certificate, nullptr);
 
-            auto context = std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)>(
+            auto context = socle::ossl::ssl_ctx_ptr(
                 SSL_CTX_new(TLS_method()), SSL_CTX_free);
             ASSERT_NE(context, nullptr);
             ASSERT_EQ(SSL_CTX_set_min_proto_version(context.get(), version), 1);
@@ -4269,7 +4269,7 @@ TEST(TLSProtoState, HandshakePolicyAndApplicationIoRemainSeparate) {
 
 TEST(TLSProtoState, HandshakeWantWriteUsesTheExistingOpenSslResult) {
 
-    auto context = std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)>(
+    auto context = socle::ossl::ssl_ctx_ptr(
         SSL_CTX_new(TLS_client_method()), SSL_CTX_free);
     ASSERT_NE(context, nullptr);
 
@@ -4282,7 +4282,7 @@ TEST(TLSProtoState, HandshakeWantWriteUsesTheExistingOpenSslResult) {
     BIO* client_bio = nullptr;
     BIO* peer_bio = nullptr;
     ASSERT_EQ(BIO_new_bio_pair(&client_bio, 1, &peer_bio, 1), 1);
-    std::unique_ptr<BIO, decltype(&BIO_free)> peer(peer_bio, BIO_free);
+    socle::ossl::bio_ptr peer(peer_bio, BIO_free);
     SSL_set_bio(client.test_ssl(), client_bio, client_bio);
 
     EXPECT_EQ(client.test_handshake_result(), static_cast<int>(ret_handshake::AGAIN));
@@ -4444,7 +4444,7 @@ TEST(OpenSSLUtilities, NullInputsAndInvalidTimeAreSafe) {
 }
 
 TEST(OpenSSLUtilities, NamesAndTimesKeepLegacyAndStructuredFormats) {
-    std::unique_ptr<X509, decltype(&X509_free)> cert(X509_new(), X509_free);
+    socle::ossl::x509_ptr cert(X509_new(), X509_free);
     ASSERT_TRUE(cert);
     auto* subject = X509_get_subject_name(cert.get());
     ASSERT_EQ(X509_NAME_add_entry_by_txt(subject, "CN", MBSTRING_ASC,
@@ -4461,9 +4461,9 @@ TEST(OpenSSLUtilities, NamesAndTimesKeepLegacyAndStructuredFormats) {
 }
 
 TEST(OpenSSLUtilities, AlternativeNamesPreserveOrderAndExplicitLimits) {
-    std::unique_ptr<X509, decltype(&X509_free)> cert(X509_new(), X509_free);
+    socle::ossl::x509_ptr cert(X509_new(), X509_free);
     ASSERT_TRUE(cert);
-    std::unique_ptr<X509_EXTENSION, decltype(&X509_EXTENSION_free)> extension(
+    socle::ossl::x509_extension_ptr extension(
         X509V3_EXT_conf_nid(nullptr, nullptr, NID_subject_alt_name,
             const_cast<char*>("DNS:example.test,IP:192.0.2.1,DNS:other.test,IP:2001:db8::1")), X509_EXTENSION_free);
     ASSERT_TRUE(extension);
@@ -4482,8 +4482,8 @@ TEST(OpenSSLUtilities, AlternativeNamesPreserveOrderAndExplicitLimits) {
 }
 
 TEST(OpenSSLUtilities, AlternativeNamesRejectEmbeddedNulAndMalformedIp) {
-    std::unique_ptr<X509, decltype(&X509_free)> cert(X509_new(), X509_free);
-    std::unique_ptr<GENERAL_NAMES, decltype(&GENERAL_NAMES_free)> names(sk_GENERAL_NAME_new_null(), GENERAL_NAMES_free);
+    socle::ossl::x509_ptr cert(X509_new(), X509_free);
+    socle::ossl::general_names_ptr names(sk_GENERAL_NAME_new_null(), GENERAL_NAMES_free);
     ASSERT_TRUE(cert);
     ASSERT_TRUE(names);
     auto add = [&](int type, unsigned char const* data, int length) {
@@ -4508,4 +4508,231 @@ TEST(OpenSSLUtilities, AlternativeNamesRejectEmbeddedNulAndMalformedIp) {
     auto legacy = socle::ossl::alternative_names(cert.get());
     ASSERT_EQ(legacy.names.size(), 1U);
     EXPECT_EQ(legacy.names[0].value, std::string(reinterpret_cast<char*>(non_ascii), 2));
+}
+
+
+TEST(OpenSSLUtilities, CertificatePemRoundTripsWithoutPrivateMaterial) {
+    EXPECT_TRUE(socle::ossl::certificate_pem(nullptr).empty());
+    auto close_file = [](FILE* file) { if(file) std::fclose(file); };
+    std::unique_ptr<FILE, decltype(close_file)> file(
+        std::fopen("etc/certs/default/srv-cert.pem", "r"), close_file);
+    ASSERT_TRUE(file);
+    socle::ossl::x509_ptr certificate(
+        PEM_read_X509(file.get(), nullptr, nullptr, nullptr), X509_free);
+    ASSERT_TRUE(certificate);
+    auto pem = socle::ossl::certificate_pem(certificate.get());
+    EXPECT_EQ(pem.find("-----BEGIN CERTIFICATE-----"), 0U);
+    EXPECT_EQ(pem.find("PRIVATE KEY"), std::string::npos);
+    socle::ossl::bio_ptr input(BIO_new_mem_buf(pem.data(), static_cast<int>(pem.size())), BIO_free);
+    ASSERT_TRUE(input);
+    socle::ossl::x509_ptr parsed(
+        PEM_read_bio_X509(input.get(), nullptr, nullptr, nullptr), X509_free);
+    ASSERT_TRUE(parsed);
+    EXPECT_EQ(X509_cmp(parsed.get(), certificate.get()), 0);
+}
+
+TEST(OpenSSLUtilities, CacheSubjectKeepsOriginalOpenSslTruncation) {
+    socle::ossl::x509_ptr cert(X509_new(), X509_free);
+    ASSERT_TRUE(cert);
+    auto* name = X509_get_subject_name(cert.get());
+    for(int i = 0; i < 12; ++i) {
+        std::string value(60, static_cast<char>('a' + i));
+        ASSERT_EQ(X509_NAME_add_entry_by_txt(name, "OU", MBSTRING_ASC,
+            reinterpret_cast<unsigned char const*>(value.data()), value.size(), -1, 0), 1);
+    }
+    char old_subject[512]{};
+    ASSERT_NE(X509_NAME_oneline(name, old_subject, sizeof(old_subject)), nullptr);
+    EXPECT_EQ(socle::ossl::name_oneline(name, 513), old_subject);
+    SpoofOptions options;
+    auto key = SSLFactory::make_store_key(cert.get(), options);
+    EXPECT_EQ(key.substr(0, key.find("+cert:")), "subj:" + std::string(old_subject));
+}
+
+TEST(OpenSSLUtilities, DiagnosticTimeAndExtensionIndentationStayCompatible) {
+    EXPECT_TRUE(socle::ossl::time_text_full(nullptr).empty());
+    std::unique_ptr<ASN1_TIME, decltype(&ASN1_TIME_free)> time(ASN1_TIME_new(), ASN1_TIME_free);
+    ASSERT_TRUE(time);
+    EXPECT_TRUE(socle::ossl::time_text_full(time.get()).empty());
+    ASSERT_EQ(ASN1_TIME_set_string(time.get(), "20260102030405Z"), 1);
+    EXPECT_EQ(socle::ossl::time_text_full(time.get()), "Jan  2 03:04:05 2026 GMT");
+    socle::ossl::x509_ptr cert(X509_new(), X509_free);
+    ASSERT_TRUE(cert);
+    socle::ossl::x509_extension_ptr extension(
+        X509V3_EXT_conf_nid(nullptr, nullptr, NID_subject_alt_name,
+            const_cast<char*>("DNS:example.test")), X509_EXTENSION_free);
+    ASSERT_TRUE(extension);
+    ASSERT_EQ(X509_add_ext(cert.get(), extension.get(), -1), 1);
+    for(int indent : {0, 2, 8}) {
+        socle::ossl::bio_ptr old(BIO_new(BIO_s_mem()), BIO_free);
+        ASSERT_TRUE(old);
+        X509V3_extensions_print(old.get(), nullptr, X509_get0_extensions(cert.get()), 0, indent);
+        std::string text;
+        ASSERT_TRUE(socle::ossl::extensions_text(cert.get(), text, indent));
+        EXPECT_EQ(text, socle::ossl::bio_text(old.get()));
+        EXPECT_NE(text.find("DNS:example.test"), std::string::npos);
+    }
+}
+
+TEST(OpenSSLUtilities, ErrorFormattingPreservesQueueConsumptionSemantics) {
+    ERR_clear_error();
+    ERR_raise(ERR_LIB_USER, 101);
+    ERR_raise(ERR_LIB_USER, 102);
+    auto first = ERR_peek_error();
+    auto last = ERR_peek_last_error();
+    char expected[256]{};
+    ERR_error_string_n(first, expected, sizeof(expected));
+    EXPECT_EQ(socle::ossl::error_text(first), expected);
+    EXPECT_EQ(ERR_peek_error(), first);
+    EXPECT_EQ(ERR_peek_last_error(), last);
+    EXPECT_EQ(socle::ossl::take_error_text(), expected);
+    EXPECT_EQ(ERR_peek_error(), last);
+    EXPECT_EQ(socle::ossl::drain_error_text(), socle::ossl::error_text(last));
+    EXPECT_EQ(ERR_peek_error(), 0UL);
+    EXPECT_TRUE(socle::ossl::drain_error_text().empty());
+    EXPECT_EQ(socle::ossl::take_error_text(), socle::ossl::error_text(0));
+    ERR_raise(ERR_LIB_USER, 101);
+    ERR_raise(ERR_LIB_USER, 102);
+    EXPECT_EQ(socle::ossl::drain_error_text(),
+              socle::ossl::error_text(first) + "; " + socle::ossl::error_text(last));
+    EXPECT_EQ(ERR_peek_error(), 0UL);
+}
+
+TEST(OpenSSLUtilities, HashAndTokenPrimitivesPreserveEncodingAndBounds) {
+    EXPECT_EQ(socle::ossl::sha256("abc"),
+        "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
+    EXPECT_EQ(socle::ossl::sha256(""),
+        "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855");
+    EXPECT_FALSE(socle::ossl::random_hex(0));
+    EXPECT_FALSE(socle::ossl::random_hex(static_cast<size_t>(INT_MAX) + 1));
+    auto token = socle::ossl::random_hex(16);
+    ASSERT_TRUE(token);
+    EXPECT_EQ(token->size(), 32U);
+    EXPECT_EQ(token->find_first_not_of("0123456789abcdef"), std::string::npos);
+    unsigned char bytes[] = {0, 0xab, 0xff};
+    EXPECT_EQ(socle::ossl::hex_encode(bytes, 3), "00abff");
+    EXPECT_EQ(socle::ossl::hex_encode(bytes, 3, socle::ossl::hex_case::upper), "00ABFF");
+}
+
+TEST(OpenSSLUtilities, SessionInfoHandlesMissingStateAndCopiesValues) {
+    EXPECT_FALSE(socle::ossl::session_details(nullptr));
+    EXPECT_FALSE(socle::ossl::server_name(nullptr));
+    EXPECT_TRUE(socle::ossl::selected_alpn(nullptr).empty());
+    socle::ossl::ssl_ctx_ptr context(SSL_CTX_new(TLS_method()), SSL_CTX_free);
+    ASSERT_TRUE(context);
+    socle::ossl::ssl_ptr ssl(SSL_new(context.get()), SSL_free);
+    ASSERT_TRUE(ssl);
+    EXPECT_FALSE(socle::ossl::session_details(ssl.get()));
+    EXPECT_FALSE(socle::ossl::server_name(ssl.get()));
+    EXPECT_TRUE(socle::ossl::selected_alpn(ssl.get()).empty());
+    ASSERT_EQ(SSL_set_tlsext_host_name(ssl.get(), "example.test"), 1);
+    auto name = socle::ossl::server_name(ssl.get());
+    EXPECT_EQ(name, "example.test");
+    socle::ossl::ssl_session_ptr session(SSL_SESSION_new(), SSL_SESSION_free);
+    ASSERT_TRUE(session);
+    ASSERT_EQ(SSL_SESSION_set_protocol_version(session.get(), TLS1_3_VERSION), 1);
+    unsigned char cipher_id[] = {0x13, 0x01};
+    auto const* cipher = SSL_CIPHER_find(ssl.get(), cipher_id);
+    ASSERT_NE(cipher, nullptr);
+    ASSERT_EQ(SSL_SESSION_set_cipher(session.get(), cipher), 1);
+    ASSERT_EQ(SSL_set_session(ssl.get(), session.get()), 1);
+    auto info = socle::ossl::session_details(ssl.get());
+    ASSERT_TRUE(info);
+    EXPECT_EQ(info->protocol_version, TLS1_3_VERSION);
+    EXPECT_EQ(info->cipher, "TLS_AES_128_GCM_SHA256");
+    EXPECT_EQ(info->transport_version, SSL_get_version(ssl.get()));
+    EXPECT_FALSE(info->has_ticket);
+    EXPECT_EQ(info->ticket_lifetime_hint, 0UL);
+    ssl.reset();
+    EXPECT_EQ(name, "example.test");
+    EXPECT_EQ(info->cipher, "TLS_AES_128_GCM_SHA256");
+}
+
+// Resource owners must not duplicate ownership through implicit assignment.
+#include <type_traits>
+static_assert(!std::is_copy_assignable_v<socle::raw::var<int>>);
+static_assert(!std::is_move_assignable_v<socle::raw::var<int>>);
+static_assert(!std::is_copy_assignable_v<socle::raw::var<X509*>>);
+static_assert(!std::is_move_assignable_v<socle::raw::var<X509*>>);
+
+static_assert(!std::is_copy_constructible_v<socle::ossl::memory_bio>);
+static_assert(!std::is_copy_assignable_v<socle::ossl::memory_bio>);
+static_assert(std::is_nothrow_move_constructible_v<socle::ossl::memory_bio>);
+static_assert(std::is_nothrow_move_assignable_v<socle::ossl::memory_bio>);
+
+TEST(OpenSSLUtilities, MemoryBioCopiesBinaryDataWithoutConsumingIt) {
+    socle::ossl::memory_bio bio;
+    ASSERT_TRUE(bio);
+    EXPECT_EQ(bio.size(), 0U);
+    EXPECT_TRUE(bio.str().empty());
+    std::string payload("a\0b", 3);
+    ASSERT_EQ(BIO_write(bio.get(), payload.data(), payload.size()), 3);
+    EXPECT_EQ(bio.str(), payload);
+    EXPECT_EQ(bio.str(), payload);
+    EXPECT_EQ(bio.str(2), payload.substr(0, 2));
+    EXPECT_TRUE(bio.str(0).empty());
+    EXPECT_EQ(bio.str(99), payload);
+    auto snapshot = bio.str();
+    ASSERT_EQ(BIO_write(bio.get(), "c", 1), 1);
+    EXPECT_EQ(snapshot, payload);
+    EXPECT_EQ(bio.size(), 4U);
+    char consumed = 0;
+    ASSERT_EQ(BIO_read(bio.get(), &consumed, 1), 1);
+    EXPECT_EQ(consumed, 'a');
+    EXPECT_EQ(bio.str(), std::string("\0bc", 3));
+}
+
+TEST(OpenSSLUtilities, MemoryBioMovesAndSupportsLargeBoundedCopies) {
+    socle::ossl::memory_bio source;
+    ASSERT_TRUE(source);
+    std::string payload(1024 * 1024, 'x');
+    ASSERT_EQ(BIO_write(source.get(), payload.data(), payload.size()), payload.size());
+    socle::ossl::memory_bio moved(std::move(source));
+    EXPECT_FALSE(source);
+    EXPECT_EQ(source.size(), 0U);
+    EXPECT_TRUE(source.str().empty());
+    EXPECT_EQ(moved.size(), payload.size());
+    EXPECT_EQ(moved.str(8192), payload.substr(0, 8192));
+    socle::ossl::memory_bio destination;
+    ASSERT_TRUE(destination);
+    ASSERT_EQ(BIO_write(destination.get(), "old", 3), 3);
+    destination = std::move(moved);
+    EXPECT_FALSE(moved);
+    EXPECT_EQ(destination.str(), payload);
+}
+
+TEST(OpenSSLUtilities, PeerCertificatesPreserveLeafAndChainOnBothSides) {
+    EXPECT_TRUE(socle::ossl::peer_certificates_pem(nullptr).empty());
+    auto key = make_rsa_key();
+    ASSERT_TRUE(key);
+    auto leaf = make_certificate(key.get(), 5501, "peer.example");
+    auto extra = make_certificate(key.get(), 5502, "extra.example");
+    ASSERT_TRUE(leaf);
+    ASSERT_TRUE(extra);
+    socle::ossl::ssl_ctx_ptr client(SSL_CTX_new(TLS_method()), SSL_CTX_free);
+    socle::ossl::ssl_ctx_ptr server(SSL_CTX_new(TLS_method()), SSL_CTX_free);
+    ASSERT_TRUE(client);
+    ASSERT_TRUE(server);
+    for(auto* context : {client.get(), server.get()}) {
+        ASSERT_EQ(SSL_CTX_set_max_proto_version(context, TLS1_2_VERSION), 1);
+        ASSERT_EQ(SSL_CTX_use_certificate(context, leaf.get()), 1);
+        ASSERT_EQ(SSL_CTX_use_PrivateKey(context, key.get()), 1);
+        ASSERT_EQ(SSL_CTX_add1_chain_cert(context, extra.get()), 1);
+    }
+    SSL_CTX_set_verify(server.get(), SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT,
+        [](int, X509_STORE_CTX*) { return 1; });
+    socle::ossl::ssl_ptr idle(SSL_new(client.get()), SSL_free);
+    ASSERT_TRUE(idle);
+    EXPECT_TRUE(socle::ossl::peer_certificates_pem(idle.get()).empty());
+    auto pair = make_memory_tls_pair(client.get(), server.get());
+    ASSERT_TRUE(pair.client);
+    ASSERT_TRUE(pair.server);
+    std::vector<std::string> expected {socle::ossl::certificate_pem(leaf.get()),
+                                      socle::ossl::certificate_pem(extra.get())};
+    auto snapshot = socle::ossl::peer_certificates_pem(pair.client.get());
+    EXPECT_EQ(snapshot, expected);
+    EXPECT_EQ(socle::ossl::peer_certificates_pem(pair.server.get()), expected);
+    EXPECT_EQ(socle::ossl::peer_certificates_pem(pair.client.get()), expected);
+    pair.client.reset();
+    pair.server.reset();
+    EXPECT_EQ(snapshot, expected);
 }
