@@ -26,6 +26,7 @@
 
 #include <display.hpp>
 #include <sslcertstore.hpp>
+#include "ossl_util.hpp"
 #include <sslmitmcom.hpp>
 
 #include <openssl/ssl.h>
@@ -1104,107 +1105,10 @@ int add_ext(STACK_OF(X509_EXTENSION) *sk, int nid, char *value) {
 }
 
 std::vector<std::string> SSLFactory::get_sans(X509* x) {
-
-    auto const& log = get_log();
-    std::vector<std::string> ret;
-    if(not x) return ret;
-    
-    // Copy extensions
-#ifdef USE_OPENSSL11
-    const STACK_OF(X509_EXTENSION) *exts = X509_get0_extensions(x);
-#else
-    STACK_OF(X509_EXTENSION) *exts = x->cert_info->extensions;
-#endif
-
-    if(not exts) return ret;
-
-    const auto num_of_exts = sk_X509_EXTENSION_num(exts);
-
-    for (int i=0; i < num_of_exts; i++) {
-        auto* ex = sk_X509_EXTENSION_value(exts, i);
-        if(not ex) {
-            _err("SSLFactory::get_sans: error obtaining certificate extension [%d] value ",i);
-            continue;
-        }
-        auto* obj = X509_EXTENSION_get_object(ex);
-        if(not obj) {
-            _err("SSLFactory::get_sans: unable to extract ASN1 object from extension [%d]",i);
-            continue;
-        }
-
-        const auto nid = OBJ_obj2nid(obj);
-        if(nid == NID_subject_alt_name) {
-            _deb("SSLFactory::get_sans: adding subjAltName to extensions");
-#ifdef USE_OPENSSL11
-
-            auto* alt = (STACK_OF(GENERAL_NAME)*)X509V3_EXT_d2i(ex);
-            if(not alt) continue;
-            auto g_alt = raw::guard([&alt]{ if(alt) GENERAL_NAMES_free(alt); });
-
-
-            auto alt_len = sk_GENERAL_NAME_num(alt);
-            for (int gn_i = 0; gn_i < alt_len; gn_i++) {
-                auto* gn = sk_GENERAL_NAME_value(alt, gn_i);
-                if(not gn) continue;
-
-                int name_type = 0;
-
-                void* name_ptr = GENERAL_NAME_get0_value(gn, &name_type);
-                if(name_type == GEN_DNS) {
-                    auto* dns_name = static_cast<ASN1_STRING*>(name_ptr); //in ASN1 we trust
-                    if (!dns_name)
-                        continue;
-                    const auto* data = ASN1_STRING_get0_data(dns_name);
-                    const int length = ASN1_STRING_length(dns_name);
-                    if (!data || length <= 0 ||
-                        std::memchr(data, '\0', static_cast<std::size_t>(length)))
-                        continue;
-                    std::string san(reinterpret_cast<const char*>(data),
-                                    static_cast<std::size_t>(length));
-                    ret.emplace_back("DNS:"+san);
-
-                    _deb("SSLFactory::get_sans: adding GEN_DNS: %s", san.c_str());
-                }
-                else if(name_type == GEN_IPADD) {
-                    auto* ip = static_cast<ASN1_STRING*>(name_ptr);
-                    if (!ip)
-                        continue;
-                    const auto* data = ASN1_STRING_get0_data(ip);
-                    const int length = ASN1_STRING_length(ip);
-                    const int family = length == 4 ? AF_INET : length == 16 ? AF_INET6 : 0;
-                    std::array<char, INET6_ADDRSTRLEN> text {};
-                    if (!data || family == 0 ||
-                        !::inet_ntop(family, data, text.data(), text.size()))
-                        continue;
-                    std::string str_ip(text.data());
-                    ret.emplace_back("IP:"+str_ip);
-
-                    _deb("SSLFactory::get_sans: adding GEN_IP: %s", str_ip.c_str());
-
-                }
-
-            }
-
-#else
-            BIO *ext_bio = BIO_new(BIO_s_mem());
-            if (!X509V3_EXT_print(ext_bio, ex, 0, 0)) {
-                M_ASN1_OCTET_STRING_print(ext_bio, ex->value);
-            }
-            BUF_MEM *bptr;
-            BIO_get_mem_ptr(ext_bio, &bptr);
-            int sc = BIO_set_close(ext_bio, BIO_NOCLOSE);
-
-
-            std::string san(bptr->data,bptr->length);
-            BIO_free(ext_bio);
-            BUF_MEM_free(bptr);
-
-            ret.push_back(san);
-#endif
-        }
-    }
-
-    return ret;
+    std::vector<std::string> result;
+    for(auto const& name : socle::ossl::alternative_names(x).names)
+        result.push_back((name.type == socle::ossl::alternative_name_type::dns ? "DNS:" : "IP:") + name.value);
+    return result;
 }
 
 std::string SSLFactory::get_sans_csv(X509 *x) {
@@ -1497,86 +1401,25 @@ std::optional<CertificateChainCtx> SSLFactory::spoof(X509* cert_orig, bool self_
 
 
 int SSLFactory::convert_ASN1TIME(const ASN1_TIME *t, char* buf, size_t len) {
-    if(not t or not buf or len == 0) return EXIT_FAILURE;
-    buf[0] = '\0';
-
-    BIO *b = BIO_new(BIO_s_mem());
-    if(not b) return EXIT_FAILURE;
-    int rc = ASN1_TIME_print(b, t);
-    if (rc <= 0) {
-        BIO_free(b);
-        return EXIT_FAILURE;
-    }
-    rc = BIO_gets(b, buf, len);
-    if (rc <= 0) {
-        BIO_free(b);
-        return EXIT_FAILURE;
-    }
-    BIO_free(b);
-    return EXIT_SUCCESS;
+    return socle::ossl::time_text(t, buf, len) ? EXIT_SUCCESS : EXIT_FAILURE;
 }
 
 
 std::string SSLFactory::print_cn(X509* x) {
-    if(not x) return {};
-    auto a_tmp = std::array<char,config_t::SSLCERTSTORE_BUFSIZE>();
-    auto* tmp = a_tmp.data();
-
-    std::string s;
-
-    // get info from the peer certificate
-    auto* subject = X509_get_subject_name(x);
-    if(not subject or X509_NAME_get_text_by_NID(
-            subject, NID_commonName, tmp,
-            config_t::SSLCERTSTORE_BUFSIZE - 1) < 0) return {};
-    s.append(tmp);
-    
-    return s;
+    return x ? socle::ossl::common_name(X509_get_subject_name(x), config_t::SSLCERTSTORE_BUFSIZE) : std::string{};
 }
 
 std::string SSLFactory::print_issuer(X509* x) {
-    if(not x) return {};
-    auto a_tmp = std::array<char,config_t::SSLCERTSTORE_BUFSIZE>();
-    auto* tmp = a_tmp.data();
-    std::string s;
-
-    // get info from the peer certificate
-    auto* issuer = X509_get_issuer_name(x);
-    if(not issuer or X509_NAME_get_text_by_NID(
-            issuer, NID_commonName, tmp,
-            config_t::SSLCERTSTORE_BUFSIZE - 1) < 0) return {};
-    s.append(tmp);
-    
-    return s;
+    return x ? socle::ossl::common_name(X509_get_issuer_name(x), config_t::SSLCERTSTORE_BUFSIZE) : std::string{};
 }
 
 std::string SSLFactory::print_not_before(X509* x) {
-    if(not x) return {};
-    auto a_tmp = std::array<char,config_t::SSLCERTSTORE_BUFSIZE>();
-    auto* tmp = a_tmp.data();
-    std::string s;
-    ASN1_TIME *not_before = X509_get_notBefore(x);
-    
-    if(convert_ASN1TIME(not_before, tmp,
-                        config_t::SSLCERTSTORE_BUFSIZE - 1) != EXIT_SUCCESS) return {};
-    s.append(tmp);
-    
-    return s;
+    return x ? socle::ossl::time_text(X509_get0_notBefore(x), config_t::SSLCERTSTORE_BUFSIZE) : std::string{};
 }
 
 
 std::string SSLFactory::print_not_after(X509* x) {
-    if(not x) return {};
-    auto a_tmp = std::array<char,config_t::SSLCERTSTORE_BUFSIZE>();
-    auto* tmp = a_tmp.data();
-    std::string s;
-    ASN1_TIME *not_after = X509_get_notAfter(x);
-    
-    if(convert_ASN1TIME(not_after, tmp,
-                        config_t::SSLCERTSTORE_BUFSIZE - 1) != EXIT_SUCCESS) return {};
-    s.append(tmp);
-    
-    return s;
+    return x ? socle::ossl::time_text(X509_get0_notAfter(x), config_t::SSLCERTSTORE_BUFSIZE) : std::string{};
 }
 
 std::string SSLFactory::print_cert(X509* x, int indent, bool add_cr) {
@@ -1597,16 +1440,13 @@ std::string SSLFactory::print_cert(X509* x, int indent, bool add_cr) {
     }
 
     // get info from the peer certificate
-    // TODO: should be replaced, as per https://linux.die.net/man/3/x509_name_get_text_by_nid - examples section
-    X509_NAME_get_text_by_NID(X509_get_subject_name(x),NID_commonName, tmp, config_t::SSLCERTSTORE_BUFSIZE - 1);
     s << pref << "Common Name: ";
-    s << std::string(tmp);
+    s << print_cn(x);
     ar(); s << "\n ";
     
 
-    X509_NAME_oneline(X509_get_subject_name(x), tmp, config_t::SSLCERTSTORE_BUFSIZE - 1);
     s << pref << "Subject: ";
-    s << std::string(tmp);
+    s << socle::ossl::name_oneline(X509_get_subject_name(x), config_t::SSLCERTSTORE_BUFSIZE);
     ar(); s << "\n ";
     
     X509_NAME const* issuer = X509_get_issuer_name(x);
@@ -1615,8 +1455,8 @@ std::string SSLFactory::print_cert(X509* x, int indent, bool add_cr) {
         ar(); s << "\n ";
 
     } else {
-        X509_NAME_oneline(issuer,tmp, config_t::SSLCERTSTORE_BUFSIZE - 1);
-        s << pref << string_format("Issuer: '%s'",tmp);
+        s << pref << "Issuer: '"
+          << socle::ossl::name_oneline(issuer, config_t::SSLCERTSTORE_BUFSIZE) << "'";
         ar(); s << "\n ";
         ar(); s << "\n ";
 
@@ -1759,28 +1599,12 @@ SSLFactory::~SSLFactory() {
 
 
 std::string SSLFactory::fingerprint(X509* cert) {
-
-    if(not cert) return {};
-
-    const EVP_MD *fprint_type = nullptr;
-    unsigned fprint_size = 0;
-    unsigned char fprint[EVP_MAX_MD_SIZE] {0};
-
-    fprint_type = EVP_sha1();
-
-    std::string ret;
-
-    if (!X509_digest(cert, fprint_type, fprint, &fprint_size)) {
+    auto result = socle::ossl::fingerprint(cert, EVP_sha1());
+    if(cert && result.empty()) {
         auto const& log = SSLFactory::get_log();
         _err("error creating the certificate fingerprint");
     }
-    else {
-        for (unsigned int j = 0; j < fprint_size and j < EVP_MAX_MD_SIZE; ++j)  {
-            ret += string_format("%02x", fprint[j]);
-        }
-    }
-
-    return ret;
+    return result;
 }
 
 
