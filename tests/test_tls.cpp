@@ -4699,3 +4699,40 @@ TEST(OpenSSLUtilities, MemoryBioMovesAndSupportsLargeBoundedCopies) {
     EXPECT_FALSE(moved);
     EXPECT_EQ(destination.str(), payload);
 }
+
+TEST(OpenSSLUtilities, PeerCertificatesPreserveLeafAndChainOnBothSides) {
+    EXPECT_TRUE(socle::ossl::peer_certificates_pem(nullptr).empty());
+    auto key = make_rsa_key();
+    ASSERT_TRUE(key);
+    auto leaf = make_certificate(key.get(), 5501, "peer.example");
+    auto extra = make_certificate(key.get(), 5502, "extra.example");
+    ASSERT_TRUE(leaf);
+    ASSERT_TRUE(extra);
+    std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)> client(SSL_CTX_new(TLS_method()), SSL_CTX_free);
+    std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)> server(SSL_CTX_new(TLS_method()), SSL_CTX_free);
+    ASSERT_TRUE(client);
+    ASSERT_TRUE(server);
+    for(auto* context : {client.get(), server.get()}) {
+        ASSERT_EQ(SSL_CTX_set_max_proto_version(context, TLS1_2_VERSION), 1);
+        ASSERT_EQ(SSL_CTX_use_certificate(context, leaf.get()), 1);
+        ASSERT_EQ(SSL_CTX_use_PrivateKey(context, key.get()), 1);
+        ASSERT_EQ(SSL_CTX_add1_chain_cert(context, extra.get()), 1);
+    }
+    SSL_CTX_set_verify(server.get(), SSL_VERIFY_PEER | SSL_VERIFY_FAIL_IF_NO_PEER_CERT,
+        [](int, X509_STORE_CTX*) { return 1; });
+    std::unique_ptr<SSL, decltype(&SSL_free)> idle(SSL_new(client.get()), SSL_free);
+    ASSERT_TRUE(idle);
+    EXPECT_TRUE(socle::ossl::peer_certificates_pem(idle.get()).empty());
+    auto pair = make_memory_tls_pair(client.get(), server.get());
+    ASSERT_TRUE(pair.client);
+    ASSERT_TRUE(pair.server);
+    std::vector<std::string> expected {socle::ossl::certificate_pem(leaf.get()),
+                                      socle::ossl::certificate_pem(extra.get())};
+    auto snapshot = socle::ossl::peer_certificates_pem(pair.client.get());
+    EXPECT_EQ(snapshot, expected);
+    EXPECT_EQ(socle::ossl::peer_certificates_pem(pair.server.get()), expected);
+    EXPECT_EQ(socle::ossl::peer_certificates_pem(pair.client.get()), expected);
+    pair.client.reset();
+    pair.server.reset();
+    EXPECT_EQ(snapshot, expected);
+}
