@@ -4646,3 +4646,10 @@ TEST(OpenSSLUtilities, SessionInfoHandlesMissingStateAndCopiesValues) {
     EXPECT_EQ(name, "example.test");
     EXPECT_EQ(info->cipher, "TLS_AES_128_GCM_SHA256");
 }
+
+// Resource owners must not duplicate ownership through implicit assignment.
+#include <type_traits>
+static_assert(!std::is_copy_assignable_v<socle::raw::var<int>>);
+static_assert(!std::is_move_assignable_v<socle::raw::var<int>>);
+static_assert(!std::is_copy_assignable_v<socle::raw::var<X509*>>);
+static_assert(!std::is_move_assignable_v<socle::raw::var<X509*>>);
