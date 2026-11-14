@@ -71,38 +71,11 @@ namespace socle {
             std::function<void()> deleter;
         };
 
-        template <class T>
-        struct lax {
-            lax() = delete;
-            lax(T&& v, std::function<void(T&)> dter): value(std::move(v)), deleter(dter) {}
-            lax(T v, std::function<void(T&)> dter): value(v), deleter(dter) {}
-
-            ~lax() {
-                deleter(value);
-            }
-
-            lax(lax& r) {
-                if(&r != this) {
-                    deleter(value);
-                    value = r.value;
-                }
-            }
-            lax& operator=(lax const& v) {
-                deleter(value);
-                value = v;
-
-                return *this;
-            }
-
-            T value;
-            std::function<void(T&)> deleter;
-        };
-
-
         template <typename T>
         struct var {
             var(T&& v, std::function<void(T&)> dter): value(std::move(v)), deleter(dter) {}
             var(var&) = delete;
+            var& operator=(var const&) = delete;
             ~var() {
                 deleter(value);
             }
@@ -133,35 +106,6 @@ namespace socle {
 
 
 
-        struct call_scope_exit {
-            explicit call_scope_exit(std::function<void()> cb): cb_(cb) {}
-
-            call_scope_exit& operator=(call_scope_exit const&) = delete;
-            call_scope_exit(call_scope_exit &) = delete;
-
-            ~call_scope_exit() {
-                cb_();
-            }
-
-            std::function<void()> cb_;
-        };
-
-        template <typename T>
-        struct watch_scope_exit {
-            explicit watch_scope_exit(T& ref, std::function<void(T&)> cb): value_(ref), cb_(cb) {}
-
-            watch_scope_exit& operator=(watch_scope_exit const&) = delete;
-            watch_scope_exit(watch_scope_exit &) = delete;
-
-            ~watch_scope_exit() {
-                cb_(value_);
-            }
-
-            T& value_;
-            std::function<void(T&)> cb_;
-        };
-
-
         namespace deleter {
 
             template <typename PT>
@@ -179,11 +123,6 @@ namespace socle {
         template<typename T> inline file_var file(T ptr) {
             return var<T>(std::move(ptr), deleter::fclose);
         }
-
-        inline lax<int> fd(int val) {
-            return lax<int>(val, deleter::close);
-        }
-
 
         template<typename From, typename To>
         struct dynamic_cast_cache {

@@ -1,0 +1,385 @@
+#pragma once
+
+#include <openssl/x509v3.h>
+#include <openssl/pem.h>
+#include <openssl/err.h>
+#include <openssl/rand.h>
+#include <openssl/ssl.h>
+#include <optional>
+#include <string_view>
+#include <arpa/inet.h>
+#include <array>
+#include <ctime>
+#include <climits>
+#include <limits>
+#include <memory>
+#include <string>
+#include <vector>
+
+// Borrowed OpenSSL inputs; these helpers never take ownership of certificates.
+// No JSON or proxy dependencies: presentation schemas belong to callers.
+namespace socle::ossl {
+
+// Formatting alone never consumes the thread-local OpenSSL error queue.
+inline std::string error_text(unsigned long code, size_t buffer_size = 256) {
+    if(buffer_size == 0) return {};
+    std::vector<char> text(buffer_size, 0);
+    ERR_error_string_n(code, text.data(), text.size());
+    return text.data();
+}
+
+// Consume exactly one entry, retaining OpenSSL's textual representation of 0.
+inline std::string take_error_text(size_t buffer_size = 256) {
+    return error_text(ERR_get_error(), buffer_size);
+}
+
+// Explicitly drain the entire queue, oldest error first.
+inline std::string drain_error_text() {
+    std::string result;
+    while(auto code = ERR_get_error()) {
+        if(!result.empty()) result += "; ";
+        result += error_text(code);
+    }
+    return result;
+}
+
+// Read on the SSL object's owning thread. Returned values own their storage.
+// No handshake/policy decisions: callers decide when these fields are valid.
+struct session_info {
+    std::string transport_version; // SSL_get_version: can describe QUIC, not TLS.
+    int protocol_version = 0;       // SSL_SESSION_get_protocol_version: TLS version.
+    std::string cipher;
+    bool has_ticket = false;
+    unsigned long ticket_lifetime_hint = 0;
+};
+
+inline std::optional<session_info> session_details(SSL const* ssl) {
+    auto const* session = ssl ? SSL_get_session(ssl) : nullptr;
+    if(!session) return std::nullopt;
+    session_info result;
+    result.transport_version = SSL_get_version(ssl);
+    result.protocol_version = SSL_SESSION_get_protocol_version(session);
+    result.cipher = SSL_CIPHER_get_name(SSL_SESSION_get0_cipher(session));
+    result.has_ticket = SSL_SESSION_has_ticket(session) != 0;
+    if(result.has_ticket)
+        result.ticket_lifetime_hint = SSL_SESSION_get_ticket_lifetime_hint(session);
+    return result;
+}
+
+inline std::optional<std::string> server_name(SSL const* ssl) {
+    auto const* name = ssl ? SSL_get_servername(ssl, TLSEXT_NAMETYPE_host_name) : nullptr;
+    return name ? std::optional<std::string>(name) : std::nullopt;
+}
+
+inline std::string selected_alpn(SSL const* ssl) {
+    if(!ssl) return {};
+    unsigned char const* bytes = nullptr;
+    unsigned int size = 0;
+    SSL_get0_alpn_selected(ssl, &bytes, &size);
+    return bytes && size ? std::string(reinterpret_cast<char const*>(bytes), size) : std::string{};
+}
+
+// Owning OpenSSL pointers. Pass the matching deleter at construction.
+using bio_ptr = std::unique_ptr<BIO, decltype(&BIO_free)>;
+using x509_ptr = std::unique_ptr<X509, decltype(&X509_free)>;
+using x509_crl_ptr = std::unique_ptr<X509_CRL, decltype(&X509_CRL_free)>;
+using x509_name_ptr = std::unique_ptr<X509_NAME, decltype(&X509_NAME_free)>;
+using x509_req_ptr = std::unique_ptr<X509_REQ, decltype(&X509_REQ_free)>;
+using x509_extension_ptr = std::unique_ptr<X509_EXTENSION, decltype(&X509_EXTENSION_free)>;
+using x509_store_ptr = std::unique_ptr<X509_STORE, decltype(&X509_STORE_free)>;
+using pkey_ptr = std::unique_ptr<EVP_PKEY, decltype(&EVP_PKEY_free)>;
+using md_ctx_ptr = std::unique_ptr<EVP_MD_CTX, decltype(&EVP_MD_CTX_free)>;
+using bignum_ptr = std::unique_ptr<BIGNUM, decltype(&BN_free)>;
+using general_names_ptr = std::unique_ptr<GENERAL_NAMES, decltype(&GENERAL_NAMES_free)>;
+using ssl_ptr = std::unique_ptr<SSL, decltype(&SSL_free)>;
+using ssl_ctx_ptr = std::unique_ptr<SSL_CTX, decltype(&SSL_CTX_free)>;
+using ssl_session_ptr = std::unique_ptr<SSL_SESSION, decltype(&SSL_SESSION_free)>;
+using openssl_string_ptr = std::unique_ptr<char, void (*)(char*)>;
+
+inline std::string bio_text(BIO* bio) {
+    if(!bio) return {};
+    char* bytes = nullptr;
+    auto size = BIO_get_mem_data(bio, &bytes);
+    return size > 0 ? std::string(bytes, static_cast<size_t>(size)) : std::string{};
+}
+
+// Owns one writable memory BIO, never a BIO chain. get() only lends it to
+// OpenSSL; callers must not free it or transfer its ownership elsewhere.
+// Extraction copies unread bytes without consuming them, including embedded NULs.
+class memory_bio {
+public:
+    memory_bio(): bio_(BIO_new(BIO_s_mem()), BIO_free) {}
+    memory_bio(memory_bio const&) = delete;
+    memory_bio& operator=(memory_bio const&) = delete;
+    memory_bio(memory_bio&&) noexcept = default;
+    memory_bio& operator=(memory_bio&&) noexcept = default;
+
+    BIO* get() const noexcept { return bio_.get(); }
+    explicit operator bool() const noexcept { return static_cast<bool>(bio_); }
+
+    size_t size() const noexcept {
+        char* bytes = nullptr;
+        auto length = bio_ ? BIO_get_mem_data(bio_.get(), &bytes) : 0;
+        return length > 0 ? static_cast<size_t>(length) : 0;
+    }
+
+    std::string str(size_t limit = std::numeric_limits<size_t>::max()) const {
+        char* bytes = nullptr;
+        auto length = bio_ ? BIO_get_mem_data(bio_.get(), &bytes) : 0;
+        if(length <= 0 || limit == 0) return {};
+        auto count = static_cast<size_t>(length);
+        return std::string(bytes, count < limit ? count : limit);
+    }
+
+private:
+    bio_ptr bio_;
+};
+
+// Public certificate only; the returned PEM never includes a private key.
+inline std::string certificate_pem(X509 const* certificate) {
+    if(!certificate) return {};
+    memory_bio output;
+    if(!output || PEM_write_bio_X509(output.get(), certificate) != 1) return {};
+    return output.str();
+}
+
+// Snapshot the presented peer chain, not a verified/rebuilt chain. Leaf first,
+// then the supplied chain in order, excluding entries equal to the leaf.
+// Keep empty PEM results so callers can choose their own serialization policy.
+inline std::vector<std::string> peer_certificates_pem(SSL* ssl) {
+    std::vector<std::string> result;
+
+    if (!ssl) {
+        return result;
+    }
+
+    x509_ptr leaf(
+        SSL_get_peer_certificate(ssl), X509_free);
+
+    if (leaf) {
+        result.push_back(certificate_pem(leaf.get()));
+    }
+
+    auto const* chain = SSL_get_peer_cert_chain(ssl);
+
+    for (int i = 0; chain && i < sk_X509_num(chain); ++i) {
+        auto* certificate = sk_X509_value(chain, i);
+
+        if (!leaf || X509_cmp(leaf.get(), certificate) != 0) {
+            result.push_back(certificate_pem(certificate));
+        }
+    }
+
+    return result;
+}
+
+// Unbounded diagnostic rendering, unlike the legacy fixed-buffer overloads.
+inline std::string time_text_full(ASN1_TIME const* value) {
+    if(!value) return {};
+    memory_bio output;
+    if(!output || ASN1_TIME_print(output.get(), value) != 1) return {};
+    return output.str();
+}
+
+// The buffer size is explicit so legacy callers retain their truncation policy.
+inline std::string common_name(X509_NAME const* name, size_t buffer_size = 512) {
+    if(!name || buffer_size < 2 || buffer_size > static_cast<size_t>(INT_MAX)) return {};
+    std::vector<char> value(buffer_size, 0);
+    return X509_NAME_get_text_by_NID(name, NID_commonName, value.data(),
+                                    static_cast<int>(buffer_size - 1)) < 0
+           ? std::string{} : std::string(value.data());
+}
+
+inline std::string name_oneline(X509_NAME const* name, size_t buffer_size = 512) {
+    if(!name || buffer_size < 2 || buffer_size > static_cast<size_t>(INT_MAX)) return {};
+    std::vector<char> value(buffer_size, 0);
+    return X509_NAME_oneline(name, value.data(), static_cast<int>(buffer_size - 1))
+           ? std::string(value.data()) : std::string{};
+}
+
+inline std::string distinguished_name(X509_NAME const* name) {
+    if(!name) return {};
+    memory_bio output;
+    if(!output || X509_NAME_print_ex(output.get(), name, 0, XN_FLAG_RFC2253) < 0) return {};
+    return output.str();
+}
+
+inline bool time_text(ASN1_TIME const* value, char* output, size_t size) {
+    if(!value || !output || size == 0 || size > static_cast<size_t>(INT_MAX)) return false;
+    output[0] = '\0';
+    memory_bio bio;
+    return bio && ASN1_TIME_print(bio.get(), value) > 0 &&
+           BIO_gets(bio.get(), output, static_cast<int>(size)) > 0;
+}
+
+inline std::string time_text(ASN1_TIME const* value, size_t buffer_size = 512) {
+    if(buffer_size < 2 || buffer_size > static_cast<size_t>(INT_MAX)) return {};
+    std::vector<char> output(buffer_size, 0);
+    return time_text(value, output.data(), buffer_size - 1) ? std::string(output.data()) : std::string{};
+}
+
+inline std::string time_iso8601(ASN1_TIME const* value) {
+    std::tm utc{};
+    if(!value || ASN1_TIME_to_tm(value, &utc) != 1) return {};
+    std::array<char, 32> text{};
+    if(std::strftime(text.data(), text.size(), "%Y-%m-%dT%H:%M:%SZ", &utc) == 0) return {};
+    return text.data();
+}
+
+enum class hex_case { lower, upper };
+
+inline std::string hex_encode(unsigned char const* bytes, size_t size,
+                              hex_case casing = hex_case::lower) {
+    auto const* hex = casing == hex_case::upper ? "0123456789ABCDEF" : "0123456789abcdef";
+    std::string result;
+    result.reserve(size * 2);
+    for(size_t i = 0; i < size; ++i) {
+        result += hex[bytes[i] >> 4];
+        result += hex[bytes[i] & 15];
+    }
+    return result;
+}
+
+// Empty input is valid. The caller decides whether its domain allows it.
+inline std::optional<std::string> sha256(std::string_view input) {
+    md_ctx_ptr context(EVP_MD_CTX_new(), EVP_MD_CTX_free);
+    if(!context) return std::nullopt;
+    std::array<unsigned char, EVP_MAX_MD_SIZE> digest{};
+    unsigned size = 0;
+    if(EVP_DigestInit_ex(context.get(), EVP_sha256(), nullptr) != 1 ||
+       EVP_DigestUpdate(context.get(), input.data(), input.size()) != 1 ||
+       EVP_DigestFinal_ex(context.get(), digest.data(), &size) != 1) return std::nullopt;
+    return hex_encode(digest.data(), size);
+}
+
+inline std::optional<std::string> random_hex(size_t bytes) {
+    if(bytes == 0 || bytes > static_cast<size_t>(INT_MAX)) return std::nullopt;
+    std::vector<unsigned char> random(bytes);
+    if(RAND_bytes(random.data(), static_cast<int>(random.size())) != 1) return std::nullopt;
+    return hex_encode(random.data(), random.size());
+}
+
+inline std::string fingerprint(X509 const* certificate, EVP_MD const* algorithm,
+                               hex_case casing = hex_case::lower) {
+    if(!certificate || !algorithm) return {};
+    std::array<unsigned char, EVP_MAX_MD_SIZE> digest{};
+    unsigned size = 0;
+    if(X509_digest(certificate, algorithm, digest.data(), &size) != 1) return {};
+    return hex_encode(digest.data(), size, casing);
+}
+
+inline std::string serial_hex(X509 const* certificate) {
+    if(!certificate) return {};
+    bignum_ptr serial(
+        ASN1_INTEGER_to_BN(X509_get0_serialNumber(certificate), nullptr), BN_free);
+    if(!serial) return {};
+    auto free_hex = [](char* value) { OPENSSL_free(value); };
+    openssl_string_ptr hex(BN_bn2hex(serial.get()), free_hex);
+    return hex ? std::string(hex.get()) : std::string{};
+}
+
+struct public_key_info {
+    std::string algorithm;
+    int bits = 0;
+    bool present = false;
+};
+
+inline public_key_info public_key(X509 const* certificate) {
+    auto* key = certificate ? X509_get0_pubkey(certificate) : nullptr;
+    if(!key) return {};
+    auto const* algorithm = OBJ_nid2sn(EVP_PKEY_base_id(key));
+    return {algorithm ? algorithm : "unknown", EVP_PKEY_bits(key), true};
+}
+
+enum class alternative_name_type { dns, ip };
+struct alternative_name {
+    alternative_name_type type;
+    std::string value;
+};
+struct alternative_names_result {
+    std::vector<alternative_name> names;
+    bool present = false;
+    bool truncated = false;
+};
+struct alternative_names_options {
+    size_t maximum_names = std::numeric_limits<size_t>::max();
+    bool ascii_dns_only = false;
+    bool reject_duplicate_extensions = false;
+};
+
+// Preserve certificate order. Limits apply to inspected GENERAL_NAME entries,
+// including unsupported types, not just the number of exported DNS/IP names.
+inline alternative_names_result alternative_names(
+        X509 const* certificate, alternative_names_options options = {}) {
+    alternative_names_result result;
+    if(!certificate) return result;
+    if(options.reject_duplicate_extensions) {
+        auto first = X509_get_ext_by_NID(certificate, NID_subject_alt_name, -1);
+        if(first >= 0 && X509_get_ext_by_NID(certificate, NID_subject_alt_name, first) >= 0)
+            return result;
+    }
+    auto const* extensions = X509_get0_extensions(certificate);
+    size_t inspected = 0;
+    for(int e = 0; e < sk_X509_EXTENSION_num(extensions); ++e) {
+        auto* extension = sk_X509_EXTENSION_value(extensions, e);
+        if(!extension || OBJ_obj2nid(X509_EXTENSION_get_object(extension)) != NID_subject_alt_name) continue;
+        general_names_ptr names(
+            static_cast<GENERAL_NAMES*>(X509V3_EXT_d2i(extension)), GENERAL_NAMES_free);
+        if(!names) continue;
+        result.present = true;
+        for(int i = 0; i < sk_GENERAL_NAME_num(names.get()); ++i) {
+            if(inspected++ >= options.maximum_names) {
+                result.truncated = true;
+                return result;
+            }
+            auto const* name = sk_GENERAL_NAME_value(names.get(), i);
+            if(!name) continue;
+            if(name->type == GEN_DNS) {
+                auto const* value = name->d.dNSName;
+                if(!value) continue;
+                auto size = ASN1_STRING_length(value);
+                auto const* bytes = ASN1_STRING_get0_data(value);
+                bool valid = bytes && size > 0;
+                for(int j = 0; valid && j < size; ++j)
+                    valid = bytes[j] != 0 && (!options.ascii_dns_only || bytes[j] < 128);
+                if(valid) result.names.push_back({alternative_name_type::dns,
+                    std::string(reinterpret_cast<char const*>(bytes), size)});
+            } else if(name->type == GEN_IPADD) {
+                auto const* value = name->d.iPAddress;
+                if(!value) continue;
+                auto size = ASN1_STRING_length(value);
+                auto const* bytes = ASN1_STRING_get0_data(value);
+                if(!bytes || (size != 4 && size != 16)) continue;
+                std::array<char, INET6_ADDRSTRLEN> address{};
+                if(inet_ntop(size == 4 ? AF_INET : AF_INET6, bytes, address.data(), address.size()))
+                    result.names.push_back({alternative_name_type::ip, address.data()});
+            }
+        }
+    }
+    return result;
+}
+
+inline std::string signature_algorithm(X509 const* certificate) {
+    if(!certificate) return {};
+    auto const* algorithm = OBJ_nid2ln(X509_get_signature_type(certificate));
+    return algorithm ? algorithm : "";
+}
+
+// Report allocation failure separately for legacy diagnostic callers.
+inline bool extensions_text(X509 const* certificate, std::string& text, int indent = 0) {
+    text.clear();
+    if(!certificate) return false;
+    memory_bio output;
+    if(!output) return false;
+    X509V3_extensions_print(output.get(), nullptr, X509_get0_extensions(certificate), 0, indent);
+    text = output.str();
+    return true;
+}
+
+inline std::string extensions_text(X509 const* certificate) {
+    std::string text;
+    extensions_text(certificate, text);
+    return text;
+}
+
+} // namespace socle::ossl
