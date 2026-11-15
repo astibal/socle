@@ -311,7 +311,7 @@ namespace socle::traflog {
         }
     };
 
-    void PcapLog::write_tcp_start(tcp_details& real_details) {
+    std::uint64_t PcapLog::write_tcp_start(tcp_details& real_details) {
 
         auto const& log = log_write;
 
@@ -342,9 +342,11 @@ namespace socle::traflog {
             writer_->flush(FS.filename_full);
 
             stat_bytes_written += wr;
+            if (wr == out.size() && wr != 0) return 3;
 
             _dia("pcaplog::write[%s]/tcp-hs : written %dB", FS.filename_full.c_str(), wr);
         }
+        return 0;
     }
 
 
@@ -376,7 +378,7 @@ namespace socle::traflog {
         }
     }
 
-    void PcapLog::write_tcp_data(side_t side, buffer const& b, tcp_details& real_details,
+    std::uint64_t PcapLog::write_tcp_data(side_t side, buffer const& b, tcp_details& real_details,
                                  std::string const& detection) {
         auto const& log = log_write;
 
@@ -397,10 +399,13 @@ namespace socle::traflog {
                 _dia("pcaplog::write[%s]/tcp-data : written %dB", FS.filename_full.c_str(), wr);
 
                 stat_bytes_written += wr;
+                if (wr == out.size() && wr != 0) return b.empty() ? 1 : (real_details.max_data_size > 0
+                    ? 1 + (b.size() - 1) / real_details.max_data_size : 1);
             }
         } else {
             _err("pcaplog::write: error appending TCP data");
         }
+        return 0;
     }
 
     void PcapLog::write_annotation(side_t side, std::string const& text) {
@@ -442,7 +447,7 @@ namespace socle::traflog {
         }
     }
 
-    void PcapLog::write_udp_data(side_t side, buffer const& b, tcp_details& real_details,
+    std::uint64_t PcapLog::write_udp_data(side_t side, buffer const& b, tcp_details& real_details,
                                  std::string const& detection) {
         auto const& log = log_write;
 
@@ -464,10 +469,12 @@ namespace socle::traflog {
                 _dia("pcaplog::write[%s]/udp : written %dB", FS.filename_full.c_str(), wr);
 
                 stat_bytes_written += wr;
+                if (wr == out.size() && wr != 0) return 1;
             }
         } else {
             _err("pcaplog::write: error appending UDP data");
         }
+        return 0;
     }
 
     void PcapLog::write(side_t side, buffer const& b) {
@@ -511,20 +518,20 @@ namespace socle::traflog {
         if(details.next_proto == connection_details::TCP) {
 
             if (not tcp_start_written) {
-                self->write_tcp_start(details);
+                capture_packets_ += self->write_tcp_start(details);
                 tcp_start_written = true;
             }
 
             flush_pending_metadata();
 
             if (b.size() > 0)
-                self->write_tcp_data(side, b, details, detection);
+                capture_packets_ += self->write_tcp_data(side, b, details, detection);
 
             // Fins are written with PcapLog destruction
         }
         else if(details.next_proto == connection_details::UDP) {
 
-            self->write_udp_data(side, b, details, detection);
+            capture_packets_ += self->write_udp_data(side, b, details, detection);
         }
         else {
             _err("pcaplog::write: unknown protocol to write: %d", details.next_proto);
@@ -583,6 +590,7 @@ namespace socle::traflog {
         if (local_output) {
             auto const written = writer->write(fs.filename_full, output);
             self->stat_bytes_written += written;
+            if (written == output.size() && written != 0) ++capture_packets_;
         }
         native_packets_written_ = true;
         flush_pending_metadata();
