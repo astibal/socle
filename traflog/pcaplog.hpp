@@ -37,6 +37,8 @@ namespace socle::traflog {
     class PcapLog : public baseTrafficLogger {
 
         PcapLog() = default; // just for singleton, which is set up later
+        // Owned by the flow logger, never the shared single-file sink.
+        std::uint64_t capture_packets_ = 0;
         void export_pcapng_records(buffer const& blocks, pcap::connection_details const& details);
     public:
         explicit PcapLog (baseProxy *parent, const char* d_dir, const char* f_prefix, const char* f_suffix, bool create_dirs);
@@ -52,16 +54,21 @@ namespace socle::traflog {
 
         void write_pcap_header(bool is_recreated);
 
-        void write_tcp_start(pcap::tcp_details& real_details);
-        void write_tcp_data(side_t side, buffer const& b, pcap::tcp_details& real_details);
+        std::uint64_t write_tcp_start(pcap::tcp_details& real_details);
+        std::uint64_t write_tcp_data(side_t side, buffer const& b, pcap::tcp_details& real_details);
 
-        void write_udp_data(side_t side, buffer const& b, pcap::tcp_details& real_details);
+        std::uint64_t write_udp_data(side_t side, buffer const& b, pcap::tcp_details& real_details);
 
         void write(side_t side, const buffer &b) override;
         void write(side_t side, std::string const& s) override;
         void write_packet(side_t side, buffer const& packet) override;
         void write_secret(traffic_secret_format format, buffer const& data) override;
         void write_annotation(side_t side, std::string const& text) override;
+
+        std::optional<std::uint64_t> capture_packets() const override {
+            if (ip_packet_hook_only) return std::nullopt;
+            return capture_packets_;
+        }
 
         baseProxy *parent = nullptr;
         pcap::tcp_details details;

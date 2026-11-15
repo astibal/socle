@@ -20,6 +20,8 @@
 #define BASETRAFLOG_HPP
 
 #include <vars.hpp>
+#include <optional>
+#include <cstdint>
 
 namespace socle {
 
@@ -35,6 +37,12 @@ namespace socle {
         virtual ~baseTrafficLogger() = default;
         [[nodiscard]] inline bool status() const { return status_; }
         inline void status(bool b) { status_ = b; }
+
+        /** Local packets accepted by the writer, not a disk durability guarantee.
+         * Unsupported/remote-only loggers return no value. */
+        [[nodiscard]] virtual std::optional<std::uint64_t> capture_packets() const {
+            return std::nullopt;
+        }
 
         /**
          * Write directional content. Packet-oriented loggers synthesize the
