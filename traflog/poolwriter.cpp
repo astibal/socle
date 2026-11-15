@@ -49,10 +49,9 @@ namespace socle {
 
         auto sz = str.size();
         try {
-            resource->first->flush();
-
             auto lock = std::lock_guard(*resource->second);
             (*resource->first) << str;
+            if (flush_each_write_) resource->first->flush();
 
         } catch(std::ios_base::failure const& e) {
             sz = 0;
@@ -78,10 +77,9 @@ namespace socle {
 
         auto sz = buf.size();
         try {
-            resource->first->flush();
-
             auto lock = std::lock_guard(*resource->second);
             (*resource->first) << buf;
+            if (flush_each_write_) resource->first->flush();
         } catch(std::ios_base::failure const& e) {
             sz = 0;
             _err("file: %s: write buffer failed: %s", fnm.c_str(), e.what());

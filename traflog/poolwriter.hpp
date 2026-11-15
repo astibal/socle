@@ -31,7 +31,8 @@ namespace socle {
     class poolFileWriter : public baseFileWriter {
 
     protected:
-        explicit poolFileWriter(): ofstream_pool("ofstream-pool", 30, true ) {
+        explicit poolFileWriter(bool flush_each_write = true):
+            flush_each_write_(flush_each_write), ofstream_pool("ofstream-pool", 30, true ) {
             log = logan::create("socle.filewriter");
         }
 
@@ -64,6 +65,7 @@ namespace socle {
         bool recreate(std::string const& fnm) override;
     private:
         logan_lite log;
+        bool flush_each_write_;
 
         // pool of opened streams. If expired, they will be closed and destruct.
          pool_t ofstream_pool;

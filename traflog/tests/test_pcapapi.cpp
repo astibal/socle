@@ -654,3 +654,54 @@ TEST(ThreadedPoolFileWriterTest, BorrowedBytesSurviveUntilAsyncWrite) {
     EXPECT_EQ(actual, "metadata");
     std::filesystem::remove(path);
 }
+
+TEST(ThreadedPoolFileWriterTest, PublishesFinalBlockWithoutAnotherWrite) {
+    auto* writer = socle::threadedPoolFileWriter::instance();
+    auto path = std::filesystem::temp_directory_path()
+        / ("socle-idle-flush-" + std::to_string(::getpid()));
+    std::filesystem::remove(path);
+    const std::string expected = "last capture block";
+    ASSERT_EQ(writer->write(path.string(), expected), expected.size());
+    // No explicit flush or close: an independent reader must see the bytes
+    // after the timer fires. Allow scheduling slack on a loaded build host.
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    std::string actual;
+    do {
+        std::ifstream input(path, std::ios::binary);
+        actual.assign(std::istreambuf_iterator<char>(input), {});
+        if (actual == expected) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    } while (std::chrono::steady_clock::now() < deadline);
+    EXPECT_EQ(actual, expected);
+    writer->close(path.string());
+    std::filesystem::remove(path);
+}
+
+TEST(ThreadedPoolFileWriterTest, FlushesFinalByteAtVolumeThreshold) {
+    auto* writer = socle::threadedPoolFileWriter::instance();
+    auto path = std::filesystem::temp_directory_path()
+        / ("socle-volume-flush-" + std::to_string(::getpid()));
+    std::filesystem::remove(path);
+    const std::string prefix(256 * 1024 - 1, 'x');
+    writer->write(path.string(), prefix);
+    writer->write(path.string(), std::string("!"));
+    bool drained = false;
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+    do {
+        {
+            std::lock_guard lock(writer->queue_lock());
+            drained = writer->queue().empty();
+        }
+        if (drained) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    } while (std::chrono::steady_clock::now() < deadline);
+    EXPECT_TRUE(drained);
+    std::ifstream input(path, std::ios::binary);
+    std::string actual((std::istreambuf_iterator<char>(input)), {});
+    EXPECT_EQ(actual.size(), prefix.size() + 1);
+    if (!actual.empty()) {
+        EXPECT_EQ(actual.back(), '!');
+    }
+    writer->close(path.string());
+    std::filesystem::remove(path);
+}
