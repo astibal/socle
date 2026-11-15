@@ -16,11 +16,14 @@
     License along with this library.
 */
 
+#include <chrono>
+#include <unordered_map>
+
 #include <buffer.hpp>
 #include <traflog/threadedpoolwriter.hpp>
 
 namespace socle {
-    threadedPoolFileWriter::threadedPoolFileWriter() {
+    threadedPoolFileWriter::threadedPoolFileWriter() : poolFileWriter(false) {
         log = logan::create("socle.threadedPoolFileWriter");
 
         run_worker();
@@ -39,6 +42,16 @@ namespace socle {
 
     void threadedPoolFileWriter::worker() {
         :: pthread_setname_np(pthread_self(), "sx-wrt");
+        using clock = std::chrono::steady_clock;
+        struct pending_flush {
+            std::size_t bytes = 0;
+            clock::time_point since = clock::now();
+        };
+        constexpr std::size_t flush_bytes = 256 * 1024;
+        constexpr auto flush_interval = std::chrono::seconds(1);
+        // Only this worker touches pending state. Flush after the byte limit
+        // or deadline, including the final block when no more writes arrive.
+        std::unordered_map<std::string, pending_flush> pending;
         while(true)
         {
             bool wait = false;
@@ -55,17 +68,38 @@ namespace socle {
                     auto& fnm = queue().front().first; // copy to ram is faster than to disk
                     auto& buf = queue().front().second;
 
-                    poolFileWriter::write(fnm, buf);
+                    auto written = poolFileWriter::write(fnm, buf);
+                    if (written) {
+                        auto& dirty = pending[fnm];
+                        dirty.bytes += written;
+                        if (dirty.bytes >= flush_bytes) {
+                            poolFileWriter::flush(fnm);
+                            pending.erase(fnm);
+                        }
+                    }
 
                     queue().pop();
+                }
+            }
+            // Check deadlines even with an empty queue, or with continuous
+            // traffic to other files. New writes must not postpone the deadline.
+            auto now = clock::now();
+            for (auto it = pending.begin(); it != pending.end();) {
+                if (now - it->second.since >= flush_interval) {
+                    poolFileWriter::flush(it->first);
+                    it = pending.erase(it);
+                } else {
+                    ++it;
                 }
             }
             // we will wait if the queue was empty or handled by other workers
             if(wait) {
                 ::usleep(1000);
-            } else {
-
             }
+        }
+        // Shutdown drains queued records first, then publishes the last bytes.
+        for (auto const& item : pending) {
+            poolFileWriter::flush(item.first);
         }
     }
 
