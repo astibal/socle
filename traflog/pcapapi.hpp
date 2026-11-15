@@ -417,7 +417,8 @@ namespace socle::pcapng {
 
         size_t size() const;
         size_t append(buffer& out);
-        size_t append_TCP(buffer& out_buffer, const char* data, ssize_t data_size, int in, unsigned char tcpflags, tcp_details& details);
+        size_t append_TCP(buffer& out_buffer, const char* data, ssize_t data_size, int in, unsigned char tcpflags, tcp_details& details,
+                          std::string const& final_comment = {});
         size_t save_TCP(int fd, const char* data, ssize_t size, int in, unsigned char tcpflags, tcp_details& details);
 
         size_t append_UDP(buffer& out_buffer, const char* data, ssize_t size, int in, connection_details& details);

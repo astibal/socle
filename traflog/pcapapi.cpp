@@ -896,7 +896,8 @@ namespace socle::pcapng {
     }
 
 
-    size_t pcapng_epb::append_TCP(buffer& out_buffer, const char* data, ssize_t data_size, int in, unsigned char tcpflags, tcp_details& details) {
+    size_t pcapng_epb::append_TCP(buffer& out_buffer, const char* data, ssize_t data_size, int in, unsigned char tcpflags, tcp_details& details,
+                                  std::string const& final_comment) {
         if(data_size < 0) {
             return -1;
         }
@@ -944,6 +945,9 @@ namespace socle::pcapng {
                 if(ptr) ptr->execute(details, view);
             }
 
+            if (!final_comment.empty() && data_written + to_write == data_size) {
+                comment(final_comment);
+            }
             append(out_buffer);
 
             data_written += to_write;

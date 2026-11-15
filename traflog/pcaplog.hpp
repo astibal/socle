@@ -59,11 +59,14 @@ namespace socle::traflog {
         void write_pcap_header(bool is_recreated);
 
         void write_tcp_start(pcap::tcp_details& real_details);
-        void write_tcp_data(side_t side, buffer const& b, pcap::tcp_details& real_details);
+        void write_tcp_data(side_t side, buffer const& b, pcap::tcp_details& real_details,
+                            std::string const& detection = {});
 
-        void write_udp_data(side_t side, buffer const& b, pcap::tcp_details& real_details);
+        void write_udp_data(side_t side, buffer const& b, pcap::tcp_details& real_details,
+                            std::string const& detection = {});
 
         void write(side_t side, const buffer &b) override;
+        void write_detected(side_t side, buffer const& b, std::string const& detection) override;
         void write(side_t side, std::string const& s) override;
         void write_packet(side_t side, buffer const& packet) override;
         void write_secret(traffic_secret_format format, buffer const& data) override;
@@ -88,8 +91,6 @@ namespace socle::traflog {
         long long stat_bytes_quota = 0LL;
         bool rotate_now = false;
 
-        bool comment_frame(pcapng::pcapng_epb& frame);
-        std::string comlog;
 
         static PcapLog& single_instance() {
             static PcapLog s;

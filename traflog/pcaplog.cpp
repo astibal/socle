@@ -160,8 +160,6 @@ namespace socle::traflog {
                             pcapng::pcapng_epb f1;
                             if (self->ip_packet_hook) f1.ip_packet_hook = self->ip_packet_hook;
 
-                            if (comment_frame(f1)) { _deb("comment inserted on close"); }
-
                             f1.append_TCP(out, "", 0, 0, TCPFLAG_FIN | TCPFLAG_ACK, details);
                             pcapng::pcapng_epb f2;
                             if (self->ip_packet_hook) f2.ip_packet_hook = self->ip_packet_hook;
@@ -286,17 +284,6 @@ namespace socle::traflog {
         return false;
     }
 
-    bool PcapLog::comment_frame(pcapng::pcapng_epb& frame) {
-        if(not comlog.empty()) {
-            frame.comment(comlog);
-            comlog.clear();
-
-            return true;
-        }
-
-        return false;
-    }
-
     void PcapLog::write_pcap_header(bool is_recreated) {
 
         if (not pcap_header_written or is_recreated) {
@@ -389,17 +376,15 @@ namespace socle::traflog {
         }
     }
 
-    void PcapLog::write_tcp_data(side_t side, buffer const& b, tcp_details& real_details) {
+    void PcapLog::write_tcp_data(side_t side, buffer const& b, tcp_details& real_details,
+                                 std::string const& detection) {
         auto const& log = log_write;
 
         buffer out;
         pcapng::pcapng_epb data;
         if(ip_packet_hook) data.ip_packet_hook = ip_packet_hook;
 
-        if(comment_frame(data)) { _dia("comment inserted into data"); };
-
-
-        if(data.append_TCP(out, (const char*)b.data(), b.size(), side == side_t::RIGHT, TCPFLAG_ACK, real_details) > 0) {
+        if(data.append_TCP(out, (const char*)b.data(), b.size(), side == side_t::RIGHT, TCPFLAG_ACK, real_details, detection) > 0) {
 
             export_pcapng_records(out, real_details);
 
@@ -457,15 +442,16 @@ namespace socle::traflog {
         }
     }
 
-    void PcapLog::write_udp_data(side_t side, buffer const& b, tcp_details& real_details) {
+    void PcapLog::write_udp_data(side_t side, buffer const& b, tcp_details& real_details,
+                                 std::string const& detection) {
         auto const& log = log_write;
 
         buffer out;
 
         pcapng::pcapng_epb u1;
+        if (!detection.empty()) u1.comment(detection);
         if(ip_packet_hook) u1.ip_packet_hook = ip_packet_hook;
 
-        if(comment_frame(u1)) { _dia("comment inserted"); };
         if(u1.append_UDP(out, (const char*)b.data(), b.size(), side == side_t::RIGHT, real_details) > 0) {
 
             export_pcapng_records(out, real_details);
@@ -484,7 +470,11 @@ namespace socle::traflog {
         }
     }
 
-    void PcapLog::write (side_t side, const buffer &b) {
+    void PcapLog::write(side_t side, buffer const& b) {
+        write_detected(side, b, {});
+    }
+
+    void PcapLog::write_detected(side_t side, buffer const& b, std::string const& detection) {
         PcapLog *self = this;
         if (single_only) self = &single_instance();
 
@@ -528,21 +518,22 @@ namespace socle::traflog {
             flush_pending_metadata();
 
             if (b.size() > 0)
-                self->write_tcp_data(side, b, details);
+                self->write_tcp_data(side, b, details, detection);
 
             // Fins are written with PcapLog destruction
         }
         else if(details.next_proto == connection_details::UDP) {
 
-            self->write_udp_data(side, b, details);
+            self->write_udp_data(side, b, details, detection);
         }
         else {
             _err("pcaplog::write: unknown protocol to write: %d", details.next_proto);
         }
 
     }
-    void PcapLog::write (side_t side, const std::string &s) {
-        comlog.append(s);
+    void PcapLog::write(side_t, const std::string&) {
+        // Legacy text diagnostics belong to text loggers. Capture metadata is
+        // emitted through the structured metadata API, not packet comments.
     }
 
     void PcapLog::write_packet(side_t side, buffer const& packet) {
