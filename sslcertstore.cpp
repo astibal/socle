@@ -64,7 +64,13 @@ FILE* open_pem(const std::optional<std::string>& native, const std::string& path
 } // namespace
 
 bool SSLFactory::load_custom_certificates() {
+    auto guard = std::scoped_lock(lock());
     auto const& log = get_log();
+
+    // Rebuild both sources together: removed files and disabled fallback must
+    // not leave stale identities behind after an explicit reload.
+    cache_custom().clear();
+    custom_primary_identities_.clear();
 
     // A cached outbound session may embody a client-authentication decision
     // made with the previous cc-sni/cc-ip identity.  Resumption does not
@@ -72,10 +78,12 @@ bool SSLFactory::load_custom_certificates() {
     // under the old custom-certificate generation may survive a reload.
     session_cache().clear();
 
-    if (not load_certs_from(config_t::SNI_DIR, "sni:")) {
+    const bool sni_loaded = load_certs_from(config_t::SNI_DIR, "sni:");
+    if (!sni_loaded) {
         _dia("some SNI certificates not loaded");
     }
-    if (not load_certs_from(config_t::IP_DIR, "ip:")) {
+    const bool ip_loaded = load_certs_from(config_t::IP_DIR, "ip:");
+    if (!ip_loaded) {
         _dia("some IP certificates not loaded");
     }
 
@@ -84,6 +92,13 @@ bool SSLFactory::load_custom_certificates() {
     }
     if (not load_certs_from(config_t::CC_IP_DIR, "cc-ip:")) {
         _dia("some IP client certificates not loaded");
+    }
+
+    // Only server custom identities may come from the external directory.
+    // Separate cache keys preserve primary SNI/IP precedence as a group.
+    if (sni_loaded && ip_loaded && !custom_cert_fallback_dir().empty()) {
+        load_certs_from("sni/", "fallback:sni:", custom_cert_fallback_dir());
+        load_certs_from("ip/", "fallback:ip:", custom_cert_fallback_dir());
     }
 
 
@@ -242,20 +257,30 @@ bool SSLFactory::update_ssl_ctx_chainfiles(CertificateChainCtx& chain, std::stri
     return build_chain > 0;
 }
 
-bool SSLFactory::load_certs_from(const char* sub_dir, const char* cache_key_prefix) {
+bool SSLFactory::load_certs_from(const char* sub_dir, const char* cache_key_prefix,
+                                 const std::string& fallback_root) {
     auto const& log = get_log();
-    std::string const sub_path = certs_path() + sub_dir;
+    const bool fallback = !fallback_root.empty();
+    const auto sub_path = (std::filesystem::path(
+        fallback ? fallback_root : certs_path()) / sub_dir).string();
 
     try {
 
         auto d = std::filesystem::directory_entry(sub_path);
         if(not d.exists()) {
+            // An optional external source is read-only, including missing paths.
+            if (fallback) return true;
             log.event(INF, "certificates directory created: %s", d.path().string().c_str());
             std::filesystem::create_directories(d);
         }
 
         for (const auto &entry: std::filesystem::directory_iterator(sub_path)) {
-            // directory is the match
+            // Record primary names before parsing. Broken primary identities
+            // must not silently expose a different external identity.
+            if (!fallback) {
+                custom_primary_identities_.insert(
+                    std::string(cache_key_prefix) + entry.path().filename().string());
+            }
 
             auto path = entry.path().string();
             auto full_fnm = path + "/fullchain.pem";
@@ -309,6 +334,7 @@ bool SSLFactory::load_certs_from(const char* sub_dir, const char* cache_key_pref
     catch (std::filesystem::filesystem_error const& e) {
         log.event(ERR, R"(load_certs_from("%s", "%s"): error %s)", sub_dir, cache_key_prefix, e.what());
         _dia(R"(load_certs_from("%s", "%s"): error %s)", sub_dir, cache_key_prefix, e.what());
+        return false;
     }
 
     return true;
@@ -1063,6 +1089,23 @@ std::optional<const CertificateChainCtx> SSLFactory::find_custom(std::string con
     return find(cache_custom(), subject);
 }
 
+
+std::optional<const CertificateChainCtx> SSLFactory::find_custom_fallback(
+        const std::string& sni, const std::string& ip) {
+    auto guard = std::scoped_lock(lock());
+    if (custom_cert_fallback_dir().empty()) return std::nullopt;
+
+    // Even an invalid primary SNI or IP identity blocks external fallback.
+    if ((!sni.empty() && custom_primary_identities_.count("sni:" + sni)) ||
+        (!ip.empty() && custom_primary_identities_.count("ip:" + ip))) {
+        return std::nullopt;
+    }
+    if (!sni.empty()) {
+        if (auto identity = find_custom("fallback:sni:" + sni)) return identity;
+    }
+    if (!ip.empty()) return find_custom("fallback:ip:" + ip);
+    return std::nullopt;
+}
 
 bool SSLFactory::erase_mitm(std::string const& subject) {
     return erase(cache_mitm(), subject);

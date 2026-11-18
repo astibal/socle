@@ -20,6 +20,7 @@
 #define __SSLCERTSTORE_HPP__
 
 #include <map>
+#include <set>
 
 #include <openssl/rsa.h>
 #include <openssl/crypto.h>
@@ -334,6 +335,11 @@ public:
     std::string& ca_file() { return ca_file_; };
 
     // path for smithproxy own PKI authority and certificates
+    // Optional, read-only server identity fallback (ip/ and sni/). Never a CA source.
+    std::string custom_cert_fallback_dir_;
+    std::string& custom_cert_fallback_dir() { return custom_cert_fallback_dir_; }
+    std::set<std::string> custom_primary_identities_;
+
     std::string certs_path_ = "./certs/";
     std::string& certs_path() {  return certs_path_; };
 
@@ -374,7 +380,8 @@ private:
 
     // portal certs are not used in their X509 form
     bool load_def_po_cert();
-    bool load_certs_from(const char* sub_dir, const char* cache_key_prefix);
+    bool load_certs_from(const char* sub_dir, const char* cache_key_prefix,
+                         const std::string& fallback_root = {});
     bool update_ssl_ctx_fullchain(CertificateChainCtx& chain, std::string_view key, std::string_view fullchain);
     bool update_ssl_ctx_chainfiles(CertificateChainCtx& chain, std::string_view issuer1, std::string_view issuer2, std::string_view issuer3);
 
@@ -502,6 +509,8 @@ public:
     std::optional<const CertificateChainCtx> find(X509_CACHE& cache, std::string const& subject);
     std::optional<const CertificateChainCtx> find_mitm(std::string const& subject);
     std::optional<const CertificateChainCtx> find_custom(std::string const& subject);
+    std::optional<const CertificateChainCtx> find_custom_fallback(
+        const std::string& sni, const std::string& ip);
 
     bool erase(X509_CACHE& cache, const std::string &subject);
     bool erase_mitm(const std::string &subject);
