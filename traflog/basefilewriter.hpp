@@ -40,6 +40,9 @@ namespace socle {
         // close the file
         virtual bool close (std::string const &fnm) = 0;
 
+        // Retire after all previously accepted writes (asynchronous writers queue this).
+        virtual bool retire(std::string const& fnm) { return close(fnm); }
+
         // is this writer opened?
         virtual bool opened () = 0;
 

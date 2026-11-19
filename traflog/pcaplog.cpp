@@ -21,6 +21,8 @@
 #include <traflog/filewriter.hpp>
 #include <xorshift.hpp>
 #include <cstring>
+#include <stdexcept>
+#include <cerrno>
 
 namespace socle::traflog {
 
@@ -153,6 +155,7 @@ namespace socle::traflog {
                         if (tcp_start_written) {
                             PcapLog *self = this;
                             if (single_only) self = &single_instance();
+                            auto capture_lock = std::lock_guard(self->fs_lock_);
                             auto *writer = self->writer_;
                             auto const &fs = self->FS;
 
@@ -204,8 +207,8 @@ namespace socle::traflog {
 
         PcapLog *self = this;
         if (single_only) self = &single_instance();
+        auto capture_lock = std::lock_guard(self->fs_lock_);
 
-        auto l_ = std::lock_guard(self->fs_lock_);
         auto *writer = self->writer_;
         auto const &fs = self->FS;
 
@@ -222,48 +225,36 @@ namespace socle::traflog {
                 self->rotate_now) {
 
                 _dia("pcaplog::write: rotating based on %s", self->rotate_now ? "request" : "quota limit");
-                self->rotate_now = false;
-
-                std::stringstream ss;
-                ss << self->FS.data_dir << "/" << self->FS.file_prefix << "smithproxy.old." << self->FS.file_suffix;
-                std::string renamed_fnm = ss.str();
-
-                struct stat st{};
-                int result = stat(renamed_fnm.c_str(), &st);
-                auto file_exists = result == 0;
-
-                _deb("pcaplog::write: old file %s exist", file_exists ? "does" : "doesn't");
-
-                if (file_exists) {
-                    auto ret = ::remove(renamed_fnm.c_str());
-                    if (ret == 0) {
-                        _deb("pcaplog::write: old file deleted");
-
-                        bool closed = self->writer_->close(fs.filename_full);
-                        _deb("pcaplog::write: current file closed: %s", closed ? "yes" : "no");
-
-                        if (::rename(fs.filename_full.c_str(), renamed_fnm.c_str()) == 0) {
-                            _dia("pcaplog::write: moving current file to backup: ok");
-                            self->FS.filename_full = self->FS.generate_filename_single("smithproxy", true);
-                            self->stat_bytes_written = 0LL;
-                        } else {
-                            _err("pcaplog::write: moving current file to backup: %s", string_error().c_str());
-                        }
-                    } else {
-                        _err("pcaplog::write: old file not deleted: %s", string_error().c_str());
+                // Keep completed captures under their original timestamped names.
+                // Reserve the replacement exclusively, including same-second rotations.
+                auto next_fs = self->FS;
+                auto base = next_fs.generate_filename_single("smithproxy", true);
+                auto next = base;
+                unsigned collision = 0;
+                int fd;
+                while ((fd = ::open(next.c_str(), O_CREAT | O_EXCL | O_WRONLY | O_CLOEXEC, 0600)) < 0) {
+                    if (errno != EEXIST) {
+                        throw std::runtime_error("Cannot create rotated capture: " + string_error());
                     }
-                } else {
-                    bool closed = self->writer_->close(fs.filename_full);
-                    _deb("pcaplog::write: current file closed: %s", closed ? "yes" : "no");
-
-                    if (::rename(fs.filename_full.c_str(), renamed_fnm.c_str()) == 0) {
-                        _dia("pcaplog::write: moving current file to backup: ok");
-                        self->FS.filename_full = self->FS.generate_filename_single("smithproxy", true);
-                        self->stat_bytes_written = 0LL;
-                    } else {
-                        _err("pcaplog::write: moving current file to backup: %s", string_error().c_str());
-                    }
+                    auto dot = base.find_last_of('.');
+                    next = base.substr(0, dot) + "-" + std::to_string(++collision) + base.substr(dot);
                 }
+                ::close(fd);
+                try {
+                    // FIFO close: every block already accepted for the old path
+                    // reaches it before the worker releases its stream.
+                    if (!writer->retire(fs.filename_full)) {
+                        throw std::runtime_error("Cannot retire previous capture");
+                    }
+                } catch (...) {
+                    ::unlink(next.c_str());
+                    throw;
+                }
+                self->FS.filename_full = std::move(next);
+                self->stat_bytes_written = 0;
+                self->pcap_header_written = false;
+                self->rotate_now = false;
+                return true;
             }
         }
 
@@ -413,6 +404,7 @@ namespace socle::traflog {
         (void)side;
 
         PcapLog* self = single_only ? &single_instance() : this;
+        auto capture_lock = std::lock_guard(self->fs_lock_);
         auto const local_output = not ip_packet_hook_only;
         if (not local_output and not self->pcapng_record_hook) return;
 
@@ -484,6 +476,7 @@ namespace socle::traflog {
     void PcapLog::write_detected(side_t side, buffer const& b, std::string const& detection) {
         PcapLog *self = this;
         if (single_only) self = &single_instance();
+        auto capture_lock = std::lock_guard(self->fs_lock_);
 
         if (not self->writer_) self->init_writer();
 
@@ -507,7 +500,7 @@ namespace socle::traflog {
 
             // reset bytes written
             if(is_recreated) {
-                _err("pcaplog::write: current file recreated");
+                _deb("pcaplog::write: capture file initialized");
                 self->stat_bytes_written = 0LL;
             }
 
@@ -554,6 +547,7 @@ namespace socle::traflog {
         }
 
         PcapLog* self = single_only ? &single_instance() : this;
+        auto capture_lock = std::lock_guard(self->fs_lock_);
         auto const local_output = not ip_packet_hook_only;
         if (not local_output && not self->ip_packet_hook
             && not self->pcapng_record_hook) return;
@@ -601,6 +595,7 @@ namespace socle::traflog {
             || data.empty()) return;
 
         PcapLog* self = single_only ? &single_instance() : this;
+        auto capture_lock = std::lock_guard(self->fs_lock_);
         auto const local_output = not ip_packet_hook_only;
         if (not local_output && not self->pcapng_record_hook) return;
 
@@ -666,6 +661,7 @@ namespace socle::traflog {
     void PcapLog::write_metadata_now(buffer const& block) {
 
         PcapLog* self = single_only ? &single_instance() : this;
+        auto capture_lock = std::lock_guard(self->fs_lock_);
         auto const local_output = not ip_packet_hook_only;
         if(not local_output && not self->pcapng_record_hook) return;
 

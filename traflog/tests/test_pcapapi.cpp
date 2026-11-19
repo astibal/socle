@@ -705,3 +705,86 @@ TEST(ThreadedPoolFileWriterTest, FlushesFinalByteAtVolumeThreshold) {
     writer->close(path.string());
     std::filesystem::remove(path);
 }
+
+TEST(ThreadedPoolFileWriterTest, RetirementDrainsQueuedWrites) {
+    auto* writer = socle::threadedPoolFileWriter::instance();
+    auto path = std::filesystem::temp_directory_path()
+        / ("socle-retire-" + std::to_string(::getpid()));
+    std::filesystem::remove(path);
+    writer->write(path.string(), std::string("before-close"));
+    EXPECT_TRUE(writer->retire(path.string()));
+    bool drained = false;
+    for (unsigned i = 0; i < 2000; ++i) {
+        {
+            std::lock_guard lock(writer->queue_lock());
+            drained = writer->queue().empty();
+        }
+        if (drained) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    EXPECT_TRUE(drained);
+    std::ifstream input(path, std::ios::binary);
+    std::string actual((std::istreambuf_iterator<char>(input)), {});
+    EXPECT_EQ(actual, "before-close");
+    EXPECT_FALSE(writer->get_ofstream(path.string(), false));
+    std::filesystem::remove(path);
+}
+
+TEST(PcapLogTest, RotationPreservesNamesAndCreatesIndependentHeaders) {
+    auto& capture = socle::traflog::PcapLog::single_instance();
+    auto* writer = socle::threadedPoolFileWriter::instance();
+    auto dir = std::filesystem::temp_directory_path()
+        / ("socle-rotate-" + std::to_string(::getpid()));
+    std::filesystem::create_directories(dir);
+    const auto old_fs = capture.FS;
+    const auto old_single = capture.single_only;
+    const auto old_writer = capture.writer_;
+    const auto old_header = capture.pcap_header_written.load();
+    const auto old_count = capture.stat_bytes_written;
+    const auto old_quota = capture.stat_bytes_quota;
+    const auto old_rotate = capture.rotate_now;
+    capture.FS.data_dir = dir.string();
+    capture.FS.file_prefix = "";
+    capture.FS.file_suffix = "pcapng";
+    capture.FS.filename_full = (dir / "original.pcapng").string();
+    capture.writer_ = writer;
+    capture.single_only = true;
+    capture.stat_bytes_quota = 0;
+    capture.rotate_now = false;
+    capture.write_pcap_header(true);
+    std::vector<std::string> paths {capture.FS.filename_full};
+    for (int i = 0; i < 3; ++i) {
+        capture.rotate_now = true;
+        EXPECT_TRUE(capture.prepare_file());
+        capture.write_pcap_header(false);
+        paths.push_back(capture.FS.filename_full);
+    }
+    writer->retire(capture.FS.filename_full);
+    bool drained = false;
+    for (unsigned i = 0; i < 2000; ++i) {
+        {
+            std::lock_guard lock(writer->queue_lock());
+            drained = writer->queue().empty();
+        }
+        if (drained) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    EXPECT_TRUE(drained);
+    for (std::size_t i = 0; i < paths.size(); ++i) {
+        for (std::size_t j = 0; j < i; ++j) EXPECT_NE(paths[i], paths[j]);
+        std::ifstream input(paths[i], std::ios::binary);
+        std::string data((std::istreambuf_iterator<char>(input)), {});
+        EXPECT_GT(data.size(), 28U);
+        EXPECT_EQ(data.substr(0, 4), std::string("\x0a\x0d\x0d\x0a", 4));
+        EXPECT_FALSE(writer->get_ofstream(paths[i], false));
+    }
+    EXPECT_FALSE(std::filesystem::exists(dir / "smithproxy.old.pcapng"));
+    capture.FS = old_fs;
+    capture.single_only = old_single;
+    capture.writer_ = old_writer;
+    capture.pcap_header_written = old_header;
+    capture.stat_bytes_written = old_count;
+    capture.stat_bytes_quota = old_quota;
+    capture.rotate_now = old_rotate;
+    std::filesystem::remove_all(dir);
+}

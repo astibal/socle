@@ -87,7 +87,7 @@ namespace socle::traflog {
         void init_writer();
 
         FsOutput FS;
-        mutable std::mutex fs_lock_;
+        mutable std::recursive_mutex fs_lock_;
 
         bool single_only = false;             // write using single-file instance?
         std::atomic_bool pcap_header_written = false; // is PCAP file initialized (opened and preamble written)?
