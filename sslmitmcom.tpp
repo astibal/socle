@@ -301,6 +301,22 @@ bool baseSSLMitmCom<SSLProto>::spoof_cert(X509* cert_orig, SpoofOptions& spo) {
 
     if(this->opt.cert.mitm_cert_ip_search && this->use_cert_ip(spo)) return true;
 
+    // Consult external server identities only after both primary lookups.
+    // Existing profile flags also constrain this optional source.
+    std::string fallback_ip;
+    if (this->opt.cert.mitm_cert_ip_search && this->owner_cx() && this->owner_cx()->peer()) {
+        fallback_ip = this->owner_cx()->peer()->host();
+    }
+    auto fallback = this->factory()->find_custom_fallback(
+        this->opt.cert.mitm_cert_sni_search ? spo.sni : "", fallback_ip);
+    if (fallback) {
+        this->use_cert_null();
+        this->sslcom_pref_cert = fallback->chain.cert;
+        this->sslcom_pref_key = fallback->chain.key;
+        this->sslcom_pref_ctx = fallback->ctx;
+        return true;
+    }
+
     if(this->opt.cert.mitm_cert_searched_only) {
         use_cert_null();
         this->error(baseCom::ERROR_UNSPEC);
