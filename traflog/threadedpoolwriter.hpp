@@ -22,6 +22,8 @@
 #include <unistd.h>
 #include <atomic>
 #include <queue>
+#include <utility>
+#include <buffer.hpp>
 
 #include <traflog/poolwriter.hpp>
 
@@ -39,7 +41,13 @@ namespace socle {
         std::thread worker_thread_;
 
     public:
-        using element_t = std::pair<std::string, buffer>;
+        struct element_t {
+            std::string first;
+            buffer second;
+            bool retire = false;
+            element_t(std::string name, buffer data, bool closing = false)
+                : first(std::move(name)), second(std::move(data)), retire(closing) {}
+        };
         using queue_t = std::queue<element_t>;
 
         threadedPoolFileWriter& operator=(threadedPoolFileWriter const&) = delete;
@@ -56,6 +64,8 @@ namespace socle {
         // write won't actually write to file, but will queue that task
         size_t write(std::string const &fnm, std::string const &str) override;
         size_t write(std::string const &fnm, buffer const &buf) override;
+
+        bool retire(std::string const& fnm) override;
 
         bool flush(std::string const& fnm) override { return poolFileWriter::flush(fnm); }
         bool close(std::string const& fnm) override { return poolFileWriter::close(fnm); }

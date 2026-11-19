@@ -28,6 +28,7 @@
 #include <traflog/threadedpoolwriter.hpp>
 
 #include <memory>
+#include <vector>
 
 
 namespace socle::traflog {
@@ -38,7 +39,11 @@ namespace socle::traflog {
 
         PcapLog() = default; // just for singleton, which is set up later
         // Owned by the flow logger, never the shared single-file sink.
+        std::vector<buffer> pending_metadata_;
+        bool native_packets_written_ = false;
         std::uint64_t capture_packets_ = 0;
+        void flush_pending_metadata();
+        void write_metadata_now(buffer const& block);
         void export_pcapng_records(buffer const& blocks, pcap::connection_details const& details);
     public:
         explicit PcapLog (baseProxy *parent, const char* d_dir, const char* f_prefix, const char* f_suffix, bool create_dirs);
@@ -55,14 +60,18 @@ namespace socle::traflog {
         void write_pcap_header(bool is_recreated);
 
         std::uint64_t write_tcp_start(pcap::tcp_details& real_details);
-        std::uint64_t write_tcp_data(side_t side, buffer const& b, pcap::tcp_details& real_details);
+        std::uint64_t write_tcp_data(side_t side, buffer const& b, pcap::tcp_details& real_details,
+                            std::string const& detection = {});
 
-        std::uint64_t write_udp_data(side_t side, buffer const& b, pcap::tcp_details& real_details);
+        std::uint64_t write_udp_data(side_t side, buffer const& b, pcap::tcp_details& real_details,
+                            std::string const& detection = {});
 
         void write(side_t side, const buffer &b) override;
+        void write_detected(side_t side, buffer const& b, std::string const& detection) override;
         void write(side_t side, std::string const& s) override;
         void write_packet(side_t side, buffer const& packet) override;
         void write_secret(traffic_secret_format format, buffer const& data) override;
+        void write_metadata(buffer const& block) override;
         void write_annotation(side_t side, std::string const& text) override;
 
         std::optional<std::uint64_t> capture_packets() const override {
@@ -78,7 +87,7 @@ namespace socle::traflog {
         void init_writer();
 
         FsOutput FS;
-        mutable std::mutex fs_lock_;
+        mutable std::recursive_mutex fs_lock_;
 
         bool single_only = false;             // write using single-file instance?
         std::atomic_bool pcap_header_written = false; // is PCAP file initialized (opened and preamble written)?
@@ -88,8 +97,6 @@ namespace socle::traflog {
         long long stat_bytes_quota = 0LL;
         bool rotate_now = false;
 
-        bool comment_frame(pcapng::pcapng_epb& frame);
-        std::string comlog;
 
         static PcapLog& single_instance() {
             static PcapLog s;

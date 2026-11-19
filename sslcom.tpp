@@ -3225,6 +3225,8 @@ void baseSSLCom<L4Proto>::handshake_dia_error2(int op_code, int err, unsigned in
 template <class L4Proto>
 ret_handshake baseSSLCom<L4Proto>::handshake() {
 
+    trace_handshake_started_once();
+
     const char* op_accept = "accept";
     const char* op_connect = "connect";
     const char* op_unknown = "?unknown?";
@@ -3232,6 +3234,8 @@ ret_handshake baseSSLCom<L4Proto>::handshake() {
     const char* op_descr = op_unknown;
 
     auto fail_both_sides = [this](bool fatal) {
+        trace_handshake_finished_once(false, fatal ? "fatal handshake error"
+                                                   : "handshake error");
         sslcom_waiting = false;
         sslcom_fatal = sslcom_fatal || fatal;
         record_tls_state(socle::TlsProtoState::failed);
@@ -3257,6 +3261,14 @@ ret_handshake baseSSLCom<L4Proto>::handshake() {
              opt.handshake_timeout, socket());
         log.event(ERR, "[%s] TLS handshake timed out after %d ms",
                   to_string(iINF).c_str(), opt.handshake_timeout);
+        if(!handshake_trace_finished_) {
+            handshake_trace_finished_ = true;
+            protocol_trace(socle::trace_component::tls,
+                           socle::trace_scope::connection,
+                           socle::trace_event::timed_out,
+                           socle::trace_status::timeout,
+                           "handshake timeout");
+        }
         fail_both_sides(true);
         return ret_handshake::FATAL;
     }
@@ -3414,6 +3426,7 @@ ret_handshake baseSSLCom<L4Proto>::handshake() {
 
     _dia("SSLCom::handshake: %s finished on socket %d", op_descr, socket());
     sslcom_waiting = false;
+    trace_handshake_finished_once(true);
 
     record_tls_state(socle::TlsProtoState::established);
     return ret_handshake::SUCCESS;

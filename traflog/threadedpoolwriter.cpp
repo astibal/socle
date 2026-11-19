@@ -68,6 +68,13 @@ namespace socle {
                     auto& fnm = queue().front().first; // copy to ram is faster than to disk
                     auto& buf = queue().front().second;
 
+                    if (queue().front().retire) {
+                        poolFileWriter::flush(fnm);
+                        poolFileWriter::close(fnm);
+                        pending.erase(fnm);
+                        queue().pop();
+                        continue;
+                    }
                     auto written = poolFileWriter::write(fnm, buf);
                     if (written) {
                         auto& dirty = pending[fnm];
@@ -103,6 +110,12 @@ namespace socle {
         }
     }
 
+    bool threadedPoolFileWriter::retire(std::string const& fnm) {
+        std::scoped_lock lock(queue_lock_);
+        task_queue_.emplace(fnm, buffer{}, true);
+        return true;
+    }
+
     size_t threadedPoolFileWriter::write(std::string const &fnm, std::string const &str) {
 
 
@@ -119,7 +132,9 @@ namespace socle {
         auto sz = buf.size();
 
         std::scoped_lock<std::mutex> l_(queue_lock_);
-        task_queue_.emplace(fnm, buf);
+        // A buffer copy can retain a non-owning view. The worker must own
+        // these bytes after the caller returns.
+        task_queue_.emplace(fnm, buffer(buf.data(), sz));
 
         return sz;
     }

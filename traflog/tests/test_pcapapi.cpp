@@ -4,13 +4,14 @@
 #include <tcpcom.hpp>
 #include <traflog/pcapapi.hpp>
 #include <traflog/pcaplog.hpp>
+#include <traflog/filewriter.hpp>
 #include <traflog/threadedpoolwriter.hpp>
 #include <chrono>
 #include <thread>
-#include <fstream>
 
 #include <cstring>
 #include <filesystem>
+#include <fstream>
 
 using namespace socle::pcap;
 
@@ -492,6 +493,76 @@ TEST(PcapLogTest, WritesTcpAndUdpFlowsThroughHighLevelLogger) {
     std::filesystem::remove_all(directory);
 }
 
+TEST(PcapLogTest, MetadataFollowsHandshakeAndPrecedesPayload) {
+    for(bool with_payload : {false, true}) {
+        auto directory = std::filesystem::temp_directory_path()
+            / ("socle-metadata-order-" + std::to_string(::getpid()));
+        std::filesystem::create_directories(directory);
+        CaptureProxy proxy;
+        proxy.attach(new baseHostCX(new TCPCom(), "127.0.0.1", "12345"),
+                     new baseHostCX(new TCPCom(), "127.0.0.2", "443"));
+        std::filesystem::path output;
+        socle::fileWriter synchronous_writer;
+        {
+            socle::traflog::PcapLog capture(
+                &proxy, directory.c_str(), "order-", "pcapng", true);
+            capture.writer_ = &synchronous_writer;
+            output = capture.FS.filename_full;
+            socle::pcapng::pcapng_custom_block event;
+            event.pen = 67005;
+            event.copyable = true;
+            event.name_space = {'S', 'X', 'P', 'P'};
+            event.entry_type = 1;
+            event.version = 2;
+            event.payload = std::make_shared<buffer>("CONNECTED", 9);
+            buffer serialized;
+            event.append(serialized);
+            buffer borrowed(serialized.data(), serialized.size(), serialized.size(), false);
+            capture.write_metadata(borrowed);
+            // Mutating the source must not alter the deferred record.
+            std::memset(serialized.data(), 0, serialized.size());
+            EXPECT_FALSE(capture.tcp_start_written);
+            if(with_payload) {
+                buffer payload("request", 7);
+                capture.write(socle::side_t::LEFT, payload);
+                EXPECT_TRUE(capture.tcp_start_written);
+            }
+        }
+        std::ifstream input(output, std::ios::binary);
+        ASSERT_TRUE(input);
+        std::vector<unsigned char> bytes((std::istreambuf_iterator<char>(input)), {});
+        std::vector<uint32_t> kinds;
+        std::vector<unsigned char> flags;
+        for(size_t offset = 0; offset < bytes.size();) {
+            ASSERT_GE(bytes.size() - offset, 12U);
+            uint32_t kind, length;
+            std::memcpy(&kind, bytes.data() + offset, 4);
+            std::memcpy(&length, bytes.data() + offset + 4, 4);
+            ASSERT_GE(length, 12U);
+            ASSERT_LE(length, bytes.size() - offset);
+            kinds.push_back(kind);
+            if(kind == 6) {
+                // EPB header + Linux cooked v1 + IPv4 header + TCP flags.
+                ASSERT_GT(length, 28U + 16U + 20U + 13U);
+                flags.push_back(bytes[offset + 28 + 16 + 20 + 13]);
+            }
+            offset += length;
+        }
+        if(with_payload) {
+            ASSERT_GE(kinds.size(), 7U);
+            EXPECT_EQ((std::vector<uint32_t>{0x0a0d0d0a, 1, 6, 6, 6, 0xBAD, 6}),
+                      std::vector<uint32_t>(kinds.begin(), kinds.begin() + 7));
+            ASSERT_GE(flags.size(), 3U);
+            EXPECT_EQ(flags[0], 0x02); // SYN
+            EXPECT_EQ(flags[1], 0x12); // SYN/ACK
+            EXPECT_EQ(flags[2], 0x10); // ACK
+        } else {
+            EXPECT_EQ((std::vector<uint32_t>{0x0a0d0d0a, 1, 0xBAD}), kinds);
+        }
+        std::filesystem::remove_all(directory);
+    }
+}
+
 // UDP
 // src: 192.168.254.100:56579
 // dst: 8.8.8.8:53
@@ -552,6 +623,38 @@ TEST(PcapTest, L4_chksum) {
     ASSERT_TRUE(udp_header.check == ntohs(0xf685));
 }
 
+TEST(ThreadedPoolFileWriterTest, BorrowedBytesSurviveUntilAsyncWrite) {
+    auto* writer = socle::threadedPoolFileWriter::instance();
+    auto path = std::filesystem::temp_directory_path()
+        / ("socle-borrowed-write-" + std::to_string(::getpid()));
+    std::filesystem::remove(path);
+    auto drain = [&] {
+        for(unsigned attempt = 0; attempt < 1000; ++attempt) {
+            {
+                std::lock_guard lock(writer->queue_lock());
+                if(writer->queue().empty()) return true;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        return false;
+    };
+    ASSERT_TRUE(drain());
+    char source[] = "metadata";
+    buffer borrowed(source, sizeof(source) - 1, sizeof(source) - 1, false);
+    {
+        // Block disk IO so the source is certainly changed before consumption.
+        std::lock_guard lock(writer->ofstream_lock());
+        ASSERT_EQ(writer->write(path.string(), borrowed), sizeof(source) - 1);
+        std::memset(source, 'x', sizeof(source) - 1);
+    }
+    ASSERT_TRUE(drain());
+    writer->close(path.string());
+    std::ifstream input(path, std::ios::binary);
+    std::string actual((std::istreambuf_iterator<char>(input)), {});
+    EXPECT_EQ(actual, "metadata");
+    std::filesystem::remove(path);
+}
+
 TEST(ThreadedPoolFileWriterTest, PublishesFinalBlockWithoutAnotherWrite) {
     auto* writer = socle::threadedPoolFileWriter::instance();
     auto path = std::filesystem::temp_directory_path()
@@ -601,4 +704,87 @@ TEST(ThreadedPoolFileWriterTest, FlushesFinalByteAtVolumeThreshold) {
     }
     writer->close(path.string());
     std::filesystem::remove(path);
+}
+
+TEST(ThreadedPoolFileWriterTest, RetirementDrainsQueuedWrites) {
+    auto* writer = socle::threadedPoolFileWriter::instance();
+    auto path = std::filesystem::temp_directory_path()
+        / ("socle-retire-" + std::to_string(::getpid()));
+    std::filesystem::remove(path);
+    writer->write(path.string(), std::string("before-close"));
+    EXPECT_TRUE(writer->retire(path.string()));
+    bool drained = false;
+    for (unsigned i = 0; i < 2000; ++i) {
+        {
+            std::lock_guard lock(writer->queue_lock());
+            drained = writer->queue().empty();
+        }
+        if (drained) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    EXPECT_TRUE(drained);
+    std::ifstream input(path, std::ios::binary);
+    std::string actual((std::istreambuf_iterator<char>(input)), {});
+    EXPECT_EQ(actual, "before-close");
+    EXPECT_FALSE(writer->get_ofstream(path.string(), false));
+    std::filesystem::remove(path);
+}
+
+TEST(PcapLogTest, RotationPreservesNamesAndCreatesIndependentHeaders) {
+    auto& capture = socle::traflog::PcapLog::single_instance();
+    auto* writer = socle::threadedPoolFileWriter::instance();
+    auto dir = std::filesystem::temp_directory_path()
+        / ("socle-rotate-" + std::to_string(::getpid()));
+    std::filesystem::create_directories(dir);
+    const auto old_fs = capture.FS;
+    const auto old_single = capture.single_only;
+    const auto old_writer = capture.writer_;
+    const auto old_header = capture.pcap_header_written.load();
+    const auto old_count = capture.stat_bytes_written;
+    const auto old_quota = capture.stat_bytes_quota;
+    const auto old_rotate = capture.rotate_now;
+    capture.FS.data_dir = dir.string();
+    capture.FS.file_prefix = "";
+    capture.FS.file_suffix = "pcapng";
+    capture.FS.filename_full = (dir / "original.pcapng").string();
+    capture.writer_ = writer;
+    capture.single_only = true;
+    capture.stat_bytes_quota = 0;
+    capture.rotate_now = false;
+    capture.write_pcap_header(true);
+    std::vector<std::string> paths {capture.FS.filename_full};
+    for (int i = 0; i < 3; ++i) {
+        capture.rotate_now = true;
+        EXPECT_TRUE(capture.prepare_file());
+        capture.write_pcap_header(false);
+        paths.push_back(capture.FS.filename_full);
+    }
+    writer->retire(capture.FS.filename_full);
+    bool drained = false;
+    for (unsigned i = 0; i < 2000; ++i) {
+        {
+            std::lock_guard lock(writer->queue_lock());
+            drained = writer->queue().empty();
+        }
+        if (drained) break;
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+    EXPECT_TRUE(drained);
+    for (std::size_t i = 0; i < paths.size(); ++i) {
+        for (std::size_t j = 0; j < i; ++j) EXPECT_NE(paths[i], paths[j]);
+        std::ifstream input(paths[i], std::ios::binary);
+        std::string data((std::istreambuf_iterator<char>(input)), {});
+        EXPECT_GT(data.size(), 28U);
+        EXPECT_EQ(data.substr(0, 4), std::string("\x0a\x0d\x0d\x0a", 4));
+        EXPECT_FALSE(writer->get_ofstream(paths[i], false));
+    }
+    EXPECT_FALSE(std::filesystem::exists(dir / "smithproxy.old.pcapng"));
+    capture.FS = old_fs;
+    capture.single_only = old_single;
+    capture.writer_ = old_writer;
+    capture.pcap_header_written = old_header;
+    capture.stat_bytes_written = old_count;
+    capture.stat_bytes_quota = old_quota;
+    capture.rotate_now = old_rotate;
+    std::filesystem::remove_all(dir);
 }

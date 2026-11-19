@@ -55,11 +55,16 @@ bool TCPCom::make_transparent(int sfd) {
 
 int TCPCom::connect(const char* host, const char* port) {
     connect_proven = false;
+    connect_traced = false;
     connected_fd_ = 0;
     error(ERROR_NONE);
     connect_failed_ = false;
     connect_error_ = 0;
 
+    protocol_trace(socle::trace_component::tcp,
+                   socle::trace_scope::connection,
+                   socle::trace_event::connect_started,
+                   socle::trace_status::pending);
     struct addrinfo hints{};
     struct addrinfo *gai_result, *rp;
     int sfd = -1;
@@ -114,6 +119,7 @@ int TCPCom::connect(const char* host, const char* port) {
                 _deb("TCPCom::connect[%s:%s]: socket[%d]: connect successful", host, port, sfd);
                 connect_proven = true;
                 connected_fd_ = sfd;
+                trace_connected_once();
                 break;
             }
 
@@ -141,6 +147,11 @@ int TCPCom::connect(const char* host, const char* port) {
     
     if(sfd < 0) {
         _err("TCPCom::connect[%s:%s]: socket[%d]: connect failed", host, port, sfd);
+        protocol_trace(socle::trace_component::tcp,
+                       socle::trace_scope::connection,
+                       socle::trace_event::closed,
+                       socle::trace_status::failed,
+                       "connect failed");
     }
 
     return socket(sfd);
@@ -270,6 +281,7 @@ bool TCPCom::is_connected(int s) {
         return false;
 
     connected_fd_ = s;
+    trace_connected_once();
     connect_proven = true;
     return true;
 }

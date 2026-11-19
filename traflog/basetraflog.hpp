@@ -49,6 +49,10 @@ namespace socle {
          * network and transport framing around these bytes.
          */
         virtual void write(side_t side, const buffer &b) = 0;
+        virtual void write_detected(side_t side, buffer const& b, std::string const& detection) {
+            if (!detection.empty()) write(side, detection);
+            write(side, b);
+        }
         virtual void write_left(buffer const& b) final {  if(status()) write(side_t::LEFT, b); };
         virtual void write_right(buffer const& b) final {  if(status()) write(side_t::RIGHT, b); };
 
@@ -61,6 +65,9 @@ namespace socle {
 
         /** Attach decryption material to this capture when its format supports it. */
         virtual void write_secret(traffic_secret_format, buffer const&) {}
+
+        /** Write one fully serialized PCAPNG metadata block unchanged. */
+        virtual void write_metadata(buffer const&) {}
 
         /** Emit a capture-visible metadata event without borrowing a data frame. */
         virtual void write_annotation(side_t side, std::string const& text) {
