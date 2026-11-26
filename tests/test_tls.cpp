@@ -4736,3 +4736,58 @@ TEST(OpenSSLUtilities, PeerCertificatesPreserveLeafAndChainOnBothSides) {
     pair.server.reset();
     EXPECT_EQ(snapshot, expected);
 }
+
+TEST(TLS_Tests, RoutedIpSanUsesOriginalDestinationAndUnroutedIpIsUnchanged) {
+    auto key = make_rsa_key();
+    auto certificate = make_certificate(key.get(), 4002, "origin.internal");
+    ASSERT_NE(key, nullptr);
+    ASSERT_NE(certificate, nullptr);
+
+    auto client_context = socle::ossl::ssl_ctx_ptr(
+        SSL_CTX_new(TLS_method()), SSL_CTX_free);
+    auto server_context = socle::ossl::ssl_ctx_ptr(
+        SSL_CTX_new(TLS_method()), SSL_CTX_free);
+    ASSERT_NE(client_context, nullptr);
+    ASSERT_NE(server_context, nullptr);
+    SSL_CTX_set_verify(client_context.get(), SSL_VERIFY_NONE, nullptr);
+    ASSERT_EQ(SSL_CTX_use_certificate(server_context.get(), certificate.get()), 1);
+    ASSERT_EQ(SSL_CTX_use_PrivateKey(server_context.get(), key.get()), 1);
+    auto tls = make_memory_tls_pair(client_context.get(), server_context.get());
+    ASSERT_NE(tls.client, nullptr);
+    ASSERT_NE(tls.server, nullptr);
+
+    // This test supplies its own TLS session and captures certificate options;
+    // attaching contexts must not initialize the system certificate store.
+    struct SanProbe : SSLMitmCom_Buddy {
+        void static_init() override {}
+    };
+    auto* upstream = new SanProbe();
+    auto* downstream = new SanProbe();
+    baseHostCX client(downstream, "192.0.2.100", "12345");
+    baseHostCX backend(upstream, "192.0.2.22", "443");
+    client.peer(&backend);
+    backend.peer(&client);
+    upstream->test_take_ssl(tls.client.release());
+    upstream->test_sni("client.example");
+    downstream->test_sni("client.example");
+    upstream->opt.cert.failed_check_replacement = true;
+    downstream->capture_spoof_options = true;
+    downstream->upgraded(true);
+
+    for (const bool routed : {false, true}) {
+        downstream->nonlocal_dst_resolved(routed);
+        downstream->nonlocal_dst_host() = routed ? "192.0.2.30" : "";
+        upstream->verify_reset(SSLCom::verify_status_t::VRF_OK);
+        ASSERT_TRUE(upstream->check_cert(nullptr));
+        ASSERT_TRUE(downstream->captured_spoof_options.has_value());
+        const auto& sans = downstream->captured_spoof_options->sans;
+        const auto expected_ip = routed ? "IP:192.0.2.30" : "IP:192.0.2.22";
+        EXPECT_NE(std::find(sans.begin(), sans.end(), expected_ip), sans.end());
+        EXPECT_NE(std::find(sans.begin(), sans.end(), "DNS:client.example"), sans.end());
+        if (routed) {
+            EXPECT_EQ(std::find(sans.begin(), sans.end(), "IP:192.0.2.22"), sans.end());
+        }
+    }
+    client.peer(nullptr);
+    backend.peer(nullptr);
+}

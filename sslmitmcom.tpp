@@ -116,8 +116,9 @@ bool baseSSLMitmCom<SSLProto>::check_cert(const char* peer_name) {
                 // there is problem, and we do relaxed cert check. Add DNS and IP SAN,
                 // to raise significantly possibility to pass e.g. browser checks
                 add_client_sni();
-                if(this->owner_cx()) {
-                    spo.sans.push_back(string_format("IP:%s",this->owner_cx()->host().c_str()));
+                const auto client_destination = remote->original_destination_ip();
+                if (!client_destination.empty()) {
+                    spo.sans.push_back("IP:" + client_destination);
                 }
             }
         }
@@ -208,12 +209,31 @@ bool baseSSLMitmCom<SSLProto>::use_cert_sni(SpoofOptions &spo) {
 }
 
 template <class SSLProto>
+std::string baseSSLMitmCom<SSLProto>::original_destination_ip() {
+    // The accepted destination preserves the original IP requested by the client,
+    // even if the destination changes later, for example through routing or load balancing.
+    // If it is unavailable, use the current peer address.
+    const bool original_destination_known = this->nonlocal_dst_resolved()
+                                           && !this->nonlocal_dst_host().empty();
+    if (original_destination_known) {
+        return this->nonlocal_dst_host();
+    }
+
+    auto* owner = this->owner_cx();
+    if (owner && owner->peer()) {
+        return owner->peer()->host();
+    }
+
+    return {};
+}
+
+template <class SSLProto>
 bool baseSSLMitmCom<SSLProto>::use_cert_ip(SpoofOptions &spo) {
     auto const& log = log::mitm();
 
 
     if (this->owner_cx() and this->owner_cx()->peer()) {
-        auto address = this->owner_cx()->peer()->host();
+        auto address = this->original_destination_ip();
         _dia("SSLMitmCom::use_cert_ip: looking for certificate bound to IP '%s'", address.c_str());
 
         if(not address.empty()) {
@@ -301,11 +321,12 @@ bool baseSSLMitmCom<SSLProto>::spoof_cert(X509* cert_orig, SpoofOptions& spo) {
 
     if(this->opt.cert.mitm_cert_ip_search && this->use_cert_ip(spo)) return true;
 
-    // Consult external server identities only after both primary lookups.
+    // Look for custom certificates in the external fallback directory
+    // only after checking the primary store by SNI and IP.
     // Existing profile flags also constrain this optional source.
     std::string fallback_ip;
-    if (this->opt.cert.mitm_cert_ip_search && this->owner_cx() && this->owner_cx()->peer()) {
-        fallback_ip = this->owner_cx()->peer()->host();
+    if (this->opt.cert.mitm_cert_ip_search) {
+        fallback_ip = this->original_destination_ip();
     }
     auto fallback = this->factory()->find_custom_fallback(
         this->opt.cert.mitm_cert_sni_search ? spo.sni : "", fallback_ip);

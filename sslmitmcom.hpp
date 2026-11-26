@@ -44,6 +44,7 @@ public:
     virtual bool spoof_cert(X509* cert_orig, SpoofOptions& spo);
     virtual bool use_cert_null();
     virtual bool use_cert_sni(SpoofOptions &spo);
+    std::string original_destination_ip();
     virtual bool use_cert_ip(SpoofOptions &spo);
     virtual bool use_cert_mitm(X509* cert_orig, SpoofOptions& spo);
 
